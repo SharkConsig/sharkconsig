@@ -1061,6 +1061,10 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
       }
       return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
     }
+    const cleaned = phone.replace(/\D/g, "")
+    if (cleaned.length >= 8) {
+      return cleaned.slice(0, -4) + "****"
+    }
     return phone.replace(/\d{4}$/, "****")
   }
 
@@ -1103,13 +1107,8 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[95vw] lg:max-w-7xl max-h-[90vh] overflow-y-auto p-0 border-none bg-slate-50">
-        <DialogHeader className="p-6 bg-white border-b border-slate-200 flex flex-row items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-1.5 h-6 bg-primary rounded-full"></div>
-            <DialogTitle className="text-xl font-black text-slate-900 uppercase tracking-tight">Dados do Cliente</DialogTitle>
-          </div>
-        </DialogHeader>
+      <DialogContent className="max-w-[95vw] lg:max-w-7xl max-h-[90vh] overflow-y-auto p-4 sm:p-8 border border-slate-200 bg-slate-50 rounded-2xl">
+        <DialogTitle className="sr-only">Dados do Cliente</DialogTitle>
 
         {isLoading ? (
           <div className="p-20 flex flex-col items-center justify-center gap-4 text-slate-400">
@@ -1122,10 +1121,10 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
             <Button variant="outline" onClick={onClose} className="mt-4">Fechar</Button>
           </div>
         ) : client && (
-          <div className="p-6 space-y-6">
+          <div className="space-y-6">
             {profiles.length > 1 && (
-              <div className="flex flex-col gap-2.5 bg-white border border-slate-200 p-4 rounded-xl shadow-sm">
-                <p className="text-[10px] font-black uppercase tracking-widest text-[#171717]/60">
+              <div className="flex flex-col gap-2.5 bg-white border border-slate-200 p-4 rounded-xl card-shadow">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   Convênios Vinculados a este CPF ({profiles.length})
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -1160,11 +1159,12 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                           setRegistrations(p.registrations);
                           setActiveRegIndex(0);
                         }}
-                        className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all border cursor-pointer ${
+                        className={cn(
+                          "px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all border cursor-pointer",
                           isActive 
                             ? "bg-[#171717] text-white border-[#171717] shadow-sm font-black scale-102" 
                             : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                        }`}
+                        )}
                       >
                         {convenioDisplayName}
                       </button>
@@ -1173,65 +1173,106 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                 </div>
               </div>
             )}
-            {/* Dados Pessoais */}
-            <Card className="card-shadow bg-white border border-slate-200">
-              <CardContent className="p-6 space-y-6">
+            {/* Dados Pessoais - Estilo idêntico ao exemplo */}
+            <Card className="card-shadow border border-slate-200 bg-white">
+              <CardContent className="p-6 sm:p-8 space-y-8 sm:space-y-10">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-1 h-5 bg-primary rounded-full"></div>
-                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Dados Pessoais</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                    <h3 className="text-[16px] font-bold text-slate-900">Dados Pessoais</h3>
                   </div>
                   <button 
+                    type="button"
                     onClick={() => setShowSensitiveData(!showSensitiveData)}
-                    className="text-slate-400 hover:text-primary transition-colors p-2 hover:bg-slate-50 rounded-full"
+                    className="text-slate-500 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100 rounded-full cursor-pointer"
+                    title={showSensitiveData ? "Ocultar dados sensíveis" : "Mostrar dados sensíveis"}
                   >
                     {showSensitiveData ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nome</p>
-                    <p className="text-[12px] font-bold text-slate-900 uppercase truncate" title={client.nome || ""}>{client.nome || "NÃO INFORMADO"}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">CPF</p>
-                    <p className="text-[12px] font-bold text-slate-900">{maskCPF(client.cpf)}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                      {clientType === 'prefeitura_ponta_grossa' ? 'Idade' : 'Nascimento'}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-12">
+                  {/* Row 1 */}
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome</p>
+                    <p className="text-[13px] font-bold text-slate-900 uppercase truncate" title={client.nome || ""}>
+                      {client.nome || "NÃO INFORMADO"}
                     </p>
-                    <div className="flex items-center gap-2">
-                      {clientType === 'prefeitura_ponta_grossa' ? (
-                        <p className="text-[12px] font-bold text-slate-900">
-                          {client.idade !== null && client.idade !== undefined
-                            ? `${client.idade} ANOS`
-                            : ((registrations?.[0] as unknown as Record<string, unknown>)?.idade !== null && (registrations?.[0] as unknown as Record<string, unknown>)?.idade !== undefined
-                                ? `${(registrations?.[0] as unknown as Record<string, unknown>)?.idade} ANOS`
-                                : "NÃO INFORMADO")}
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CPF</p>
+                    <p className="text-[13px] font-bold text-slate-900">
+                      {maskCPF(client.cpf)}
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data de Nascimento</p>
+                    <div className="flex flex-col gap-0.5">
+                      <p className="text-[13px] font-bold text-slate-900">
+                        {formatDate(client.data_nascimento)}
+                      </p>
+                      {client.data_nascimento && (
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">
+                          {calculateAge(client.data_nascimento)} Anos
                         </p>
-                      ) : (
-                        <>
-                          <p className="text-[12px] font-bold text-slate-900">{formatDate(client.data_nascimento)}</p>
-                          {client.data_nascimento && (
-                            <Badge variant="secondary" className="text-[9px] font-bold h-4 px-1.5">{calculateAge(client.data_nascimento)} ANOS</Badge>
-                          )}
-                        </>
                       )}
                     </div>
                   </div>
-                  {[client.telefone_1, client.telefone_2, client.telefone_3].map((tel, i) => tel && (
-                    <div key={i} className="space-y-1">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Telefone {i + 1}</p>
-                      <div className="flex items-center gap-1.5 cursor-pointer hover:text-emerald-600 transition-colors" onClick={() => handlePhoneClick(tel)}>
-                        <p className="text-[12px] font-bold text-slate-900">{maskPhone(tel)}</p>
-                        {tel !== '0' && tel !== 'NÃO INFORMADO' && (
-                          <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10" />
+
+                  {/* Row 2 */}
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone Principal</p>
+                    <div className="flex items-center gap-1.5">
+                      <p 
+                        className={cn(
+                          "text-[13px] font-bold text-slate-900",
+                          client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
                         )}
-                      </div>
+                        onClick={() => handlePhoneClick(client.telefone_1)}
+                      >
+                        {maskPhone(client.telefone_1)}
+                      </p>
+                      {client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && (
+                        <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10 cursor-pointer" />
+                      )}
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 2</p>
+                    <div className="flex items-center gap-1.5">
+                      <p 
+                        className={cn(
+                          "text-[13px] font-bold text-slate-900",
+                          client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                        )}
+                        onClick={() => handlePhoneClick(client.telefone_2)}
+                      >
+                        {maskPhone(client.telefone_2)}
+                      </p>
+                      {client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && (
+                        <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10 cursor-pointer" />
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 3</p>
+                    <div className="flex items-center gap-1.5">
+                      <p 
+                        className={cn(
+                          "text-[13px] font-bold text-slate-900",
+                          client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                        )}
+                        onClick={() => handlePhoneClick(client.telefone_3)}
+                      >
+                        {maskPhone(client.telefone_3)}
+                      </p>
+                      {client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && (
+                        <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10 cursor-pointer" />
+                      )}
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1274,198 +1315,230 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
               const activeReg = allRegs[activeRegIndex] || allRegs[0];
 
               return (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-1 h-5 bg-primary rounded-full"></div>
-                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">
-                      {clientType === 'siape' ? 'Matrículas e Margens' : 'Identificações e Lotações'}
-                    </h3>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
+                <div className="space-y-0">
+                  {/* Tabs Navigation */}
+                  <div className="flex flex-wrap gap-1 px-4 sm:px-8">
                     {allRegs.map((reg, idx) => (
-                      <Button
+                      <button
                         key={`tab-${reg.id}-${idx}`}
-                        variant={activeRegIndex === idx ? "default" : "outline"}
+                        type="button"
                         onClick={() => setActiveRegIndex(idx)}
                         className={cn(
-                          "h-10 px-4 text-[10px] font-bold uppercase tracking-widest rounded-xl transition-all",
-                          activeRegIndex === idx ? "bg-primary shadow-lg shadow-primary/20" : "bg-white text-slate-400"
+                          "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px] cursor-pointer",
+                          activeRegIndex === idx
+                            ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black"
+                            : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
                         )}
                       >
-                        {clientType === 'siape' ? (
-                          `Matrícula ${reg.numero_matricula}${reg.currentInstituidor ? ` - ${reg.currentInstituidor}` : ''}`
-                        ) : (
-                          `Identificação: ${reg.displayId}`
-                        )}
-                      </Button>
+                        <div className="flex flex-col items-center">
+                          <span>{clientType === 'governo_sp' || clientType === 'prefeitura_sp' ? `ID ${reg.identificacao || reg.displayId}` : `Matrícula ${reg.numero_matricula || reg.identificacao || reg.displayId}`}</span>
+                        </div>
+                      </button>
                     ))}
                   </div>
 
-                  <div className="space-y-6">
-                    {/* Info Card */}
-                    <Card className="card-shadow bg-white border border-slate-200">
-                      <CardContent className="p-6 space-y-8">
+                  {/* Info Card */}
+                  <Card className="card-shadow bg-white border border-slate-200 rounded-tl-none animate-in fade-in duration-300">
+                    <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                      <div className="space-y-8 sm:space-y-10">
+                        <div className="flex items-center gap-3">
+                          <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                          <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">
+                            {clientType === 'prefeitura_sp'
+                              ? "Informações da Identificação (PMSP)"
+                              : clientType === 'governo_sp'
+                              ? "Informações da Identificação (GOVERNO SP)"
+                              : clientType === 'siape'
+                              ? "Informações da Matrícula"
+                              : `Informações da Matrícula (${String(clientType || '').replace('prefeitura_', 'PM ').replace('governo_', 'GOV ').toUpperCase()})`}
+                          </h3>
+                        </div>
+                      </div>
                         {clientType === 'siape' ? (
                           <>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.numero_matricula}</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                <p className="text-[13px] font-bold text-slate-900">{activeReg.numero_matricula}</p>
                               </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Status</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">{activeReg.situacao_funcional || "NÃO INFORMADO"}</p>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Situação Funcional</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{activeReg.situacao_funcional || "NÃO INFORMADO"}</p>
                               </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Salário</p>
-                                <p className="text-[12px] font-bold text-slate-900">{formatCurrency(activeReg.salario)}</p>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Salário</p>
+                                <p className="text-[13px] font-bold text-slate-900">{formatCurrency(activeReg.salario)}</p>
                               </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Órgão / Instituidor</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate" title={activeReg.currentInstituidor}>{activeReg.currentInstituidor}</p>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                  {activeReg.situacao_funcional === 'BENEFICIARIO PENSAO' ? 'Instituidor' : 'Órgão (Vínculo)'}
+                                </p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase truncate" title={activeReg.currentInstituidor}>
+                                  {activeReg.currentInstituidor}
+                                </p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Regime Jurídico</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{activeReg.regime_juridico || "NÃO INFORMADO"}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">{activeReg.uf || "NÃO INFORMADO"}</p>
                               </div>
                             </div>
 
-                            {/* Margens Grid SIAPE - Layout image.png */}
-                            <div className="space-y-8">
-                              {/* Seção Empréstimo Consignado */}
-                              <div className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-1 h-3.5 bg-blue-500 rounded-full"></div>
-                                  <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">EMPRÉSTIMO CONSIGNADO</h4>
+                            {/* Margens Grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                              {/* Row 1: Principais */}
+                              <div className="p-3.5 bg-slate-300/60 border border-slate-400/40 rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]">
+                                <div>
+                                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Saldo 70%</p>
+                                  <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(activeReg.saldo_70)}</p>
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                  <div className="p-4 bg-[#eef2f6] border border-slate-200 rounded-2xl">
-                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Saldo 70%</p>
-                                    <p className="text-xl font-black text-slate-900">{formatCurrency(activeReg.saldo_70)}</p>
-                                  </div>
-                                  <div className={cn(
-                                    "p-4 border rounded-2xl sm:col-span-2",
-                                    (activeReg.margem_35 || 0) > 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"
-                                  )}>
-                                    <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", (activeReg.margem_35 || 0) > 0 ? "text-emerald-700" : "text-red-700")}>LÍQUIDA FACULTATIVA GLOBAL</p>
-                                    <p className={cn("text-xl font-black", (activeReg.margem_35 || 0) > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(activeReg.margem_35)}</p>
-                                    <div className="flex items-center gap-1.5 mt-2">
-                                      <div className={cn("w-1.5 h-1.5 rounded-full", (activeReg.margem_35 || 0) > 0 ? "bg-emerald-500" : "bg-red-500")}></div>
-                                      <p className={cn("text-[8px] font-bold uppercase tracking-widest", (activeReg.margem_35 || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
-                                        {(activeReg.margem_35 || 0) > 0 ? "Disponível" : "Indisponível"}
-                                      </p>
-                                    </div>
+                                <div className="flex items-center gap-1.5 invisible">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                                  <span className="text-[8px] font-bold uppercase tracking-widest">STATUS</span>
+                                </div>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] sm:col-span-1 lg:col-span-2",
+                                (Number(activeReg.margem_35) || 0) > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                              )}>
+                                <div>
+                                  <p className={cn(
+                                    "text-[9px] font-bold uppercase tracking-widest",
+                                    (Number(activeReg.margem_35) || 0) > 0 ? "text-emerald-700/60" : "text-red-700/60"
+                                  )}>LÍQUIDA FACULTATIVA GLOBAL</p>
+                                  <p className={cn(
+                                    "text-[17px] font-bold tracking-tight",
+                                    (Number(activeReg.margem_35) || 0) > 0 ? "text-emerald-700" : "text-red-700"
+                                  )}>{formatCurrency(activeReg.margem_35)}</p>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <div className={cn("w-1.5 h-1.5 rounded-full", (Number(activeReg.margem_35) || 0) > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                  <span className={cn("text-[8px] font-bold uppercase tracking-widest", (Number(activeReg.margem_35) || 0) > 0 ? "text-emerald-600" : "text-red-600")}>
+                                    {(Number(activeReg.margem_35) || 0) > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Row 2: 5% */}
+                              <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta 5%</p>
+                                <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(activeReg.bruta_5)}</p>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
+                                getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                              )}>
+                                <p className={cn(
+                                  "text-[9px] font-bold uppercase tracking-widest",
+                                  getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
+                                )}>Utilizada 5%</p>
+                                <p className={cn(
+                                  "text-[17px] font-bold tracking-tight uppercase",
+                                  getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
+                                )}>
+                                  {getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5)}
+                                </p>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5",
+                                getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                              )}>
+                                <p className={cn(
+                                  "text-[9px] font-bold uppercase tracking-widest",
+                                  getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
+                                )}>Líquida 5%</p>
+                                <div className="flex flex-col">
+                                  <p className={cn(
+                                    "text-[17px] font-bold tracking-tight",
+                                    getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
+                                  )}>{formatCurrency(activeReg.liquida_5)}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "bg-red-600" : "bg-emerald-600")}></div>
+                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "text-red-600" : "text-emerald-600")}>
+                                      {getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
+                                    </span>
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Seção Cartão Consignado */}
-                              <div className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-1 h-3.5 bg-emerald-500 rounded-full"></div>
-                                  <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">CARTÃO CONSIGNADO (RMC)</h4>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                  <div className="p-4 bg-[#f1f5f9] border border-slate-100 rounded-2xl">
-                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Bruta 5%</p>
-                                    <p className="text-xl font-black text-slate-900">{formatCurrency(activeReg.bruta_5)}</p>
-                                  </div>
-                                  {(() => {
-                                    const utilizada = getUtilizadaStatus(activeReg.bruta_5, activeReg.liquida_5);
-                                    const isSim = utilizada === "SIM";
-                                    return (
-                                      <>
-                                        <div className={cn(
-                                          "p-4 border rounded-2xl",
-                                          isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
-                                        )}>
-                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Utilizada 5%</p>
-                                          <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{utilizada}</p>
-                                        </div>
-                                        <div className={cn(
-                                          "p-4 border rounded-2xl",
-                                          isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
-                                        )}>
-                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Líquida 5%</p>
-                                          <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{formatCurrency(activeReg.liquida_5)}</p>
-                                          <div className="flex items-center gap-1.5 mt-2">
-                                            <div className={cn("w-1.5 h-1.5 rounded-full", isSim ? "bg-red-500" : "bg-emerald-500")}></div>
-                                            <p className={cn("text-[8px] font-bold uppercase tracking-widest", isSim ? "text-red-600" : "text-emerald-600")}>
-                                              {isSim ? "Indisponível" : "Disponível"}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </>
-                                    );
-                                  })()}
-                                </div>
+                              {/* Row 3: Benefício */}
+                              <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Benefício Bruta 5%</p>
+                                <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(activeReg.beneficio_bruta_5)}</p>
                               </div>
-
-                              {/* Seção Cartão Benefício */}
-                              <div className="space-y-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-1 h-3.5 bg-purple-500 rounded-full"></div>
-                                  <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">CARTÃO BENEFÍCIO (RCC)</h4>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                  <div className="p-4 bg-[#f1f5f9] border border-slate-100 rounded-2xl">
-                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mb-1">Benefício Bruta 5%</p>
-                                    <p className="text-xl font-black text-slate-900">{formatCurrency(activeReg.beneficio_bruta_5)}</p>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
+                                getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                              )}>
+                                <p className={cn(
+                                  "text-[9px] font-bold uppercase tracking-widest",
+                                  getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
+                                )}>Benefício Utilizada 5%</p>
+                                <p className={cn(
+                                  "text-[17px] font-bold tracking-tight uppercase",
+                                  getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
+                                )}>
+                                  {getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5)}
+                                </p>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5",
+                                getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                              )}>
+                                <p className={cn(
+                                  "text-[9px] font-bold uppercase tracking-widest",
+                                  getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
+                                )}>Benefício Líquida 5%</p>
+                                <div className="flex flex-col">
+                                  <p className={cn(
+                                    "text-[17px] font-bold tracking-tight",
+                                    getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "text-red-700" : "text-emerald-700"
+                                  )}>{formatCurrency(activeReg.beneficio_liquida_5)}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "bg-red-600" : "bg-emerald-600")}></div>
+                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "text-red-600" : "text-emerald-600")}>
+                                      {getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5) === "SIM" ? "INDISPONÍVEL" : "DISPONÍVEL"}
+                                    </span>
                                   </div>
-                                  {(() => {
-                                    const utilizada = getUtilizadaStatus(activeReg.beneficio_bruta_5, activeReg.beneficio_liquida_5);
-                                    const isSim = utilizada === "SIM";
-                                    return (
-                                      <>
-                                        <div className={cn(
-                                          "p-4 border rounded-2xl",
-                                          isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
-                                        )}>
-                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Benefício Utilizada 5%</p>
-                                          <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{utilizada}</p>
-                                        </div>
-                                        <div className={cn(
-                                          "p-4 border rounded-2xl",
-                                          isSim ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
-                                        )}>
-                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest mb-1", isSim ? "text-red-700" : "text-emerald-700")}>Benefício Líquida 5%</p>
-                                          <p className={cn("text-xl font-black", isSim ? "text-red-700" : "text-emerald-700")}>{formatCurrency(activeReg.beneficio_liquida_5)}</p>
-                                          <div className="flex items-center gap-1.5 mt-2">
-                                            <div className={cn("w-1.5 h-1.5 rounded-full", isSim ? "bg-red-500" : "bg-emerald-500")}></div>
-                                            <p className={cn("text-[8px] font-bold uppercase tracking-widest", isSim ? "text-red-600" : "text-emerald-600")}>
-                                              {isSim ? "Indisponível" : "Disponível"}
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </>
-                                    );
-                                  })()}
                                 </div>
                               </div>
                             </div>
                           </>
                         ) : clientType === 'governo_sp' || clientType === 'prefeitura_sp' ? (
                           <>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Identificacao</p>
-                                <p className="text-[12px] font-bold text-slate-900">{activeReg.identificacao}</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Identificação</p>
+                                <p className="text-[13px] font-bold text-slate-900">{activeReg.identificacao || activeReg.matricula || "---"}</p>
                               </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Vinculo</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase">
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data da Nomeação</p>
+                                <p className="text-[13px] font-bold text-slate-900">{activeReg.data_nomeacao ? formatDate(activeReg.data_nomeacao) : "---"}</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tipo de Vínculo</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase">
                                   {clientType === 'governo_sp' ? (activeReg.tipo_vinculo || "NÃO INFORMADO") : (activeReg.tipo_vinculo || activeReg.situacao_funcional || "NÃO INFORMADO")}
                                 </p>
                               </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nomeação</p>
-                                <p className="text-[12px] font-bold text-slate-900">{formatDate(activeReg.data_nomeacao)}</p>
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lotação</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase truncate">
+                                  {activeReg.governo_sp_lotacoes?.[0]?.lotacao || activeReg.prefeitura_sp_lotacoes?.[0]?.lotacao || "NÃO INFORMADO"}
+                                </p>
                               </div>
-                              <div className="space-y-1">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Lotação / Órgão</p>
-                                <p className="text-[12px] font-bold text-slate-900 uppercase truncate">
-                                  {activeReg.governo_sp_lotacoes?.[0]?.lotacao || activeReg.prefeitura_sp_lotacoes?.[0]?.lotacao || activeReg.regime_juridico || "---"}
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                <p className="text-[13px] font-bold text-slate-900 uppercase truncate">
+                                  {clientType === 'prefeitura_sp' ? 'SP (PMSP)' : clientType === 'governo_sp' ? 'SP (GOV SP)' : (activeReg.regime_juridico || activeReg.orgao || "---")}
                                 </p>
                               </div>
                             </div>
 
-                            {/* Margens Grid Gov SP / PMSP - Layout correspondente a pesquisa/page.tsx */}
+                            {/* Margens Grid Gov SP / PMSP - Estilo idêntico a image.png */}
                             {(() => {
                               const lotacao = activeReg.governo_sp_lotacoes?.[0] || activeReg.prefeitura_sp_lotacoes?.[0];
                               if (!lotacao) return (
@@ -1511,47 +1584,35 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
 
                               return (
                                 <div className="space-y-6">
-                                  {/* Consignações */}
-                                  <div className="space-y-3">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-1 h-3.5 bg-blue-600 rounded-full"></div>
-                                      <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">EMPRÉSTIMO CONSIGNADO</h4>
+                                  {/* Row 1: Consignações */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Consignações</p>
+                                      <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(lotacao.mb_consignacoes)}</p>
                                     </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Consignações</p>
-                                        <p className="text-[17px] font-bold text-slate-900">{formatCurrency(lotacao.mb_consignacoes)}</p>
-                                      </div>
-                                      <div className={cn(
-                                        "p-3.5 border rounded-xl space-y-0.5",
-                                        consignacoes.status === 'SIM' ? "bg-red-100/50 border-red-200" : 
-                                        consignacoes.status === 'PARCIAL' ? "bg-slate-100/80 border-slate-200" : 
-                                        "bg-emerald-100/50 border-emerald-200"
-                                      )}>
-                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
-                                          consignacoes.status === 'SIM' ? "text-red-700/60" : 
-                                          consignacoes.status === 'PARCIAL' ? "text-slate-500" : 
-                                          "text-emerald-700/60"
-                                        )}>Utilizada</p>
-                                        <p className={cn("text-[17px] font-bold uppercase", 
-                                          consignacoes.status === 'SIM' ? "text-red-700" : 
-                                          consignacoes.status === 'PARCIAL' ? "text-slate-600" : 
-                                          "text-emerald-700"
-                                        )}>{consignacoes.status}</p>
-                                      </div>
-                                      <div className={cn(
-                                        "p-3.5 border rounded-xl space-y-0.5",
-                                        consignacoes.liquida_val > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
-                                      )}>
-                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-700/60" : "text-red-700/60")}>Líquida</p>
-                                        <div className="flex flex-col">
-                                          <p className={cn("text-[17px] font-bold", consignacoes.liquida_val > 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(consignacoes.liquida_val)}</p>
-                                          <div className="flex items-center gap-1.5">
-                                            <div className={cn("w-1.5 h-1.5 rounded-full", consignacoes.liquida_val > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
-                                            <span className={cn("text-[8px] font-bold uppercase tracking-widest", consignacoes.liquida_val > 0 ? "text-emerald-600" : "text-red-600")}>
-                                              {consignacoes.label}
-                                            </span>
-                                          </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      consignacoes.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                        consignacoes.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
+                                      )}>Utilizada</p>
+                                      <p className={cn("text-[17px] font-bold uppercase", 
+                                        consignacoes.status === 'SIM' ? "text-red-700" : "text-emerald-700"
+                                      )}>{consignacoes.status}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      consignacoes.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", consignacoes.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
+                                      <div className="flex flex-col">
+                                        <p className={cn("text-[17px] font-bold", consignacoes.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(consignacoes.liquida_val)}</p>
+                                        <div className="flex items-center gap-1.5">
+                                          <div className={cn("w-1.5 h-1.5 rounded-full", consignacoes.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
+                                          <span className={cn("text-[8px] font-bold uppercase tracking-widest", consignacoes.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
+                                            {consignacoes.label}
+                                          </span>
                                         </div>
                                       </div>
                                     </div>
@@ -1559,81 +1620,69 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
 
                                   {/* Cartão Crédito (apenas para Governo SP) */}
                                   {clientType === 'governo_sp' && cartao && (
-                                    <div className="space-y-3">
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-1 h-3.5 bg-emerald-500 rounded-full"></div>
-                                        <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">CARTÃO CONSIGNADO (RMC)</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Crédito</p>
+                                        <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(lotacao.mb_cartao_credito)}</p>
                                       </div>
-                                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
-                                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Crédito</p>
-                                          <p className="text-[17px] font-bold text-slate-900">{formatCurrency(lotacao.mb_cartao_credito)}</p>
-                                        </div>
-                                        <div className={cn(
-                                          "p-3.5 border rounded-xl space-y-0.5",
-                                          cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                                        )}>
-                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
-                                            cartao.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
-                                          )}>Utilizada</p>
-                                          <p className={cn("text-[17px] font-bold uppercase", 
-                                            cartao.status === 'SIM' ? "text-red-700" : "text-emerald-700"
-                                          )}>{cartao.status}</p>
-                                        </div>
-                                        <div className={cn(
-                                          "p-3.5 border rounded-xl space-y-0.5",
-                                          cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                                        )}>
-                                          <p className={cn("text-[9px] font-bold uppercase tracking-widest", cartao.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
-                                          <div className="flex flex-col">
-                                            <p className={cn("text-[17px] font-bold", cartao.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(cartao.liquida_val)}</p>
-                                            <div className="flex items-center gap-1.5">
-                                              <div className={cn("w-1.5 h-1.5 rounded-full", cartao.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
-                                              <span className={cn("text-[8px] font-bold uppercase tracking-widest", cartao.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
-                                                {cartao.label}
-                                              </span>
-                                            </div>
+                                      <div className={cn(
+                                        "p-3.5 border rounded-xl space-y-0.5",
+                                        cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                      )}>
+                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                          cartao.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
+                                        )}>Utilizada</p>
+                                        <p className={cn("text-[17px] font-bold uppercase", 
+                                          cartao.status === 'SIM' ? "text-red-700" : "text-emerald-700"
+                                        )}>{cartao.status}</p>
+                                      </div>
+                                      <div className={cn(
+                                        "p-3.5 border rounded-xl space-y-0.5",
+                                        cartao.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                      )}>
+                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", cartao.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
+                                        <div className="flex flex-col">
+                                          <p className={cn("text-[17px] font-bold", cartao.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(cartao.liquida_val)}</p>
+                                          <div className="flex items-center gap-1.5">
+                                            <div className={cn("w-1.5 h-1.5 rounded-full", cartao.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
+                                            <span className={cn("text-[8px] font-bold uppercase tracking-widest", cartao.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
+                                              {cartao.label}
+                                            </span>
                                           </div>
                                         </div>
                                       </div>
                                     </div>
                                   )}
 
-                                  {/* Cartão Benefício */}
-                                  <div className="space-y-3">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-1 h-3.5 bg-purple-500 rounded-full"></div>
-                                      <h4 className="text-[10px] font-black text-slate-700 uppercase tracking-widest">CARTÃO BENEFÍCIO (RCC)</h4>
+                                  {/* Row 2: Cartão Benefício */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Benefício</p>
+                                      <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(lotacao.mb_cartao_beneficio)}</p>
                                     </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                      <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-0.5">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta Cartão Benefício</p>
-                                        <p className="text-[17px] font-bold text-slate-900">{formatCurrency(lotacao.mb_cartao_beneficio)}</p>
-                                      </div>
-                                      <div className={cn(
-                                        "p-3.5 border rounded-xl space-y-0.5",
-                                        beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                                      )}>
-                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
-                                          beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
-                                        )}>Utilizada</p>
-                                        <p className={cn("text-[17px] font-bold uppercase", 
-                                          beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700"
-                                        )}>{beneficio.status}</p>
-                                      </div>
-                                      <div className={cn(
-                                        "p-3.5 border rounded-xl space-y-0.5",
-                                        beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                                      )}>
-                                        <p className={cn("text-[9px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
-                                        <div className="flex flex-col">
-                                          <p className={cn("text-[17px] font-bold", beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(beneficio.liquida_val)}</p>
-                                          <div className="flex items-center gap-1.5">
-                                            <div className={cn("w-1.5 h-1.5 rounded-full", beneficio.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
-                                            <span className={cn("text-[8px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
-                                              {beneficio.label}
-                                            </span>
-                                          </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", 
+                                        beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60"
+                                      )}>Utilizada</p>
+                                      <p className={cn("text-[17px] font-bold uppercase", 
+                                        beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700"
+                                      )}>{beneficio.status}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      beneficio.status === 'SIM' ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                    )}>
+                                      <p className={cn("text-[9px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-700/60" : "text-emerald-700/60")}>Líquida</p>
+                                      <div className="flex flex-col">
+                                        <p className={cn("text-[17px] font-bold", beneficio.status === 'SIM' ? "text-red-700" : "text-emerald-700")}>{formatCurrency(beneficio.liquida_val)}</p>
+                                        <div className="flex items-center gap-1.5">
+                                          <div className={cn("w-1.5 h-1.5 rounded-full", beneficio.status === 'SIM' ? "bg-red-600" : "bg-emerald-600")}></div>
+                                          <span className={cn("text-[8px] font-bold uppercase tracking-widest", beneficio.status === 'SIM' ? "text-red-600" : "text-emerald-600")}>
+                                            {beneficio.label}
+                                          </span>
                                         </div>
                                       </div>
                                     </div>
@@ -2845,8 +2894,8 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                       </CardContent>
                     </Card>
 
-                    {/* Contratos Section (SIAPE) */}
-                    {clientType === 'siape' && (
+                    {/* Contratos Section */}
+                    {(clientType === 'siape' || ((activeReg.itens_credito as Contract[] || []).length > 0)) && (
                       <div className="space-y-10 pt-4">
                         {/* Contratos de Empréstimo */}
                         {(() => {
@@ -3002,7 +3051,6 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                       </div>
                     )}
                   </div>
-                </div>
               );
             })()}
           </div>

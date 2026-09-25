@@ -65,7 +65,7 @@ export default function PerfilCandidatosPage() {
 
   const [loading, setLoading] = useState(true)
   const [candidatos, setCandidatos] = useState<CandidatoItem[]>([])
-  const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "concluido" | "pendente" | "expirado">("TODOS")
+  const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "concluido" | "ja_vistos" | "nao_vistos" | "pendente" | "expirado">("TODOS")
   const [filtroCargo, setFiltroCargo] = useState<string>("TODOS")
   const [termoBusca, setTermoBusca] = useState("")
 
@@ -258,7 +258,14 @@ export default function PerfilCandidatosPage() {
 
   // Filtragem de candidatos
   const candidatosFiltrados = candidatos.filter(c => {
-    const matchStatus = filtroStatus === "TODOS" || c.status === filtroStatus
+    const matchStatus =
+      filtroStatus === "TODOS"
+        ? true
+        : filtroStatus === "ja_vistos"
+        ? Boolean(c.perfil_visto)
+        : filtroStatus === "nao_vistos"
+        ? c.status === "concluido" && !c.perfil_visto
+        : c.status === filtroStatus
     const matchCargo =
       filtroCargo === "TODOS" ||
       (c.cargo_pretendido && c.cargo_pretendido.toLowerCase().trim() === filtroCargo.toLowerCase().trim())
@@ -423,20 +430,61 @@ export default function PerfilCandidatosPage() {
                   )} />
                 </div>
 
-                {(["concluido", "pendente", "expirado"] as const).map(st => (
-                  <button
-                    key={st}
-                    onClick={() => setFiltroStatus(st)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer",
-                      filtroStatus === st
-                        ? "bg-[#0F172B] text-white"
-                        : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    )}
-                  >
-                    {st === "concluido" ? "Concluídos" : st === "pendente" ? "Pendentes" : "Expirados"}
-                  </button>
-                ))}
+                <button
+                  onClick={() => setFiltroStatus("concluido")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer",
+                    filtroStatus === "concluido"
+                      ? "bg-[#0F172B] text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  )}
+                >
+                  Concluídos
+                </button>
+                <button
+                  onClick={() => setFiltroStatus("ja_vistos")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer",
+                    filtroStatus === "ja_vistos"
+                      ? "bg-[#0F172B] text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  )}
+                >
+                  Já Vistos
+                </button>
+                <button
+                  onClick={() => setFiltroStatus("nao_vistos")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer",
+                    filtroStatus === "nao_vistos"
+                      ? "bg-[#0F172B] text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  )}
+                >
+                  Não Vistos
+                </button>
+                <button
+                  onClick={() => setFiltroStatus("pendente")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer",
+                    filtroStatus === "pendente"
+                      ? "bg-[#0F172B] text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  )}
+                >
+                  Pendentes
+                </button>
+                <button
+                  onClick={() => setFiltroStatus("expirado")}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer",
+                    filtroStatus === "expirado"
+                      ? "bg-[#0F172B] text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  )}
+                >
+                  Expirados
+                </button>
               </div>
             </div>
 

@@ -44,6 +44,7 @@ import { toast } from "sonner"
 import { format, formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { ClientDetailsModal } from "@/components/clients/client-details-modal"
 
 // Definição das 7 Etapas Oficiais do Kanban Comercial
 export type KanbanStage = 
@@ -307,143 +308,102 @@ export default function KanbanPage() {
   const [clientSearchQuery, setClientSearchQuery] = useState("")
   const [isSearchingClient, setIsSearchingClient] = useState(false)
   const [clientSearchError, setClientSearchError] = useState<string | null>(null)
+  const [isClientDetailsModalOpen, setIsClientDetailsModalOpen] = useState(false)
+  const [selectedClientCpf, setSelectedClientCpf] = useState<string>("")
 
   const handleClientSearch = async () => {
     const raw = clientSearchQuery.trim()
     if (!raw) {
       setClientSearchError("Por favor, insira um CPF ou telefone.")
+      toast.error("Por favor, insira um CPF ou telefone.")
       return
     }
     const digits = raw.replace(/\D/g, "")
     if (!digits && raw.length < 3) {
       setClientSearchError("Por favor, insira um CPF ou telefone válido.")
+      toast.error("Por favor, insira um CPF ou telefone válido.")
       return
     }
     setClientSearchError(null)
     setIsSearchingClient(true)
 
     try {
-      const cleanCPF = digits.length >= 11 ? digits.slice(0, 11) : digits
+      let foundCpf: string | null = null
 
-      // 1. Tentar localizar dados cadastrais do cliente na tabela de clientes
-      let clienteInfo: { nome?: string; cpf?: string; telefone?: string } | null = null
+      // 1. Se foram digitados exatamente 11 dígitos, verifica primeiro como CPF direto na base de clientes
+      if (digits.length === 11) {
+        const { data: directClient } = await supabase
+          .from("clientes")
+          .select("cpf")
+          .eq("cpf", digits)
+          .maybeSingle()
 
-      let clientQuery = supabase
-        .from("clientes")
-        .select("nome, cpf, telefone_1, telefone_2, telefone_3")
-
-      if (cleanCPF && cleanCPF.length === 11) {
-        clientQuery = clientQuery.eq("cpf", cleanCPF)
-      } else if (digits.length >= 8) {
-        clientQuery = clientQuery.or(`telefone_1.ilike.%${digits}%,telefone_2.ilike.%${digits}%,telefone_3.ilike.%${digits}%,cpf.ilike.%${digits}%`)
-      } else {
-        clientQuery = clientQuery.ilike("nome", `%${raw}%`)
-      }
-
-      const { data: foundClientList } = await clientQuery.limit(1)
-      if (foundClientList && foundClientList.length > 0) {
-        const c = foundClientList[0]
-        clienteInfo = {
-          nome: c.nome,
-          cpf: c.cpf,
-          telefone: c.telefone_1 || c.telefone_2 || c.telefone_3 || ""
+        if (directClient?.cpf) {
+          foundCpf = directClient.cpf
         }
       }
 
-      const finalNome = clienteInfo?.nome || (digits.length === 11 ? `CLIENTE CPF ${cleanCPF}` : (raw.length > 0 ? raw.toUpperCase() : "CLIENTE"))
-      const finalCpf = clienteInfo?.cpf || (cleanCPF && cleanCPF.length >= 11 ? cleanCPF : digits)
-      const finalTelefone = clienteInfo?.telefone || (digits.length >= 8 ? digits : "")
+      // 2. Se não encontrou ou a busca foi por número de telefone (>= 8 dígitos)
+      if (!foundCpf && digits.length >= 8) {
+        // Busca em clientes por telefone
+        const { data: cByTel } = await supabase
+          .from("clientes")
+          .select("cpf")
+          .or(`telefone_1.ilike.%${digits}%,telefone_2.ilike.%${digits}%,telefone_3.ilike.%${digits}%`)
+          .limit(1)
 
-      // 2. Verificar se a ficha já existe na tabela kanban_fichas
-      let existingKanbanQuery = supabase
-        .from("kanban_fichas")
-        .select("*")
-
-      if (cleanCPF && cleanCPF.length === 11) {
-        existingKanbanQuery = existingKanbanQuery.or(`cliente_cpf.eq.${cleanCPF},cliente_telefone.ilike.%${digits}%`)
-      } else if (digits.length >= 8) {
-        existingKanbanQuery = existingKanbanQuery.or(`cliente_telefone.ilike.%${digits}%,cliente_cpf.ilike.%${digits}%`)
-      } else {
-        existingKanbanQuery = existingKanbanQuery.ilike("cliente_nome", `%${raw}%`)
+        if (cByTel && cByTel.length > 0 && cByTel[0]?.cpf) {
+          foundCpf = cByTel[0].cpf
+        }
       }
 
-      const { data: existingKanbanCards } = await existingKanbanQuery.limit(1)
-
-      if (existingKanbanCards && existingKanbanCards.length > 0) {
-        const ficha = existingKanbanCards[0]
-        const currentMeta = ficha.metadata && typeof ficha.metadata === "object" ? ficha.metadata : {}
-        const updatedMeta = {
-          ...currentMeta,
-          iniciado_no_kanban: true,
-          kanban_stage: ficha.etapa || currentMeta.kanban_stage || "EM ABORDAGEM",
-          proxima_acao: currentMeta.proxima_acao || "Iniciar primeiro contato no Kanban",
-          vencimento_acao: currentMeta.vencimento_acao || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
-        }
-
-        await supabase
+      // 3. Busca por telefone ou CPF em kanban_fichas
+      if (!foundCpf) {
+        const { data: fByTel } = await supabase
           .from("kanban_fichas")
-          .update({
-            cliente_nome: ficha.cliente_nome || finalNome,
-            cliente_cpf: ficha.cliente_cpf || finalCpf,
-            cliente_telefone: ficha.cliente_telefone || finalTelefone,
-            metadata: updatedMeta,
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", ficha.id)
+          .select("cliente_cpf")
+          .or(`cliente_telefone.ilike.%${digits}%,cliente_cpf.ilike.%${digits}%`)
+          .not("cliente_cpf", "is", null)
+          .limit(1)
 
-        toast.success(`Ficha de ${ficha.cliente_nome || finalNome} já localizada na coluna "${ficha.etapa || 'EM ABORDAGEM'}"!`)
-      } else {
-        // Criar nova ficha diretamente na coluna "EM ABORDAGEM"
-        const newMeta: TicketMetadata = {
-          iniciado_no_kanban: true,
-          kanban_stage: "EM ABORDAGEM",
-          proxima_acao: "Iniciar primeiro contato comercial",
-          vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-          prioridade: "NORMAL",
-          user_id: user?.id,
-          user_nome: perfil?.nome || user?.email || "Usuário",
-          user_avatar: perfil?.avatar_url || null
-        }
-
-        const insertPayload: Record<string, any> = {
-          etapa: "EM ABORDAGEM",
-          cliente_nome: finalNome,
-          cliente_cpf: finalCpf,
-          cliente_telefone: finalTelefone,
-          operador_nome: perfil?.nome || user?.email || "Colaborador",
-          prioridade: "MÉDIA",
-          metadata: newMeta
-        }
-
-        if (user?.id) {
-          insertPayload.operador_id = user.id
-        }
-
-        let { error: insertError } = await supabase
-          .from("kanban_fichas")
-          .insert(insertPayload)
-
-        // Se falhar por foreign key em operador_id, retenta sem operador_id
-        if (insertError && (insertError.code === "23503" || insertError.message?.includes("foreign key"))) {
-          delete insertPayload.operador_id
-          const retry = await supabase.from("kanban_fichas").insert(insertPayload)
-          insertError = retry.error
-        }
-
-        if (insertError) {
-          console.error("Erro ao inserir em kanban_fichas:", insertError.message || insertError)
-          toast.error("Erro ao registrar ficha no Kanban.")
-        } else {
-          toast.success(`Ficha de ${finalNome} criada com sucesso em "EM ABORDAGEM"!`)
+        if (fByTel && fByTel.length > 0 && fByTel[0]?.cliente_cpf) {
+          foundCpf = fByTel[0].cliente_cpf
         }
       }
 
-      // Limpar o campo e atualizar o Kanban sem sair da página
+      // 4. Busca por telefone ou CPF em chamados
+      if (!foundCpf) {
+        const { data: chByTel } = await supabase
+          .from("chamados")
+          .select("cliente_cpf")
+          .or(`cliente_telefone.ilike.%${digits}%,cliente_cpf.ilike.%${digits}%`)
+          .not("cliente_cpf", "is", null)
+          .limit(1)
+
+        if (chByTel && chByTel.length > 0 && chByTel[0]?.cliente_cpf) {
+          foundCpf = chByTel[0].cliente_cpf
+        }
+      }
+
+      // 5. Se digitou 11 dígitos e não foi achado nas tabelas simples, repassa o CPF para o ClientDetailsModal
+      // (que busca de forma completa em todos os 17 convênios suportados)
+      if (!foundCpf && digits.length === 11) {
+        foundCpf = digits
+      }
+
+      if (!foundCpf) {
+        toast.error("Nenhum cliente localizado para o telefone ou CPF informado.")
+        setClientSearchError("Cliente não localizado.")
+        return
+      }
+
+      // Abre o modal completo de detalhes do cliente sem criar cartão no Kanban
+      setSelectedClientCpf(foundCpf)
+      setIsClientDetailsModalOpen(true)
       setClientSearchQuery("")
-      await fetchChamados(true)
     } catch (err) {
-      console.error("Erro ao iniciar atendimento no Kanban:", err)
-      toast.error("Erro ao localizar ou iniciar ficha do cliente.")
+      console.error("Erro ao pesquisar cliente no Kanban:", err)
+      toast.error("Erro ao localizar cliente.")
     } finally {
       setIsSearchingClient(false)
     }
@@ -1246,26 +1206,26 @@ export default function KanbanPage() {
               {/* Métricas Rápidas */}
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs w-full justify-between">
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                  <div className="bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-xs">
-                    <span className="text-slate-600 font-medium">Total de Clientes: </span>
-                    <span className="font-bold text-slate-900">{metrics.totalLeads}</span>
+                  <div className="bg-white border border-slate-200 px-4 py-2 rounded-lg shadow-xs text-sm">
+                    <span className="text-slate-600 font-semibold">Total de Clientes: </span>
+                    <span className="font-extrabold text-slate-900">{metrics.totalLeads}</span>
                   </div>
-                  <div className="bg-sky-50 border border-sky-200 px-3 py-1.5 rounded-lg">
-                    <span className="text-sky-700 font-medium">Pipeline: </span>
-                    <span className="font-bold text-sky-900">
+                  <div className="bg-sky-50 border border-sky-200 px-4 py-2 rounded-lg text-sm">
+                    <span className="text-sky-700 font-semibold">Pipeline: </span>
+                    <span className="font-extrabold text-sky-900">
                       {metrics.totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                     </span>
                   </div>
                   {metrics.totalAtrasados > 0 && (
-                    <div className="bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-rose-700">
+                    <div className="bg-rose-50 border border-rose-200 px-4 py-2 rounded-lg flex items-center gap-1.5 text-rose-700 text-sm">
                       <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-                      <span className="font-bold">{metrics.totalAtrasados} Atrasados</span>
+                      <span className="font-extrabold">{metrics.totalAtrasados} Atrasados</span>
                     </div>
                   )}
                   {metrics.totalAcaoEspecial > 0 && (
-                    <div className="bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-amber-800">
-                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                      <span className="font-bold">{metrics.totalAcaoEspecial} Ação Especial</span>
+                    <div className="bg-amber-50 border border-amber-200 px-4 py-2 rounded-lg flex items-center gap-1.5 text-amber-800 text-sm">
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <span className="font-extrabold">{metrics.totalAcaoEspecial} Ação Especial</span>
                     </div>
                   )}
                 </div>
@@ -1637,22 +1597,79 @@ export default function KanbanPage() {
       {/* MODAL 1: ATENDIMENTO (Corretor / Estagiário) */}
       {atendimentoModalTicket && (
         <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#19223D] rounded-xl shadow-2xl border border-white/10 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-white">
+          <div className="bg-[#FAFAFA] rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-slate-800">
             {/* Cabeçalho da Modal */}
-            <div className="p-4 bg-[#28365E] border-b border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-lg bg-sky-500 text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                  {KANBAN_COLUMNS.find(c => c.id === inferKanbanStage(atendimentoModalTicket, parseMetadata(atendimentoModalTicket.descricao)))?.code || "A0"}
+            <div className="px-4 pb-4 pt-8 bg-[#FFFFFF] border-b border-slate-200 flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                {/* NOME DO CLIENTE */}
+                <h2 className="text-base font-bold text-slate-900 tracking-tight leading-snug">
+                  {atendimentoModalTicket.cliente_nome || "Nome não informado"}
+                </h2>
+
+                  {/* CPF */}
+                  <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                    <span className="font-semibold text-slate-500">CPF:</span>
+                    <span className="font-mono text-slate-800 font-medium">
+                      {revealedCpfs[atendimentoModalTicket.id]
+                        ? (atendimentoModalTicket.cliente_cpf || "---")
+                        : maskCpf(atendimentoModalTicket.cliente_cpf)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleRevealCpf(atendimentoModalTicket.id)}
+                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors"
+                      title={revealedCpfs[atendimentoModalTicket.id] ? "Ocultar CPF" : "Revelar CPF"}
+                    >
+                      {revealedCpfs[atendimentoModalTicket.id] ? (
+                        <EyeOff className="w-3.5 h-3.5" />
+                      ) : (
+                        <Eye className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                    {atendimentoModalTicket.cliente_cpf && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(atendimentoModalTicket.cliente_cpf, "CPF")}
+                        className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors"
+                        title="Copiar CPF"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* TELEFONE */}
+                  <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                    <span className="font-semibold text-slate-500">Telefone:</span>
+                    <span className="font-mono text-slate-800 font-medium">
+                      {revealedPhones[atendimentoModalTicket.id]
+                        ? (formatPhone(atendimentoModalTicket.cliente_telefone) || "---")
+                        : maskPhone(atendimentoModalTicket.cliente_telefone)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleRevealPhone(atendimentoModalTicket.id)}
+                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors"
+                      title={revealedPhones[atendimentoModalTicket.id] ? "Ocultar Telefone" : "Revelar Telefone"}
+                    >
+                      {revealedPhones[atendimentoModalTicket.id] ? (
+                        <EyeOff className="w-3.5 h-3.5" />
+                      ) : (
+                        <Eye className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                    {atendimentoModalTicket.cliente_telefone && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(atendimentoModalTicket.cliente_telefone, "Telefone")}
+                        className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors"
+                        title="Copiar Telefone"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-sm font-bold text-white tracking-tight">
-                    Modal de Atendimento Comercial
-                  </h2>
-                  <p className="text-xs text-slate-300">
-                    {atendimentoModalTicket.cliente_nome} • CPF: {maskCpf(atendimentoModalTicket.cliente_cpf)}
-                  </p>
-                </div>
-              </div>
               <div className="flex items-center gap-2">
                 {isGestor && (
                   <Button
@@ -1664,7 +1681,7 @@ export default function KanbanPage() {
                       setAtendimentoModalTicket(null)
                       setSupervisaoModalTicket(t)
                     }}
-                    className="text-xs h-7 bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 hover:text-white gap-1"
+                    className="text-xs h-7 bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 gap-1"
                   >
                     <ShieldAlert className="w-3.5 h-3.5" />
                     Painel de Gestão
@@ -1673,7 +1690,7 @@ export default function KanbanPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-slate-300 hover:text-white hover:bg-white/10"
+                  className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
                   onClick={() => setAtendimentoModalTicket(null)}
                 >
                   <X className="w-4 h-4" />
@@ -1682,26 +1699,26 @@ export default function KanbanPage() {
             </div>
 
             {/* Conteúdo Principal */}
-            <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#19223D]">
+            <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#FAFAFA] text-slate-800">
               {/* Informações Resumidas do Cliente */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-[#28365E] p-3 rounded-lg border border-white/10">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
                 <div>
-                  <span className="text-slate-300 block text-[10px]">Telefone Principal</span>
-                  <span className="font-semibold text-white">{atendimentoModalTicket.cliente_telefone || "Sem telefone"}</span>
+                  <span className="text-slate-500 block text-[10px]">Telefone Principal</span>
+                  <span className="font-semibold text-slate-800">{atendimentoModalTicket.cliente_telefone || "Sem telefone"}</span>
                 </div>
                 <div>
-                  <span className="text-slate-300 block text-[10px]">Convênio / Órgão</span>
-                  <span className="font-semibold text-white">{atendimentoModalTicket.convenio || "Não informado"}</span>
+                  <span className="text-slate-500 block text-[10px]">Convênio / Órgão</span>
+                  <span className="font-semibold text-slate-800">{atendimentoModalTicket.convenio || "Não informado"}</span>
                 </div>
                 <div>
-                  <span className="text-slate-300 block text-[10px]">Valor da Operação</span>
-                  <span className="font-bold text-emerald-400">
+                  <span className="text-slate-500 block text-[10px]">Valor da Operação</span>
+                  <span className="font-bold text-emerald-600">
                     {Number(atendimentoModalTicket.valor_operacao || atendimentoModalTicket.margem || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-300 block text-[10px]">Etapa Atual</span>
-                  <span className="font-bold text-sky-300">
+                  <span className="text-slate-500 block text-[10px]">Etapa Atual</span>
+                  <span className="font-bold text-sky-700">
                     {inferKanbanStage(atendimentoModalTicket, parseMetadata(atendimentoModalTicket.descricao))}
                   </span>
                 </div>
@@ -1709,7 +1726,7 @@ export default function KanbanPage() {
 
               {/* Ações Rápidas de Desfecho */}
               <div>
-                <label className="text-xs font-bold text-slate-200 mb-1.5 block">
+                <label className="text-xs font-bold text-slate-700 mb-1.5 block">
                   Atalhos de Registro Rápido:
                 </label>
                 <div className="flex flex-wrap gap-1.5">
@@ -1717,7 +1734,7 @@ export default function KanbanPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="text-xs h-7 text-sky-300 bg-sky-950/40 border border-sky-500/40 hover:bg-sky-900/60 hover:text-white"
+                    className="text-xs h-7 text-sky-700 bg-sky-50 border border-sky-200 hover:bg-sky-100"
                     onClick={() => setAtendimentoMensagem("✅ Primeiro Contato (A0) realizado com sucesso via WhatsApp. Aguardando retorno do cliente.")}
                   >
                     A0 Realizado
@@ -1726,7 +1743,7 @@ export default function KanbanPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="text-xs h-7 text-amber-300 bg-amber-950/40 border border-amber-500/40 hover:bg-amber-900/60 hover:text-white"
+                    className="text-xs h-7 text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100"
                     onClick={() => setAtendimentoMensagem("📲 Régua de Retomada enviada no WhatsApp com nova simulação de valores.")}
                   >
                     Régua Enviada
@@ -1735,7 +1752,7 @@ export default function KanbanPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="text-xs h-7 text-indigo-300 bg-indigo-950/40 border border-indigo-500/40 hover:bg-indigo-900/60 hover:text-white"
+                    className="text-xs h-7 text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100"
                     onClick={() => setAtendimentoMensagem("📑 Cliente solicitou simulação personalizada de prazos e parcelas.")}
                   >
                     Simulação Solicitada
@@ -1744,7 +1761,7 @@ export default function KanbanPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="text-xs h-7 text-emerald-300 bg-emerald-950/40 border border-emerald-500/40 hover:bg-emerald-900/60 hover:text-white"
+                    className="text-xs h-7 text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100"
                     onClick={() => setAtendimentoMensagem("📄 Documentação de RG e comprovante recebida do cliente para digitação da proposta.")}
                   >
                     Documentos Recebidos
@@ -1753,7 +1770,7 @@ export default function KanbanPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="text-xs h-7 text-rose-300 bg-rose-950/40 border border-rose-500/40 hover:bg-rose-900/60 hover:text-white"
+                    className="text-xs h-7 text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100"
                     onClick={() => setAtendimentoMensagem("❌ Cliente declarou desinteresse no momento. Autorizou contato futuro.")}
                   >
                     Sem Interesse
@@ -1763,7 +1780,7 @@ export default function KanbanPage() {
 
               {/* Campo para Registrar Interação */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-200 block">
+                <label className="text-xs font-bold text-slate-700 block">
                   Registrar Resultado do Contato / Observação:
                 </label>
                 <textarea
@@ -1771,7 +1788,7 @@ export default function KanbanPage() {
                   onChange={e => setAtendimentoMensagem(e.target.value)}
                   placeholder="Descreva o andamento da conversa com o cliente, objeções ou próximos passos..."
                   rows={3}
-                  className="w-full text-xs p-3 bg-[#28365E] border border-white/15 text-white placeholder:text-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  className="w-full text-xs p-3 bg-white border border-slate-300 text-slate-800 placeholder:text-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-xs"
                 />
                 <div className="flex items-center justify-between pt-1">
                   <Button
@@ -1779,9 +1796,9 @@ export default function KanbanPage() {
                     variant="outline"
                     size="sm"
                     onClick={handleSolicitarAcaoEspecial}
-                    className="text-xs h-8 text-amber-300 border border-amber-500/40 bg-amber-950/40 hover:bg-amber-900/60 hover:text-white gap-1"
+                    className="text-xs h-8 text-amber-700 border border-amber-300 bg-amber-50 hover:bg-amber-100 gap-1"
                   >
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                     Solicitar Ação Especial à Gestão
                   </Button>
 
@@ -1799,9 +1816,9 @@ export default function KanbanPage() {
               </div>
 
               {/* Histórico Auditável de Mensagens */}
-              <div className="pt-3 border-t border-white/10">
-                <h4 className="text-xs font-bold text-slate-200 mb-2 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+              <div className="pt-3 border-t border-slate-200">
+                <h4 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-slate-500" />
                   Histórico de Interações Auditáveis
                 </h4>
                 {isLoadingHistorico ? (
@@ -1811,12 +1828,12 @@ export default function KanbanPage() {
                 ) : (
                   <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                     {historicoMensagens.map((msg, idx) => (
-                      <div key={idx} className="bg-[#28365E] p-2.5 rounded-lg border border-white/10 text-xs">
-                        <div className="flex items-center justify-between text-[10px] text-slate-300 mb-1">
-                          <span className="font-bold text-sky-300">{msg.user_nome} ({msg.user_role || "Colaborador"})</span>
+                      <div key={idx} className="bg-white p-2.5 rounded-lg border border-slate-200 text-xs shadow-xs">
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 mb-1">
+                          <span className="font-bold text-sky-700">{msg.user_nome} ({msg.user_role || "Colaborador"})</span>
                           <span>{msg.created_at ? format(new Date(msg.created_at), "dd/MM/yyyy HH:mm") : ""}</span>
                         </div>
-                        <p className="text-slate-100 whitespace-pre-wrap">{msg.content}</p>
+                        <p className="text-slate-800 whitespace-pre-wrap">{msg.content}</p>
                       </div>
                     ))}
                   </div>
@@ -1825,11 +1842,11 @@ export default function KanbanPage() {
             </div>
 
             {/* Rodapé da Modal */}
-            <div className="p-3 bg-[#19223D] border-t border-white/10 flex justify-end gap-2">
+            <div className="px-3 pt-3 pb-6 bg-white border-t border-slate-200 flex justify-end gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="text-xs bg-white/10 hover:bg-white/20 text-slate-200 border-white/20 hover:text-white"
+                className="h-[38px] px-4 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 hover:text-slate-900"
                 onClick={() => setAtendimentoModalTicket(null)}
               >
                 Fechar
@@ -1842,19 +1859,19 @@ export default function KanbanPage() {
       {/* MODAL 2: SUPERVISÃO (Gestores: Supervisor, Operacional, Administrador, Monitoramento) */}
       {supervisaoModalTicket && (
         <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-[#19223D] rounded-xl shadow-2xl border border-white/10 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-white">
+          <div className="bg-[#FAFAFA] rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-slate-800">
             {/* Cabeçalho da Modal */}
-            <div className="p-4 bg-[#28365E] border-b border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-bold text-xs shadow-xs">
+            <div className="px-4 pb-4 pt-8 bg-[#FFFFFF] border-b border-slate-200 flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="h-9 w-9 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-bold text-xs shadow-xs mt-0.5 shrink-0">
                   <ShieldAlert className="w-4 h-4 text-slate-950" />
                 </div>
                 <div>
-                  <h2 className="text-sm font-bold text-white tracking-tight">
-                    Painel de Supervisão e Gestão de Leads
+                  <h2 className="text-base font-bold text-slate-900 tracking-tight leading-snug">
+                    Supervisão e Gestão de Leads
                   </h2>
-                  <p className="text-xs text-slate-300">
-                    Controle de titularidade, transbordo e intervenções para {supervisaoModalTicket.cliente_nome}
+                  <p className="text-xs text-slate-600">
+                    Controle de titularidade e intervenções para <span className="font-semibold text-slate-800">{supervisaoModalTicket.cliente_nome}</span>
                   </p>
                 </div>
               </div>
@@ -1870,7 +1887,7 @@ export default function KanbanPage() {
                     setAtendimentoMensagem("")
                     loadHistoricoChamado(t.id)
                   }}
-                  className="text-xs h-7 bg-sky-500/20 text-sky-300 border-sky-500/40 hover:bg-sky-500/30 hover:text-white gap-1"
+                  className="text-xs h-7 bg-sky-50 text-sky-700 border-sky-300 hover:bg-sky-100 gap-1"
                 >
                   <FileText className="w-3.5 h-3.5" />
                   Ir para Atendimento
@@ -1878,7 +1895,7 @@ export default function KanbanPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-slate-300 hover:text-white hover:bg-white/10"
+                  className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
                   onClick={() => setSupervisaoModalTicket(null)}
                 >
                   <X className="w-4 h-4" />
@@ -1887,43 +1904,43 @@ export default function KanbanPage() {
             </div>
 
             {/* Conteúdo Principal */}
-            <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#19223D]">
+            <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#FAFAFA] text-slate-800">
               {/* Resumo do Lead */}
-              <div className="grid grid-cols-3 gap-2 bg-[#28365e] p-3 rounded-lg border border-white/10">
+              <div className="grid grid-cols-3 gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
                 <div>
-                  <span className="text-slate-300 block text-[11px]">Responsável Atual</span>
-                  <span className="font-bold text-sky-300 text-[13px] truncate block">{supervisaoModalTicket.user_nome || "Não atribuído"}</span>
+                  <span className="text-slate-500 block text-[11px]">Responsável Atual</span>
+                  <span className="font-bold text-sky-700 text-[13px] truncate block">{supervisaoModalTicket.user_nome || "Não atribuído"}</span>
                 </div>
                 <div>
-                  <span className="text-slate-300 block text-[11px]">Valor da Operação</span>
-                  <span className="font-bold text-white text-[13px] block">
+                  <span className="text-slate-500 block text-[11px]">Valor da Operação</span>
+                  <span className="font-bold text-emerald-600 text-[13px] block">
                     {Number(supervisaoModalTicket.valor_operacao || supervisaoModalTicket.margem || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-300 block text-[11px]">Etapa Comercial</span>
-                  <span className="font-bold text-indigo-300 text-[13px] block">
+                  <span className="text-slate-500 block text-[11px]">Etapa Comercial</span>
+                  <span className="font-bold text-indigo-700 text-[13px] block">
                     {inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao))}
                   </span>
                 </div>
               </div>
 
-              {/* Bloco 1: Reatribuição de Responsável (Transbordo) */}
-              <div className="p-3.5 bg-[#28365e] rounded-lg border border-white/10 space-y-2.5">
-                <h4 className="font-bold text-white text-[13px] flex items-center gap-1.5">
-                  <UserCheck className="w-4 h-4 text-sky-400" />
-                  Reatribuir Lead para outro Colaborador
+              {/* Bloco 1: Transferência de Responsável (Transbordo) */}
+              <div className="p-3.5 bg-white rounded-lg border border-slate-200 shadow-xs space-y-2.5">
+                <h4 className="font-bold text-slate-900 text-[13px] flex items-center gap-1.5">
+                  <UserCheck className="w-4 h-4 text-sky-600" />
+                  Transferir Lead para outro Colaborador
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[12px] text-slate-300 block mb-1">Novo Responsável:</label>
+                    <label className="text-[12px] text-slate-700 font-medium block mb-1">Novo Responsável:</label>
                     <select
                       value={supervisaoNovoResponsavel}
                       onChange={e => setSupervisaoNovoResponsavel(e.target.value)}
-                      className="w-full h-8 px-2.5 text-xs bg-[#19223D] border border-white/15 text-slate-200 rounded-md focus:ring-1 focus:ring-sky-500"
+                      className="w-full h-8 px-2.5 text-xs bg-white border border-slate-300 text-slate-800 rounded-md focus:ring-1 focus:ring-sky-500"
                     >
                       {usersList.map(u => (
-                        <option key={u.id} value={u.id} className="bg-[#19223D] text-slate-200">
+                        <option key={u.id} value={u.id} className="bg-white text-slate-800">
                           {u.nome} ({u.role || u.funcao || "Colaborador"})
                         </option>
                       ))}
@@ -1931,27 +1948,27 @@ export default function KanbanPage() {
                   </div>
 
                   <div>
-                    <label className="text-[12px] text-slate-300 block mb-1">Prioridade na Fila:</label>
+                    <label className="text-[12px] text-slate-700 font-medium block mb-1">Prioridade na Fila:</label>
                     <select
                       value={supervisaoNovaPrioridade}
                       onChange={e => setSupervisaoNovaPrioridade(e.target.value as any)}
-                      className="w-full h-8 px-2.5 text-xs bg-[#19223D] border border-white/15 text-slate-200 rounded-md focus:ring-1 focus:ring-sky-500"
+                      className="w-full h-8 px-2.5 text-xs bg-white border border-slate-300 text-slate-800 rounded-md focus:ring-1 focus:ring-sky-500"
                     >
-                      <option value="NORMAL" className="bg-[#19223D] text-slate-200">Normal</option>
-                      <option value="ALTA" className="bg-[#19223D] text-slate-200">Alta</option>
-                      <option value="URGENTE" className="bg-[#19223D] text-slate-200">Urgente / Crítica</option>
+                      <option value="NORMAL" className="bg-white text-slate-800">Normal</option>
+                      <option value="ALTA" className="bg-white text-slate-800">Alta</option>
+                      <option value="URGENTE" className="bg-white text-slate-800">Urgente / Crítica</option>
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-[12px] text-slate-300 block mb-1">Justificativa da Reatribuição (Auditável):</label>
+                  <label className="text-[12px] text-slate-700 font-medium block mb-1">Justificativa da Reatribuição (Auditável):</label>
                   <Input
                     type="text"
                     value={supervisaoMotivoTransbordo}
                     onChange={e => setSupervisaoMotivoTransbordo(e.target.value)}
                     placeholder="Ex: SLA de primeiro contato expirado / Readequação de carteira"
-                    className="text-xs h-8 bg-[#19223D] border border-white/15 text-slate-200 placeholder:text-slate-400 focus-visible:ring-sky-500"
+                    className="text-xs h-8 bg-white border border-slate-300 text-slate-800 placeholder:text-slate-400 focus-visible:ring-sky-500"
                   />
                 </div>
 
@@ -1961,20 +1978,20 @@ export default function KanbanPage() {
                     size="sm"
                     onClick={handleConfirmSupervisaoTransbordo}
                     disabled={isSubmittingSupervisao || supervisaoNovoResponsavel === supervisaoModalTicket.user_id}
-                    className="text-xs h-8 bg-sky-500 hover:bg-sky-400 active:bg-sky-600 text-white font-bold shadow-md shadow-sky-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-xs h-8 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-bold shadow-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Confirmar Transbordo de Lead
+                    Confirmar Transferência
                   </Button>
                 </div>
               </div>
 
               {/* Bloco 2: Conflito de Titularidade & Duplicidades */}
-              <div className="p-3.5 bg-[#28365e] rounded-lg border border-white/10 space-y-2">
-                <h4 className="font-bold text-white text-[13px] flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4 text-amber-400" />
+              <div className="p-3.5 bg-white rounded-lg border border-slate-200 shadow-xs space-y-2">
+                <h4 className="font-bold text-slate-900 text-[13px] flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-amber-500" />
                   Conflito de Titularidade e Negociação Simultânea
                 </h4>
-                <p className="text-slate-300 text-[12px]">
+                <p className="text-slate-600 text-[12px]">
                   Evita que dois corretores entrem em contato com o mesmo cliente simultaneamente. A supervisão pode decidir liberar ou bloquear o atendimento.
                 </p>
                 <div className="flex items-center gap-2 pt-1">
@@ -1983,9 +2000,9 @@ export default function KanbanPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleResolverConflito(true)}
-                    className="text-xs h-8 text-emerald-300 border-emerald-400/30 bg-emerald-500/20 hover:bg-emerald-500/30 gap-1"
+                    className="text-xs h-8 text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 gap-1"
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                     Liberar Atendimento (Sem Conflito)
                   </Button>
                   <Button
@@ -1993,9 +2010,9 @@ export default function KanbanPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleResolverConflito(false)}
-                    className="text-xs h-8 text-rose-300 border-rose-400/30 bg-rose-500/20 hover:bg-rose-500/30 gap-1"
+                    className="text-xs h-8 text-rose-700 border-rose-300 bg-rose-50 hover:bg-rose-100 gap-1"
                   >
-                    <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                    <XCircle className="w-3.5 h-3.5 text-rose-600" />
                     Marcar Conflito Ativo
                   </Button>
                 </div>
@@ -2005,12 +2022,12 @@ export default function KanbanPage() {
               {(() => {
                 const meta = parseMetadata(supervisaoModalTicket.descricao)
                 return (
-                  <div className="p-3.5 bg-amber-400/15 rounded-lg border border-amber-400/50 space-y-2">
-                    <h4 className="font-bold text-amber-300 text-[13px] flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-amber-400" />
+                  <div className="p-3.5 bg-amber-50 rounded-lg border border-amber-200 shadow-xs space-y-2">
+                    <h4 className="font-bold text-amber-900 text-[13px] flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-amber-600" />
                       Intervenção de Ação Especial
                     </h4>
-                    <p className="text-amber-200/90 text-[12px] font-medium">
+                    <p className="text-amber-800 text-[12px] font-medium">
                       {meta.acao_especial_motivo 
                         ? `Motivo: ${meta.acao_especial_motivo}` 
                         : "Ticket alto ou solicitação da equipe comercial para suporte de negociação."}
@@ -2020,7 +2037,7 @@ export default function KanbanPage() {
                         type="button"
                         size="sm"
                         onClick={handleConcluirAcaoEspecial}
-                        className="text-xs h-8 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold gap-1 shadow-md shadow-amber-500/25 transition-all"
+                        className="text-xs h-8 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-bold gap-1 shadow-xs transition-all"
                       >
                         <Check className="w-3.5 h-3.5" />
                         Concluir Intervenção da Supervisão
@@ -2032,11 +2049,11 @@ export default function KanbanPage() {
             </div>
 
             {/* Rodapé da Modal */}
-            <div className="p-3 bg-[#19223D] border-t border-white/10 flex justify-end gap-2">
+            <div className="px-3 pt-3 pb-6 bg-white border-t border-slate-200 flex justify-end gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="text-xs bg-white/10 hover:bg-white/20 text-slate-200 border-white/20 hover:text-white"
+                className="h-[38px] px-4 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 hover:text-slate-900"
                 onClick={() => setSupervisaoModalTicket(null)}
               >
                 Fechar
@@ -2279,6 +2296,18 @@ export default function KanbanPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Completo de Detalhes do Cliente (Mesmo formato de ACESSAR CLIENTE) */}
+      {selectedClientCpf && (
+        <ClientDetailsModal
+          cpf={selectedClientCpf}
+          isOpen={isClientDetailsModalOpen}
+          onClose={() => {
+            setIsClientDetailsModalOpen(false)
+            setSelectedClientCpf("")
+          }}
+        />
       )}
     </div>
   )
