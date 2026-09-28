@@ -175,7 +175,25 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
         // Person Filter
         const cleanName = (params.personName || "").trim()
 
-        if (cleanId && cleanId !== "ESTAGIL_AND_PJ") {
+        const isSupervisorPerson = Boolean(
+          foundUser && (
+            (foundUser.funcao || "").trim().toLowerCase() === "supervisor" ||
+            (foundUser.role || "").trim().toLowerCase() === "supervisor"
+          )
+        )
+
+        const internIds = Array.from(usersMap.values())
+          .filter((u) => {
+            const func = (u.funcao || u.role || "").trim().toLowerCase()
+            const regime = (u.regime_contratacao || "").trim().toLowerCase()
+            return func === "estágio" || func === "estagio" || func === "processo seletivo" || regime === "estágio" || regime === "estagio"
+          })
+          .map((u) => u.id)
+
+        if (isSupervisorPerson && internIds.length > 0) {
+          const allTargetIds = Array.from(new Set([cleanId, ...internIds])).filter(Boolean)
+          query = query.or(`corretor_id.in.(${allTargetIds.join(",")}),estagiario_colaborador_id.in.(${internIds.join(",")})`)
+        } else if (cleanId && cleanId !== "ESTAGIL_AND_PJ") {
           query = query.or(`corretor_id.eq.${cleanId},estagiario_colaborador_id.eq.${cleanId},intervencao_operacional_id.eq.${cleanId}`)
         } else if (cleanName) {
           query = query.or(`nome_corretor.ilike.%${cleanName}%,estagiario_colaborador_nome.ilike.%${cleanName}%,intervencao_operacional_nome.ilike.%${cleanName}%`)
@@ -324,7 +342,13 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
         pOp2 = 0.33
       }
 
+      const isSupervisorPerson = selectedPersonUser && (
+        (selectedPersonUser.funcao || "").trim().toLowerCase() === "supervisor" ||
+        (selectedPersonUser.role || "").trim().toLowerCase() === "supervisor"
+      )
+
       const activeUserId = params?.personId || ""
+      if (isSupervisorPerson) return baseVal * pC
       if (activeUserId === p.corretor_id) return baseVal * pC
       if (activeUserId === p.intervencao_operacional_id?.trim()) return baseVal * pOp1
       if (op2Id && activeUserId === op2Id) return baseVal * pOp2

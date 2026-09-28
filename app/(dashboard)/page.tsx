@@ -1666,7 +1666,50 @@ export default function DashboardPage() {
           }
         };
 
+        // Calcula a soma de todos os contratos dos estagiários para atribuir à Supervisora no Ranking de Vendas
+        const estagiariosListOnly = groupMembersDetailList.filter((e) => !e.isPJ)
+        let estagiariosTotalPaid = 0
+        let estagiariosCountPaid = 0
+        let estagiariosTotalInProcess = 0
+        let estagiariosCountInProcess = 0
+        let estagiariosTotalToday = 0
+        let estagiariosCountToday = 0
+        let estagiariosApprovedTickets = 0
+
+        estagiariosListOnly.forEach((est) => {
+          estagiariosTotalPaid += (est.totalPaid || 0)
+          estagiariosCountPaid += (est.countPaid || 0)
+          estagiariosTotalInProcess += (est.totalInProcess || 0)
+          estagiariosCountInProcess += (est.countInProcess || 0)
+          estagiariosTotalToday += (est.totalToday || 0)
+          estagiariosCountToday += (est.countToday || 0)
+          estagiariosApprovedTickets += (est.approvedTicketsCount || 0)
+        })
+
         sortedRankings = individualCompetitors.map((m: User) => {
+          const userFunc = (m.funcao || "").trim().toLowerCase()
+          const userRole = (m.role || "").trim().toLowerCase()
+          const isSupervisorUser = userFunc === "supervisor" || userRole === "supervisor"
+
+          if (isSupervisorUser) {
+            return {
+              corretor_id: m.id,
+              nome: m.nome,
+              funcao: m.funcao || "Supervisor",
+              totalPaid: estagiariosTotalPaid,
+              countPaid: estagiariosCountPaid,
+              totalInProcess: estagiariosTotalInProcess,
+              countInProcess: estagiariosCountInProcess,
+              totalToday: estagiariosTotalToday,
+              countToday: estagiariosCountToday,
+              approvedTicketsCount: estagiariosApprovedTickets,
+              colaboracoes: {
+                propria: { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 },
+                estagiarios: estagiariosListOnly
+              }
+            }
+          }
+
           return {
             corretor_id: m.id,
             nome: m.nome,
