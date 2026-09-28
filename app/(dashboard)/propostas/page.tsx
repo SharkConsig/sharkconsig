@@ -1633,7 +1633,7 @@ export default function ProposalsPage() {
                               >
                                 <Eye className="w-[13px] h-[13px]" />
                               </Button>
-                              {selectedStatus !== "CANCELADOS" && (isAdmin || isDeveloper || isOperational || isMonitoramento) && (
+                              {selectedStatus !== "CANCELADOS" && !isMonitoramento && (isAdmin || isDeveloper || isOperational) && (
                                 <Button 
                                   variant="ghost" 
                                   size="icon" 

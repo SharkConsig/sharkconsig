@@ -1366,7 +1366,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               Anexos
             </Button>
 
-            {(isAdmin || isDeveloper || isOperational || isMonitoramento) && (
+            {(!isMonitoramento && (isAdmin || isDeveloper || isOperational)) && (
               <Button 
                 onClick={() => setIsInterventionModalOpen(true)}
                 className={cn(

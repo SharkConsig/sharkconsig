@@ -58,7 +58,7 @@ export function IntervencaoOperacionalModal({
   onSuccess,
 }: IntervencaoOperacionalModalProps) {
   const { user: currentUser, perfil, isAdmin, isDeveloper, isOperational, isMonitoramento } = useAuth()
-  const canManageIntervention = Boolean(isAdmin || isDeveloper || isOperational || isMonitoramento)
+  const canManageIntervention = Boolean(!isMonitoramento && (isAdmin || isDeveloper || isOperational))
   const [users, setUsers] = useState<User[]>([])
   const [selectedUserId, setSelectedUserId] = useState<string>("")
   const [userSearchTerm, setUserSearchTerm] = useState<string>("")
@@ -213,7 +213,7 @@ export function IntervencaoOperacionalModal({
   const handleApplyIntervention = async () => {
     if (!proposal) return
     if (!canManageIntervention) {
-      toast.error("Apenas Administrador, Operacional, Monitoramento e Desenvolvedor podem aplicar intervenção.")
+      toast.error("Apenas Administrador, Operacional e Desenvolvedor podem aplicar intervenção.")
       return
     }
     if (!selectedUserId) {
@@ -301,7 +301,7 @@ export function IntervencaoOperacionalModal({
   const handleRemoveIntervention = async () => {
     if (!proposal) return
     if (!canManageIntervention) {
-      toast.error("Apenas Administrador, Operacional, Monitoramento e Desenvolvedor podem remover intervenção.")
+      toast.error("Apenas Administrador, Operacional e Desenvolvedor podem remover intervenção.")
       return
     }
 
