@@ -1,5 +1,6 @@
 "use client"
 import React, { useState, useEffect } from "react"
+import { toast } from "sonner"
 import {
   Dialog,
   DialogContent,
@@ -22,7 +23,8 @@ import {
   Calendar, 
   Copy, 
   Check, 
-  Building 
+  Building,
+  X 
 } from "lucide-react"
 import { cn, withRetry } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
@@ -43,6 +45,7 @@ function LoanRow({ loan }: { loan: LoanData }) {
   const i = taxa / 100;
   const n = loan.prazo;
   const p = loan.parcela;
+  // Formula: SD = P * [(1 - (1 + i)^-n) / i]
   const saldo = p * ((1 - Math.pow(1 + i, -n)) / i);
 
   const info = getContractTypeInfo(loan.tipo);
@@ -50,26 +53,26 @@ function LoanRow({ loan }: { loan: LoanData }) {
 
   return (
     <tr className="group bg-blue-50/30 hover:bg-blue-50/50 transition-colors">
-      <td className="py-3 pl-4 text-[11px] font-bold text-slate-700 rounded-l-xl border-y border-l border-blue-100">{displayedBank}</td>
-      <td className="py-3 text-[11px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.orgao || "-"}</td>
-      <td className="py-3 text-[11px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.contrato}</td>
-      <td className="py-3 text-[11px] font-bold text-slate-900 text-center border-y border-blue-100">
+      <td className="py-4 pl-4 text-[12px] font-bold text-slate-700 rounded-l-xl border-y border-l border-blue-100">{displayedBank}</td>
+      <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.orgao || "-"}</td>
+      <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.contrato}</td>
+      <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">
         {loan.parcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
       </td>
-      <td className="py-3 text-[11px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.prazo}</td>
-      <td className="py-3 text-center border-y border-blue-100">
-        <div className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-0.5 shadow-sm">
+      <td className="py-4 text-[12px] font-bold text-slate-900 text-center border-y border-blue-100">{loan.prazo}</td>
+      <td className="py-4 text-center border-y border-blue-100">
+        <div className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 py-1 shadow-sm">
           <input 
             type="number" 
             value={taxa}
             onChange={(e) => setTaxa(Number(e.target.value))}
-            className="w-12 bg-transparent text-[11px] font-bold text-slate-900 focus:outline-none text-right pr-1"
+            className="w-14 bg-transparent text-[12px] font-bold text-slate-900 focus:outline-none text-right pr-1"
             step="0.01"
           />
           <span className="text-[10px] font-bold text-slate-400">%</span>
         </div>
       </td>
-      <td className="py-3 pr-4 text-[11px] font-bold text-slate-900 text-right rounded-r-xl border-y border-r border-blue-100">
+      <td className="py-4 pr-4 text-[12px] font-bold text-slate-900 text-right rounded-r-xl border-y border-r border-blue-100">
         {saldo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
       </td>
     </tr>
@@ -160,14 +163,36 @@ function ensureArray<T>(val: unknown): T[] {
   return [val] as T[];
 }
 
+export interface LeadContactInfo {
+  cpf: string;
+  nome: string;
+  telefones: string[];
+}
+
 interface ClientDetailsModalProps {
   cpf: string;
   isOpen: boolean;
   onClose: () => void;
   initialMatricula?: string;
+  onSelectTabulacao?: (
+    tabulacao: "CLIENTE CHAMADO" | "NÃO EXISTE WHATSAPP" | "WHATSAPP DIVERGENTE",
+    clientInfo: LeadContactInfo
+  ) => Promise<void> | void;
+  title?: string;
+  showTabulacoes?: boolean;
 }
 
-export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: ClientDetailsModalProps) {
+export function ClientDetailsModal({ 
+  cpf, 
+  isOpen, 
+  onClose, 
+  initialMatricula, 
+  onSelectTabulacao,
+  title,
+  showTabulacoes
+}: ClientDetailsModalProps) {
+  const modalTitle = title || (onSelectTabulacao ? "INFORMAÇÕES DO LEAD" : "INFORMAÇÕES DO CLIENTE")
+  const hasTabulacoes = showTabulacoes !== undefined ? showTabulacoes : Boolean(onSelectTabulacao)
   const [isLoading, setIsLoading] = useState(false)
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   const [client, setClient] = useState<ClientData | null>(null)
@@ -176,6 +201,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
   const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [selectedStatuses, setSelectedStatuses] = useState<Record<string, boolean>>({})
 
   const fetchClientData = React.useCallback(async () => {
     setIsLoading(true)
@@ -185,6 +211,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
     setRegistrations([])
     setProfiles([])
     setActiveRegIndex(0)
+    setSelectedStatuses({})
 
     try {
       const digits = cpf.replace(/\D/g, "")
@@ -1125,6 +1152,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       navigator.clipboard.writeText(text);
       setCopiedField(label);
+      toast.success(`${label} copiado!`);
       setTimeout(() => setCopiedField(null), 2000);
     }
   };
@@ -1154,14 +1182,32 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-[95vw] lg:max-w-6xl max-h-[92vh] overflow-y-auto p-4 sm:p-7 border border-slate-200 bg-slate-50/70 rounded-2xl shadow-xl">
-        <DialogTitle className="sr-only">Ficha de Dados do Cliente</DialogTitle>
+      <DialogContent showCloseButton={false} className="max-w-[95vw] lg:max-w-6xl max-h-[92vh] overflow-hidden p-0 border border-slate-200 bg-[#FBFBFB] rounded-2xl shadow-2xl flex flex-col">
+        <DialogTitle className="sr-only">{modalTitle}</DialogTitle>
+
+        {/* Modal Top Header */}
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-white shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+            <div>
+              <h2 className="text-[15px] font-bold text-slate-900 tracking-tight">{modalTitle}</h2>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="h-8 w-8 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </Button>
+        </div>
 
         {isLoading ? (
           <div className="p-20 flex flex-col items-center justify-center gap-4 text-slate-400">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
             <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
-              Localizando ficha cadastral e financeira...
+              Localizando dados do cliente...
             </p>
           </div>
         ) : error ? (
@@ -1200,7 +1246,7 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
 
           const activeReg = allRegs[activeRegIndex] || allRegs[0];
 
-          // Extração normalizada de margens
+          // Extração normalizada de margens conforme padrão do sistema
           const anyReg = (activeReg || {}) as Record<string, unknown>;
           let margemEmpDisp = 0;
           let margemEmpBruta = 0;
@@ -1211,13 +1257,13 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           let saldo70Val: number | null = null;
 
           if (clientType === "siape") {
-            margemEmpDisp = Number(anyReg.margem_disponivel) || 0;
+            margemEmpDisp = Number(anyReg.margem_35 ?? anyReg.margem_disponivel) || 0;
             margemEmpBruta = margemEmpDisp + (Number(anyReg.margem_utilizada) || 0);
             saldo70Val = anyReg.saldo_70 !== undefined && anyReg.saldo_70 !== null ? Number(anyReg.saldo_70) : null;
-            margemRmcDisp = Number(anyReg.margem_cartao_credito) || 0;
-            margemRmcBruta = margemRmcDisp;
-            margemRccDisp = Number(anyReg.margem_cartao_beneficio) || 0;
-            margemRccBruta = margemRccDisp;
+            margemRmcDisp = Number(anyReg.liquida_5 ?? anyReg.margem_cartao_credito) || 0;
+            margemRmcBruta = Number(anyReg.bruta_5 ?? anyReg.margem_cartao_credito) || margemRmcDisp;
+            margemRccDisp = Number(anyReg.beneficio_liquida_5 ?? anyReg.margem_cartao_beneficio) || 0;
+            margemRccBruta = Number(anyReg.beneficio_bruta_5 ?? anyReg.margem_cartao_beneficio) || margemRccDisp;
           } else {
             const lotacoes = (anyReg.governo_sp_lotacoes || anyReg.prefeitura_sp_lotacoes || anyReg.governo_pi_lotacoes || anyReg.governo_ma_lotacoes) as Lotacao[] | undefined;
             if (Array.isArray(lotacoes) && lotacoes.length > 0) {
@@ -1229,16 +1275,16 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
               margemRccDisp = Number(l.md_cartao_beneficio ?? l.margem_cartao_beneficio ?? 0);
               margemRccBruta = Number(l.mb_cartao_beneficio ?? l.margem_cartao_beneficio ?? margemRccDisp);
             } else {
-              margemEmpDisp = Number(anyReg.margem_disponivel_emprestimo ?? anyReg.margem_liquida_emprestimo ?? anyReg.margem_disponivel ?? anyReg.margem_emprestimo ?? anyReg.margem_consignavel ?? 0);
+              margemEmpDisp = Number(anyReg.margem_disponivel_emprestimo ?? anyReg.margem_liquida_emprestimo ?? anyReg.margem_disponivel ?? anyReg.margem_emprestimo ?? anyReg.margem_consignavel ?? anyReg.margem_35 ?? 0);
               margemEmpBruta = Number(anyReg.margem_bruta_emprestimo ?? anyReg.margem_bruta ?? anyReg.margem_total ?? margemEmpDisp);
-              margemRmcDisp = Number(anyReg.margem_cartao_consignado ?? anyReg.margem_cartao_credito ?? anyReg.margem_cartao ?? anyReg.margem_rmc ?? 0);
-              margemRmcBruta = Number(anyReg.margem_bruta_cartao ?? margemRmcDisp);
-              margemRccDisp = Number(anyReg.margem_cartao_beneficio ?? anyReg.margem_rcc ?? 0);
-              margemRccBruta = Number(anyReg.margem_bruta_beneficio ?? margemRccDisp);
+              margemRmcDisp = Number(anyReg.margem_cartao_consignado ?? anyReg.margem_cartao_credito ?? anyReg.margem_cartao ?? anyReg.margem_rmc ?? anyReg.liquida_5 ?? 0);
+              margemRmcBruta = Number(anyReg.margem_bruta_cartao ?? anyReg.bruta_5 ?? margemRmcDisp);
+              margemRccDisp = Number(anyReg.margem_cartao_beneficio ?? anyReg.margem_rcc ?? anyReg.beneficio_liquida_5 ?? 0);
+              margemRccBruta = Number(anyReg.margem_bruta_beneficio ?? anyReg.beneficio_bruta_5 ?? margemRccDisp);
             }
           }
 
-          // Extração de contratos (Empréstimos vs Cartões Consignados)
+          // Extração e deduplicação de contratos
           const rawContractsList: Contract[] = [];
           if (activeReg) {
             if (Array.isArray(activeReg.itens_credito)) {
@@ -1264,72 +1310,42 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
           }
 
           const loanContracts = deduplicatedContracts.filter(c => getContractTypeInfo(c.tipo).category === "EMPRESTIMO");
-          const cardContracts = deduplicatedContracts.filter(c => {
-            const cat = getContractTypeInfo(c.tipo).category;
-            return cat === "CARTAO_CONSIGNADO" || cat === "CARTAO_BENEFICIO";
-          });
-
-          const totalLoanParcelas = loanContracts.reduce((acc, c) => acc + (Number(c.parcela) || 0), 0);
-          const totalCardParcelas = cardContracts.reduce((acc, c) => acc + (Number(c.parcela) || 0), 0);
+          const consignadoCards = deduplicatedContracts.filter(c => getContractTypeInfo(c.tipo).category === "CARTAO_CONSIGNADO");
+          const beneficioCards = deduplicatedContracts.filter(c => getContractTypeInfo(c.tipo).category === "CARTAO_BENEFICIO");
 
           return (
-            <div className="space-y-6">
-              {/* Cabeçalho da Ficha */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded border border-blue-200">
-                        Ficha Cadastral e Financeira
-                      </span>
-                      <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700">
-                        {getConvenioName(clientType)}
-                      </Badge>
-                      {allRegs.length > 1 && (
-                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                          {allRegs.length} Matrículas
-                        </span>
-                      )}
-                    </div>
-                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase">
-                      {client.nome || "CLIENTE NÃO INFORMADO"}
-                    </h2>
-                    <p className="text-xs text-slate-500 font-medium">
-                      CPF: <span className="font-mono text-slate-800 font-bold">{maskCPF(client.cpf)}</span>
-                      {client.data_nascimento && (
-                        <span className="ml-3">
-                          Nascimento: <span className="text-slate-800 font-bold">{formatDate(client.data_nascimento)}</span>
-                          {calculateAge(client.data_nascimento) !== null && ` (${calculateAge(client.data_nascimento)} anos)`}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 self-start sm:self-center">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowSensitiveData(!showSensitiveData)}
-                      className="text-xs font-bold text-slate-700 border-slate-300 hover:bg-slate-100 gap-1.5"
-                      title={showSensitiveData ? "Ocultar CPF / Telefones" : "Mostrar dados completos"}
-                    >
-                      {showSensitiveData ? <Eye className="w-3.5 h-3.5 text-blue-600" /> : <EyeOff className="w-3.5 h-3.5 text-slate-400" />}
-                      <span>{showSensitiveData ? "Ocultar Sensíveis" : "Mostrar Completo"}</span>
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Se houver múltiplos convênios para o CPF */}
+            <>
+              {/* Conteúdo rolável idêntico à Página do Cliente */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 bg-[#FBFBFB]">
+                {/* Convênios Vinculados */}
                 {profiles.length > 1 && (
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
-                      <Building className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Alternar Convênio ({profiles.length}):</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-col gap-2.5 bg-[#FAF9F6]/50 border border-slate-200/60 p-4 rounded-xl shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05)]">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-[#171717]/40">
+                      Convênios Vinculados a este CPF ({profiles.length})
+                    </p>
+                    <div className="flex flex-wrap gap-2">
                       {profiles.map((p) => {
                         const isActive = clientType === p.type;
+                        const convenioDisplayName = 
+                          p.type === 'siape' ? 'SIAPE' :
+                          p.type === 'governo_sp' ? 'GOVERNO SP' :
+                          p.type === 'prefeitura_sp' ? 'PREFEITURA SP' :
+                          p.type === 'governo_pi' ? 'GOVERNO PIAUÍ' :
+                          p.type === 'governo_ma' ? 'GOVERNO MARANHÃO' :
+                          p.type === 'governo_rr' ? 'GOVERNO RORAIMA' :
+                          p.type === 'governo_rj' ? 'GOVERNO RIO DE JANEIRO' :
+                          p.type === 'prefeitura_santo_andre' ? 'PREFEITURA SANTO ANDRÉ' :
+                          p.type === 'prefeitura_contagem' ? 'PREFEITURA CONTAGEM' :
+                          p.type === 'governo_mg' ? 'GOVERNO MINAS GERAIS' : 
+                          p.type === 'governo_ms' ? 'GOVERNO MATO GROSSO DO SUL' : 
+                          p.type === 'prefeitura_natal' ? 'PREFEITURA DE NATAL' :
+                          p.type === 'prefeitura_porto_velho' ? 'PREFEITURA DE PORTO VELHO' :
+                          p.type === 'governo_ba' ? 'GOVERNO BAHIA' :
+                          p.type === 'governo_am' ? 'GOVERNO AMAZONAS' :
+                          p.type === 'governo_ce' ? 'GOVERNO CEARÁ' :
+                          p.type === 'governo_ro' ? 'GOVERNO RONDÔNIA' :
+                          p.type === 'prefeitura_ponta_grossa' ? 'PREFEITURA PONTA GROSSA' : String(p.type).toUpperCase();
+
                         return (
                           <button
                             key={`profile-tab-${p.type}`}
@@ -1341,623 +1357,508 @@ export function ClientDetailsModal({ cpf, isOpen, onClose, initialMatricula }: C
                               setActiveRegIndex(0);
                             }}
                             className={cn(
-                              "px-3 py-1 text-[11px] font-bold uppercase rounded-lg border transition-all cursor-pointer",
-                              isActive
-                                ? "bg-slate-900 text-white border-slate-900 shadow-sm"
-                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                              "px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all border cursor-pointer",
+                              isActive 
+                                ? "bg-[#171717] text-white border-[#171717] shadow-sm font-black scale-102" 
+                                : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
                             )}
                           >
-                            {getConvenioName(p.type)}
+                            {convenioDisplayName}
                           </button>
                         );
                       })}
                     </div>
                   </div>
                 )}
-              </div>
 
-              {/* SEÇÃO 1: DADOS PESSOAIS */}
-              <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
-                      <User className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">1. Dados Pessoais</h3>
-                      <p className="text-[11px] text-slate-500 font-medium">Informações de identificação civil e contatos</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-200/60 px-2 py-0.5 rounded">
-                    Seção 01
-                  </span>
-                </div>
-
-                <CardContent className="p-5 sm:p-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {/* Nome */}
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nome Completo</p>
-                      <p className="text-sm font-black text-slate-900 uppercase truncate" title={client.nome || ""}>
-                        {client.nome || "NÃO INFORMADO"}
-                      </p>
-                    </div>
-
-                    {/* CPF */}
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">CPF</p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-black text-slate-900 font-mono">
-                          {maskCPF(client.cpf)}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard(client.cpf, "cpf")}
-                          className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded hover:bg-slate-100"
-                          title="Copiar CPF"
-                        >
-                          {copiedField === "cpf" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                        </button>
+                {/* Dados Pessoais */}
+                <Card className="card-shadow border border-slate-200">
+                  <CardContent className="p-8 space-y-10">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                        <h3 className="text-[16px] font-bold text-slate-900">Dados Pessoais</h3>
                       </div>
+                      <button 
+                        type="button"
+                        onClick={() => setShowSensitiveData(!showSensitiveData)}
+                        className="text-slate-500 hover:text-slate-700 transition-colors p-2 hover:bg-slate-100 rounded-full cursor-pointer"
+                      >
+                        {showSensitiveData ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                      </button>
                     </div>
 
-                    {/* Data de Nascimento / Idade */}
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Data de Nascimento / Idade</p>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                        <p className="text-sm font-black text-slate-900">
-                          {formatDate(client.data_nascimento)}
-                        </p>
-                        {client.data_nascimento && (
-                          <Badge variant="secondary" className="text-[10px] font-bold bg-slate-100 text-slate-700">
-                            {calculateAge(client.data_nascimento)} anos
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Telefone Principal */}
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Telefone Principal (WhatsApp)</p>
-                      <div className="flex items-center gap-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-12">
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nome</p>
                         <p 
-                          className={cn(
-                            "text-sm font-black text-slate-900 font-mono",
-                            client.telefone_1 && client.telefone_1 !== "0" && client.telefone_1 !== "NÃO INFORMADO" && "cursor-pointer hover:text-emerald-600 transition-colors"
-                          )}
-                          onClick={() => handlePhoneClick(client.telefone_1)}
+                          onClick={() => copyToClipboard(client.nome || "", "Nome")}
+                          title="Clique para copiar o Nome"
+                          className="text-[13px] font-bold text-slate-900 uppercase cursor-pointer hover:text-blue-600 transition-colors inline-flex items-center gap-1.5"
                         >
-                          {maskPhone(client.telefone_1)}
+                          <span>{client.nome || "NÃO INFORMADO"}</span>
+                          {client.nome && copiedField === "Nome" && (
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          )}
                         </p>
-                        {client.telefone_1 && client.telefone_1 !== "0" && client.telefone_1 !== "NÃO INFORMADO" && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handlePhoneClick(client.telefone_1)}
-                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                              title="Abrir no WhatsApp"
-                            >
-                              <MessageCircle className="w-4 h-4 fill-emerald-600/15" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(client.telefone_1 as string, "tel1")}
-                              className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded hover:bg-slate-100"
-                              title="Copiar telefone"
-                            >
-                              {copiedField === "tel1" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                          </>
-                        )}
                       </div>
-                    </div>
-
-                    {/* Telefone 2 */}
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Telefone 2</p>
-                      <div className="flex items-center gap-2">
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">CPF</p>
                         <p 
-                          className={cn(
-                            "text-sm font-black text-slate-900 font-mono",
-                            client.telefone_2 && client.telefone_2 !== "0" && client.telefone_2 !== "NÃO INFORMADO" && "cursor-pointer hover:text-emerald-600 transition-colors"
-                          )}
-                          onClick={() => handlePhoneClick(client.telefone_2)}
+                          onClick={() => copyToClipboard(client.cpf || "", "CPF")}
+                          title="Clique para copiar o CPF"
+                          className="text-[13px] font-bold text-slate-900 cursor-pointer hover:text-blue-600 transition-colors inline-flex items-center gap-1.5"
                         >
-                          {maskPhone(client.telefone_2)}
-                        </p>
-                        {client.telefone_2 && client.telefone_2 !== "0" && client.telefone_2 !== "NÃO INFORMADO" && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handlePhoneClick(client.telefone_2)}
-                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                              title="Abrir no WhatsApp"
-                            >
-                              <MessageCircle className="w-4 h-4 fill-emerald-600/15" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(client.telefone_2 as string, "tel2")}
-                              className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded hover:bg-slate-100"
-                              title="Copiar telefone"
-                            >
-                              {copiedField === "tel2" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Telefone 3 */}
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Telefone 3</p>
-                      <div className="flex items-center gap-2">
-                        <p 
-                          className={cn(
-                            "text-sm font-black text-slate-900 font-mono",
-                            client.telefone_3 && client.telefone_3 !== "0" && client.telefone_3 !== "NÃO INFORMADO" && "cursor-pointer hover:text-emerald-600 transition-colors"
+                          <span>{maskCPF(client.cpf)}</span>
+                          {client.cpf && copiedField === "CPF" && (
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                           )}
-                          onClick={() => handlePhoneClick(client.telefone_3)}
-                        >
-                          {maskPhone(client.telefone_3)}
                         </p>
-                        {client.telefone_3 && client.telefone_3 !== "0" && client.telefone_3 !== "NÃO INFORMADO" && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handlePhoneClick(client.telefone_3)}
-                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
-                              title="Abrir no WhatsApp"
-                            >
-                              <MessageCircle className="w-4 h-4 fill-emerald-600/15" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard(client.telefone_3 as string, "tel3")}
-                              className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded hover:bg-slate-100"
-                              title="Copiar telefone"
-                            >
-                              {copiedField === "tel3" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                          </>
-                        )}
                       </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* SEÇÃO 2: INFORMAÇÕES DE MATRÍCULAS */}
-              <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
-                      <FileText className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">2. Informações de Matrículas</h3>
-                      <p className="text-[11px] text-slate-500 font-medium">Vínculos funcionais, cargo, situação e remuneração</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-200/60 px-2 py-0.5 rounded">
-                    Seção 02
-                  </span>
-                </div>
-
-                <CardContent className="p-5 sm:p-6 space-y-5">
-                  {allRegs.length > 1 && (
-                    <div className="flex flex-wrap gap-2 pb-3 border-b border-slate-100">
-                      {allRegs.map((reg, idx) => {
-                        const isSelected = activeRegIndex === idx;
-                        const regNumber = reg.numero_matricula || reg.identificacao || reg.matricula || `Vínculo ${idx + 1}`;
-                        return (
-                          <button
-                            key={`reg-tab-${idx}`}
-                            type="button"
-                            onClick={() => setActiveRegIndex(idx)}
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                          {clientType === 'prefeitura_ponta_grossa' ? 'Idade' : 'Data de Nascimento'}
+                        </p>
+                        <div className="flex flex-col gap-0.5">
+                          {clientType === 'prefeitura_ponta_grossa' ? (
+                            <p className="text-[13px] font-bold text-slate-900">
+                              {client.idade !== null && client.idade !== undefined
+                                ? `${client.idade} ANOS`
+                                : "NÃO INFORMADO"}
+                            </p>
+                          ) : (
+                            <>
+                              <p className="text-[13px] font-bold text-slate-900">{formatDate(client.data_nascimento)}</p>
+                              {client.data_nascimento && (
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">{calculateAge(client.data_nascimento)} Anos</p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 1</p>
+                        <div className="flex items-center gap-1.5">
+                          <p 
                             className={cn(
-                              "px-3.5 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-2",
-                              isSelected
-                                ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                                : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                              "text-[13px] font-bold text-slate-900",
+                              client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
                             )}
+                            onClick={() => handlePhoneClick(client.telefone_1)}
                           >
-                            <span>Matrícula: {regNumber}</span>
-                            {reg.situacao_funcional && (
-                              <span className={cn(
-                                "text-[9px] px-1.5 py-0.5 rounded font-black uppercase",
-                                isSelected ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"
-                              )}>
-                                {reg.situacao_funcional}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {activeReg ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Número da Matrícula / ID</p>
-                        <p className="text-sm font-black text-slate-900 font-mono">
-                          {activeReg.numero_matricula || activeReg.identificacao || activeReg.matricula || "NÃO INFORMADA"}
-                        </p>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Situação Funcional</p>
-                        <div>
-                          <span className={cn(
-                            "px-2.5 py-0.5 text-xs font-black uppercase rounded-md border inline-block",
-                            String(activeReg.situacao_funcional || "").includes("ATIVO")
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : String(activeReg.situacao_funcional || "").includes("APOSENT")
-                              ? "bg-blue-50 text-blue-700 border-blue-200"
-                              : String(activeReg.situacao_funcional || "").includes("PENSAO")
-                              ? "bg-purple-50 text-purple-700 border-purple-200"
-                              : "bg-slate-100 text-slate-700 border-slate-200"
-                          )}>
-                            {activeReg.situacao_funcional || "NÃO INFORMADO"}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Salário / Remuneração</p>
-                        <p className="text-sm font-black text-slate-900 font-mono">
-                          {formatCurrency(Number(activeReg.salario || (activeReg as Record<string, unknown>).renda || 0))}
-                        </p>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Órgão / Vínculo</p>
-                        <p className="text-sm font-black text-slate-900 uppercase truncate" title={String(activeReg.currentInstituidor || activeReg.orgao || (activeReg as Record<string, unknown>).secretaria || "")}>
-                          {activeReg.currentInstituidor || activeReg.orgao || (activeReg as Record<string, unknown>).secretaria || getConvenioName(clientType)}
-                        </p>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Regime Jurídico / Contrato</p>
-                        <p className="text-sm font-bold text-slate-800 uppercase">
-                          {activeReg.regime_juridico || (activeReg as Record<string, unknown>).regime_contratacao || "NÃO INFORMADO"}
-                        </p>
-                      </div>
-
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">UF de Lotação</p>
-                        <p className="text-sm font-bold text-slate-800 uppercase">
-                          {activeReg.uf || "---"}
-                        </p>
-                      </div>
-
-                      {activeReg.currentInstituidor && activeReg.situacao_funcional === "BENEFICIARIO PENSAO" && (
-                        <div className="space-y-1 sm:col-span-2">
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Instituidor da Pensão</p>
-                          <p className="text-sm font-bold text-slate-800 uppercase">
-                            {activeReg.currentInstituidor}
+                            {maskPhone(client.telefone_1)}
                           </p>
+                          {client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && (
+                            <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 2</p>
+                        <div className="flex items-center gap-1.5">
+                          <p 
+                            className={cn(
+                              "text-[13px] font-bold text-slate-900",
+                              client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                            )}
+                            onClick={() => handlePhoneClick(client.telefone_2)}
+                          >
+                            {maskPhone(client.telefone_2)}
+                          </p>
+                          {client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && (
+                            <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 3</p>
+                        <div className="flex items-center gap-1.5">
+                          <p 
+                            className={cn(
+                              "text-[13px] font-bold text-slate-900",
+                              client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && "cursor-pointer hover:text-emerald-600 transition-colors"
+                            )}
+                            onClick={() => handlePhoneClick(client.telefone_3)}
+                          >
+                            {maskPhone(client.telefone_3)}
+                          </p>
+                          {client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && (
+                            <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Matrículas / Benefícios Section */}
+                {allRegs.length > 0 && (() => {
+                  return (
+                    <div className="space-y-0">
+                      {/* Tabs Navigation */}
+                      {allRegs.length > 1 && (
+                        <div className="flex flex-wrap gap-1 px-4 sm:px-8">
+                          {allRegs.map((reg, idx) => (
+                            <button
+                              key={`tab-${reg.id || idx}-${idx}`}
+                              onClick={() => setActiveRegIndex(idx)}
+                              className={cn(
+                                "px-6 py-3 text-[10px] font-bold uppercase tracking-widest transition-all rounded-t-2xl border-x border-t relative z-10 -mb-[1px] cursor-pointer",
+                                activeRegIndex === idx 
+                                  ? "bg-white border-slate-200 text-slate-900 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.05)] font-black" 
+                                  : "bg-slate-50 border-transparent text-slate-400 hover:bg-slate-100"
+                              )}
+                            >
+                              <div className="flex flex-col items-center">
+                                <span>Matrícula {reg.numero_matricula || reg.identificacao || reg.matricula || idx + 1}</span>
+                              </div>
+                            </button>
+                          ))}
                         </div>
                       )}
-                    </div>
-                  ) : (
-                    <div className="py-4 text-center text-xs text-slate-400">
-                      Nenhuma matrícula encontrada para este vínculo.
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
 
-              {/* SEÇÃO 3: MARGENS */}
-              <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                      <TrendingUp className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">3. Margens</h3>
-                      <p className="text-[11px] text-slate-500 font-medium">Margens consignáveis disponíveis e limites por modalidade</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-200/60 px-2 py-0.5 rounded">
-                    Seção 03
-                  </span>
-                </div>
+                      {/* Active Content Card */}
+                      {activeReg && (
+                        <Card className={cn("card-shadow border border-slate-200 animate-in fade-in duration-300", allRegs.length > 1 && "rounded-tl-none")}>
+                          <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
+                            {/* Informações da Matrícula */}
+                            <div className="space-y-8 sm:space-y-10">
+                              <div className="flex items-center gap-3">
+                                <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                                <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Informações da Matrícula</h3>
+                              </div>
 
-                <CardContent className="p-5 sm:p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    {/* Margem Empréstimo */}
-                    <div className={cn(
-                      "p-4 rounded-xl border flex flex-col justify-between min-h-[110px] transition-all",
-                      margemEmpDisp > 0
-                        ? "bg-emerald-50/60 border-emerald-200"
-                        : "bg-slate-50 border-slate-200"
-                    )}>
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">
-                            Margem Empréstimo
-                          </span>
-                          <span className={cn(
-                            "text-[9px] font-black uppercase px-2 py-0.5 rounded-full border",
-                            margemEmpDisp > 0
-                              ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                              : "bg-slate-200 text-slate-600 border-slate-300"
-                          )}>
-                            {margemEmpDisp > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                          </span>
-                        </div>
-                        <p className={cn(
-                          "text-2xl font-black tracking-tight font-mono",
-                          margemEmpDisp > 0 ? "text-emerald-700" : "text-slate-800"
-                        )}>
-                          {formatCurrency(margemEmpDisp)}
-                        </p>
-                      </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                                <div className="space-y-1.5">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                  <p className="text-[13px] font-bold text-slate-900">{activeReg.numero_matricula || activeReg.identificacao || activeReg.matricula || "NÃO INFORMADA"}</p>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Situação Funcional</p>
+                                  <p className="text-[13px] font-bold text-slate-900 uppercase">{activeReg.situacao_funcional || "NÃO INFORMADO"}</p>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Salário</p>
+                                  <p className="text-[13px] font-bold text-slate-900">{formatCurrency(Number(activeReg.salario || (activeReg as unknown as Record<string, unknown>).renda || 0))}</p>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                    {activeReg.situacao_funcional === 'BENEFICIARIO PENSAO' ? 'Instituidor' : 'Órgão (Vínculo)'}
+                                  </p>
+                                  <p className="text-[13px] font-bold text-slate-900 uppercase">
+                                    {activeReg.currentInstituidor || activeReg.orgao || (activeReg as unknown as Record<string, unknown>).secretaria || "NÃO INFORMADO"}
+                                  </p>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Regime Jurídico</p>
+                                  <p className="text-[13px] font-bold text-slate-900 uppercase">{activeReg.regime_juridico || (activeReg as unknown as Record<string, unknown>).regime_contratacao || "NÃO INFORMADO"}</p>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">UF</p>
+                                  <p className="text-[13px] font-bold text-slate-900 uppercase">{activeReg.uf || "NÃO INFORMADO"}</p>
+                                </div>
+                              </div>
+                            </div>
 
-                      <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-medium text-slate-500">
-                        <span>Margem Bruta / Base:</span>
-                        <span className="font-bold text-slate-700 font-mono">{formatCurrency(margemEmpBruta)}</span>
-                      </div>
+                            {/* Margens Grid */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                              {/* Row 1: Saldo 70% e Líquida Facultativa Global */}
+                              {saldo70Val !== null && (
+                                <div className="p-3.5 bg-slate-300/60 border border-slate-400/40 rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]">
+                                  <div>
+                                    <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Saldo 70%</p>
+                                    <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(saldo70Val)}</p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 invisible">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                                    <span className="text-[8px] font-bold uppercase tracking-widest">STATUS</span>
+                                  </div>
+                                </div>
+                              )}
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px]",
+                                saldo70Val !== null ? "sm:col-span-1 lg:col-span-2" : "sm:col-span-2 lg:col-span-3",
+                                margemEmpDisp > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                              )}>
+                                <div>
+                                  <p className={cn(
+                                    "text-[9px] font-bold uppercase tracking-widest",
+                                    margemEmpDisp > 0 ? "text-emerald-700/60" : "text-red-700/60"
+                                  )}>LÍQUIDA FACULTATIVA GLOBAL</p>
+                                  <p className={cn(
+                                    "text-[17px] font-bold tracking-tight",
+                                    margemEmpDisp > 0 ? "text-emerald-700" : "text-red-700"
+                                  )}>{formatCurrency(margemEmpDisp)}</p>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <div className={cn("w-1.5 h-1.5 rounded-full", margemEmpDisp > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                  <span className={cn("text-[8px] font-bold uppercase tracking-widest", margemEmpDisp > 0 ? "text-emerald-600" : "text-red-600")}>
+                                    {margemEmpDisp > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                  </span>
+                                </div>
+                              </div>
 
-                      {saldo70Val !== null && (
-                        <div className="mt-1 flex items-center justify-between text-[11px] font-medium text-slate-500">
-                          <span>Saldo 70%:</span>
-                          <span className="font-bold text-slate-700 font-mono">{formatCurrency(saldo70Val)}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Margem Cartão Consignado RMC */}
-                    <div className={cn(
-                      "p-4 rounded-xl border flex flex-col justify-between min-h-[110px] transition-all",
-                      margemRmcDisp > 0
-                        ? "bg-blue-50/60 border-blue-200"
-                        : "bg-slate-50 border-slate-200"
-                    )}>
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">
-                            Cartão Consignado (RMC)
-                          </span>
-                          <span className={cn(
-                            "text-[9px] font-black uppercase px-2 py-0.5 rounded-full border",
-                            margemRmcDisp > 0
-                              ? "bg-blue-100 text-blue-800 border-blue-300"
-                              : "bg-slate-200 text-slate-600 border-slate-300"
-                          )}>
-                            {margemRmcDisp > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                          </span>
-                        </div>
-                        <p className={cn(
-                          "text-2xl font-black tracking-tight font-mono",
-                          margemRmcDisp > 0 ? "text-blue-700" : "text-slate-800"
-                        )}>
-                          {formatCurrency(margemRmcDisp)}
-                        </p>
-                      </div>
-
-                      <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-medium text-slate-500">
-                        <span>Margem Bruta / Limite:</span>
-                        <span className="font-bold text-slate-700 font-mono">{formatCurrency(margemRmcBruta)}</span>
-                      </div>
-                    </div>
-
-                    {/* Margem Cartão Benefício RCC */}
-                    <div className={cn(
-                      "p-4 rounded-xl border flex flex-col justify-between min-h-[110px] transition-all",
-                      margemRccDisp > 0
-                        ? "bg-purple-50/60 border-purple-200"
-                        : "bg-slate-50 border-slate-200"
-                    )}>
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">
-                            Cartão Benefício (RCC)
-                          </span>
-                          <span className={cn(
-                            "text-[9px] font-black uppercase px-2 py-0.5 rounded-full border",
-                            margemRccDisp > 0
-                              ? "bg-purple-100 text-purple-800 border-purple-300"
-                              : "bg-slate-200 text-slate-600 border-slate-300"
-                          )}>
-                            {margemRccDisp > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                          </span>
-                        </div>
-                        <p className={cn(
-                          "text-2xl font-black tracking-tight font-mono",
-                          margemRccDisp > 0 ? "text-purple-700" : "text-slate-800"
-                        )}>
-                          {formatCurrency(margemRccDisp)}
-                        </p>
-                      </div>
-
-                      <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-medium text-slate-500">
-                        <span>Margem Bruta / Limite:</span>
-                        <span className="font-bold text-slate-700 font-mono">{formatCurrency(margemRccBruta)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* SEÇÃO 4: CONTRATOS DE EMPRÉSTIMOS */}
-              <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
-                      <Landmark className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">4. Contratos de Empréstimos</h3>
-                      <p className="text-[11px] text-slate-500 font-medium">Contratos consignados ativos em folha de pagamento</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                    {loanContracts.length} {loanContracts.length === 1 ? "Contrato" : "Contratos"}
-                  </span>
-                </div>
-
-                <CardContent className="p-5 sm:p-6 space-y-4">
-                  {loanContracts.length > 0 ? (
-                    <>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-separate border-spacing-y-2">
-                          <thead>
-                            <tr>
-                              <th className="pb-2 pl-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Banco</th>
-                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Órgão</th>
-                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Contrato</th>
-                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Parcela</th>
-                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Prazo</th>
-                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Taxa Est.</th>
-                              <th className="pb-2 pr-4 text-[10px] font-black text-slate-400 uppercase tracking-wider text-right">Saldo Est.</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {loanContracts.map((loan, idx) => (
-                              <LoanRow
-                                key={`loan-row-${idx}`}
-                                loan={{
-                                  banco: loan.banco,
-                                  orgao: loan.orgao,
-                                  contrato: loan.numero_do_contrato || String(loan.id || idx + 1),
-                                  parcela: Number(loan.parcela) || 0,
-                                  prazo: Number(loan.prazo) || 0,
-                                  tipo: loan.tipo
-                                }}
-                              />
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                        <div className="text-slate-600 font-medium">
-                          Total de contratos de empréstimo: <span className="font-bold text-slate-900">{loanContracts.length}</span>
-                        </div>
-                        <div className="text-slate-600 font-medium sm:text-right">
-                          Soma das parcelas:{" "}
-                          <span className="font-black text-slate-900 text-sm font-mono">
-                            {formatCurrency(totalLoanParcelas)}
-                          </span>
-                          <span className="text-slate-400 text-[10px]"> /mês</span>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="py-8 px-4 text-center bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                        Nenhum contrato de empréstimo ativo encontrado para esta matrícula
-                      </p>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        Não constam consignações de empréstimo ativas registradas nesta base.
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* SEÇÃO 5: CONTRATOS DE CARTÕES CONSIGNADOS */}
-              <Card className="border border-slate-200 bg-white shadow-sm overflow-hidden">
-                <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
-                      <CreditCard className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">5. Contratos de Cartões Consignados</h3>
-                      <p className="text-[11px] text-slate-500 font-medium">Descontos de reserva de margem (RMC) e cartão benefício (RCC)</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                    {cardContracts.length} {cardContracts.length === 1 ? "Cartão" : "Cartões"}
-                  </span>
-                </div>
-
-                <CardContent className="p-5 sm:p-6 space-y-4">
-                  {cardContracts.length > 0 ? (
-                    <>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-separate border-spacing-y-2">
-                          <thead>
-                            <tr>
-                              <th className="pb-2 pl-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Tipo de Cartão</th>
-                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">Banco Emissor</th>
-                              <th className="pb-2 text-[10px] font-black text-slate-400 uppercase tracking-wider text-center">Contrato / Ref</th>
-                              <th className="pb-2 pr-4 text-[10px] font-black text-slate-400 uppercase tracking-wider text-right">Parcela / Desconto</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {cardContracts.map((card, idx) => {
-                              const info = getContractTypeInfo(card.tipo);
-                              const isRCC = info.category === "CARTAO_BENEFICIO";
-                              const displayedBank = info.bank || card.banco || "BANCO CONSIGNATÁRIO";
-
-                              return (
-                                <tr key={`card-row-${idx}`} className="bg-slate-50/70 hover:bg-slate-100/70 transition-colors">
-                                  <td className="py-3 pl-4 rounded-l-xl border-y border-l border-slate-200">
-                                    <span className={cn(
-                                      "px-2.5 py-0.5 text-[10px] font-black uppercase rounded-md border inline-block",
-                                      isRCC
-                                        ? "bg-purple-50 text-purple-700 border-purple-200"
-                                        : "bg-blue-50 text-blue-700 border-blue-200"
-                                    )}>
-                                      {isRCC ? "Cartão Benefício (RCC)" : "Cartão Consignado (RMC)"}
+                              {/* Row 2: 5% RMC */}
+                              <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta 5%</p>
+                                <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(margemRmcBruta)}</p>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
+                                getUtilizadaStatus(margemRmcBruta, margemRmcDisp) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                              )}>
+                                <p className={cn(
+                                  "text-[9px] font-bold uppercase tracking-widest",
+                                  getUtilizadaStatus(margemRmcBruta, margemRmcDisp) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
+                                )}>Utilizada 5%</p>
+                                <p className={cn(
+                                  "text-[17px] font-bold tracking-tight uppercase",
+                                  getUtilizadaStatus(margemRmcBruta, margemRmcDisp) === "SIM" ? "text-red-700" : "text-emerald-700"
+                                )}>
+                                  {getUtilizadaStatus(margemRmcBruta, margemRmcDisp)}
+                                </p>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5",
+                                margemRmcDisp > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                              )}>
+                                <p className={cn(
+                                  "text-[9px] font-bold uppercase tracking-widest",
+                                  margemRmcDisp > 0 ? "text-emerald-700/60" : "text-red-700/60"
+                                )}>Líquida 5%</p>
+                                <div className="flex flex-col">
+                                  <p className={cn(
+                                    "text-[17px] font-bold tracking-tight",
+                                    margemRmcDisp > 0 ? "text-emerald-700" : "text-red-700"
+                                  )}>{formatCurrency(margemRmcDisp)}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", margemRmcDisp > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", margemRmcDisp > 0 ? "text-emerald-600" : "text-red-600")}>
+                                      {margemRmcDisp > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
                                     </span>
-                                  </td>
-                                  <td className="py-3 text-xs font-bold text-slate-800 uppercase border-y border-slate-200">
-                                    {displayedBank}
-                                  </td>
-                                  <td className="py-3 text-xs font-mono font-bold text-slate-600 text-center border-y border-slate-200">
-                                    {card.numero_do_contrato || "---"}
-                                  </td>
-                                  <td className="py-3 pr-4 text-xs font-black text-slate-900 font-mono text-right rounded-r-xl border-y border-r border-slate-200">
-                                    {formatCurrency(Number(card.parcela) || 0)}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                                  </div>
+                                </div>
+                              </div>
 
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs">
-                        <div className="text-slate-600 font-medium">
-                          Total de cartões consignados: <span className="font-bold text-slate-900">{cardContracts.length}</span>
-                        </div>
-                        <div className="text-slate-600 font-medium sm:text-right">
-                          Soma dos descontos em cartões:{" "}
-                          <span className="font-black text-slate-900 text-sm font-mono">
-                            {formatCurrency(totalCardParcelas)}
-                          </span>
-                          <span className="text-slate-400 text-[10px]"> /mês</span>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="py-8 px-4 text-center bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                        Nenhum contrato de cartão consignado encontrado para esta matrícula
-                      </p>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        Não constam reservas de margem (RMC) ou cartões benefício (RCC) ativos registrados.
-                      </p>
+                              {/* Row 3: 5% RCC Benefício */}
+                              <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Benefício Bruta 5%</p>
+                                <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(margemRccBruta)}</p>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
+                                getUtilizadaStatus(margemRccBruta, margemRccDisp) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                              )}>
+                                <p className={cn(
+                                  "text-[9px] font-bold uppercase tracking-widest",
+                                  getUtilizadaStatus(margemRccBruta, margemRccDisp) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
+                                )}>Benefício Utilizada 5%</p>
+                                <p className={cn(
+                                  "text-[17px] font-bold tracking-tight uppercase",
+                                  getUtilizadaStatus(margemRccBruta, margemRccDisp) === "SIM" ? "text-red-700" : "text-emerald-700"
+                                )}>
+                                  {getUtilizadaStatus(margemRccBruta, margemRccDisp)}
+                                </p>
+                              </div>
+                              <div className={cn(
+                                "p-3.5 border rounded-xl space-y-0.5",
+                                margemRccDisp > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                              )}>
+                                <p className={cn(
+                                  "text-[9px] font-bold uppercase tracking-widest",
+                                  margemRccDisp > 0 ? "text-emerald-700/60" : "text-red-700/60"
+                                )}>Benefício Líquida 5%</p>
+                                <div className="flex flex-col">
+                                  <p className={cn(
+                                    "text-[17px] font-bold tracking-tight",
+                                    margemRccDisp > 0 ? "text-emerald-700" : "text-red-700"
+                                  )}>{formatCurrency(margemRccDisp)}</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <div className={cn("w-1.5 h-1.5 rounded-full", margemRccDisp > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
+                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", margemRccDisp > 0 ? "text-emerald-600" : "text-red-600")}>
+                                      {margemRccDisp > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Contratos de Empréstimo */}
+                            <div className="space-y-8">
+                              <div className="flex items-center gap-3">
+                                <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                                <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Contratos de Empréstimo</h3>
+                              </div>
+                              
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left border-separate border-spacing-y-2">
+                                  <thead>
+                                    <tr>
+                                      <th className="pb-2 pl-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Órgão</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Contrato</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Parcela</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Prazo</th>
+                                      <th className="pb-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">Taxa</th>
+                                      <th className="pb-2 pr-4 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Saldo</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {loanContracts.length > 0 ? (
+                                      loanContracts.map((loan, lIdx) => (
+                                        <LoanRow key={lIdx} loan={{
+                                          banco: loan.banco,
+                                          orgao: loan.orgao,
+                                          contrato: loan.numero_do_contrato || String(loan.id || lIdx + 1),
+                                          parcela: Number(loan.parcela) || 0,
+                                          prazo: Number(loan.prazo) || 0,
+                                          tipo: loan.tipo
+                                        }} />
+                                      ))
+                                    ) : (
+                                      <tr>
+                                        <td colSpan={7} className="py-8 text-center text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                                          Nenhum contrato de empréstimo encontrado
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+
+                            {/* Cartões Section */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                              {/* Cartão Consignado */}
+                              <div className="space-y-8">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-1 h-5 bg-emerald-500 rounded-full"></div>
+                                  <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Cartão Consignado</h3>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3">
+                                  {consignadoCards.length > 0 ? (
+                                    consignadoCards.map((card, cIdx) => {
+                                      const info = getContractTypeInfo(card.tipo);
+                                      return (
+                                        <div key={cIdx} className="p-5 bg-blue-50/30 border border-blue-100 rounded-2xl flex items-center justify-between group hover:border-emerald-200 transition-colors">
+                                          <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-slate-50">
+                                              <Landmark className="w-5 h-5 text-slate-300" />
+                                            </div>
+                                            <div>
+                                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</p>
+                                              <p className="text-[12px] font-bold text-slate-900 uppercase">{info.bank || card.banco}</p>
+                                            </div>
+                                          </div>
+                                          <div className="text-right">
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Parcela</p>
+                                            <p className="text-[14px] font-black text-slate-900 tracking-tight">
+                                              {formatCurrency(Number(card.parcela) || 0)}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="p-8 text-center text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                                      Nenhum cartão consignado
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Cartão Benefício */}
+                              <div className="space-y-8">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-1 h-5 bg-purple-500 rounded-full"></div>
+                                  <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Cartão Benefício</h3>
+                                </div>
+                                <div className="grid grid-cols-1 gap-3">
+                                  {beneficioCards.length > 0 ? (
+                                    beneficioCards.map((card, bIdx) => {
+                                      const info = getContractTypeInfo(card.tipo);
+                                      return (
+                                        <div key={bIdx} className="p-5 bg-blue-50/30 border border-blue-100 rounded-2xl flex items-center justify-between group hover:border-purple-200 transition-colors">
+                                          <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm border border-slate-50">
+                                              <Landmark className="w-5 h-5 text-slate-300" />
+                                            </div>
+                                            <div>
+                                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Banco</p>
+                                              <p className="text-[12px] font-bold text-slate-900 uppercase">{info.bank || card.banco}</p>
+                                            </div>
+                                          </div>
+                                          <div className="text-right">
+                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Parcela</p>
+                                            <p className="text-[14px] font-black text-slate-900 tracking-tight">
+                                              {formatCurrency(Number(card.parcela) || 0)}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="p-8 text-center text-[11px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                                      Nenhum cartão benefício
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Botão de Fechar no Rodapé */}
-              <div className="flex justify-end pt-2">
-                <Button variant="outline" onClick={onClose} className="px-6 font-bold text-slate-700">
-                  Fechar Ficha
-                </Button>
+                  );
+                })()}
               </div>
-            </div>
+
+              {/* Footer */}
+              {hasTabulacoes && (
+                <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-6 bg-[#FBFBFB] shrink-0 flex-wrap">
+                  {(["CLIENTE CHAMADO", "NÃO EXISTE WHATSAPP", "WHATSAPP DIVERGENTE"] as const).map((status) => {
+                    const isChecked = !!selectedStatuses[status];
+                    return (
+                      <label
+                        key={status}
+                        className="flex items-center gap-2 cursor-pointer select-none group py-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={async (e) => {
+                            const checked = e.target.checked;
+                            if (checked) {
+                              setSelectedStatuses({ [status]: true });
+                              if (onSelectTabulacao) {
+                                const phones = client ? [client.telefone_1, client.telefone_2, client.telefone_3].filter(
+                                  (p): p is string => Boolean(p && p !== '0' && p !== 'NÃO INFORMADO')
+                                ) : [];
+                                await onSelectTabulacao(status, {
+                                  cpf: client?.cpf || cpf,
+                                  nome: client?.nome || "Cliente sem Nome",
+                                  telefones: phones
+                                });
+                              }
+                              onClose();
+                            } else {
+                              setSelectedStatuses(prev => ({
+                                ...prev,
+                                [status]: false
+                              }));
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-0 cursor-pointer accent-[#171717]"
+                        />
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 group-hover:text-slate-900 transition-colors">
+                          {status}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           );
         })()}
       </DialogContent>

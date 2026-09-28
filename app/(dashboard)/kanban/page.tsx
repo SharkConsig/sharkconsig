@@ -7,10 +7,13 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { 
   Search, 
   RefreshCw, 
   Phone, 
+  PhoneOff,
+  MessageSquareOff,
   Calendar as CalendarIcon, 
   ArrowRight, 
   Clock, 
@@ -19,6 +22,7 @@ import {
   ShieldAlert, 
   User, 
   DollarSign, 
+  Users,
   ChevronRight, 
   Filter, 
   UserCheck, 
@@ -44,7 +48,7 @@ import { toast } from "sonner"
 import { format, formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { cn } from "@/lib/utils"
-import { ClientDetailsModal } from "@/components/clients/client-details-modal"
+import { ClientDetailsModal, type LeadContactInfo } from "@/components/clients/client-details-modal"
 
 // Definição das 7 Etapas Oficiais do Kanban Comercial
 export type KanbanStage = 
@@ -178,6 +182,7 @@ interface TicketMetadata {
     autor: string
     motivo?: string
   }>
+  tabulacao_whatsapp?: "NAO_EXISTE_WHATSAPP" | "WHATSAPP_DIVERGENTE" | null
   selected_operation_type?: string
   enviado_para_corretor?: boolean
   corretor_id?: string
@@ -428,6 +433,8 @@ export default function KanbanPage() {
   const [agendarModalTicket, setAgendarModalTicket] = useState<TicketItem | null>(null)
   const [moverModalTicket, setMoverModalTicket] = useState<TicketItem | null>(null)
   const [callFeedbackTicket, setCallFeedbackTicket] = useState<TicketItem | null>(null)
+  const [selectedDrawer, setSelectedDrawer] = useState<"NAO_EXISTE" | "DIVERGENTE" | null>(null)
+  const [dragOverDrawer, setDragOverDrawer] = useState<"NAO_EXISTE" | "DIVERGENTE" | null>(null)
 
   // Campos de formulário em modais
   const [atendimentoMensagem, setAtendimentoMensagem] = useState("")
@@ -519,14 +526,19 @@ export default function KanbanPage() {
       // Normalizar registros vindos da tabela kanban_fichas para o formato TicketItem
       const formatted: TicketItem[] = (data || []).map((f: any) => {
         const meta: TicketMetadata = (f.metadata && typeof f.metadata === "object") ? f.metadata : {}
-        meta.kanban_stage = f.etapa || meta.kanban_stage || "EM ABORDAGEM"
+        const isDrawer = meta.tabulacao_whatsapp || f.motivo_perda === "Não Existe Whatsapp" || f.motivo_perda === "Whatsapp Divergente"
+        const drawerStatus = meta.tabulacao_whatsapp === "WHATSAPP_DIVERGENTE" || f.motivo_perda === "Whatsapp Divergente"
+          ? "WHATSAPP DIVERGENTE"
+          : "NÃO EXISTE WHATSAPP"
+
+        meta.kanban_stage = isDrawer ? drawerStatus : (f.etapa || meta.kanban_stage || "EM ABORDAGEM")
         meta.proxima_acao = meta.proxima_acao || "Iniciar primeiro contato comercial"
         meta.vencimento_acao = meta.vencimento_acao || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
         meta.prioridade = meta.prioridade || "NORMAL"
 
         return {
           id: String(f.id),
-          status: f.etapa || "EM ABORDAGEM",
+          status: isDrawer ? drawerStatus : (f.etapa || "EM ABORDAGEM"),
           origem: "KANBAN",
           cliente_nome: f.cliente_nome || "Cliente sem Nome",
           cliente_cpf: f.cliente_cpf || "",
@@ -563,9 +575,39 @@ export default function KanbanPage() {
   }, [fetchChamados])
 
   // Filtragem dos chamados
+  const naoExisteWhatsappTickets = useMemo(() => {
+    return tickets.filter(t => {
+      const meta = parseMetadata(t.descricao)
+      return t.status === "NÃO EXISTE WHATSAPP" || t.status === "NAO_EXISTE_WHATSAPP" || meta.tabulacao_whatsapp === "NAO_EXISTE_WHATSAPP"
+    })
+  }, [tickets])
+
+  const whatsappDivergenteTickets = useMemo(() => {
+    return tickets.filter(t => {
+      const meta = parseMetadata(t.descricao)
+      return t.status === "WHATSAPP DIVERGENTE" || meta.tabulacao_whatsapp === "WHATSAPP_DIVERGENTE"
+    })
+  }, [tickets])
+
+  const currentDrawerTickets = useMemo(() => {
+    if (selectedDrawer === "NAO_EXISTE") return naoExisteWhatsappTickets
+    if (selectedDrawer === "DIVERGENTE") return whatsappDivergenteTickets
+    return []
+  }, [selectedDrawer, naoExisteWhatsappTickets, whatsappDivergenteTickets])
+
   const filteredTickets = useMemo(() => {
     return tickets.filter(t => {
       const meta = parseMetadata(t.descricao)
+
+      // Se estiver arquivado em uma das gavetas (pela etapa ou metadados), não exibe nas colunas normais do Kanban
+      if (
+        t.status === "NÃO EXISTE WHATSAPP" ||
+        t.status === "NAO_EXISTE_WHATSAPP" ||
+        t.status === "WHATSAPP DIVERGENTE" ||
+        meta.tabulacao_whatsapp
+      ) {
+        return false
+      }
 
       // Filtro de Responsável (para gestores)
       if (selectedResponsavel !== "ALL") {
@@ -1171,6 +1213,234 @@ export default function KanbanPage() {
     }
   }
 
+  // Ações das Gavetas de Triagem
+  const handleDropInDrawer = async (ticket: TicketItem, drawerType: "NAO_EXISTE" | "DIVERGENTE") => {
+    const label = drawerType === "NAO_EXISTE" ? "Não Existe Whatsapp" : "Whatsapp Divergente"
+    try {
+      const meta = parseMetadata(ticket.descricao)
+      const updatedMeta: TicketMetadata = {
+        ...meta,
+        tabulacao_whatsapp: drawerType === "NAO_EXISTE" ? "NAO_EXISTE_WHATSAPP" : "WHATSAPP_DIVERGENTE"
+      }
+      const newDesc = stringifyWithMetadata(ticket.descricao, updatedMeta)
+
+      if (ticket.source_table === "kanban_fichas") {
+        await supabase.from("kanban_fichas").update({
+          etapa: "PERDIDO",
+          motivo_perda: label,
+          metadata: updatedMeta,
+          updated_at: new Date().toISOString()
+        }).eq("id", ticket.id)
+      } else {
+        await supabase.from("chamados").update({
+          descricao: newDesc,
+          updated_at: new Date().toISOString()
+        }).eq("id", ticket.id)
+
+        await supabase.from("mensagens_chamado").insert({
+          chamado_id: parseInt(ticket.id, 10),
+          user_id: user?.id,
+          user_nome: perfil?.nome || "Colaborador",
+          user_role: perfil?.role || "Corretor",
+          user_avatar: perfil?.avatar_url || null,
+          content: `📁 Lead arquivado na gaveta "${label}".`,
+          action: "arquivamento_gaveta"
+        })
+      }
+
+      toast.success(`Lead movido para gaveta: ${label}!`)
+      fetchChamados(true)
+    } catch (err) {
+      console.error("Erro ao mover lead para gaveta:", err)
+      toast.error("Erro ao mover lead para gaveta.")
+    }
+  }
+
+  const handleRestoreFromDrawer = async (ticket: TicketItem) => {
+    try {
+      const meta = parseMetadata(ticket.descricao)
+      delete meta.tabulacao_whatsapp
+      const newDesc = stringifyWithMetadata(ticket.descricao, meta)
+
+      if (ticket.source_table === "kanban_fichas") {
+        await supabase.from("kanban_fichas").update({
+          etapa: "EM ABORDAGEM",
+          motivo_perda: null,
+          metadata: meta,
+          updated_at: new Date().toISOString()
+        }).eq("id", ticket.id)
+      } else {
+        await supabase.from("chamados").update({
+          descricao: newDesc,
+          updated_at: new Date().toISOString()
+        }).eq("id", ticket.id)
+
+        await supabase.from("mensagens_chamado").insert({
+          chamado_id: parseInt(ticket.id, 10),
+          user_id: user?.id,
+          user_nome: perfil?.nome || "Colaborador",
+          user_role: perfil?.role || "Corretor",
+          user_avatar: perfil?.avatar_url || null,
+          content: `🔄 Lead restaurado da gaveta para o fluxo do Kanban.`,
+          action: "restauracao_gaveta"
+        })
+      }
+
+      toast.success("Lead restaurado para o fluxo do Kanban!")
+      fetchChamados(true)
+    } catch (err) {
+      console.error("Erro ao restaurar lead:", err)
+      toast.error("Erro ao restaurar lead.")
+    }
+  }
+
+  // Ação disparada pelas caixas seletoras no modal INFORMAÇÕES DO LEAD
+  const handleTabulacaoFromModal = async (
+    tabulacao: "CLIENTE CHAMADO" | "NÃO EXISTE WHATSAPP" | "WHATSAPP DIVERGENTE",
+    clientInfo: LeadContactInfo
+  ) => {
+    try {
+      const cleanCpf = clientInfo.cpf.replace(/\D/g, "").padStart(11, "0")
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
+      const validOperadorId = isUuid(user?.id) ? user?.id : null
+
+      // 1. Caso 'CLIENTE CHAMADO': fechar o modal e criar/mover ficha para 'EM ABORDAGEM'
+      if (tabulacao === "CLIENTE CHAMADO") {
+        setIsClientDetailsModalOpen(false)
+        setSelectedClientCpf("")
+
+        const { data: existing } = await supabase
+          .from("kanban_fichas")
+          .select("id, metadata, etapa")
+          .eq("cliente_cpf", cleanCpf)
+          .maybeSingle()
+
+        if (existing) {
+          const updatedMeta = {
+            ...(existing.metadata || {}),
+            kanban_stage: "EM ABORDAGEM",
+            tabulacao_whatsapp: null,
+            proxima_acao: "Realizar Primeiro Contato Imediato",
+            telefones: clientInfo.telefones
+          }
+          const { error: updateErr } = await supabase
+            .from("kanban_fichas")
+            .update({
+              etapa: "EM ABORDAGEM",
+              metadata: updatedMeta,
+              operador_id: validOperadorId,
+              operador_nome: perfil?.nome || "Corretor",
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", existing.id)
+
+          if (updateErr) {
+            console.error("Erro ao atualizar kanban_fichas:", updateErr)
+            toast.error("Erro ao atualizar cartão no Kanban.")
+            return
+          }
+        } else {
+          const meta: TicketMetadata = {
+            kanban_stage: "EM ABORDAGEM",
+            proxima_acao: "Realizar Primeiro Contato Imediato",
+            vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+            prioridade: "NORMAL",
+            user_id: user?.id,
+            user_nome: perfil?.nome || "Corretor",
+            telefones: clientInfo.telefones
+          }
+          const { error: insertErr } = await supabase.from("kanban_fichas").insert({
+            cliente_nome: clientInfo.nome || "Cliente sem Nome",
+            cliente_cpf: cleanCpf,
+            cliente_telefone: clientInfo.telefones[0] || "",
+            operador_id: validOperadorId,
+            operador_nome: perfil?.nome || "Corretor",
+            etapa: "EM ABORDAGEM",
+            metadata: meta,
+            observacoes: "Atendimento iniciado via modal (CLIENTE CHAMADO)"
+          })
+
+          if (insertErr) {
+            console.error("Erro ao inserir em kanban_fichas:", insertErr)
+            toast.error("Erro ao registrar cartão no Kanban.")
+            return
+          }
+        }
+
+        toast.success(`Cartão de atendimento criado em "EM ABORDAGEM"!`)
+        await fetchChamados(true)
+        return
+      }
+
+      // 2. Caso 'NÃO EXISTE WHATSAPP' ou 'WHATSAPP DIVERGENTE': fechar modal e registrar na tabela 'kanban_fichas'
+      setIsClientDetailsModalOpen(false)
+      setSelectedClientCpf("")
+
+      const drawerType = tabulacao === "NÃO EXISTE WHATSAPP" ? "NAO_EXISTE_WHATSAPP" : "WHATSAPP_DIVERGENTE"
+      const drawerLabel = tabulacao === "NÃO EXISTE WHATSAPP" ? "Não Existe Whatsapp" : "Whatsapp Divergente"
+
+      const { data: existing } = await supabase
+        .from("kanban_fichas")
+        .select("id, metadata")
+        .eq("cliente_cpf", cleanCpf)
+        .maybeSingle()
+
+      if (existing) {
+        const updatedMeta = {
+          ...(existing.metadata || {}),
+          tabulacao_whatsapp: drawerType,
+          telefones: clientInfo.telefones
+        }
+        const { error: updateErr } = await supabase
+          .from("kanban_fichas")
+          .update({
+            etapa: "PERDIDO",
+            motivo_perda: drawerLabel,
+            metadata: updatedMeta,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", existing.id)
+
+        if (updateErr) {
+          console.error("Erro ao atualizar gaveta em kanban_fichas:", updateErr)
+          toast.error("Erro ao atualizar gaveta.")
+          return
+        }
+      } else {
+        const meta: TicketMetadata = {
+          kanban_stage: drawerLabel === "Não Existe Whatsapp" ? "NÃO EXISTE WHATSAPP" : "WHATSAPP DIVERGENTE",
+          tabulacao_whatsapp: drawerType,
+          telefones: clientInfo.telefones,
+          user_id: user?.id,
+          user_nome: perfil?.nome || "Corretor"
+        }
+        const { error: insertErr } = await supabase.from("kanban_fichas").insert({
+          cliente_nome: clientInfo.nome || "Cliente sem Nome",
+          cliente_cpf: cleanCpf,
+          cliente_telefone: clientInfo.telefones[0] || "",
+          operador_id: validOperadorId,
+          operador_nome: perfil?.nome || "Corretor",
+          etapa: "PERDIDO",
+          motivo_perda: drawerLabel,
+          metadata: meta,
+          observacoes: `Lead arquivado na gaveta "${drawerLabel}"`
+        })
+
+        if (insertErr) {
+          console.error("Erro ao inserir gaveta em kanban_fichas:", insertErr)
+          toast.error("Erro ao registrar na gaveta.")
+          return
+        }
+      }
+
+      toast.success(`Lead registrado na gaveta "${drawerLabel}"!`)
+      await fetchChamados(true)
+    } catch (err) {
+      console.error("Erro ao registrar tabulação:", err)
+      toast.error("Erro ao registrar tabulação.")
+    }
+  }
+
   return (
     <div className="flex flex-col min-h-screen bg-[#FDFDFD]">
       <Header hideQuickLinks>
@@ -1197,51 +1467,129 @@ export default function KanbanPage() {
         </div>
       </Header>
       
-      <main className="flex-1 p-4 lg:p-6 space-y-5 overflow-hidden flex flex-col bg-[#FDFDFD]">
-        {/* Card Principal do Kanban (Métricas, Filtros e 7 Colunas) */}
-        <Card className="card-shadow bg-white border border-slate-200 rounded-2xl overflow-hidden flex-1 flex flex-col min-h-0">
-          <CardContent className="p-3 sm:p-5 flex-1 flex flex-col overflow-hidden min-h-0 space-y-4">
-            {/* Barra Superior: Métricas Consolidadas e Controles */}
-            <div className="flex items-center justify-between gap-4 bg-slate-50/50 p-3 sm:p-4 rounded-xl border border-slate-100 shadow-xs shrink-0">
-              {/* Métricas Rápidas */}
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs w-full justify-between">
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                  <div className="bg-white border border-slate-200 px-4 py-2 rounded-lg shadow-xs text-sm">
-                    <span className="text-slate-600 font-semibold">Total de Clientes: </span>
-                    <span className="font-extrabold text-slate-900">{metrics.totalLeads}</span>
-                  </div>
-                  <div className="bg-sky-50 border border-sky-200 px-4 py-2 rounded-lg text-sm">
-                    <span className="text-sky-700 font-semibold">Pipeline: </span>
-                    <span className="font-extrabold text-sky-900">
-                      {metrics.totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                    </span>
-                  </div>
-                  {metrics.totalAtrasados > 0 && (
-                    <div className="bg-rose-50 border border-rose-200 px-4 py-2 rounded-lg flex items-center gap-1.5 text-rose-700 text-sm">
-                      <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-                      <span className="font-extrabold">{metrics.totalAtrasados} Atrasados</span>
-                    </div>
-                  )}
-                  {metrics.totalAcaoEspecial > 0 && (
-                    <div className="bg-amber-50 border border-amber-200 px-4 py-2 rounded-lg flex items-center gap-1.5 text-amber-800 text-sm">
-                      <AlertTriangle className="w-4 h-4 text-amber-600" />
-                      <span className="font-extrabold">{metrics.totalAcaoEspecial} Ação Especial</span>
-                    </div>
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fetchChamados(false)}
-                  disabled={isRefreshing}
-                  className="h-8 gap-1.5 text-xs text-slate-700 bg-white hover:bg-slate-100 border-slate-200 cursor-pointer shadow-xs"
-                >
-                  <RefreshCw className={cn("w-3.5 h-3.5", isRefreshing && "animate-spin")} />
-                  Atualizar
-                </Button>
+      <main className="flex-1 p-4 lg:p-6 space-y-3.5 overflow-hidden flex flex-col bg-[#FDFDFD]">
+        {/* Linha Superior: Métricas Rápidas (Esquerda) e Gavetas de Triagem (Direita) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
+          {/* Métricas Rápidas alinhadas à esquerda com o mesmo estilo das gavetas */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Card: Total de Clientes */}
+            <div className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 select-none">
+              <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-blue-600 shrink-0">
+                <Users className="w-3.5 h-3.5" />
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-bold text-slate-800 tracking-tight">
+                  Total de Clientes: <span className="text-slate-900 font-extrabold">{metrics.totalLeads}</span>
+                </p>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  {metrics.totalLeads} {metrics.totalLeads === 1 ? "lead em atendimento" : "leads em atendimento"}
+                </p>
               </div>
             </div>
 
+            {/* Card: Pipeline */}
+            <div className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 select-none">
+              <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-600 shrink-0">
+                <DollarSign className="w-3.5 h-3.5" />
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-bold text-slate-800 tracking-tight">
+                  Pipeline: <span className="text-slate-900 font-extrabold">{metrics.totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+                </p>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  Valores em atendimento
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Gavetas de Triagem WhatsApp */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Gaveta: Não Existe Whatsapp */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = "move"
+                if (dragOverDrawer !== "NAO_EXISTE") setDragOverDrawer("NAO_EXISTE")
+              }}
+              onDragLeave={() => setDragOverDrawer(null)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragOverDrawer(null)
+                const ticketId = e.dataTransfer.getData("text/plain")
+                const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
+                if (ticketToMove) {
+                  handleDropInDrawer(ticketToMove, "NAO_EXISTE")
+                }
+              }}
+              onClick={() => setSelectedDrawer("NAO_EXISTE")}
+              className={cn(
+                "bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 cursor-pointer group select-none",
+                dragOverDrawer === "NAO_EXISTE" && "ring-2 ring-rose-500 bg-rose-50/50 border-rose-300"
+              )}
+              title="Gaveta: Não Existe Whatsapp (Clique para abrir ou arraste leads para cá)"
+            >
+              <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600 shrink-0">
+                <PhoneOff className="w-3.5 h-3.5" />
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-bold text-slate-800 tracking-tight group-hover:text-slate-900">
+                  Não Existe Whatsapp
+                </p>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  {naoExisteWhatsappTickets.length} {naoExisteWhatsappTickets.length === 1 ? "lead arquivado" : "leads arquivados"}
+                </p>
+              </div>
+              <span className="ml-1 text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                {naoExisteWhatsappTickets.length}
+              </span>
+            </div>
+
+            {/* Gaveta: Whatsapp Divergente */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = "move"
+                if (dragOverDrawer !== "DIVERGENTE") setDragOverDrawer("DIVERGENTE")
+              }}
+              onDragLeave={() => setDragOverDrawer(null)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragOverDrawer(null)
+                const ticketId = e.dataTransfer.getData("text/plain")
+                const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
+                if (ticketToMove) {
+                  handleDropInDrawer(ticketToMove, "DIVERGENTE")
+                }
+              }}
+              onClick={() => setSelectedDrawer("DIVERGENTE")}
+              className={cn(
+                "bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 cursor-pointer group select-none",
+                dragOverDrawer === "DIVERGENTE" && "ring-2 ring-amber-500 bg-amber-50/50 border-amber-300"
+              )}
+              title="Gaveta: Whatsapp Divergente (Clique para abrir ou arraste leads para cá)"
+            >
+              <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600 shrink-0">
+                <MessageSquareOff className="w-3.5 h-3.5" />
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-bold text-slate-800 tracking-tight group-hover:text-slate-900">
+                  Whatsapp Divergente
+                </p>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  {whatsappDivergenteTickets.length} {whatsappDivergenteTickets.length === 1 ? "lead arquivado" : "leads arquivados"}
+                </p>
+              </div>
+              <span className="ml-1 text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                {whatsappDivergenteTickets.length}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card Principal do Kanban (Filtros e 7 Colunas) */}
+        <Card className="card-shadow bg-white border border-slate-200 rounded-2xl overflow-hidden flex-1 flex flex-col min-h-0">
+          <CardContent className="p-3 sm:p-5 flex-1 flex flex-col overflow-hidden min-h-0 space-y-4">
             {/* Barra de Filtros */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100 shadow-xs shrink-0">
               {/* Busca por Nome, CPF ou Telefone */}
@@ -2298,6 +2646,194 @@ export default function KanbanPage() {
         </div>
       )}
 
+      {/* Modal / Visualizador da Gaveta Selecionada */}
+      {selectedDrawer && (
+        <Dialog open={!!selectedDrawer} onOpenChange={(open) => !open && setSelectedDrawer(null)}>
+          <DialogContent showCloseButton={false} className="w-[95vw] sm:max-w-4xl md:max-w-5xl bg-white border border-slate-200 rounded-2xl p-0 overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+            <DialogTitle className="sr-only">
+              {selectedDrawer === "NAO_EXISTE" ? "Gaveta: Não Existe Whatsapp" : "Gaveta: Whatsapp Divergente"}
+            </DialogTitle>
+
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-white shrink-0">
+              <div className="flex items-center gap-3">
+                <div className={cn("w-1.5 h-6 rounded-full", selectedDrawer === "NAO_EXISTE" ? "bg-rose-500" : "bg-amber-500")} />
+                <div>
+                  <h2 className="text-[16px] font-black text-slate-900 tracking-tight">
+                    {selectedDrawer === "NAO_EXISTE" ? "Não Existe Whatsapp" : "Whatsapp Divergente"}
+                  </h2>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    {currentDrawerTickets.length} {currentDrawerTickets.length === 1 ? "lead registrado" : "leads registrados"}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSelectedDrawer(null)}
+                className="h-8 w-8 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            {/* Conteúdo com Tabela idêntica à do Detalhamento por Tabulação */}
+            <div className="flex-1 overflow-y-auto">
+              {currentDrawerTickets.length === 0 ? (
+                <div className="py-20 text-center text-slate-400 text-xs font-semibold space-y-1">
+                  <p className="font-bold uppercase tracking-wider text-slate-500">Nenhum lead nesta gaveta</p>
+                  <p className="text-[11px] text-slate-400">
+                    Selecione a opção no modal de detalhes ou arraste um cartão do Kanban para cá.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[11px] font-sans border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/80 border-b border-slate-200 sticky top-0 z-10">
+                        <th className="px-6 py-3.5 font-black text-[#1C2643] uppercase tracking-widest text-[9.5px] w-48 whitespace-nowrap">CPF</th>
+                        <th className="px-6 py-3.5 font-black text-[#1C2643] uppercase tracking-widest text-[9.5px]">NOME</th>
+                        <th className="px-6 py-3.5 font-black text-[#1C2643] uppercase tracking-widest text-[9.5px] w-64 whitespace-nowrap">TELEFONES</th>
+                        <th className="px-6 py-3.5 font-black text-[#1C2643] uppercase tracking-widest text-[9.5px] text-right w-48 whitespace-nowrap">AÇÕES</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {currentDrawerTickets.map((t, idx) => {
+                        const cleanCpf = t.cliente_cpf ? t.cliente_cpf.replace(/\D/g, "") : ""
+                        const formattedCpf = cleanCpf.length === 11
+                          ? `${cleanCpf.slice(0, 3)}.${cleanCpf.slice(3, 6)}.${cleanCpf.slice(6, 9)}-${cleanCpf.slice(9, 11)}`
+                          : t.cliente_cpf || "-"
+
+                        const meta = parseMetadata(t.descricao)
+                        const rawPhones = [
+                          t.cliente_telefone,
+                          t.cliente_telefone_2,
+                          t.cliente_telefone_3,
+                          ...(Array.isArray(meta.telefones) ? meta.telefones : [])
+                        ]
+                        const uniquePhones = Array.from(new Set(
+                          rawPhones
+                            .filter(p => p && p !== "0" && p !== "NÃO INFORMADO" && p !== "Não informado")
+                            .map(p => String(p).trim())
+                        ))
+
+                        return (
+                          <tr key={`${t.id}-${idx}`} className="hover:bg-slate-50/60 transition-colors">
+                            {/* CPF */}
+                            <td className="px-6 py-4 font-mono text-[12px] whitespace-nowrap align-top">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!cleanCpf) return
+                                  navigator.clipboard?.writeText(cleanCpf)
+                                  toast.success(`CPF copiado: ${formattedCpf}`)
+                                }}
+                                className="text-slate-700 hover:text-blue-600 transition-colors font-bold cursor-pointer text-left block"
+                                title="Clique para copiar CPF"
+                              >
+                                {formattedCpf}
+                              </button>
+                            </td>
+
+                            {/* NOME */}
+                            <td className="px-6 py-4 text-[12px] align-top">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!t.cliente_nome) return
+                                  navigator.clipboard?.writeText(t.cliente_nome.toUpperCase())
+                                  toast.success(`Nome copiado: ${t.cliente_nome}`)
+                                }}
+                                className="text-slate-900 hover:text-blue-600 transition-colors font-bold uppercase text-left cursor-pointer block"
+                                title="Clique para copiar Nome"
+                              >
+                                {t.cliente_nome || "NÃO INFORMADO"}
+                              </button>
+                            </td>
+
+                            {/* TELEFONES */}
+                            <td className="px-6 py-4 align-top whitespace-nowrap">
+                              {uniquePhones.length === 0 ? (
+                                <span className="text-[11px] text-slate-400 font-bold">-</span>
+                              ) : (
+                                <div className="flex flex-col gap-1.5">
+                                  {uniquePhones.map((phone, pIdx) => {
+                                    const cleanTel = phone.replace(/\D/g, "")
+                                    const formattedTel = cleanTel.length === 11
+                                      ? `(${cleanTel.slice(0, 2)}) ${cleanTel.slice(2, 7)}-${cleanTel.slice(7, 11)}`
+                                      : cleanTel.length === 10
+                                        ? `(${cleanTel.slice(0, 2)}) ${cleanTel.slice(2, 6)}-${cleanTel.slice(6, 10)}`
+                                        : phone
+
+                                    return (
+                                      <button
+                                        key={pIdx}
+                                        type="button"
+                                        onClick={() => {
+                                          if (!cleanTel) return
+                                          navigator.clipboard?.writeText(cleanTel)
+                                          toast.success(`Telefone copiado: ${formattedTel}`)
+                                        }}
+                                        className="text-slate-700 hover:text-blue-600 transition-colors font-semibold text-[11.5px] font-mono cursor-pointer text-left block"
+                                        title="Clique para copiar Telefone"
+                                      >
+                                        {formattedTel}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* AÇÕES */}
+                            <td className="px-6 py-4 align-top text-right whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1.5">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedClientCpf(cleanCpf || "")
+                                    setIsClientDetailsModalOpen(true)
+                                  }}
+                                  className="h-7 text-[11px] font-bold border-slate-200 hover:bg-slate-50 cursor-pointer"
+                                >
+                                  Ver Lead
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRestoreFromDrawer(t)}
+                                  className="h-7 text-[11px] font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
+                                  title="Restaurar para o Kanban"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5 mr-1" /> Restaurar
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50/50 flex justify-end shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedDrawer(null)}
+                className="h-8 text-xs font-bold uppercase tracking-wider cursor-pointer"
+              >
+                Fechar
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Modal Completo de Detalhes do Cliente (Mesmo formato de ACESSAR CLIENTE) */}
       {selectedClientCpf && (
         <ClientDetailsModal
@@ -2307,6 +2843,7 @@ export default function KanbanPage() {
             setIsClientDetailsModalOpen(false)
             setSelectedClientCpf("")
           }}
+          onSelectTabulacao={handleTabulacaoFromModal}
         />
       )}
     </div>

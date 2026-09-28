@@ -19,6 +19,24 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className={cn("font-sans", geist.variable)} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.addEventListener('error', function(e) {
+                var msg = (e && (e.message || '')) + '';
+                if (/Loading chunk .* failed/i.test(msg) || /ChunkLoadError/i.test(msg)) {
+                  var key = 'chunk_reload_lock';
+                  if (!sessionStorage.getItem(key)) {
+                    sessionStorage.setItem(key, '1');
+                    window.location.reload();
+                  }
+                }
+              });
+            `
+          }}
+        />
+      </head>
       <body className="antialiased" suppressHydrationWarning>
         <AuthProvider>
           {children}
