@@ -135,7 +135,7 @@ interface ProdutoConfig {
 }
 
 export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { proposal: Proposal; onRefresh: () => void }) {
-  const { perfil: user, isAdmin, isDeveloper, isOperational, isCorretor, isSupervisor } = useAuth()
+  const { perfil: user, isAdmin, isDeveloper, isOperational, isCorretor, isSupervisor, isMonitoramento } = useAuth()
 
   const isSelectedPhone = (phoneKey: "tel_1" | "tel_2" | "tel_3" | "tel_4", phoneValue: string) => {
     const sel = (formData as any)?.telefone_selecionado || proposal.telefone_selecionado || "";
@@ -295,9 +295,15 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
         ade: null,
         obs_corretor: null,
         obs_operacional: null,
-        observacoes: proposal.observacoes
-          ? `[Clonado do ID #${proposal.id_lead}]\n${proposal.observacoes}`
-          : `[Clonado do ID #${proposal.id_lead}]`
+        observacoes: (() => {
+          const cleanObs = (proposal.observacoes || "")
+            .replace(/\[FINANCE_METADATA_V1:[^\]]*\]/gi, "")
+            .replace(/\[FINANCE_METADATA\][\s\S]*?\[\/FINANCE_METADATA\]/gi, "")
+            .trim()
+          return cleanObs
+            ? `[Clonado do ID #${proposal.id_lead}]\n${cleanObs}`
+            : `[Clonado do ID #${proposal.id_lead}]`
+        })()
       }
 
       const { error } = await supabase.from('propostas').insert(cloneData)
@@ -1360,7 +1366,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               Anexos
             </Button>
 
-            {(isAdmin || isDeveloper || isOperational || isSupervisor) && (
+            {(isAdmin || isDeveloper || isOperational || isMonitoramento) && (
               <Button 
                 onClick={() => setIsInterventionModalOpen(true)}
                 className={cn(

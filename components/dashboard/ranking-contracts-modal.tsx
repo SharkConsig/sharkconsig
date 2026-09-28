@@ -176,9 +176,9 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
         const cleanName = (params.personName || "").trim()
 
         if (cleanId && cleanId !== "ESTAGIL_AND_PJ") {
-          query = query.or(`corretor_id.eq.${cleanId},estagiario_colaborador_id.eq.${cleanId}`)
+          query = query.or(`corretor_id.eq.${cleanId},estagiario_colaborador_id.eq.${cleanId},intervencao_operacional_id.eq.${cleanId}`)
         } else if (cleanName) {
-          query = query.or(`nome_corretor.ilike.%${cleanName}%,estagiario_colaborador_nome.ilike.%${cleanName}%`)
+          query = query.or(`nome_corretor.ilike.%${cleanName}%,estagiario_colaborador_nome.ilike.%${cleanName}%,intervencao_operacional_nome.ilike.%${cleanName}%`)
         }
 
         query = query.order("updated_at", { ascending: false })
@@ -196,7 +196,7 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
             const fallbackRes = await supabase
               .from("propostas")
               .select("*")
-              .or(`nome_corretor.ilike.%${cleanName}%,estagiario_colaborador_nome.ilike.%${cleanName}%`)
+              .or(`nome_corretor.ilike.%${cleanName}%,estagiario_colaborador_nome.ilike.%${cleanName}%,intervencao_operacional_nome.ilike.%${cleanName}%`)
               .order("updated_at", { ascending: false })
 
             if (fallbackRes.data) {
@@ -288,17 +288,49 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
       }
     }
 
+    let baseVal = 0
     if (isRowPJ) {
       // Corretores PJ: VALOR OPERAÇÃO
       const opVal = parseVal(p.valor_operacao) || parseVal(p.valor_cliente) || parseVal(p.valor_cliente_operacional) || parseVal(p.valor_base)
-      if (opVal > 0) return opVal
-      return parseVal(p.valor_producao) || 0
+      baseVal = opVal > 0 ? opVal : (parseVal(p.valor_producao) || 0)
     } else {
       // Corretores internos (CLT, Supervisor) e estagiários: VALOR PRODUÇÃO
       const prodVal = parseVal(p.valor_producao)
-      if (prodVal > 0) return prodVal
-      return parseVal(p.valor_operacao) || parseVal(p.valor_cliente) || parseVal(p.valor_cliente_operacional) || parseVal(p.valor_base) || 0
+      baseVal = prodVal > 0 ? prodVal : (parseVal(p.valor_operacao) || parseVal(p.valor_cliente) || parseVal(p.valor_cliente_operacional) || parseVal(p.valor_base) || 0)
     }
+
+    // Se a proposta possui intervenção operacional ativa, aplica a proporção do colaborador no ranking
+    if (p.intervencao_operacional && p.intervencao_operacional_id) {
+      const pctMatch = p.intervencao_motivo ? String(p.intervencao_motivo).match(/PCT:\[([0-9.]+),([0-9.]+)(?:,([0-9.]+))?\]/) : null
+      let pC = 0.5
+      let pOp1 = 0.5
+      let pOp2 = 0
+      let op2Id: string | null = null
+
+      if (p.estagiario_colaborador_id && p.estagiario_colaborador_id.trim() !== "" && p.estagiario_colaborador_id.trim() !== p.corretor_id && p.estagiario_colaborador_id.trim() !== p.intervencao_operacional_id?.trim()) {
+        op2Id = p.estagiario_colaborador_id.trim()
+      } else if (p.intervencao_motivo && p.intervencao_motivo.includes("2º")) {
+        const match = p.intervencao_motivo.match(/2º [^()]+\(([^)]+)\)/)
+        if (match && match[1]) op2Id = match[1].trim()
+      }
+
+      if (pctMatch) {
+        pC = (parseFloat(pctMatch[1]) || 50) / 100
+        pOp1 = (parseFloat(pctMatch[2]) || 50) / 100
+        pOp2 = (parseFloat(pctMatch[3] || "0") || 0) / 100
+      } else if (op2Id) {
+        pC = 0.34
+        pOp1 = 0.33
+        pOp2 = 0.33
+      }
+
+      const activeUserId = params?.personId || ""
+      if (activeUserId === p.corretor_id) return baseVal * pC
+      if (activeUserId === p.intervencao_operacional_id?.trim()) return baseVal * pOp1
+      if (op2Id && activeUserId === op2Id) return baseVal * pOp2
+    }
+
+    return baseVal
   }
 
   const cleanObservationText = (raw?: string): string => {

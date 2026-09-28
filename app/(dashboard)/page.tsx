@@ -1041,7 +1041,7 @@ export default function DashboardPage() {
           try {
             let teamProposalsQuery = supabase
               .from("propostas")
-              .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome, intervencao_operacional, intervencao_operacional_id, intervencao_operacional_nome")
+              .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome, intervencao_operacional, intervencao_operacional_id, intervencao_operacional_nome, intervencao_motivo")
 
             if (!isPrivilegedStatsUser && !isUserMonitoramento) {
               if (teamIds.length > 0) {
@@ -1178,7 +1178,8 @@ export default function DashboardPage() {
           estagiario_colaborador_nome?: string,
           intervencao_operacional?: boolean,
           intervencao_operacional_id?: string,
-          intervencao_operacional_nome?: string
+          intervencao_operacional_nome?: string,
+          intervencao_motivo?: string
         }) => {
           const numericVal = isNaN(parseCurrency(curr.valor_producao)) ? 0 : parseCurrency(curr.valor_producao)
           const rawOpVal = (curr.valor_operacao !== null && curr.valor_operacao !== undefined && curr.valor_operacao !== "") ? curr.valor_operacao : curr.valor_producao
@@ -1199,19 +1200,64 @@ export default function DashboardPage() {
                            brokerUser?.funcao === 'Estagio' || 
                            brokerUser?.funcao === 'Processo Seletivo' || 
                            brokerUser?.funcao === 'PROCESSO SELETIVO'
-          // List of beneficiary user IDs that should receive credit for this proposal in brokerMetrics:
-          // Both the primary broker (brokerId) and the intern/collaborator (if present) get full credit.
-          // In case of operational intervention, 50% of the meta goes to the broker and 50% to the operational.
+          // Lista de beneficiários e divisão percentual da proposta
           const beneficiaryIds: string[] = []
           if (brokerId) beneficiaryIds.push(brokerId)
-          if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== brokerId) {
-            beneficiaryIds.push(curr.estagiario_colaborador_id.trim())
-          }
-          if (curr.intervencao_operacional && curr.intervencao_operacional_id && curr.intervencao_operacional_id.trim() !== "") {
-            const opId = curr.intervencao_operacional_id.trim()
-            if (!beneficiaryIds.includes(opId)) {
-              beneficiaryIds.push(opId)
+
+          const hasIntervention = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id && curr.intervencao_operacional_id.trim() !== "")
+          let pctCorretor = 0.5
+          let pctOp1 = 0.5
+          let pctOp2 = 0
+          let op2IntervId: string | null = null
+
+          if (hasIntervention) {
+            const op1Id = curr.intervencao_operacional_id.trim()
+            if (!beneficiaryIds.includes(op1Id)) {
+              beneficiaryIds.push(op1Id)
             }
+
+            // Identifica se há 2º operador associado à intervenção
+            if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== brokerId && curr.estagiario_colaborador_id.trim() !== op1Id) {
+              op2IntervId = curr.estagiario_colaborador_id.trim()
+            } else if (curr.intervencao_motivo && curr.intervencao_motivo.includes("2º")) {
+              const match = curr.intervencao_motivo.match(/2º [^()]+\(([^)]+)\)/)
+              if (match && match[1]) op2IntervId = match[1].trim()
+            }
+
+            if (op2IntervId && !beneficiaryIds.includes(op2IntervId)) {
+              beneficiaryIds.push(op2IntervId)
+            }
+
+            // Extrai as porcentagens definidas na intervenção: PCT:[c,op1,op2]
+            const pctMatch = curr.intervencao_motivo ? String(curr.intervencao_motivo).match(/PCT:\[([0-9.]+),([0-9.]+)(?:,([0-9.]+))?\]/) : null
+            if (pctMatch) {
+              pctCorretor = (parseFloat(pctMatch[1]) || 50) / 100
+              pctOp1 = (parseFloat(pctMatch[2]) || 50) / 100
+              pctOp2 = (parseFloat(pctMatch[3] || "0") || 0) / 100
+            } else if (op2IntervId) {
+              pctCorretor = 0.34
+              pctOp1 = 0.33
+              pctOp2 = 0.33
+            } else {
+              pctCorretor = 0.5
+              pctOp1 = 0.5
+              pctOp2 = 0
+            }
+          } else {
+            // Com intervenção desativada: proposta pontua 100% exclusivamente para o Corretor Titular.
+            // Se houver estagiário regular da proposta cadastrado fora de intervenção, inclui para acompanhamento
+            if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== brokerId) {
+              beneficiaryIds.push(curr.estagiario_colaborador_id.trim())
+            }
+          }
+
+          const getInterventionFactor = (userId: string): number => {
+            if (!hasIntervention) return 1.0
+            const op1Id = curr.intervencao_operacional_id?.trim()
+            if (userId === brokerId) return pctCorretor
+            if (op1Id && userId === op1Id) return pctOp1
+            if (op2IntervId && userId === op2IntervId) return pctOp2
+            return 0
           }
           const targetBrokerIdForColabs = brokerId
           
@@ -1330,21 +1376,20 @@ export default function DashboardPage() {
           }
 
           if (isPaid && isMTDPaid) {
-            const hasIntervention = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
             const isMatchUser = beneficiaryIds.includes(perfil?.id || '')
             if (isMatchUser) {
-              const fraction = hasIntervention ? 0.5 : 1.0
+              const fraction = getInterventionFactor(perfil?.id || '')
               userMTDTotal += (cardVal * fraction)
             }
           }
 
           if (isPaid && isPaidInRange) {
-            const hasIntervention = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
             beneficiaryIds.forEach((bId) => {
               if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
               const bUser = allUsers.find((u: User) => u.id === bId)
               const bIsPJ = checkUserPJ(bUser)
-              const factor = hasIntervention ? 0.5 : 1.0
+              const factor = getInterventionFactor(bId)
+              if (factor <= 0) return
               const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
               const bRawVal = (bIsPJ ? numericValOp : numericVal) * factor
 
@@ -1369,12 +1414,12 @@ export default function DashboardPage() {
           }
 
           if (isEffectiveInProcess) {
-            const hasIntervention = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
             beneficiaryIds.forEach((bId) => {
               if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
               const bUser = allUsers.find((u: User) => u.id === bId)
               const bIsPJ = checkUserPJ(bUser)
-              const factor = hasIntervention ? 0.5 : 1.0
+              const factor = getInterventionFactor(bId)
+              if (factor <= 0) return
               const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
               const bRawVal = (bIsPJ ? numericValOp : numericVal) * factor
 
@@ -1404,12 +1449,12 @@ export default function DashboardPage() {
           }
 
           if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
-            const hasIntervention = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
             beneficiaryIds.forEach((bId) => {
               if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
               const bUser = allUsers.find((u: User) => u.id === bId)
               const bIsPJ = checkUserPJ(bUser)
-              const factor = hasIntervention ? 0.5 : 1.0
+              const factor = getInterventionFactor(bId)
+              if (factor <= 0) return
               const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
               const bRawVal = (bIsPJ ? numericValOp : numericVal) * factor
 
@@ -1662,7 +1707,7 @@ export default function DashboardPage() {
         try {
           let rankingQuery = supabase
             .from("propostas")
-            .select("corretor_id, valor_producao, updated_at, data_pago_cliente, intervencao_operacional, intervencao_operacional_id")
+            .select("corretor_id, valor_producao, updated_at, data_pago_cliente, intervencao_operacional, intervencao_operacional_id, estagiario_colaborador_id, intervencao_motivo")
             .in("status", paidStatuses)
             .gte("updated_at", filterStartISO)
           
@@ -1692,7 +1737,38 @@ export default function DashboardPage() {
           const val = parseCurrency(curr.valor_producao)
           const id = curr.corretor_id || "unknown"
           const hasInterv = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
-          const factor = hasInterv ? 0.5 : 1.0
+
+          let pC = 0.5
+          let pOp1 = 0.5
+          let pOp2 = 0
+          let op2IntervId: string | null = null
+
+          if (hasInterv) {
+            const op1Id = curr.intervencao_operacional_id?.trim() || ""
+            if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== id && curr.estagiario_colaborador_id.trim() !== op1Id) {
+              op2IntervId = curr.estagiario_colaborador_id.trim()
+            } else if (curr.intervencao_motivo && curr.intervencao_motivo.includes("2º")) {
+              const match = curr.intervencao_motivo.match(/2º [^()]+\(([^)]+)\)/)
+              if (match && match[1]) op2IntervId = match[1].trim()
+            }
+
+            const pctMatch = curr.intervencao_motivo ? String(curr.intervencao_motivo).match(/PCT:\[([0-9.]+),([0-9.]+)(?:,([0-9.]+))?\]/) : null
+            if (pctMatch) {
+              pC = (parseFloat(pctMatch[1]) || 50) / 100
+              pOp1 = (parseFloat(pctMatch[2]) || 50) / 100
+              pOp2 = (parseFloat(pctMatch[3] || "0") || 0) / 100
+            } else if (op2IntervId) {
+              pC = 0.34
+              pOp1 = 0.33
+              pOp2 = 0.33
+            } else {
+              pC = 0.5
+              pOp1 = 0.5
+              pOp2 = 0
+            }
+          }
+
+          const factor = hasInterv ? pC : 1.0
 
           const userInList = allUsers.find((u: User) => u.id === id)
           if (userInList?.status?.toUpperCase() === 'INATIVO') {
@@ -1714,13 +1790,18 @@ export default function DashboardPage() {
           if (!customStart && !customEnd && effectiveDate < startOfMonth) inRange = false
 
           if (inRange) {
+            const numVal = isNaN(val) ? 0 : val
             if (!isUserIntern) {
-              acc[id] = (acc[id] || 0) + ((isNaN(val) ? 0 : val) * factor)
+              acc[id] = (acc[id] || 0) + (numVal * factor)
             }
-            // Se houve intervenção operacional, atribui os 50% ao operacional
-            if (hasInterv && curr.intervencao_operacional_id) {
-              const opId = curr.intervencao_operacional_id
-              acc[opId] = (acc[opId] || 0) + ((isNaN(val) ? 0 : val) * 0.5)
+            // Se houve intervenção operacional, atribui a porcentagem ao 1º operador
+            if (hasInterv && curr.intervencao_operacional_id && pOp1 > 0) {
+              const opId = curr.intervencao_operacional_id.trim()
+              acc[opId] = (acc[opId] || 0) + (numVal * pOp1)
+            }
+            // Se houver 2º operador na intervenção, atribui a porcentagem ao 2º operador
+            if (hasInterv && pOp2 > 0 && op2IntervId) {
+              acc[op2IntervId] = (acc[op2IntervId] || 0) + (numVal * pOp2)
             }
           }
           return acc

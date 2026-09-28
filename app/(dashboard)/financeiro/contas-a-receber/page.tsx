@@ -1934,7 +1934,19 @@ export default function ContasAReceberPage() {
             finalEquipe = userDetails?.equipe || "-"
           }
 
-          const { notes, metadata } = parseProposalNotesAndMetadata(p.observacoes)
+          let { notes, metadata } = parseProposalNotesAndMetadata(p.observacoes)
+          
+          // Descartar metadados herdados de clonagem onde a data de recebimento é anterior à data de criação ou pagamento da proposta
+          if (metadata.receivedDate) {
+            const recMs = new Date(metadata.receivedDate).getTime()
+            const createdMs = p.created_at ? new Date(p.created_at).getTime() : 0
+            const pagoMs = p.data_pago_cliente ? new Date(p.data_pago_cliente).getTime() : 0
+            const refMs = Math.min(createdMs || Infinity, pagoMs || Infinity)
+            if (refMs !== Infinity && recMs < refMs - 86400000) {
+              metadata = {}
+            }
+          }
+
           let updatedObs = p.observacoes
 
           const effectiveStatus: "A_RECEBER" | "RECEBIDO" | "ESTORNADO" = 

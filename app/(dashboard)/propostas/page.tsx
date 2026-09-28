@@ -575,9 +575,15 @@ export default function ProposalsPage() {
         ade: null,
         obs_corretor: null,
         obs_operacional: null,
-        observacoes: proposal.observacoes
-          ? `[Clonado do ID #${proposal.id_lead}]\n${proposal.observacoes}`
-          : `[Clonado do ID #${proposal.id_lead}]`
+        observacoes: (() => {
+          const cleanObs = (proposal.observacoes || "")
+            .replace(/\[FINANCE_METADATA_V1:[^\]]*\]/gi, "")
+            .replace(/\[FINANCE_METADATA\][\s\S]*?\[\/FINANCE_METADATA\]/gi, "")
+            .trim()
+          return cleanObs
+            ? `[Clonado do ID #${proposal.id_lead}]\n${cleanObs}`
+            : `[Clonado do ID #${proposal.id_lead}]`
+        })()
       }
 
       const { error } = await supabase.from('propostas').insert(cloneData)
@@ -1627,7 +1633,7 @@ export default function ProposalsPage() {
                               >
                                 <Eye className="w-[13px] h-[13px]" />
                               </Button>
-                              {selectedStatus !== "CANCELADOS" && (isAdmin || isDeveloper || isOperational || isSupervisor) && (
+                              {selectedStatus !== "CANCELADOS" && (isAdmin || isDeveloper || isOperational || isMonitoramento) && (
                                 <Button 
                                   variant="ghost" 
                                   size="icon" 

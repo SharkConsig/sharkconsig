@@ -402,6 +402,64 @@ export default function KanbanPage() {
         return
       }
 
+      const cleanCpf = foundCpf.replace(/\D/g, "")
+
+      // Verificar se o lead já está no pipeline (em alguma das colunas do Kanban e não em gavetas)
+      const { data: existingInPipeline } = await supabase
+        .from("kanban_fichas")
+        .select("cliente_nome, cliente_cpf, etapa, operador_nome, motivo_perda, metadata")
+        .eq("cliente_cpf", cleanCpf)
+        .maybeSingle()
+
+      let pipelineLead: { cliente_nome: string; cliente_cpf: string; etapa: string; operador_nome: string } | null = null
+
+      if (existingInPipeline) {
+        const meta = (existingInPipeline.metadata && typeof existingInPipeline.metadata === "object") ? existingInPipeline.metadata : {}
+        const isDrawer = (existingInPipeline.etapa === "PERDIDO" || !existingInPipeline.etapa) && (
+          Boolean(meta.tabulacao_whatsapp) || 
+          existingInPipeline.motivo_perda === "Não Existe Whatsapp" || 
+          existingInPipeline.motivo_perda === "Whatsapp Divergente"
+        )
+        if (!isDrawer) {
+          pipelineLead = {
+            cliente_nome: existingInPipeline.cliente_nome || "Cliente sem Nome",
+            cliente_cpf: cleanCpf,
+            etapa: existingInPipeline.etapa || "EM ABORDAGEM",
+            operador_nome: existingInPipeline.operador_nome || "Corretor"
+          }
+        }
+      }
+
+      if (!pipelineLead) {
+        const localTicket = tickets.find(t => {
+          const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+          if (tCpf !== cleanCpf) return false
+          const tMeta = parseMetadata(t.descricao)
+          const inDrawer = (
+            t.status === "NÃO EXISTE WHATSAPP" ||
+            t.status === "NAO_EXISTE_WHATSAPP" ||
+            t.status === "WHATSAPP DIVERGENTE" ||
+            Boolean(tMeta.tabulacao_whatsapp)
+          )
+          return !inDrawer
+        })
+        if (localTicket) {
+          pipelineLead = {
+            cliente_nome: localTicket.cliente_nome || "Cliente sem Nome",
+            cliente_cpf: cleanCpf,
+            etapa: localTicket.status || "EM ABORDAGEM",
+            operador_nome: localTicket.corretor_nome || localTicket.user_nome || "Corretor"
+          }
+        }
+      }
+
+      // Se já estiver em atendimento no pipeline (e não nas gavetas), abre o modal notificando
+      if (pipelineLead) {
+        setLeadEmAtendimentoInfo(pipelineLead)
+        setClientSearchQuery("")
+        return
+      }
+
       // Abre o modal completo de detalhes do cliente sem criar cartão no Kanban
       setSelectedClientCpf(foundCpf)
       setIsClientDetailsModalOpen(true)
@@ -413,6 +471,14 @@ export default function KanbanPage() {
       setIsSearchingClient(false)
     }
   }
+
+  // Modal de Notificação: Lead já em atendimento no pipeline
+  const [leadEmAtendimentoInfo, setLeadEmAtendimentoInfo] = useState<{
+    cliente_nome: string
+    cliente_cpf: string
+    etapa: string
+    operador_nome: string
+  } | null>(null)
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState("")
@@ -526,8 +592,12 @@ export default function KanbanPage() {
       // Normalizar registros vindos da tabela kanban_fichas para o formato TicketItem
       const formatted: TicketItem[] = (data || []).map((f: any) => {
         const meta: TicketMetadata = (f.metadata && typeof f.metadata === "object") ? f.metadata : {}
-        const isDrawer = meta.tabulacao_whatsapp || f.motivo_perda === "Não Existe Whatsapp" || f.motivo_perda === "Whatsapp Divergente"
-        const drawerStatus = meta.tabulacao_whatsapp === "WHATSAPP_DIVERGENTE" || f.motivo_perda === "Whatsapp Divergente"
+        const isDrawer = (f.etapa === "PERDIDO" || !f.etapa) && (
+          Boolean(meta.tabulacao_whatsapp) || 
+          f.motivo_perda === "Não Existe Whatsapp" || 
+          f.motivo_perda === "Whatsapp Divergente"
+        )
+        const drawerStatus = (meta.tabulacao_whatsapp === "WHATSAPP_DIVERGENTE" || f.motivo_perda === "Whatsapp Divergente")
           ? "WHATSAPP DIVERGENTE"
           : "NÃO EXISTE WHATSAPP"
 
@@ -577,6 +647,9 @@ export default function KanbanPage() {
   // Filtragem dos chamados
   const naoExisteWhatsappTickets = useMemo(() => {
     return tickets.filter(t => {
+      if (t.status === "EM ABORDAGEM" || t.status === "EM NEGOCIAÇÃO" || t.status === "EM RETOMADA" || t.status === "EM REATIVAÇÃO" || t.status === "SEM INTERESSE" || t.status === "FECHADO") {
+        return false
+      }
       const meta = parseMetadata(t.descricao)
       return t.status === "NÃO EXISTE WHATSAPP" || t.status === "NAO_EXISTE_WHATSAPP" || meta.tabulacao_whatsapp === "NAO_EXISTE_WHATSAPP"
     })
@@ -584,6 +657,9 @@ export default function KanbanPage() {
 
   const whatsappDivergenteTickets = useMemo(() => {
     return tickets.filter(t => {
+      if (t.status === "EM ABORDAGEM" || t.status === "EM NEGOCIAÇÃO" || t.status === "EM RETOMADA" || t.status === "EM REATIVAÇÃO" || t.status === "SEM INTERESSE" || t.status === "FECHADO") {
+        return false
+      }
       const meta = parseMetadata(t.descricao)
       return t.status === "WHATSAPP DIVERGENTE" || meta.tabulacao_whatsapp === "WHATSAPP_DIVERGENTE"
     })
@@ -604,7 +680,7 @@ export default function KanbanPage() {
         t.status === "NÃO EXISTE WHATSAPP" ||
         t.status === "NAO_EXISTE_WHATSAPP" ||
         t.status === "WHATSAPP DIVERGENTE" ||
-        meta.tabulacao_whatsapp
+        (Boolean(meta.tabulacao_whatsapp) && t.status !== "EM ABORDAGEM")
       ) {
         return false
       }
@@ -1319,14 +1395,16 @@ export default function KanbanPage() {
           const updatedMeta = {
             ...(existing.metadata || {}),
             kanban_stage: "EM ABORDAGEM",
-            tabulacao_whatsapp: null,
             proxima_acao: "Realizar Primeiro Contato Imediato",
             telefones: clientInfo.telefones
           }
+          delete (updatedMeta as any).tabulacao_whatsapp
+
           const { error: updateErr } = await supabase
             .from("kanban_fichas")
             .update({
               etapa: "EM ABORDAGEM",
+              motivo_perda: null,
               metadata: updatedMeta,
               operador_id: validOperadorId,
               operador_nome: perfil?.nome || "Corretor",
@@ -1349,6 +1427,8 @@ export default function KanbanPage() {
             user_nome: perfil?.nome || "Corretor",
             telefones: clientInfo.telefones
           }
+          delete (meta as any).tabulacao_whatsapp
+
           const { error: insertErr } = await supabase.from("kanban_fichas").insert({
             cliente_nome: clientInfo.nome || "Cliente sem Nome",
             cliente_cpf: cleanCpf,
@@ -1356,6 +1436,7 @@ export default function KanbanPage() {
             operador_id: validOperadorId,
             operador_nome: perfil?.nome || "Corretor",
             etapa: "EM ABORDAGEM",
+            motivo_perda: null,
             metadata: meta,
             observacoes: "Atendimento iniciado via modal (CLIENTE CHAMADO)"
           })
@@ -1365,6 +1446,30 @@ export default function KanbanPage() {
             toast.error("Erro ao registrar cartão no Kanban.")
             return
           }
+        }
+
+        // Se houver algum registro em chamados com essa tabulação de gaveta, limpar também
+        try {
+          const { data: chamadosList } = await supabase
+            .from("chamados")
+            .select("id, descricao")
+            .eq("cliente_cpf", cleanCpf)
+          if (chamadosList && chamadosList.length > 0) {
+            for (const ch of chamadosList) {
+              const chMeta = parseMetadata(ch.descricao)
+              if (chMeta.tabulacao_whatsapp) {
+                delete chMeta.tabulacao_whatsapp
+                chMeta.kanban_stage = "EM ABORDAGEM"
+                const newDesc = stringifyWithMetadata(ch.descricao, chMeta)
+                await supabase.from("chamados").update({
+                  descricao: newDesc,
+                  updated_at: new Date().toISOString()
+                }).eq("id", ch.id)
+              }
+            }
+          }
+        } catch (chErr) {
+          console.warn("Aviso ao limpar chamados:", chErr)
         }
 
         toast.success(`Cartão de atendimento criado em "EM ABORDAGEM"!`)
@@ -1469,37 +1574,27 @@ export default function KanbanPage() {
       
       <main className="flex-1 p-4 lg:p-6 space-y-3.5 overflow-hidden flex flex-col bg-[#FDFDFD]">
         {/* Linha Superior: Métricas Rápidas (Esquerda) e Gavetas de Triagem (Direita) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
-          {/* Métricas Rápidas alinhadas à esquerda com o mesmo estilo das gavetas */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Card: Total de Clientes */}
-            <div className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 select-none">
-              <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200/60 flex items-center justify-center text-blue-600 shrink-0">
-                <Users className="w-3.5 h-3.5" />
-              </div>
-              <div className="text-left">
-                <p className="text-xs font-bold text-slate-800 tracking-tight">
-                  Total de Clientes: <span className="text-slate-900 font-extrabold">{metrics.totalLeads}</span>
-                </p>
-                <p className="text-[10px] text-slate-400 font-medium">
-                  {metrics.totalLeads} {metrics.totalLeads === 1 ? "lead em atendimento" : "leads em atendimento"}
-                </p>
-              </div>
+        <div className="flex flex-wrap items-center justify-between gap-4 shrink-0">
+          {/* Métricas Rápidas alinhadas à esquerda */}
+          <div className="flex flex-wrap items-center gap-6 pl-1">
+            {/* Total de Clientes */}
+            <div className="text-left select-none">
+              <p className="text-base font-bold text-slate-800 tracking-tight">
+                Total de Clientes: <span className="text-slate-900 font-extrabold">{metrics.totalLeads}</span>
+              </p>
+              <p className="text-xs text-slate-400 font-medium">
+                {metrics.totalLeads} {metrics.totalLeads === 1 ? "lead em atendimento" : "leads em atendimento"}
+              </p>
             </div>
 
-            {/* Card: Pipeline */}
-            <div className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 select-none">
-              <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-600 shrink-0">
-                <DollarSign className="w-3.5 h-3.5" />
-              </div>
-              <div className="text-left">
-                <p className="text-xs font-bold text-slate-800 tracking-tight">
-                  Pipeline: <span className="text-slate-900 font-extrabold">{metrics.totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-                </p>
-                <p className="text-[10px] text-slate-400 font-medium">
-                  Valores em atendimento
-                </p>
-              </div>
+            {/* Pipeline */}
+            <div className="text-left select-none">
+              <p className="text-base font-bold text-slate-800 tracking-tight">
+                Pipeline: <span className="text-slate-900 font-extrabold">{metrics.totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+              </p>
+              <p className="text-xs text-slate-400 font-medium">
+                Valores em atendimento
+              </p>
             </div>
           </div>
 
@@ -1793,7 +1888,19 @@ export default function KanbanPage() {
 
                               <div className="flex items-center gap-1 text-[11px] text-slate-500">
                                 <span>CPF:</span>
-                                <span className="font-mono font-medium text-slate-700 whitespace-nowrap">
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (ticket.cliente_cpf) {
+                                      handleCopy(ticket.cliente_cpf, "CPF")
+                                    }
+                                  }}
+                                  className={cn(
+                                    "font-mono font-medium text-slate-700 whitespace-nowrap transition-colors",
+                                    ticket.cliente_cpf && "cursor-pointer hover:text-blue-600"
+                                  )}
+                                  title={ticket.cliente_cpf ? "Clique para copiar CPF" : undefined}
+                                >
                                   {isCpfRevealed ? (ticket.cliente_cpf || "---") : maskCpf(ticket.cliente_cpf)}
                                 </span>
                                 <button
@@ -1806,23 +1913,23 @@ export default function KanbanPage() {
                                 >
                                   {isCpfRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                                 </button>
-                                {isCpfRevealed && ticket.cliente_cpf && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleCopy(ticket.cliente_cpf, "CPF")
-                                    }}
-                                    className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                                    title="Copiar CPF"
-                                  >
-                                    <Copy className="w-3 h-3" />
-                                  </button>
-                                )}
                               </div>
 
                               <div className="flex items-center gap-1 text-[11px] text-slate-500">
                                 <span>Tel:</span>
-                                <span className="font-mono font-medium text-slate-700 whitespace-nowrap">
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (ticket.cliente_telefone) {
+                                      handleCopy(ticket.cliente_telefone, "Telefone")
+                                    }
+                                  }}
+                                  className={cn(
+                                    "font-mono font-medium text-slate-700 whitespace-nowrap transition-colors",
+                                    ticket.cliente_telefone && "cursor-pointer hover:text-blue-600"
+                                  )}
+                                  title={ticket.cliente_telefone ? "Clique para copiar Telefone" : undefined}
+                                >
                                   {isPhoneRevealed ? (formatPhone(ticket.cliente_telefone) || "---") : maskPhone(ticket.cliente_telefone)}
                                 </span>
                                 <button
@@ -1835,18 +1942,6 @@ export default function KanbanPage() {
                                 >
                                   {isPhoneRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                                 </button>
-                                {isPhoneRevealed && ticket.cliente_telefone && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleCopy(ticket.cliente_telefone, "Telefone")
-                                    }}
-                                    className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                                    title="Copiar Telefone"
-                                  >
-                                    <Copy className="w-3 h-3" />
-                                  </button>
-                                )}
                               </div>
                             </div>
 
@@ -2799,15 +2894,6 @@ export default function KanbanPage() {
                                 >
                                   Ver Lead
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleRestoreFromDrawer(t)}
-                                  className="h-7 text-[11px] font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
-                                  title="Restaurar para o Kanban"
-                                >
-                                  <RotateCcw className="w-3.5 h-3.5 mr-1" /> Restaurar
-                                </Button>
                               </div>
                             </td>
                           </tr>
@@ -2846,6 +2932,161 @@ export default function KanbanPage() {
           onSelectTabulacao={handleTabulacaoFromModal}
         />
       )}
+
+      {/* Modal de Notificação: Lead Já em Atendimento / Fechado / Perdido */}
+      {leadEmAtendimentoInfo && (() => {
+        const isFechado = leadEmAtendimentoInfo.etapa === "FECHADO"
+        const isPerdido = leadEmAtendimentoInfo.etapa === "PERDIDO"
+
+        const modalTitle = isFechado 
+          ? "Lead com Atendimento Fechado" 
+          : isPerdido 
+            ? "Lead Perdido" 
+            : "Lead Já em Atendimento"
+
+        const modalSubtitle = isFechado
+          ? "Cliente com negociação concluída"
+          : isPerdido
+            ? "Cliente finalizado como perdido"
+            : "Cliente com cartão ativo no pipeline"
+
+        const alertMessage = isFechado
+          ? "Este lead foi finalizado como negócio fechado pelo operador informado acima."
+          : isPerdido
+            ? "Este lead foi classificado como perdido pelo operador informado acima."
+            : "Este lead já se encontra no funil de atendimento sob os cuidados do operador informado acima."
+
+        return (
+          <Dialog open={!!leadEmAtendimentoInfo} onOpenChange={(open) => !open && setLeadEmAtendimentoInfo(null)}>
+            <DialogContent showCloseButton={false} className="w-[95vw] sm:max-w-md bg-white border border-slate-200 rounded-2xl p-0 overflow-hidden shadow-2xl flex flex-col">
+              <DialogTitle className="sr-only">{modalTitle}</DialogTitle>
+              
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-8 h-8 rounded-xl border flex items-center justify-center shrink-0",
+                    isFechado && "bg-emerald-50 border-emerald-200/80 text-emerald-600",
+                    isPerdido && "bg-rose-50 border-rose-200/80 text-rose-600",
+                    !isFechado && !isPerdido && "bg-amber-50 border-amber-200/80 text-amber-600"
+                  )}>
+                    {isFechado ? (
+                      <CheckCircle2 className="w-4 h-4" />
+                    ) : isPerdido ? (
+                      <XCircle className="w-4 h-4" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 tracking-tight uppercase">
+                      {modalTitle}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      {modalSubtitle}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setLeadEmAtendimentoInfo(null)}
+                  className="h-8 w-8 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {/* Conteúdo Informativo */}
+              <div className="p-6 space-y-4">
+                <div className="bg-slate-50 rounded-xl border border-slate-200/80 p-4 space-y-3">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cliente</span>
+                    <p className="text-sm font-bold text-slate-900 uppercase">
+                      {leadEmAtendimentoInfo.cliente_nome || "Cliente sem Nome"}
+                    </p>
+                    <p className="text-xs font-mono text-slate-600 font-semibold mt-0.5">
+                      CPF: {leadEmAtendimentoInfo.cliente_cpf.length === 11 
+                        ? `${leadEmAtendimentoInfo.cliente_cpf.slice(0, 3)}.${leadEmAtendimentoInfo.cliente_cpf.slice(3, 6)}.${leadEmAtendimentoInfo.cliente_cpf.slice(6, 9)}-${leadEmAtendimentoInfo.cliente_cpf.slice(9, 11)}`
+                        : leadEmAtendimentoInfo.cliente_cpf}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-slate-200/60">
+                    <div className="flex flex-col items-start">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Etapa Atual</span>
+                      <div className={cn(
+                        "mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-bold",
+                        isFechado && "bg-emerald-50 border-emerald-200/80 text-emerald-700",
+                        isPerdido && "bg-rose-50 border-rose-200/80 text-rose-700",
+                        !isFechado && !isPerdido && "bg-blue-50 border-blue-200/80 text-blue-700"
+                      )}>
+                        <span className={cn(
+                          "w-1.5 h-1.5 rounded-full",
+                          isFechado && "bg-emerald-600",
+                          isPerdido && "bg-rose-600",
+                          !isFechado && !isPerdido && "bg-blue-600"
+                        )} />
+                        {leadEmAtendimentoInfo.etapa}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-start">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Responsável</span>
+                      <div className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                        <UserCheck className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span className="truncate">{leadEmAtendimentoInfo.operador_nome || "Não atribuído"}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={cn(
+                  "p-3 rounded-xl flex items-start gap-2.5 text-xs border",
+                  isFechado && "bg-emerald-50/70 border-emerald-200/70 text-emerald-900",
+                  isPerdido && "bg-rose-50/70 border-rose-200/70 text-rose-900",
+                  !isFechado && !isPerdido && "bg-amber-50/70 border-amber-200/70 text-amber-900"
+                )}>
+                  {isFechado ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : isPerdido ? (
+                    <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  )}
+                  <p className="leading-relaxed">
+                    {alertMessage}
+                  </p>
+                </div>
+              </div>
+
+              {/* Rodapé com Ações */}
+              <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-2.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLeadEmAtendimentoInfo(null)}
+                  className="h-8 text-xs font-bold px-4 cursor-pointer"
+                >
+                  Fechar
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const cpf = leadEmAtendimentoInfo.cliente_cpf
+                    setLeadEmAtendimentoInfo(null)
+                    setSelectedClientCpf(cpf)
+                    setIsClientDetailsModalOpen(true)
+                  }}
+                  className="h-8 text-xs font-bold px-4 bg-[#171717] hover:bg-[#171717]/90 text-white cursor-pointer"
+                >
+                  Visualizar Cadastro
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )
+      })()}
     </div>
   )
 }
