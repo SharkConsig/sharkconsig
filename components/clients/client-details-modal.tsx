@@ -24,6 +24,7 @@ import {
   Copy, 
   Check, 
   Building,
+  AlertCircle,
   X 
 } from "lucide-react"
 import { cn, withRetry } from "@/lib/utils"
@@ -167,6 +168,7 @@ export interface LeadContactInfo {
   cpf: string;
   nome: string;
   telefones: string[];
+  telefones_selecionados?: string[];
 }
 
 interface ClientDetailsModalProps {
@@ -178,6 +180,7 @@ interface ClientDetailsModalProps {
     tabulacao: "CLIENTE CHAMADO" | "NÃO EXISTE WHATSAPP" | "WHATSAPP DIVERGENTE",
     clientInfo: LeadContactInfo
   ) => Promise<void> | void;
+  onTelefonesSelecionadosChange?: (cpf: string, selectedPhones: string[]) => void;
   title?: string;
   showTabulacoes?: boolean;
 }
@@ -188,11 +191,16 @@ export function ClientDetailsModal({
   onClose, 
   initialMatricula, 
   onSelectTabulacao,
+  onTelefonesSelecionadosChange,
   title,
   showTabulacoes
 }: ClientDetailsModalProps) {
-  const modalTitle = title || (onSelectTabulacao ? "INFORMAÇÕES DO LEAD" : "INFORMAÇÕES DO CLIENTE")
+  const rawTitle = title || (onSelectTabulacao ? "Informações sobre o Lead" : "INFORMAÇÕES DO CLIENTE")
+  const modalTitle = (rawTitle.toUpperCase() === "INFORMAÇÕES DO LEAD" || rawTitle.toUpperCase() === "INFORMACOES DO LEAD") 
+    ? "Informações sobre o Lead" 
+    : rawTitle
   const hasTabulacoes = showTabulacoes !== undefined ? showTabulacoes : Boolean(onSelectTabulacao)
+  const isKanbanLeadModal = Boolean(onSelectTabulacao) || hasTabulacoes || modalTitle.toLowerCase().includes("lead")
   const [isLoading, setIsLoading] = useState(false)
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   const [client, setClient] = useState<ClientData | null>(null)
@@ -202,6 +210,77 @@ export function ClientDetailsModal({
   const [activeRegIndex, setActiveRegIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [selectedStatuses, setSelectedStatuses] = useState<Record<string, boolean>>({})
+  const [selectedPhones, setSelectedPhones] = useState<string[]>([])
+
+  const handleToggleSelectedPhone = async (phone: string | null, checked: boolean) => {
+    if (!phone) return
+    const cleanPhone = phone.replace(/\D/g, "")
+    if (!cleanPhone) return
+
+    const newSelected = checked
+      ? Array.from(new Set([...selectedPhones, cleanPhone]))
+      : selectedPhones.filter(p => {
+          const c = p.replace(/\D/g, "")
+          return c !== cleanPhone && c.slice(-8) !== cleanPhone.slice(-8)
+        })
+
+    setSelectedPhones(newSelected)
+
+    try {
+      const digits = (client?.cpf || cpf).replace(/\D/g, "")
+      const paddedCpf = digits.padStart(11, '0')
+      const { data: existingKfList } = await supabase
+        .from('kanban_fichas')
+        .select('id, metadata')
+        .or(`cliente_cpf.eq.${paddedCpf},cliente_cpf.eq.${digits}`)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+
+      const existingKf = existingKfList?.[0]
+
+      if (existingKf) {
+        const currentMeta = (existingKf.metadata && typeof existingKf.metadata === 'object') ? existingKf.metadata : {}
+        const updatedMeta = {
+          ...currentMeta,
+          telefones_selecionados: newSelected
+        }
+        const { error: updateErr } = await supabase
+          .from('kanban_fichas')
+          .update({
+            metadata: updatedMeta,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingKf.id)
+
+        if (updateErr) {
+          console.error("Erro ao atualizar kanban_fichas:", updateErr)
+          toast.error("Erro ao salvar seleção na ficha.")
+        } else {
+          toast.success(checked ? "Telefone registrado como contato efetivo!" : "Telefone desmarcado.")
+          if (onTelefonesSelecionadosChange) {
+            onTelefonesSelecionadosChange(paddedCpf, newSelected)
+          }
+        }
+      } else {
+        toast.info(checked ? "Telefone marcado como contato do cliente." : "Telefone desmarcado.")
+        if (onTelefonesSelecionadosChange) {
+          onTelefonesSelecionadosChange(paddedCpf, newSelected)
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao salvar telefone em kanban_fichas:", err)
+      toast.error("Erro ao registrar seleção do telefone.")
+    }
+  }
+
+  const isPhoneSelected = (p?: string | null) => {
+    if (!p) return false
+    const clean = p.replace(/\D/g, "")
+    return selectedPhones.some(sp => {
+      const cleanSp = sp.replace(/\D/g, "")
+      return cleanSp === clean || (clean.length >= 8 && cleanSp.slice(-8) === clean.slice(-8))
+    })
+  }
 
   const fetchClientData = React.useCallback(async () => {
     setIsLoading(true)
@@ -1037,6 +1116,26 @@ export function ClientDetailsModal({
         setClient(selectedProfile.client)
         setClientType(selectedProfile.type)
         setRegistrations(selectedProfile.registrations)
+
+        // Buscar telefones já selecionados/conversados na tabela kanban_fichas
+        try {
+          const { data: kfRecords } = await supabase
+            .from('kanban_fichas')
+            .select('metadata')
+            .or(`cliente_cpf.eq.${paddedCpf},cliente_cpf.eq.${digits}`)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+
+          const kfRecord = kfRecords?.[0]
+          if (kfRecord?.metadata && Array.isArray((kfRecord.metadata as any).telefones_selecionados)) {
+            setSelectedPhones((kfRecord.metadata as any).telefones_selecionados)
+          } else {
+            setSelectedPhones([])
+          }
+        } catch (err) {
+          console.error("Erro ao carregar telefones selecionados de kanban_fichas:", err)
+        }
+
         setIsLoading(false)
         return
       }
@@ -1436,9 +1535,29 @@ export function ClientDetailsModal({
                           )}
                         </div>
                       </div>
+
+                      {/* Card ambar de orientação para marcação dos telefones (exclusivo para o Kanban / Informações sobre o Lead) */}
+                      {isKanbanLeadModal && (
+                        <div className="col-span-full -mb-4 bg-amber-50/90 border border-amber-200/90 rounded-lg p-3 flex items-center gap-2.5 text-amber-900 shadow-xs">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <p className="text-xs font-semibold text-amber-900 leading-none">
+                            Marque o(s) telefone(s) que conseguiu contato com o cliente.
+                          </p>
+                        </div>
+                      )}
+
                       <div className="space-y-1.5">
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 1</p>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
+                          {isKanbanLeadModal && client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && (
+                            <input
+                              type="checkbox"
+                              checked={isPhoneSelected(client.telefone_1)}
+                              onChange={(e) => handleToggleSelectedPhone(client.telefone_1, e.target.checked)}
+                              className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600 shrink-0"
+                              title="Marcar como telefone em que conseguiu conversar com o cliente"
+                            />
+                          )}
                           <p 
                             className={cn(
                               "text-[13px] font-bold text-slate-900",
@@ -1449,13 +1568,22 @@ export function ClientDetailsModal({
                             {maskPhone(client.telefone_1)}
                           </p>
                           {client.telefone_1 && client.telefone_1 !== '0' && client.telefone_1 !== 'NÃO INFORMADO' && (
-                            <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10" />
+                            <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10 shrink-0" />
                           )}
                         </div>
                       </div>
                       <div className="space-y-1.5">
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 2</p>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
+                          {isKanbanLeadModal && client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && (
+                            <input
+                              type="checkbox"
+                              checked={isPhoneSelected(client.telefone_2)}
+                              onChange={(e) => handleToggleSelectedPhone(client.telefone_2, e.target.checked)}
+                              className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600 shrink-0"
+                              title="Marcar como telefone em que conseguiu conversar com o cliente"
+                            />
+                          )}
                           <p 
                             className={cn(
                               "text-[13px] font-bold text-slate-900",
@@ -1466,13 +1594,22 @@ export function ClientDetailsModal({
                             {maskPhone(client.telefone_2)}
                           </p>
                           {client.telefone_2 && client.telefone_2 !== '0' && client.telefone_2 !== 'NÃO INFORMADO' && (
-                            <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10" />
+                            <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10 shrink-0" />
                           )}
                         </div>
                       </div>
                       <div className="space-y-1.5">
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Telefone 3</p>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
+                          {isKanbanLeadModal && client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && (
+                            <input
+                              type="checkbox"
+                              checked={isPhoneSelected(client.telefone_3)}
+                              onChange={(e) => handleToggleSelectedPhone(client.telefone_3, e.target.checked)}
+                              className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600 shrink-0"
+                              title="Marcar como telefone em que conseguiu conversar com o cliente"
+                            />
+                          )}
                           <p 
                             className={cn(
                               "text-[13px] font-bold text-slate-900",
@@ -1483,7 +1620,7 @@ export function ClientDetailsModal({
                             {maskPhone(client.telefone_3)}
                           </p>
                           {client.telefone_3 && client.telefone_3 !== '0' && client.telefone_3 !== 'NÃO INFORMADO' && (
-                            <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10" />
+                            <MessageCircle className="w-3.5 h-3.5 text-[#25D366] fill-[#25D366]/10 shrink-0" />
                           )}
                         </div>
                       </div>
@@ -1837,7 +1974,8 @@ export function ClientDetailsModal({
                                 await onSelectTabulacao(status, {
                                   cpf: client?.cpf || cpf,
                                   nome: client?.nome || "Cliente sem Nome",
-                                  telefones: phones
+                                  telefones: phones,
+                                  telefones_selecionados: selectedPhones
                                 });
                               }
                               onClose();

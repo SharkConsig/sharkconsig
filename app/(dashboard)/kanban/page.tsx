@@ -183,6 +183,7 @@ interface TicketMetadata {
     motivo?: string
   }>
   tabulacao_whatsapp?: "NAO_EXISTE_WHATSAPP" | "WHATSAPP_DIVERGENTE" | null
+  telefones_selecionados?: string[]
   selected_operation_type?: string
   enviado_para_corretor?: boolean
   corretor_id?: string
@@ -200,6 +201,8 @@ interface TicketItem {
   cliente_telefone: string
   cliente_telefone_2?: string
   cliente_telefone_3?: string
+  telefones?: string[]
+  telefones_selecionados?: string[]
   margem?: number
   valor_operacao?: number
   convenio?: string
@@ -263,6 +266,23 @@ function maskCpf(cpf: string = ""): string {
     return `***.${clean.slice(3, 6)}.${clean.slice(6, 9)}-**`
   }
   return cpf || "Não informado"
+}
+
+// Validação de formato matemático de CPF (evita confundir celular de 11 dígitos com CPF)
+function isValidCPF(cpf: string = ""): boolean {
+  const clean = cpf.replace(/\D/g, "")
+  if (clean.length !== 11 || /^(\d)\1{10}$/.test(clean)) return false
+  let sum = 0
+  let rest = 0
+  for (let i = 1; i <= 9; i++) sum += parseInt(clean.substring(i - 1, i)) * (11 - i)
+  rest = (sum * 10) % 11
+  if (rest === 10 || rest === 11) rest = 0
+  if (rest !== parseInt(clean.substring(9, 10))) return false
+  sum = 0
+  for (let i = 1; i <= 10; i++) sum += parseInt(clean.substring(i - 1, i)) * (12 - i)
+  rest = (sum * 10) % 11
+  if (rest === 10 || rest === 11) rest = 0
+  return rest === parseInt(clean.substring(10, 11))
 }
 
 // Formatação do Telefone: (11) 9****-1234
@@ -334,9 +354,32 @@ export default function KanbanPage() {
 
     try {
       let foundCpf: string | null = null
+      const last8 = digits.length >= 8 ? digits.slice(-8) : digits
+      const last9 = digits.length >= 9 ? digits.slice(-9) : digits
 
-      // 1. Se foram digitados exatamente 11 dígitos, verifica primeiro como CPF direto na base de clientes
-      if (digits.length === 11) {
+      // 1. Buscar primeiramente nos cards já carregados em memória no Kanban (inclui todos os telefones de cada lead)
+      const ticketMatch = tickets.find(t => {
+        const cleanTicketCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+        if (digits && cleanTicketCpf === digits) return true
+        const allPhones = [
+          t.cliente_telefone,
+          t.cliente_telefone_2,
+          t.cliente_telefone_3,
+          ...(t.telefones || [])
+        ].map(p => (p || "").replace(/\D/g, "")).filter(Boolean)
+        return allPhones.some(p => {
+          if (p === digits) return true
+          if (digits.length >= 8 && (p.endsWith(digits) || digits.endsWith(p) || p.slice(-8) === last8)) return true
+          return false
+        })
+      })
+
+      if (ticketMatch?.cliente_cpf) {
+        foundCpf = ticketMatch.cliente_cpf
+      }
+
+      // 2. Se foram digitados exatamente 11 dígitos que correspondem a um CPF válido, verifica na tabela de clientes
+      if (!foundCpf && digits.length === 11 && isValidCPF(digits)) {
         const { data: directClient } = await supabase
           .from("clientes")
           .select("cpf")
@@ -348,13 +391,12 @@ export default function KanbanPage() {
         }
       }
 
-      // 2. Se não encontrou ou a busca foi por número de telefone (>= 8 dígitos)
+      // 3. Se não encontrou ou a busca foi por número de telefone (>= 8 dígitos), busca em clientes por telefone
       if (!foundCpf && digits.length >= 8) {
-        // Busca em clientes por telefone
         const { data: cByTel } = await supabase
           .from("clientes")
           .select("cpf")
-          .or(`telefone_1.ilike.%${digits}%,telefone_2.ilike.%${digits}%,telefone_3.ilike.%${digits}%`)
+          .or(`telefone_1.ilike.%${last8}%,telefone_2.ilike.%${last8}%,telefone_3.ilike.%${last8}%`)
           .limit(1)
 
         if (cByTel && cByTel.length > 0 && cByTel[0]?.cpf) {
@@ -362,26 +404,40 @@ export default function KanbanPage() {
         }
       }
 
-      // 3. Busca por telefone ou CPF em kanban_fichas
+      // 4. Busca por telefone ou CPF em kanban_fichas no Supabase (incluindo metadados de telefones múltiplos)
       if (!foundCpf) {
         const { data: fByTel } = await supabase
           .from("kanban_fichas")
-          .select("cliente_cpf")
-          .or(`cliente_telefone.ilike.%${digits}%,cliente_cpf.ilike.%${digits}%`)
+          .select("cliente_cpf, cliente_telefone, metadata")
+          .or(`cliente_telefone.ilike.%${last8}%,cliente_cpf.ilike.%${digits}%`)
           .not("cliente_cpf", "is", null)
-          .limit(1)
+          .limit(5)
 
         if (fByTel && fByTel.length > 0 && fByTel[0]?.cliente_cpf) {
           foundCpf = fByTel[0].cliente_cpf
         }
+
+        // Se não achou na coluna direta, busca dentro do array metadata.telefones
+        if (!foundCpf && digits.length >= 8) {
+          const { data: fByMeta } = await supabase
+            .from("kanban_fichas")
+            .select("cliente_cpf, metadata")
+            .or(`metadata.cs.{"telefones":["${digits}"]},metadata.cs.{"telefones":["${last9}"]}`)
+            .not("cliente_cpf", "is", null)
+            .limit(1)
+
+          if (fByMeta && fByMeta.length > 0 && fByMeta[0]?.cliente_cpf) {
+            foundCpf = fByMeta[0].cliente_cpf
+          }
+        }
       }
 
-      // 4. Busca por telefone ou CPF em chamados
+      // 5. Busca por telefone ou CPF em chamados
       if (!foundCpf) {
         const { data: chByTel } = await supabase
           .from("chamados")
           .select("cliente_cpf")
-          .or(`cliente_telefone.ilike.%${digits}%,cliente_cpf.ilike.%${digits}%`)
+          .or(`cliente_telefone.ilike.%${last8}%,cliente_telefone_2.ilike.%${last8}%,cliente_telefone_3.ilike.%${last8}%,cliente_cpf.ilike.%${digits}%`)
           .not("cliente_cpf", "is", null)
           .limit(1)
 
@@ -390,9 +446,9 @@ export default function KanbanPage() {
         }
       }
 
-      // 5. Se digitou 11 dígitos e não foi achado nas tabelas simples, repassa o CPF para o ClientDetailsModal
-      // (que busca de forma completa em todos os 17 convênios suportados)
-      if (!foundCpf && digits.length === 11) {
+      // 6. Se digitou 11 dígitos e é estritamente um CPF VÁLIDO (não um número de telefone celular com DDD),
+      // repassa o CPF para o ClientDetailsModal (que busca de forma completa em todos os 17 convênios suportados)
+      if (!foundCpf && digits.length === 11 && isValidCPF(digits)) {
         foundCpf = digits
       }
 
@@ -407,11 +463,18 @@ export default function KanbanPage() {
       // Verificar se o lead já está no pipeline (em alguma das colunas do Kanban e não em gavetas)
       const { data: existingInPipeline } = await supabase
         .from("kanban_fichas")
-        .select("cliente_nome, cliente_cpf, etapa, operador_nome, motivo_perda, metadata")
+        .select("cliente_nome, cliente_cpf, cliente_telefone, etapa, operador_nome, motivo_perda, metadata")
         .eq("cliente_cpf", cleanCpf)
         .maybeSingle()
 
-      let pipelineLead: { cliente_nome: string; cliente_cpf: string; etapa: string; operador_nome: string } | null = null
+      let pipelineLead: { 
+        cliente_nome: string
+        cliente_cpf: string
+        cliente_telefone?: string
+        telefones?: string[]
+        etapa: string
+        operador_nome: string 
+      } | null = null
 
       if (existingInPipeline) {
         const meta = (existingInPipeline.metadata && typeof existingInPipeline.metadata === "object") ? existingInPipeline.metadata : {}
@@ -421,9 +484,19 @@ export default function KanbanPage() {
           existingInPipeline.motivo_perda === "Whatsapp Divergente"
         )
         if (!isDrawer) {
+          const rawPhones = [
+            existingInPipeline.cliente_telefone,
+            meta.cliente_telefone,
+            meta.cliente_telefone_2,
+            meta.cliente_telefone_3,
+            ...(Array.isArray(meta.telefones) ? meta.telefones.map((t: any) => typeof t === "string" ? t : t?.numero) : [])
+          ].filter(Boolean) as string[]
+
           pipelineLead = {
             cliente_nome: existingInPipeline.cliente_nome || "Cliente sem Nome",
             cliente_cpf: cleanCpf,
+            cliente_telefone: existingInPipeline.cliente_telefone || "",
+            telefones: Array.from(new Set(rawPhones.map(p => p.trim()).filter(Boolean))),
             etapa: existingInPipeline.etapa || "EM ABORDAGEM",
             operador_nome: existingInPipeline.operador_nome || "Corretor"
           }
@@ -444,11 +517,46 @@ export default function KanbanPage() {
           return !inDrawer
         })
         if (localTicket) {
+          const rawPhones = [
+            localTicket.cliente_telefone,
+            localTicket.cliente_telefone_2,
+            localTicket.cliente_telefone_3,
+            ...(localTicket.telefones || [])
+          ].filter(Boolean) as string[]
+
           pipelineLead = {
             cliente_nome: localTicket.cliente_nome || "Cliente sem Nome",
             cliente_cpf: cleanCpf,
+            cliente_telefone: localTicket.cliente_telefone || "",
+            telefones: Array.from(new Set(rawPhones.map(p => p.trim()).filter(Boolean))),
             etapa: localTicket.status || "EM ABORDAGEM",
             operador_nome: localTicket.corretor_nome || localTicket.user_nome || "Corretor"
+          }
+        }
+      }
+
+      // Complementar telefones se estiver vazio ou buscar de chamados
+      if (pipelineLead) {
+        const localT = tickets.find(t => (t.cliente_cpf || "").replace(/\D/g, "") === cleanCpf)
+        if (localT) {
+          const morePhones = [
+            localT.cliente_telefone, 
+            localT.cliente_telefone_2, 
+            localT.cliente_telefone_3,
+            ...(localT.telefones || [])
+          ].filter(Boolean) as string[]
+          pipelineLead.telefones = Array.from(new Set([...(pipelineLead.telefones || []), ...morePhones]))
+        }
+        if (!pipelineLead.telefones || pipelineLead.telefones.length === 0) {
+          const { data: ch } = await supabase
+            .from("chamados")
+            .select("cliente_telefone, cliente_telefone_2, cliente_telefone_3")
+            .eq("cliente_cpf", cleanCpf)
+            .limit(1)
+          if (ch && ch[0]) {
+            const list = [ch[0].cliente_telefone, ch[0].cliente_telefone_2, ch[0].cliente_telefone_3].filter(Boolean) as string[]
+            pipelineLead.telefones = Array.from(new Set(list))
+            pipelineLead.cliente_telefone = list[0] || ""
           }
         }
       }
@@ -476,6 +584,8 @@ export default function KanbanPage() {
   const [leadEmAtendimentoInfo, setLeadEmAtendimentoInfo] = useState<{
     cliente_nome: string
     cliente_cpf: string
+    cliente_telefone?: string
+    telefones?: string[]
     etapa: string
     operador_nome: string
   } | null>(null)
@@ -606,15 +716,30 @@ export default function KanbanPage() {
         meta.vencimento_acao = meta.vencimento_acao || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
         meta.prioridade = meta.prioridade || "NORMAL"
 
+        const rawPhones = [
+          f.cliente_telefone,
+          f.cliente_telefone_2,
+          f.cliente_telefone_3,
+          meta.cliente_telefone,
+          meta.cliente_telefone_2,
+          meta.cliente_telefone_3,
+          ...(Array.isArray(meta.telefones) ? meta.telefones.map((t: any) => typeof t === "string" ? t : t?.numero) : [])
+        ].filter(Boolean) as string[]
+        const uniquePhones = Array.from(new Set(rawPhones.map(p => p.trim()).filter(Boolean)))
+
         return {
           id: String(f.id),
           status: isDrawer ? drawerStatus : (f.etapa || "EM ABORDAGEM"),
           origem: "KANBAN",
           cliente_nome: f.cliente_nome || "Cliente sem Nome",
           cliente_cpf: f.cliente_cpf || "",
-          cliente_telefone: f.cliente_telefone || "",
-          cliente_telefone_2: f.cliente_telefone_2 || undefined,
-          cliente_telefone_3: f.cliente_telefone_3 || undefined,
+          cliente_telefone: uniquePhones[0] || f.cliente_telefone || "",
+          cliente_telefone_2: uniquePhones[1] || f.cliente_telefone_2 || undefined,
+          cliente_telefone_3: uniquePhones[2] || f.cliente_telefone_3 || undefined,
+          telefones: uniquePhones,
+          telefones_selecionados: Array.isArray(meta.telefones_selecionados) 
+            ? meta.telefones_selecionados 
+            : (Array.isArray(f.telefones_selecionados) ? f.telefones_selecionados : undefined),
           margem: f.margem_disponivel ? Number(f.margem_disponivel) : undefined,
           valor_operacao: f.valor_solicitado ? Number(f.valor_solicitado) : undefined,
           convenio: f.convenio || undefined,
@@ -773,6 +898,14 @@ export default function KanbanPage() {
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text)
     toast.success(`${label} copiado com sucesso!`)
+  }
+
+  // Toggle revelação geral dos dados mascarados do card (CPF e Telefones juntos)
+  const toggleRevealCard = (ticketId: string) => {
+    const isCurrentlyRevealed = Boolean(revealedCpfs[ticketId] || revealedPhones[ticketId])
+    const nextVal = !isCurrentlyRevealed
+    setRevealedCpfs(prev => ({ ...prev, [ticketId]: nextVal }))
+    setRevealedPhones(prev => ({ ...prev, [ticketId]: nextVal }))
   }
 
   // Toggle revelação do CPF
@@ -1396,7 +1529,8 @@ export default function KanbanPage() {
             ...(existing.metadata || {}),
             kanban_stage: "EM ABORDAGEM",
             proxima_acao: "Realizar Primeiro Contato Imediato",
-            telefones: clientInfo.telefones
+            telefones: clientInfo.telefones,
+            telefones_selecionados: clientInfo.telefones_selecionados || (existing.metadata as any)?.telefones_selecionados || []
           }
           delete (updatedMeta as any).tabulacao_whatsapp
 
@@ -1425,7 +1559,8 @@ export default function KanbanPage() {
             prioridade: "NORMAL",
             user_id: user?.id,
             user_nome: perfil?.nome || "Corretor",
-            telefones: clientInfo.telefones
+            telefones: clientInfo.telefones,
+            telefones_selecionados: clientInfo.telefones_selecionados || []
           }
           delete (meta as any).tabulacao_whatsapp
 
@@ -1494,7 +1629,8 @@ export default function KanbanPage() {
         const updatedMeta = {
           ...(existing.metadata || {}),
           tabulacao_whatsapp: drawerType,
-          telefones: clientInfo.telefones
+          telefones: clientInfo.telefones,
+          telefones_selecionados: clientInfo.telefones_selecionados || (existing.metadata as any)?.telefones_selecionados || []
         }
         const { error: updateErr } = await supabase
           .from("kanban_fichas")
@@ -1516,6 +1652,7 @@ export default function KanbanPage() {
           kanban_stage: drawerLabel === "Não Existe Whatsapp" ? "NÃO EXISTE WHATSAPP" : "WHATSAPP DIVERGENTE",
           tabulacao_whatsapp: drawerType,
           telefones: clientInfo.telefones,
+          telefones_selecionados: clientInfo.telefones_selecionados || [],
           user_id: user?.id,
           user_nome: perfil?.nome || "Corretor"
         }
@@ -1547,7 +1684,7 @@ export default function KanbanPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#FDFDFD]">
+    <div className="flex flex-col h-screen min-h-screen bg-[#FDFDFD]">
       <Header hideQuickLinks>
         <div className="relative w-full max-w-[510px] sm:max-w-[630px] md:max-w-[720px]">
           <Input 
@@ -1683,7 +1820,7 @@ export default function KanbanPage() {
         </div>
 
         {/* Card Principal do Kanban (Filtros e 7 Colunas) */}
-        <Card className="card-shadow bg-white border border-slate-200 rounded-2xl overflow-hidden flex-1 flex flex-col min-h-0">
+        <Card className="card-shadow bg-white border border-slate-200 rounded-2xl overflow-hidden flex-1 max-h-[95%] flex flex-col min-h-0">
           <CardContent className="p-3 sm:p-5 flex-1 flex flex-col overflow-hidden min-h-0 space-y-4">
             {/* Barra de Filtros */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100 shadow-xs shrink-0">
@@ -1810,8 +1947,9 @@ export default function KanbanPage() {
                       colTickets.map(ticket => {
                         const meta = parseMetadata(ticket.descricao)
                         const valorTotal = Number(ticket.valor_operacao || ticket.margem || 0)
-                        const isCpfRevealed = Boolean(revealedCpfs[ticket.id])
-                        const isPhoneRevealed = Boolean(revealedPhones[ticket.id])
+                        const isCardRevealed = Boolean(revealedCpfs[ticket.id] || revealedPhones[ticket.id])
+                        const isCpfRevealed = isCardRevealed
+                        const isPhoneRevealed = isCardRevealed
 
                         // Identificar se há alerta de alto valor (> 20k ou > 50k)
                         const isAltoValor = valorTotal >= 20000
@@ -1882,9 +2020,22 @@ export default function KanbanPage() {
 
                             {/* 2. Dados Principais do Cliente */}
                             <div className="space-y-0.5">
-                              <h3 className="text-xs font-bold text-slate-900 tracking-tight line-clamp-1 group-hover:text-sky-600 transition-colors">
-                                {ticket.cliente_nome || "Nome não informado"}
-                              </h3>
+                              <div className="flex items-center gap-1.5">
+                                <h3 className="text-xs font-bold text-slate-900 tracking-tight line-clamp-1 group-hover:text-sky-600 transition-colors">
+                                  {ticket.cliente_nome || "Nome não informado"}
+                                </h3>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    toggleRevealCard(ticket.id)
+                                  }}
+                                  className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer shrink-0 transition-colors"
+                                  title={isCardRevealed ? "Ocultar dados" : "Revelar dados"}
+                                >
+                                  {isCardRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                </button>
+                              </div>
 
                               <div className="flex items-center gap-1 text-[11px] text-slate-500">
                                 <span>CPF:</span>
@@ -1901,48 +2052,71 @@ export default function KanbanPage() {
                                   )}
                                   title={ticket.cliente_cpf ? "Clique para copiar CPF" : undefined}
                                 >
-                                  {isCpfRevealed ? (ticket.cliente_cpf || "---") : maskCpf(ticket.cliente_cpf)}
+                                  {isCardRevealed ? (ticket.cliente_cpf || "---") : maskCpf(ticket.cliente_cpf)}
                                 </span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    toggleRevealCpf(ticket.id)
-                                  }}
-                                  className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                                  title={isCpfRevealed ? "Ocultar CPF" : "Revelar CPF"}
-                                >
-                                  {isCpfRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                </button>
                               </div>
 
-                              <div className="flex items-center gap-1 text-[11px] text-slate-500">
-                                <span>Tel:</span>
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    if (ticket.cliente_telefone) {
-                                      handleCopy(ticket.cliente_telefone, "Telefone")
-                                    }
-                                  }}
-                                  className={cn(
-                                    "font-mono font-medium text-slate-700 whitespace-nowrap transition-colors",
-                                    ticket.cliente_telefone && "cursor-pointer hover:text-blue-600"
-                                  )}
-                                  title={ticket.cliente_telefone ? "Clique para copiar Telefone" : undefined}
-                                >
-                                  {isPhoneRevealed ? (formatPhone(ticket.cliente_telefone) || "---") : maskPhone(ticket.cliente_telefone)}
-                                </span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    toggleRevealPhone(ticket.id)
-                                  }}
-                                  className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                                  title={isPhoneRevealed ? "Ocultar Telefone" : "Revelar Telefone"}
-                                >
-                                  {isPhoneRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                </button>
-                              </div>
+                              {/* TELEFONES DO LEAD */}
+                              {(() => {
+                                const allPhones = Array.from(new Set([
+                                  ticket.cliente_telefone,
+                                  ticket.cliente_telefone_2,
+                                  ticket.cliente_telefone_3,
+                                  ...(ticket.telefones || [])
+                                ].filter(Boolean) as string[]))
+
+                                const meta = parseMetadata(ticket.descricao)
+                                const selected = (ticket.telefones_selecionados && ticket.telefones_selecionados.length > 0)
+                                  ? ticket.telefones_selecionados
+                                  : (Array.isArray(meta.telefones_selecionados) && meta.telefones_selecionados.length > 0)
+                                    ? meta.telefones_selecionados
+                                    : []
+
+                                // Somente os telefones selecionados devem ser mostrados. Se não for selecionado, não mostra.
+                                if (selected.length === 0) {
+                                  return null
+                                }
+
+                                const filtered = allPhones.filter(phone => {
+                                  const cleanPhone = phone.replace(/\D/g, "")
+                                  return selected.some(sp => {
+                                    const cleanSp = sp.replace(/\D/g, "")
+                                    return cleanSp === cleanPhone || (cleanPhone.length >= 8 && cleanSp.slice(-8) === cleanPhone.slice(-8))
+                                  })
+                                })
+                                const cardPhones = filtered.length > 0 ? filtered : selected
+
+                                if (cardPhones.length === 0) {
+                                  return null
+                                }
+
+                                return (
+                                  <div className="flex flex-col gap-0.5 text-[11px] text-slate-500">
+                                    {cardPhones.map((phone, pIdx) => (
+                                      <div key={pIdx} className="flex items-center gap-1">
+                                        <span className="text-[10px] text-slate-400 font-semibold">
+                                          {cardPhones.length > 1 ? `Tel ${pIdx + 1}:` : "Tel:"}
+                                        </span>
+                                        <span
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            if (phone) {
+                                              handleCopy(phone, "Telefone")
+                                            }
+                                          }}
+                                          className={cn(
+                                            "font-mono font-medium text-slate-700 whitespace-nowrap transition-colors",
+                                            phone && "cursor-pointer hover:text-blue-600"
+                                          )}
+                                          title={phone ? "Clique para copiar Telefone" : undefined}
+                                        >
+                                          {isCardRevealed ? (formatPhone(phone) || "---") : maskPhone(phone)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )
+                              })()}
                             </div>
 
                             {/* 3. Informações Comerciais e de Titularidade */}
@@ -2043,76 +2217,92 @@ export default function KanbanPage() {
           <div className="bg-[#FAFAFA] rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-slate-800">
             {/* Cabeçalho da Modal */}
             <div className="px-4 pb-4 pt-8 bg-[#FFFFFF] border-b border-slate-200 flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                {/* NOME DO CLIENTE */}
-                <h2 className="text-base font-bold text-slate-900 tracking-tight leading-snug">
-                  {atendimentoModalTicket.cliente_nome || "Nome não informado"}
-                </h2>
+              <div className="flex items-start gap-3">
+                <div className="h-9 w-9 rounded-lg bg-sky-500 text-white flex items-center justify-center font-bold text-xs shadow-xs mt-0.5 shrink-0">
+                  <User className="w-4 h-4 text-white" />
+                </div>
+                <div className="space-y-1">
+                  {/* NOME DO CLIENTE */}
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-slate-900 tracking-tight leading-snug">
+                      {atendimentoModalTicket.cliente_nome || "Nome não informado"}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => toggleRevealCard(atendimentoModalTicket.id)}
+                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors"
+                      title={revealedCpfs[atendimentoModalTicket.id] || revealedPhones[atendimentoModalTicket.id] ? "Ocultar dados" : "Revelar dados"}
+                    >
+                      {revealedCpfs[atendimentoModalTicket.id] || revealedPhones[atendimentoModalTicket.id] ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
 
                   {/* CPF */}
                   <div className="flex items-center gap-1.5 text-xs text-slate-600">
                     <span className="font-semibold text-slate-500">CPF:</span>
-                    <span className="font-mono text-slate-800 font-medium">
-                      {revealedCpfs[atendimentoModalTicket.id]
+                    <span
+                      onClick={() => atendimentoModalTicket.cliente_cpf && handleCopy(atendimentoModalTicket.cliente_cpf, "CPF")}
+                      className={cn(
+                        "font-mono font-medium text-slate-800 transition-colors",
+                        atendimentoModalTicket.cliente_cpf && "cursor-pointer hover:text-indigo-600"
+                      )}
+                      title={atendimentoModalTicket.cliente_cpf ? "Clique para copiar CPF" : undefined}
+                    >
+                      {revealedCpfs[atendimentoModalTicket.id] || revealedPhones[atendimentoModalTicket.id]
                         ? (atendimentoModalTicket.cliente_cpf || "---")
                         : maskCpf(atendimentoModalTicket.cliente_cpf)}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => toggleRevealCpf(atendimentoModalTicket.id)}
-                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors"
-                      title={revealedCpfs[atendimentoModalTicket.id] ? "Ocultar CPF" : "Revelar CPF"}
-                    >
-                      {revealedCpfs[atendimentoModalTicket.id] ? (
-                        <EyeOff className="w-3.5 h-3.5" />
-                      ) : (
-                        <Eye className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-                    {atendimentoModalTicket.cliente_cpf && (
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(atendimentoModalTicket.cliente_cpf, "CPF")}
-                        className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors"
-                        title="Copiar CPF"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    )}
                   </div>
 
-                  {/* TELEFONE */}
-                  <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                    <span className="font-semibold text-slate-500">Telefone:</span>
-                    <span className="font-mono text-slate-800 font-medium">
-                      {revealedPhones[atendimentoModalTicket.id]
-                        ? (formatPhone(atendimentoModalTicket.cliente_telefone) || "---")
-                        : maskPhone(atendimentoModalTicket.cliente_telefone)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => toggleRevealPhone(atendimentoModalTicket.id)}
-                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors"
-                      title={revealedPhones[atendimentoModalTicket.id] ? "Ocultar Telefone" : "Revelar Telefone"}
-                    >
-                      {revealedPhones[atendimentoModalTicket.id] ? (
-                        <EyeOff className="w-3.5 h-3.5" />
-                      ) : (
-                        <Eye className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-                    {atendimentoModalTicket.cliente_telefone && (
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(atendimentoModalTicket.cliente_telefone, "Telefone")}
-                        className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors"
-                        title="Copiar Telefone"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
+                  {/* TELEFONES */}
+                  {(() => {
+                    const isRevealed = Boolean(revealedCpfs[atendimentoModalTicket.id] || revealedPhones[atendimentoModalTicket.id])
+                    const modalPhones = Array.from(new Set([
+                      ...(atendimentoModalTicket.telefones || []),
+                      atendimentoModalTicket.cliente_telefone,
+                      atendimentoModalTicket.cliente_telefone_2,
+                      atendimentoModalTicket.cliente_telefone_3,
+                    ].filter(Boolean) as string[]))
+
+                    if (modalPhones.length === 0) {
+                      return (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <span className="text-[10px] text-slate-400 font-semibold select-none">Tel 1:</span>
+                          <span className="font-mono text-slate-800 font-medium">---</span>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        {modalPhones.map((tel, idx) => (
+                          <div key={idx} className="flex items-center gap-1.5 text-xs text-slate-600">
+                            <span className="text-[10px] text-slate-400 font-semibold select-none">
+                              {`Tel ${idx + 1}:`}
+                            </span>
+                            <span
+                              onClick={() => tel && handleCopy(tel, "Telefone")}
+                              className={cn(
+                                "font-mono font-medium text-slate-800 transition-colors",
+                                tel && "cursor-pointer hover:text-indigo-600"
+                              )}
+                              title={tel ? "Clique para copiar Telefone" : undefined}
+                            >
+                              {isRevealed
+                                ? (formatPhone(tel) || "---")
+                                : maskPhone(tel)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()}
                 </div>
+              </div>
               <div className="flex items-center gap-2">
                 {isGestor && (
                   <Button
@@ -2124,16 +2314,17 @@ export default function KanbanPage() {
                       setAtendimentoModalTicket(null)
                       setSupervisaoModalTicket(t)
                     }}
-                    className="text-xs h-7 bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 gap-1"
+                    className="text-xs h-7 bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 gap-1 cursor-pointer"
                   >
                     <ShieldAlert className="w-3.5 h-3.5" />
                     Painel de Gestão
                   </Button>
                 )}
+
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"
+                  className="h-8 w-8 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
                   onClick={() => setAtendimentoModalTicket(null)}
                 >
                   <X className="w-4 h-4" />
@@ -2144,7 +2335,7 @@ export default function KanbanPage() {
             {/* Conteúdo Principal */}
             <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#FAFAFA] text-slate-800">
               {/* Informações Resumidas do Cliente */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
                 <div>
                   <span className="text-slate-500 block text-[10px]">Telefone Principal</span>
                   <span className="font-semibold text-slate-800">{atendimentoModalTicket.cliente_telefone || "Sem telefone"}</span>
@@ -2157,12 +2348,6 @@ export default function KanbanPage() {
                   <span className="text-slate-500 block text-[10px]">Valor da Operação</span>
                   <span className="font-bold text-emerald-600">
                     {Number(atendimentoModalTicket.valor_operacao || atendimentoModalTicket.margem || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[10px]">Etapa Atual</span>
-                  <span className="font-bold text-sky-700">
-                    {inferKanbanStage(atendimentoModalTicket, parseMetadata(atendimentoModalTicket.descricao))}
                   </span>
                 </div>
               </div>
@@ -2285,11 +2470,18 @@ export default function KanbanPage() {
             </div>
 
             {/* Rodapé da Modal */}
-            <div className="px-3 pt-3 pb-6 bg-white border-t border-slate-200 flex justify-end gap-2">
+            <div className="px-4 py-3 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Etapa Atual:</span>
+                <span className="inline-flex items-center font-bold text-sky-700 bg-sky-50 border border-sky-200/80 px-2.5 py-1 rounded-md text-xs">
+                  {inferKanbanStage(atendimentoModalTicket, parseMetadata(atendimentoModalTicket.descricao))}
+                </span>
+              </div>
+
               <Button
                 variant="outline"
                 size="sm"
-                className="h-[38px] px-4 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 hover:text-slate-900"
+                className="h-8 text-xs font-bold px-4 cursor-pointer"
                 onClick={() => setAtendimentoModalTicket(null)}
               >
                 Fechar
@@ -2492,11 +2684,11 @@ export default function KanbanPage() {
             </div>
 
             {/* Rodapé da Modal */}
-            <div className="px-3 pt-3 pb-6 bg-white border-t border-slate-200 flex justify-end gap-2">
+            <div className="px-4 py-3 bg-slate-50/50 border-t border-slate-200 flex justify-end gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="h-[38px] px-4 text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 hover:text-slate-900"
+                className="h-8 text-xs font-bold px-4 cursor-pointer"
                 onClick={() => setSupervisaoModalTicket(null)}
               >
                 Fechar
@@ -2911,7 +3103,7 @@ export default function KanbanPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setSelectedDrawer(null)}
-                className="h-8 text-xs font-bold uppercase tracking-wider cursor-pointer"
+                className="h-8 text-xs font-bold px-4 cursor-pointer"
               >
                 Fechar
               </Button>
@@ -2930,6 +3122,19 @@ export default function KanbanPage() {
             setSelectedClientCpf("")
           }}
           onSelectTabulacao={handleTabulacaoFromModal}
+          onTelefonesSelecionadosChange={(cpf, selected) => {
+            const cleanCpf = cpf.replace(/\D/g, "")
+            setTickets(prev => prev.map(t => {
+              const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+              if (tCpf === cleanCpf || (cleanCpf.length === 11 && tCpf.padStart(11, '0') === cleanCpf)) {
+                return {
+                  ...t,
+                  telefones_selecionados: selected
+                }
+              }
+              return t
+            }))
+          }}
         />
       )}
 
@@ -3002,14 +3207,49 @@ export default function KanbanPage() {
                 <div className="bg-slate-50 rounded-xl border border-slate-200/80 p-4 space-y-3">
                   <div>
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Cliente</span>
-                    <p className="text-sm font-bold text-slate-900 uppercase">
+                    <p 
+                      onClick={() => handleCopy(leadEmAtendimentoInfo.cliente_nome || "", "Nome do cliente")}
+                      className="text-sm font-bold text-slate-900 uppercase cursor-pointer hover:text-indigo-600 transition-colors"
+                      title="Clique para copiar o nome"
+                    >
                       {leadEmAtendimentoInfo.cliente_nome || "Cliente sem Nome"}
                     </p>
-                    <p className="text-xs font-mono text-slate-600 font-semibold mt-0.5">
+                    <p 
+                      onClick={() => handleCopy(leadEmAtendimentoInfo.cliente_cpf, "CPF")}
+                      className="text-xs font-mono text-slate-600 font-semibold mt-0.5 cursor-pointer hover:text-indigo-600 transition-colors"
+                      title="Clique para copiar o CPF"
+                    >
                       CPF: {leadEmAtendimentoInfo.cliente_cpf.length === 11 
                         ? `${leadEmAtendimentoInfo.cliente_cpf.slice(0, 3)}.${leadEmAtendimentoInfo.cliente_cpf.slice(3, 6)}.${leadEmAtendimentoInfo.cliente_cpf.slice(6, 9)}-${leadEmAtendimentoInfo.cliente_cpf.slice(9, 11)}`
                         : leadEmAtendimentoInfo.cliente_cpf}
                     </p>
+                    {(() => {
+                      const modalPhones = Array.from(new Set([
+                        ...(leadEmAtendimentoInfo.telefones || []),
+                        leadEmAtendimentoInfo.cliente_telefone
+                      ].filter(Boolean) as string[]))
+
+                      if (modalPhones.length === 0) return null
+
+                      return (
+                        <div className="mt-1.5 flex flex-col gap-1">
+                          {modalPhones.map((tel, idx) => (
+                            <div key={idx} className="flex items-center gap-1.5 text-xs font-mono text-slate-600 font-semibold">
+                              <span className="text-[10px] text-slate-400 font-semibold select-none">
+                                {modalPhones.length > 1 ? `Tel ${idx + 1}:` : "Tel 1:"}
+                              </span>
+                              <span
+                                onClick={() => handleCopy(tel, "Telefone")}
+                                className="cursor-pointer hover:text-indigo-600 transition-colors"
+                                title="Clique para copiar o telefone"
+                              >
+                                {formatPhone(tel)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-slate-200/60">
@@ -3063,14 +3303,6 @@ export default function KanbanPage() {
               {/* Rodapé com Ações */}
               <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-2.5">
                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setLeadEmAtendimentoInfo(null)}
-                  className="h-8 text-xs font-bold px-4 cursor-pointer"
-                >
-                  Fechar
-                </Button>
-                <Button
                   size="sm"
                   onClick={() => {
                     const cpf = leadEmAtendimentoInfo.cliente_cpf
@@ -3080,7 +3312,15 @@ export default function KanbanPage() {
                   }}
                   className="h-8 text-xs font-bold px-4 bg-[#171717] hover:bg-[#171717]/90 text-white cursor-pointer"
                 >
-                  Visualizar Cadastro
+                  Informações sobre o Lead
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLeadEmAtendimentoInfo(null)}
+                  className="h-8 text-xs font-bold px-4 cursor-pointer"
+                >
+                  Fechar
                 </Button>
               </div>
             </DialogContent>
