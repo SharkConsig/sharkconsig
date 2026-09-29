@@ -183,6 +183,7 @@ interface TicketMetadata {
     motivo?: string
   }>
   tabulacao_whatsapp?: "NAO_EXISTE_WHATSAPP" | "WHATSAPP_DIVERGENTE" | null
+  tabulado_por?: string
   telefones_selecionados?: string[]
   selected_operation_type?: string
   enviado_para_corretor?: boolean
@@ -497,6 +498,7 @@ export default function KanbanPage() {
             cliente_cpf: cleanCpf,
             cliente_telefone: existingInPipeline.cliente_telefone || "",
             telefones: Array.from(new Set(rawPhones.map(p => p.trim()).filter(Boolean))),
+            telefones_selecionados: Array.isArray(meta.telefones_selecionados) ? meta.telefones_selecionados : undefined,
             etapa: existingInPipeline.etapa || "EM ABORDAGEM",
             operador_nome: existingInPipeline.operador_nome || "Corretor"
           }
@@ -524,11 +526,13 @@ export default function KanbanPage() {
             ...(localTicket.telefones || [])
           ].filter(Boolean) as string[]
 
+          const tMeta = parseMetadata(localTicket.descricao)
           pipelineLead = {
             cliente_nome: localTicket.cliente_nome || "Cliente sem Nome",
             cliente_cpf: cleanCpf,
             cliente_telefone: localTicket.cliente_telefone || "",
             telefones: Array.from(new Set(rawPhones.map(p => p.trim()).filter(Boolean))),
+            telefones_selecionados: localTicket.telefones_selecionados || (Array.isArray(tMeta.telefones_selecionados) ? tMeta.telefones_selecionados : undefined),
             etapa: localTicket.status || "EM ABORDAGEM",
             operador_nome: localTicket.corretor_nome || localTicket.user_nome || "Corretor"
           }
@@ -546,6 +550,9 @@ export default function KanbanPage() {
             ...(localT.telefones || [])
           ].filter(Boolean) as string[]
           pipelineLead.telefones = Array.from(new Set([...(pipelineLead.telefones || []), ...morePhones]))
+          if (!pipelineLead.telefones_selecionados && localT.telefones_selecionados) {
+            pipelineLead.telefones_selecionados = localT.telefones_selecionados
+          }
         }
         if (!pipelineLead.telefones || pipelineLead.telefones.length === 0) {
           const { data: ch } = await supabase
@@ -586,6 +593,7 @@ export default function KanbanPage() {
     cliente_cpf: string
     cliente_telefone?: string
     telefones?: string[]
+    telefones_selecionados?: string[]
     etapa: string
     operador_nome: string
   } | null>(null)
@@ -1429,7 +1437,8 @@ export default function KanbanPage() {
       const meta = parseMetadata(ticket.descricao)
       const updatedMeta: TicketMetadata = {
         ...meta,
-        tabulacao_whatsapp: drawerType === "NAO_EXISTE" ? "NAO_EXISTE_WHATSAPP" : "WHATSAPP_DIVERGENTE"
+        tabulacao_whatsapp: drawerType === "NAO_EXISTE" ? "NAO_EXISTE_WHATSAPP" : "WHATSAPP_DIVERGENTE",
+        tabulado_por: perfil?.nome || user?.email || "Corretor"
       }
       const newDesc = stringifyWithMetadata(ticket.descricao, updatedMeta)
 
@@ -1437,6 +1446,7 @@ export default function KanbanPage() {
         await supabase.from("kanban_fichas").update({
           etapa: "PERDIDO",
           motivo_perda: label,
+          operador_nome: perfil?.nome || ticket.user_nome || "Corretor",
           metadata: updatedMeta,
           updated_at: new Date().toISOString()
         }).eq("id", ticket.id)
@@ -1630,13 +1640,18 @@ export default function KanbanPage() {
           ...(existing.metadata || {}),
           tabulacao_whatsapp: drawerType,
           telefones: clientInfo.telefones,
-          telefones_selecionados: clientInfo.telefones_selecionados || (existing.metadata as any)?.telefones_selecionados || []
+          telefones_selecionados: clientInfo.telefones_selecionados || (existing.metadata as any)?.telefones_selecionados || [],
+          tabulado_por: perfil?.nome || user?.email || "Corretor",
+          user_id: validOperadorId || user?.id,
+          user_nome: perfil?.nome || "Corretor"
         }
         const { error: updateErr } = await supabase
           .from("kanban_fichas")
           .update({
             etapa: "PERDIDO",
             motivo_perda: drawerLabel,
+            operador_id: validOperadorId,
+            operador_nome: perfil?.nome || "Corretor",
             metadata: updatedMeta,
             updated_at: new Date().toISOString()
           })
@@ -1653,6 +1668,7 @@ export default function KanbanPage() {
           tabulacao_whatsapp: drawerType,
           telefones: clientInfo.telefones,
           telefones_selecionados: clientInfo.telefones_selecionados || [],
+          tabulado_por: perfil?.nome || user?.email || "Corretor",
           user_id: user?.id,
           user_nome: perfil?.nome || "Corretor"
         }
@@ -2261,20 +2277,36 @@ export default function KanbanPage() {
                   {/* TELEFONES */}
                   {(() => {
                     const isRevealed = Boolean(revealedCpfs[atendimentoModalTicket.id] || revealedPhones[atendimentoModalTicket.id])
-                    const modalPhones = Array.from(new Set([
+                    const allModalPhones = Array.from(new Set([
                       ...(atendimentoModalTicket.telefones || []),
                       atendimentoModalTicket.cliente_telefone,
                       atendimentoModalTicket.cliente_telefone_2,
                       atendimentoModalTicket.cliente_telefone_3,
                     ].filter(Boolean) as string[]))
 
+                    const meta = parseMetadata(atendimentoModalTicket.descricao)
+                    const selected = (atendimentoModalTicket.telefones_selecionados && atendimentoModalTicket.telefones_selecionados.length > 0)
+                      ? atendimentoModalTicket.telefones_selecionados
+                      : (Array.isArray(meta.telefones_selecionados) && meta.telefones_selecionados.length > 0)
+                        ? meta.telefones_selecionados
+                        : []
+
+                    // Somente os telefones selecionados devem ser mostrados. Se não for selecionado, não mostra.
+                    if (selected.length === 0) {
+                      return null
+                    }
+
+                    const filtered = allModalPhones.filter(phone => {
+                      const cleanPhone = phone.replace(/\D/g, "")
+                      return selected.some(sp => {
+                        const cleanSp = sp.replace(/\D/g, "")
+                        return cleanSp === cleanPhone || (cleanPhone.length >= 8 && cleanSp.slice(-8) === cleanPhone.slice(-8))
+                      })
+                    })
+                    const modalPhones = filtered.length > 0 ? filtered : selected
+
                     if (modalPhones.length === 0) {
-                      return (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                          <span className="text-[10px] text-slate-400 font-semibold select-none">Tel 1:</span>
-                          <span className="font-mono text-slate-800 font-medium">---</span>
-                        </div>
-                      )
+                      return null
                     }
 
                     return (
@@ -2282,7 +2314,7 @@ export default function KanbanPage() {
                         {modalPhones.map((tel, idx) => (
                           <div key={idx} className="flex items-center gap-1.5 text-xs text-slate-600">
                             <span className="text-[10px] text-slate-400 font-semibold select-none">
-                              {`Tel ${idx + 1}:`}
+                              {modalPhones.length > 1 ? `Tel ${idx + 1}:` : "Tel:"}
                             </span>
                             <span
                               onClick={() => tel && handleCopy(tel, "Telefone")}
@@ -2981,6 +3013,7 @@ export default function KanbanPage() {
                         <th className="px-6 py-3.5 font-black text-[#1C2643] uppercase tracking-widest text-[9.5px] w-48 whitespace-nowrap">CPF</th>
                         <th className="px-6 py-3.5 font-black text-[#1C2643] uppercase tracking-widest text-[9.5px]">NOME</th>
                         <th className="px-6 py-3.5 font-black text-[#1C2643] uppercase tracking-widest text-[9.5px] w-64 whitespace-nowrap">TELEFONES</th>
+                        <th className="px-6 py-3.5 font-black text-[#1C2643] uppercase tracking-widest text-[9.5px] w-48 whitespace-nowrap">TABULADO POR</th>
                         <th className="px-6 py-3.5 font-black text-[#1C2643] uppercase tracking-widest text-[9.5px] text-right w-48 whitespace-nowrap">AÇÕES</th>
                       </tr>
                     </thead>
@@ -3070,6 +3103,17 @@ export default function KanbanPage() {
                                   })}
                                 </div>
                               )}
+                            </td>
+
+                            {/* TABULADO POR */}
+                            <td className="px-6 py-4 align-top whitespace-nowrap">
+                              <span className="font-semibold text-slate-800 text-[11.5px] block truncate max-w-[180px]">
+                                {meta.tabulado_por || t.user_nome || meta.user_nome || meta.operador_nome || (
+                                  Array.isArray(meta.historico_kanban) && meta.historico_kanban.length > 0 
+                                    ? meta.historico_kanban[meta.historico_kanban.length - 1]?.autor 
+                                    : undefined
+                                ) || "Não informado"}
+                              </span>
                             </td>
 
                             {/* AÇÕES */}
@@ -3224,10 +3268,28 @@ export default function KanbanPage() {
                         : leadEmAtendimentoInfo.cliente_cpf}
                     </p>
                     {(() => {
-                      const modalPhones = Array.from(new Set([
+                      const allModalPhones = Array.from(new Set([
                         ...(leadEmAtendimentoInfo.telefones || []),
                         leadEmAtendimentoInfo.cliente_telefone
                       ].filter(Boolean) as string[]))
+
+                      const selected = (leadEmAtendimentoInfo.telefones_selecionados && leadEmAtendimentoInfo.telefones_selecionados.length > 0)
+                        ? leadEmAtendimentoInfo.telefones_selecionados
+                        : []
+
+                      // Somente os telefones selecionados devem ser mostrados. Se não for selecionado, não mostra.
+                      if (selected.length === 0) {
+                        return null
+                      }
+
+                      const filtered = allModalPhones.filter(phone => {
+                        const cleanPhone = phone.replace(/\D/g, "")
+                        return selected.some(sp => {
+                          const cleanSp = sp.replace(/\D/g, "")
+                          return cleanSp === cleanPhone || (cleanPhone.length >= 8 && cleanSp.slice(-8) === cleanPhone.slice(-8))
+                        })
+                      })
+                      const modalPhones = filtered.length > 0 ? filtered : selected
 
                       if (modalPhones.length === 0) return null
 
@@ -3236,7 +3298,7 @@ export default function KanbanPage() {
                           {modalPhones.map((tel, idx) => (
                             <div key={idx} className="flex items-center gap-1.5 text-xs font-mono text-slate-600 font-semibold">
                               <span className="text-[10px] text-slate-400 font-semibold select-none">
-                                {modalPhones.length > 1 ? `Tel ${idx + 1}:` : "Tel 1:"}
+                                {modalPhones.length > 1 ? `Tel ${idx + 1}:` : "Tel:"}
                               </span>
                               <span
                                 onClick={() => handleCopy(tel, "Telefone")}

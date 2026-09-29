@@ -174,6 +174,7 @@ interface User {
   nome: string;
   equipe: string;
   funcao: string;
+  status?: string;
   supervisor_id?: string;
   avatar_url?: string;
 }
@@ -1483,12 +1484,14 @@ export default function CampaignsPage() {
 
   const supervisors = allUsers.filter(u => {
     const f = (u.funcao || '').toLowerCase()
-    return f.includes('supervisor') || f.includes('administrador') || f.includes('admin')
+    const isActive = (u.status || 'ATIVO').toUpperCase() === 'ATIVO'
+    return isActive && (f.includes('supervisor') || f.includes('administrador') || f.includes('admin'))
   })
   const availableBrokers = allUsers.filter(u => {
     const f = (u.funcao || '').toLowerCase()
     const isBrokerRole = f.includes('corretor') || f.includes('estágio') || f.includes('estagio') || f.includes('processo seletivo') || f.includes('pj')
-    return isBrokerRole && (u.supervisor_id && selectedSupervisors.includes(u.supervisor_id))
+    const isActive = (u.status || 'ATIVO').toUpperCase() === 'ATIVO'
+    return isActive && isBrokerRole && (u.supervisor_id && selectedSupervisors.includes(u.supervisor_id))
   })
 
   return (
@@ -2096,7 +2099,7 @@ export default function CampaignsPage() {
                             
                             // Ao desmarcar um supervisor, remover corretores dele da seleção
                             if (isSelected) {
-                              const broksOfThisSup = allUsers.filter(u => u.supervisor_id === sup.id).map(u => u.id)
+                              const broksOfThisSup = allUsers.filter(u => u.supervisor_id === sup.id && (u.status || 'ATIVO').toUpperCase() === 'ATIVO').map(u => u.id)
                               setSelectedBrokers(curr => curr.filter(bid => !broksOfThisSup.includes(bid)))
                             }
                             

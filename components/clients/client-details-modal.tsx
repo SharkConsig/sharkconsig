@@ -1736,88 +1736,106 @@ export function ClientDetailsModal({
                               </div>
 
                               {/* Row 2: 5% RMC */}
-                              <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta 5%</p>
-                                <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(margemRmcBruta)}</p>
-                              </div>
-                              <div className={cn(
-                                "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
-                                getUtilizadaStatus(margemRmcBruta, margemRmcDisp) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                              )}>
-                                <p className={cn(
-                                  "text-[9px] font-bold uppercase tracking-widest",
-                                  getUtilizadaStatus(margemRmcBruta, margemRmcDisp) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
-                                )}>Utilizada 5%</p>
-                                <p className={cn(
-                                  "text-[17px] font-bold tracking-tight uppercase",
-                                  getUtilizadaStatus(margemRmcBruta, margemRmcDisp) === "SIM" ? "text-red-700" : "text-emerald-700"
-                                )}>
-                                  {getUtilizadaStatus(margemRmcBruta, margemRmcDisp)}
-                                </p>
-                              </div>
-                              <div className={cn(
-                                "p-3.5 border rounded-xl space-y-0.5",
-                                margemRmcDisp > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
-                              )}>
-                                <p className={cn(
-                                  "text-[9px] font-bold uppercase tracking-widest",
-                                  margemRmcDisp > 0 ? "text-emerald-700/60" : "text-red-700/60"
-                                )}>Líquida 5%</p>
-                                <div className="flex flex-col">
-                                  <p className={cn(
-                                    "text-[17px] font-bold tracking-tight",
-                                    margemRmcDisp > 0 ? "text-emerald-700" : "text-red-700"
-                                  )}>{formatCurrency(margemRmcDisp)}</p>
-                                  <div className="flex items-center gap-1.5">
-                                    <div className={cn("w-1.5 h-1.5 rounded-full", margemRmcDisp > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
-                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", margemRmcDisp > 0 ? "text-emerald-600" : "text-red-600")}>
-                                      {margemRmcDisp > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
+                              {(() => {
+                                const isRmcUtilizada = getUtilizadaStatus(margemRmcBruta, margemRmcDisp) === "SIM"
+                                const isRmcAvailable = isKanbanLeadModal ? (!isRmcUtilizada && margemRmcDisp > 0) : (margemRmcDisp > 0)
+
+                                return (
+                                  <>
+                                    <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Bruta 5%</p>
+                                      <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(margemRmcBruta)}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
+                                      isRmcUtilizada ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                    )}>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isRmcUtilizada ? "text-red-700/60" : "text-emerald-700/60"
+                                      )}>Utilizada 5%</p>
+                                      <p className={cn(
+                                        "text-[17px] font-bold tracking-tight uppercase",
+                                        isRmcUtilizada ? "text-red-700" : "text-emerald-700"
+                                      )}>
+                                        {getUtilizadaStatus(margemRmcBruta, margemRmcDisp)}
+                                      </p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      isRmcAvailable ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                    )}>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isRmcAvailable ? "text-emerald-700/60" : "text-red-700/60"
+                                      )}>Líquida 5%</p>
+                                      <div className="flex flex-col">
+                                        <p className={cn(
+                                          "text-[17px] font-bold tracking-tight",
+                                          isRmcAvailable ? "text-emerald-700" : "text-red-700"
+                                        )}>{formatCurrency(margemRmcDisp)}</p>
+                                        <div className="flex items-center gap-1.5">
+                                          <div className={cn("w-1.5 h-1.5 rounded-full", isRmcAvailable ? "bg-emerald-600" : "bg-red-600")}></div>
+                                          <span className={cn("text-[8px] font-bold uppercase tracking-widest", isRmcAvailable ? "text-emerald-600" : "text-red-600")}>
+                                            {isRmcAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </>
+                                )
+                              })()}
 
                               {/* Row 3: 5% RCC Benefício */}
-                              <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Benefício Bruta 5%</p>
-                                <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(margemRccBruta)}</p>
-                              </div>
-                              <div className={cn(
-                                "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
-                                getUtilizadaStatus(margemRccBruta, margemRccDisp) === "SIM" ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
-                              )}>
-                                <p className={cn(
-                                  "text-[9px] font-bold uppercase tracking-widest",
-                                  getUtilizadaStatus(margemRccBruta, margemRccDisp) === "SIM" ? "text-red-700/60" : "text-emerald-700/60"
-                                )}>Benefício Utilizada 5%</p>
-                                <p className={cn(
-                                  "text-[17px] font-bold tracking-tight uppercase",
-                                  getUtilizadaStatus(margemRccBruta, margemRccDisp) === "SIM" ? "text-red-700" : "text-emerald-700"
-                                )}>
-                                  {getUtilizadaStatus(margemRccBruta, margemRccDisp)}
-                                </p>
-                              </div>
-                              <div className={cn(
-                                "p-3.5 border rounded-xl space-y-0.5",
-                                margemRccDisp > 0 ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
-                              )}>
-                                <p className={cn(
-                                  "text-[9px] font-bold uppercase tracking-widest",
-                                  margemRccDisp > 0 ? "text-emerald-700/60" : "text-red-700/60"
-                                )}>Benefício Líquida 5%</p>
-                                <div className="flex flex-col">
-                                  <p className={cn(
-                                    "text-[17px] font-bold tracking-tight",
-                                    margemRccDisp > 0 ? "text-emerald-700" : "text-red-700"
-                                  )}>{formatCurrency(margemRccDisp)}</p>
-                                  <div className="flex items-center gap-1.5">
-                                    <div className={cn("w-1.5 h-1.5 rounded-full", margemRccDisp > 0 ? "bg-emerald-600" : "bg-red-600")}></div>
-                                    <span className={cn("text-[8px] font-bold uppercase tracking-widest", margemRccDisp > 0 ? "text-emerald-600" : "text-red-600")}>
-                                      {margemRccDisp > 0 ? "DISPONÍVEL" : "INDISPONÍVEL"}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
+                              {(() => {
+                                const isRccUtilizada = getUtilizadaStatus(margemRccBruta, margemRccDisp) === "SIM"
+                                const isRccAvailable = isKanbanLeadModal ? (!isRccUtilizada && margemRccDisp > 0) : (margemRccDisp > 0)
+
+                                return (
+                                  <>
+                                    <div className="p-3.5 bg-[#F1F5F9] border border-slate-200 rounded-xl space-y-0.5">
+                                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Benefício Bruta 5%</p>
+                                      <p className="text-[17px] font-bold text-slate-900 tracking-tight">{formatCurrency(margemRccBruta)}</p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5 transition-colors duration-200",
+                                      isRccUtilizada ? "bg-red-100/50 border-red-200" : "bg-emerald-100/50 border-emerald-200"
+                                    )}>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isRccUtilizada ? "text-red-700/60" : "text-emerald-700/60"
+                                      )}>Benefício Utilizada 5%</p>
+                                      <p className={cn(
+                                        "text-[17px] font-bold tracking-tight uppercase",
+                                        isRccUtilizada ? "text-red-700" : "text-emerald-700"
+                                      )}>
+                                        {getUtilizadaStatus(margemRccBruta, margemRccDisp)}
+                                      </p>
+                                    </div>
+                                    <div className={cn(
+                                      "p-3.5 border rounded-xl space-y-0.5",
+                                      isRccAvailable ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                    )}>
+                                      <p className={cn(
+                                        "text-[9px] font-bold uppercase tracking-widest",
+                                        isRccAvailable ? "text-emerald-700/60" : "text-red-700/60"
+                                      )}>Benefício Líquida 5%</p>
+                                      <div className="flex flex-col">
+                                        <p className={cn(
+                                          "text-[17px] font-bold tracking-tight",
+                                          isRccAvailable ? "text-emerald-700" : "text-red-700"
+                                        )}>{formatCurrency(margemRccDisp)}</p>
+                                        <div className="flex items-center gap-1.5">
+                                          <div className={cn("w-1.5 h-1.5 rounded-full", isRccAvailable ? "bg-emerald-600" : "bg-red-600")}></div>
+                                          <span className={cn("text-[8px] font-bold uppercase tracking-widest", isRccAvailable ? "text-emerald-600" : "text-red-600")}>
+                                            {isRccAvailable ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </>
+                                )
+                              })()}
                             </div>
 
                             {/* Contratos de Empréstimo */}
