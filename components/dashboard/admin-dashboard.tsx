@@ -298,9 +298,183 @@ export function AdminDashboard({
       setDashboardPeriod('mes')
     }
   }, [startDate, endDate, setStartDate, setEndDate])
-  const [activeTab, setActiveTab] = React.useState<'propostas' | 'chamados' | 'propostas_comerciais' | 'financeiro'>(
+  const [activeTab, setActiveTab] = React.useState<'propostas' | 'metas_supervisor' | 'chamados' | 'propostas_comerciais' | 'financeiro'>(
     onlyFinanceiro ? 'financeiro' : onlyPropostasComerciais ? 'propostas_comerciais' : 'propostas'
   )
+  const [supervisorData, setSupervisorData] = React.useState<{
+    user: any
+    supervisorsList: any[]
+    selectedSupervisorId: string
+    campaigns: any[]
+    goal: number
+    isLoading: boolean
+  }>({
+    user: null,
+    supervisorsList: [],
+    selectedSupervisorId: '',
+    campaigns: [],
+    goal: 448000,
+    isLoading: false
+  })
+
+  React.useEffect(() => {
+    let isMounted = true
+    async function loadSupervisorInfo() {
+      try {
+        setSupervisorData(prev => ({ ...prev, isLoading: true }))
+        const res = await fetch('/api/usuarios')
+        if (!res.ok) {
+          if (isMounted) setSupervisorData(prev => ({ ...prev, isLoading: false }))
+          return
+        }
+        const users = await res.json()
+        const sups = (users || []).filter((u: any) => 
+          (u.funcao || '').toLowerCase().includes('supervisor') || 
+          (u.role || '').toLowerCase().includes('supervisor')
+        )
+        const primarySup = sups[0] || (users || []).find((u: any) => (u.nome || '').toLowerCase().includes('nathali')) || null
+        
+        let supGoal = 448000
+        const now = new Date()
+        const currentYear = startDate ? new Date(startDate + 'T00:00:00').getFullYear() : now.getFullYear()
+        const currentMonth = startDate ? new Date(startDate + 'T00:00:00').getMonth() + 1 : now.getMonth() + 1
+
+        const { data: goalsConfigs } = await supabase
+          .from('metas_config')
+          .select('*')
+          .eq('ano', currentYear)
+          .eq('mes', currentMonth)
+
+        if (goalsConfigs && goalsConfigs.length > 0) {
+          const supGoalConfig = goalsConfigs.find((g: any) => g.tipo === 'time' && (g.alvo_id === primarySup?.id || !g.alvo_id))
+          if (supGoalConfig?.valor_mensal) {
+            supGoal = supGoalConfig.valor_mensal
+          }
+        }
+
+        // Fetch distributed campaigns
+        let camps: any[] = []
+        const { data: campaignData } = await supabase
+          .from('campanhas')
+          .select('*')
+          .order('created_at', { ascending: false })
+
+        if (campaignData) {
+          const supId = primarySup?.id
+          camps = campaignData.filter(c => {
+            const f = c.filtros
+            const distribution = f?.distribuicao || []
+            const brokers = f?.corretores_selecionados || []
+            const hasDist = (Array.isArray(distribution) && distribution.length > 0) || (Array.isArray(brokers) && brokers.length > 0)
+            if (!hasDist) return false
+            if (!supId) return true
+            const isSelectedSupervisor = Array.isArray(distribution) && distribution.includes(supId)
+            const isSelectedBroker = Array.isArray(brokers) && brokers.includes(supId)
+            return isSelectedSupervisor || isSelectedBroker || distribution.length > 0
+          }).slice(0, 3)
+        }
+
+        if (isMounted) {
+          setSupervisorData({
+            user: primarySup,
+            supervisorsList: sups,
+            selectedSupervisorId: primarySup?.id || '',
+            campaigns: camps,
+            goal: supGoal,
+            isLoading: false
+          })
+        }
+      } catch (err) {
+        console.error("Error loading supervisor info:", err)
+        if (isMounted) setSupervisorData(prev => ({ ...prev, isLoading: false }))
+      }
+    }
+
+    if (activeTab === 'metas_supervisor' && !supervisorData.user) {
+      loadSupervisorInfo()
+    }
+  }, [activeTab, startDate, supervisorData.user])
+
+  const currentSupervisor = supervisorData.user
+  const supervisorRankings = React.useMemo(() => {
+    if (!brokerRankings || brokerRankings.length === 0) return []
+    const supFirstName = (currentSupervisor?.nome || 'Nathali').trim().toLowerCase().split(' ')[0]
+
+    return brokerRankings.filter(b => {
+      const bSup = (b.supervisor || '').toLowerCase()
+      const bFunc = (b.funcao || '').toLowerCase()
+      if (bFunc === 'administrador' || bFunc === 'admin') return false
+      return bSup.includes(supFirstName) || b.corretor_id === currentSupervisor?.id || bSup === 'sharkconsig'
+    })
+  }, [brokerRankings, currentSupervisor])
+
+  const supMonthlyProduced = React.useMemo(() => {
+    return supervisorRankings.reduce((sum, r) => sum + (r.totalPaid || 0), 0)
+  }, [supervisorRankings])
+
+  const supDailyProduced = React.useMemo(() => {
+    return supervisorRankings.reduce((sum, r) => sum + (r.totalToday || 0), 0)
+  }, [supervisorRankings])
+
+  const supInProcessValue = React.useMemo(() => {
+    return supervisorRankings.reduce((sum, r) => sum + (r.totalInProcess || 0), 0)
+  }, [supervisorRankings])
+
+  const supInProcessCount = React.useMemo(() => {
+    return supervisorRankings.reduce((sum, r) => sum + (r.countInProcess || 0), 0)
+  }, [supervisorRankings])
+
+  const supDailyCreatedValue = React.useMemo(() => {
+    return supervisorRankings.reduce((sum, r) => sum + (r.totalToday || 0), 0)
+  }, [supervisorRankings])
+
+  const supDailyCreatedCount = React.useMemo(() => {
+    return supervisorRankings.reduce((sum, r) => sum + (r.countToday || 0), 0)
+  }, [supervisorRankings])
+
+  const supWeeklyCreatedValue = React.useMemo(() => {
+    return Math.round(supDailyCreatedValue * 3.5) || stats?.createdWeekValue || 0
+  }, [supDailyCreatedValue, stats?.createdWeekValue])
+
+  const supWeeklyCreatedCount = React.useMemo(() => {
+    return Math.round(supDailyCreatedCount * 3.5) || stats?.createdWeekCount || 0
+  }, [supDailyCreatedCount, stats?.createdWeekCount])
+
+  const supMonthlyCreatedValue = React.useMemo(() => {
+    return stats?.createdMonthValue || supMonthlyProduced || 0
+  }, [stats?.createdMonthValue, supMonthlyProduced])
+
+  const supMonthlyCreatedCount = React.useMemo(() => {
+    return stats?.createdMonthCount || 0
+  }, [stats?.createdMonthCount])
+
+  const supMonthlyGoal = supervisorData.goal || 448000
+  const supProgressPercent = supMonthlyGoal > 0 ? Math.round((supMonthlyProduced / supMonthlyGoal) * 100) : 0
+  const supRemainingValue = Math.max(0, supMonthlyGoal - supMonthlyProduced)
+  const supDailyGoal = supMonthlyGoal / (remainingBusinessDays > 0 ? remainingBusinessDays : 22)
+  const supDailyProgressPercent = supDailyGoal > 0 ? Math.round((supDailyProduced / supDailyGoal) * 100) : 0
+  const supPendingInconsistencyValue = stats?.pendingActionsValue || 0
+  const supPendingInconsistencyCount = (stats as any)?.pendingActionsCount || 0
+
+  const supEstagiariosList = React.useMemo(() => {
+    if (!estagioRankingGroup?.colaboracoes?.estagiarios) return []
+    const supFirstName = (currentSupervisor?.nome || 'Nathali').trim().toLowerCase().split(' ')[0]
+    return estagioRankingGroup.colaboracoes.estagiarios.filter(e => {
+      if (e.isPJ) return false
+      const eSup = (e.supervisor || '').toLowerCase()
+      return !e.supervisor || eSup.includes(supFirstName)
+    })
+  }, [estagioRankingGroup, currentSupervisor])
+
+  const supColaboradoresPJList = React.useMemo(() => {
+    if (!estagioRankingGroup?.colaboracoes?.estagiarios) return []
+    const supFirstName = (currentSupervisor?.nome || 'Nathali').trim().toLowerCase().split(' ')[0]
+    return estagioRankingGroup.colaboracoes.estagiarios.filter(e => {
+      if (!e.isPJ) return false
+      const eSup = (e.supervisor || '').toLowerCase()
+      return !e.supervisor || eSup.includes(supFirstName)
+    })
+  }, [estagioRankingGroup, currentSupervisor])
   const [proposalsStats, setProposalsStats] = React.useState<{
     total: number;
     countReducao: number;
@@ -3222,6 +3396,18 @@ export function AdminDashboard({
               METAS E PRODUÇÃO
             </button>
             <button
+              onClick={() => setActiveTab('metas_supervisor')}
+              className={cn(
+                "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+                activeTab === 'metas_supervisor' 
+                  ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                  : "text-slate-400 hover:text-slate-600"
+              )}
+            >
+              <Users className="w-4 h-4" />
+              METAS E PRODUÇÃO DO SUPERVISOR
+            </button>
+            <button
               onClick={() => setActiveTab('chamados')}
               className={cn(
                 "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
@@ -4113,6 +4299,943 @@ export function AdminDashboard({
         })()}
           </div>
       </motion.div>
+      )}
+
+      {activeTab === 'metas_supervisor' && (
+        <motion.div 
+          key="metas_supervisor"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="space-y-6 w-full"
+        >
+          {/* Sticky Period Selector */}
+          <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-between py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all mb-6">
+            <div className="flex items-center gap-3">
+              {supervisorData.supervisorsList.length > 1 ? (
+                <div className="flex items-center gap-2 bg-slate-100/90 p-1.5 rounded-xl border border-slate-200">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-2">Supervisor:</span>
+                  <select
+                    value={supervisorData.selectedSupervisorId}
+                    onChange={(e) => {
+                      const selId = e.target.value
+                      const chosen = supervisorData.supervisorsList.find(s => s.id === selId)
+                      setSupervisorData(prev => ({
+                        ...prev,
+                        selectedSupervisorId: selId,
+                        user: chosen || prev.user
+                      }))
+                    }}
+                    className="text-[11px] font-black text-[#1C2643] bg-white border border-slate-200 rounded-lg px-2.5 py-1 outline-none"
+                  >
+                    {supervisorData.supervisorsList.map((sup: any) => (
+                      <option key={sup.id} value={sup.id}>
+                        {formatName(sup.nome)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-1 bg-white rounded-xl border border-slate-200 shadow-sm">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider">
+                    {formatName(currentSupervisor?.nome || 'Nathali Beneduzi')} (Supervisão)
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+                {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
+                  <button
+                    key={period}
+                    onClick={() => handleDashboardPeriodChange(period)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                      dashboardPeriod === period
+                        ? "bg-white text-[#1C2643] shadow-sm font-extrabold"
+                        : "text-slate-500 hover:text-slate-700"
+                    )}
+                  >
+                    {period === 'mes' ? 'Mês' : period === 'trimestre' ? 'Trimestre' : period}
+                  </button>
+                ))}
+              </div>
+
+              {dashboardPeriod === 'personalizado' && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mt-1 self-end"
+                >
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
+                    <input 
+                      type="date" 
+                      value={tempStartDate}
+                      onChange={(e) => setTempStartDate(e.target.value)}
+                      className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+                    <input 
+                      type="date" 
+                      value={tempEndDate}
+                      onChange={(e) => setTempEndDate(e.target.value)}
+                      className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                    />
+                  </div>
+                  <button
+                    onClick={applyDashboardPersonalizedFilter}
+                    className="px-2.5 py-1 bg-[#1C2643] text-white text-[9px] font-black rounded-md hover:bg-[#1C2643]/90 transition-all active:scale-95"
+                  >
+                    FILTRAR
+                  </button>
+                </motion.div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* SECTION 1: FOTO DA SUPERVISÃO E CARD DE META */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              className="lg:col-span-8 md:grid-cols-12 grid grid-cols-1 gap-4 items-stretch"
+            >
+              {/* CARTÃO DA FOTO DO SUPERVISOR */}
+              <div className="md:col-span-5 relative overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-lg shadow-[#1C2643]/5 min-h-[250px] md:min-h-0">
+                {currentSupervisor?.foto_campanha_url || currentSupervisor?.avatar_url ? (
+                  <Image 
+                    src={currentSupervisor?.foto_campanha_url || currentSupervisor?.avatar_url || ""} 
+                    alt={currentSupervisor?.nome || "Supervisor"} 
+                    fill 
+                    className="object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-[#1C2643]/5 flex flex-col items-center justify-center text-[#1C2643]">
+                    <Users className="w-12 h-12 opacity-35" />
+                    <span className="text-[8.5px] font-black text-slate-400 mt-2 uppercase tracking-widest text-center px-3">Sem foto cadastrada</span>
+                  </div>
+                )}
+              </div>
+
+              {/* CARD DE METAS ORIGINAL DO SUPERVISOR */}
+              <DashboardCard className="md:col-span-7 flex flex-col shadow-lg shadow-[#1C2643]/5 overflow-hidden group !p-5 !rounded-[24px]">
+                <div className="relative z-10 flex flex-col h-full">
+                  <div className="flex items-center justify-between mb-2">
+                     <p className="text-[9.5px] font-black text-[#718198] uppercase tracking-widest">
+                       Sua Meta Mensal
+                     </p>
+                     <div className="bg-[#1C2643]/5 p-2 rounded-xl">
+                        <Target className="w-4 h-4 text-[#1C2643]" />
+                     </div>
+                  </div>
+                  <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[28px] font-black text-[#1C2643] tracking-tighter mb-4 break-words">
+                    {formatCurrency(supMonthlyGoal)}
+                  </p>
+                  
+                  <div className="flex-1 flex flex-col items-center justify-center py-3.5 relative">
+                     <div className="w-full max-w-[336px]">
+                       <Gauge value={supProgressPercent} producedValue={supMonthlyProduced} />
+                     </div>
+                     <div className="mt-2.5 flex flex-col items-center justify-center">
+                        {isLoading ? (
+                          <Loader2 className="w-6 h-6 animate-spin text-[#1C2643]" />
+                        ) : (
+                          <p className="text-4xl sm:text-5xl lg:text-[61px] font-black text-[#1C2643] tracking-tighter leading-none">{supProgressPercent}%</p>
+                        )}
+                        <p className="text-[14.4px] font-bold text-[#718198] uppercase tracking-widest mt-2">Atingido</p>
+                     </div>
+                  </div>
+
+                  <div className="space-y-4 mt-auto">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full border border-emerald-100">
+                        <TrendingUp className="w-3.5 h-3.5" />
+                        <span className="text-[9px] font-black uppercase tracking-widest text-center">
+                          {supProgressPercent >= 100 ? "META ALCANÇADA! PARABÉNS!" : "Você está no caminho!"}
+                        </span>
+                      </div>
+                      <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 mt-1.5 text-center shrink-0">
+                        {supRemainingValue > 0 ? (
+                          <>Faltam <span className="text-[#1C2643] font-black">{formatCurrency(supRemainingValue)}</span> para a meta</>
+                        ) : (
+                          <span className="text-emerald-600 font-black">Você superou sua meta este mês!</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </DashboardCard>
+            </motion.div>
+
+            {/* SECTION 2: CONTRATOS DIGITADOS E ACESSAR CAMPANHA */}
+            <div className="lg:col-span-4 lg:row-span-1 md:grid-cols-2 lg:grid-cols-1 grid grid-cols-1 gap-4">
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.05 }}>
+                <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 bg-[#1C2643] text-white border-[#1C2643] !p-[18px] sm:!p-5 !rounded-[24px]">
+                  <div className="flex flex-col min-w-0 overflow-hidden">
+                     <div className="flex items-center gap-1.5 mb-1.5">
+                       <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+                       <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest leading-tight">
+                         CONTRATOS DIGITADOS
+                       </p>
+                     </div>
+                     <div className="mt-1.5 space-y-2.5">
+                       <div>
+                         <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
+                         <div className="flex items-baseline gap-1.5">
+                           <p className="text-xl sm:text-2xl font-black text-amber-400 tracking-tighter leading-none">
+                             {formatCurrency(supDailyCreatedValue)}
+                           </p>
+                           <span className="text-[9px] font-bold text-white/60 uppercase">{supDailyCreatedCount} CONTRATOS</span>
+                         </div>
+                       </div>
+                       <div>
+                         <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
+                         <div className="flex items-baseline gap-1.5">
+                           <p className="text-lg font-black text-white tracking-tighter leading-none">
+                             {formatCurrency(supWeeklyCreatedValue)}
+                           </p>
+                           <span className="text-[9px] font-bold text-white/60 uppercase">{supWeeklyCreatedCount} CONTRATOS</span>
+                         </div>
+                       </div>
+                       <div>
+                         <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
+                         <div className="flex items-baseline gap-1.5">
+                           <p className="text-[14px] font-black text-white tracking-tighter leading-none">
+                             {formatCurrency(supMonthlyCreatedValue)}
+                           </p>
+                           <span className="text-[9px] font-bold text-white/60 uppercase">{supMonthlyCreatedCount} CONTRATOS</span>
+                         </div>
+                       </div>
+                     </div>
+                  </div>
+                  <div className="mt-auto pt-2.5 border-t border-white/5">
+                     <div className="flex items-center gap-1.5">
+                       <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                       <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
+                         Atualizado em Tempo Real
+                       </p>
+                     </div>
+                  </div>
+                </DashboardCard>
+              </motion.div>
+
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+                <div className="bg-white rounded-[24px] p-5 border border-slate-200 shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 h-full min-h-[290px] justify-between">
+                   <div className="flex items-center gap-2.5 mb-1.5">
+                      <div className="w-8 h-8 bg-[#1C2643] rounded-lg flex items-center justify-center">
+                         <Target className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                         <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none">
+                           ACESSAR CAMPANHA
+                         </p>
+                      </div>
+                   </div>
+                   <div className="space-y-2.5 flex-1 flex flex-col justify-center">
+                      {supervisorData.campaigns.length > 0 ? (
+                        supervisorData.campaigns.map((campaign) => (
+                          <div 
+                            key={campaign.id} 
+                            onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
+                            className="flex items-center justify-between p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200 hover:border-primary/30 hover:bg-white transition-all cursor-pointer group"
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-primary transition-colors">
+                                {campaign.nome}
+                              </span>
+                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                                {campaign.filtros?.convenio || 'Geral'}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[9.5px] font-black text-[#1C2643]">
+                                {campaign.publico_estimado?.toLocaleString('pt-BR')} Leads
+                              </p>
+                              <p className="text-[8px] font-bold text-slate-400">
+                                {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
+                              </p>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-6 opacity-40">
+                          <Target className="w-6.5 h-6.5 mb-1.5" />
+                          <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
+                        </div>
+                      )}
+                   </div>
+                </div>
+              </motion.div>
+            </div>
+
+            {/* SECTION 3: META DE HOJE E TOTAL DE CONTRATOS EM ANDAMENTO */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              transition={{ delay: 0.15 }} 
+              className="lg:col-span-12"
+            >
+              <div className="grid grid-cols-1 gap-4 h-full md:grid-cols-2">
+                 {/* Meta de Hoje */}
+                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+                   <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 !p-[18px] sm:!p-5 !rounded-[24px]">
+                     <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center mb-1.5 shrink-0">
+                       <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
+                     </div>
+                     <div className="flex flex-col min-w-0 overflow-hidden">
+                        <p className="text-[9px] font-bold text-[#718198] uppercase tracking-widest">Meta de Hoje</p>
+                        <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[28px] font-black text-[#1C2643] tracking-tighter mt-1 break-words leading-none">
+                          {formatCurrency(supDailyGoal)}
+                        </p>
+                     </div>
+                     <div className="mt-auto pt-3.5">
+                        <div className="flex justify-between items-center mb-1.5">
+                           <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{startDate || endDate ? "PAGO NO PERÍODO" : "PAGO HOJE"}</p>
+                           <p className="text-[9.5px] font-black text-[#1C2643]">
+                             {isLoading ? "..." : (
+                               <span className="flex items-center gap-1">
+                                 {supDailyProgressPercent}%
+                                 <span className="text-slate-400 font-bold">({formatCurrency(supDailyProduced)})</span>
+                               </span>
+                             )}
+                           </p>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                           <motion.div 
+                             initial={{ width: 0 }}
+                             animate={{ width: `${Math.min(100, supDailyProgressPercent)}%` }}
+                             transition={{ duration: 1, delay: 0.5 }}
+                             className="h-full bg-amber-500" 
+                           />
+                        </div>
+                     </div>
+                   </DashboardCard>
+                 </motion.div>
+
+                 {/* Total de contratos em andamento */}
+                 <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2 mb-1.5">
+                       <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+                          <CheckCircle2 className="w-5 h-5 text-white" />
+                       </div>
+                       <div>
+                          <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none">
+                            TOTAL DE CONTRATOS EM ANDAMENTO
+                          </p>
+                       </div>
+                    </div>
+                    <div className="flex flex-col justify-center py-6 gap-1.5">
+                      <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest text-center">Valor Total em Andamento</p>
+                      <p className="text-2xl sm:text-3xl lg:text-4xl font-black text-orange-600 tracking-tighter text-center leading-none">
+                        {formatCurrency(supInProcessValue)}
+                      </p>
+                      <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col items-center gap-1.5">
+                        <span className="text-[11.5px] font-bold text-[#1C2643]">
+                          {supInProcessCount} {supInProcessCount === 1 ? 'Contrato' : 'Contratos'}
+                        </span>
+                        <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 mt-6 text-center shrink-0">
+                           Você tem <span className="text-[#1C2643] font-black">{formatCurrency(supPendingInconsistencyValue)}</span> ({supPendingInconsistencyCount} {supPendingInconsistencyCount === 1 ? 'pendência' : 'pendências'}) pendentes de atuação
+                        </p>
+                      </div>
+                    </div>
+                 </div>
+              </div>
+            </motion.div>
+
+            {/* SECTION 4: RANKING DE VENDAS DO TIME DA SUPERVISÃO */}
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }} 
+              animate={{ opacity: 1, x: 0 }} 
+              transition={{ delay: 0.2 }} 
+              className="lg:col-span-12"
+            >
+              <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px]">
+                <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-50">
+                   <h3 className="text-lg font-black text-[#1C2643] tracking-tight">Ranking de Vendas</h3>
+                   <div className="flex items-center gap-3">
+                     <Trophy className="w-5 h-5 text-amber-500 fill-amber-500" />
+                   </div>
+                </div>
+
+                <div className="flex-1 flex flex-col">
+                  {isLoading && (!supervisorRankings || supervisorRankings.length === 0) ? (
+                    <div className="flex items-center justify-center h-full py-16">
+                       <Loader2 className="w-6 h-6 animate-spin text-[#1C2643]" />
+                    </div>
+                  ) : supervisorRankings.length > 0 ? (
+                    <div className="overflow-x-auto custom-scrollbar">
+                      <table className="w-full text-left border-collapse min-w-[750px]">
+                        <thead>
+                          <tr className="bg-slate-50/50 border-b border-slate-200">
+                            <th className="px-3 py-2.5 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                            <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
+                            <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                            <th className="px-3 py-2.5 text-[8.5px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                            <th className="px-3 py-2.5 text-[8.5px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {supervisorRankings.map((rank, idx) => {
+                            const isUser = rank.corretor_id === perfil?.id
+                            const position = idx + 1
+                            const isSupervisorRow = rank.funcao?.toLowerCase() === 'supervisor'
+                            const isGroupRow = rank.corretor_id === 'ESTAGIL_AND_PJ'
+                            const isExpanded = !!expandedSupervisorIds[rank.corretor_id]
+                            return (
+                              <React.Fragment key={rank.corretor_id || idx}>
+                                <tr 
+                                  onClick={isGroupRow ? () => {
+                                    setExpandedSupervisorIds(prev => ({
+                                      ...prev,
+                                      [rank.corretor_id]: !prev[rank.corretor_id]
+                                    }))
+                                  } : undefined}
+                                  className={cn(
+                                    "transition-colors",
+                                    isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80",
+                                    isGroupRow && "cursor-pointer"
+                                  )}
+                                >
+                                  <td className="px-3 py-3">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className={cn(
+                                        "w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-black shrink-0",
+                                        position === 1 ? "bg-amber-100 text-amber-600" : 
+                                        position === 2 ? "bg-slate-100 text-slate-600" :
+                                        position === 3 ? "bg-orange-100 text-orange-600" :
+                                        "bg-slate-50 text-slate-400"
+                                      )}>
+                                        {position}º
+                                      </div>
+                                      <div className="flex items-center gap-1.5 min-w-[100px]">
+                                        <span className={cn(
+                                          "text-[11.5px] font-black tracking-tight",
+                                          isUser ? "text-[#1C2643]" : "text-slate-600"
+                                        )}>
+                                          {formatName(rank.name)} {isUser && !isSupervisorRow && "(Você)"}
+                                        </span>
+                                        {isGroupRow && (
+                                          isExpanded ? (
+                                            <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                          ) : (
+                                            <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                          )
+                                        )}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-3 text-right bg-slate-50/50">
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-[11.5px] font-black text-[#1C2643]">{rank.approvedTicketsCount || 0}</span>
+                                      <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                        {(rank.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className={cn(
+                                    "px-3 py-3 text-right transition-colors",
+                                    isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
+                                  )}>
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenRankingModal({
+                                            personId: rank.corretor_id,
+                                            personName: rank.name,
+                                            category: 'paid',
+                                            categoryLabel: 'Produção (Pagos)',
+                                            startDate,
+                                            endDate
+                                          });
+                                        }}
+                                        className="text-[8.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                        title="Clique para ver contratos"
+                                      >
+                                        {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className={cn(
+                                    "px-3 py-3 text-right transition-colors",
+                                    isUser ? "bg-orange-100/70" : "bg-orange-100/25"
+                                  )}>
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenRankingModal({
+                                            personId: rank.corretor_id,
+                                            personName: rank.name,
+                                            category: 'in_process',
+                                            categoryLabel: 'Em Andamento',
+                                            startDate,
+                                            endDate
+                                          });
+                                        }}
+                                        className="text-[8.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                        title="Clique para ver contratos"
+                                      >
+                                        {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className={cn(
+                                    "px-3 py-3 text-right transition-colors",
+                                    isUser ? "bg-blue-100/70" : "bg-blue-100/25"
+                                  )}>
+                                    <div className="flex flex-col items-end">
+                                      <span className={cn(
+                                        "text-[11.5px] font-bold",
+                                        rank.totalToday > 0 ? "text-emerald-600" : "text-slate-400"
+                                      )}>
+                                        {formatCurrency(rank.totalToday)}
+                                      </span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenRankingModal({
+                                            personId: rank.corretor_id,
+                                            personName: rank.name,
+                                            category: 'today',
+                                            categoryLabel: 'Digitadas Hoje',
+                                            startDate,
+                                            endDate
+                                          });
+                                        }}
+                                        className="text-[8.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                        title="Clique para ver contratos"
+                                      >
+                                        {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {isGroupRow && isExpanded && (
+                                  <tr className="bg-slate-50/50">
+                                    <td colSpan={5} className="p-3 border-t border-b border-dashed border-slate-200">
+                                      <div className="space-y-3.5 pl-4 select-none">
+                                        <div className="flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+                                          <Users className="w-3.5 h-3.5 text-[#1C2643]" />
+                                          <h4 className="text-[9px] font-black text-[#1C2643] uppercase tracking-wider">
+                                            Detalhamento do Grupo (Estágio & PJ)
+                                          </h4>
+                                        </div>
+                                        
+                                        {(!rank.colaboracoes?.estagiarios || rank.colaboracoes.estagiarios.length === 0) ? (
+                                          <p className="text-[9px] font-bold text-slate-400 italic">Nenhum colaborador estágio ou PJ ativo neste período.</p>
+                                        ) : (
+                                          <div className="space-y-1.5">
+                                            {rank.colaboracoes.estagiarios.map((est, eIdx) => (
+                                              <div key={est.estagiario_id || eIdx} className="grid grid-cols-5 gap-2 text-slate-600 bg-emerald-50/30 p-2 border border-slate-50 shadow-sm rounded-xl hover:bg-emerald-50/50 transition-colors">
+                                                <div className="font-extrabold text-[9px] text-[#1C2643] truncate flex flex-col justify-center min-w-0">
+                                                  <div className="flex items-center gap-1">
+                                                    <span className="text-[8.5px] font-black text-[#1C2643]/70 bg-slate-100 border border-slate-200 rounded px-1 shrink-0 min-w-[16px] text-center mr-0.5">
+                                                      {eIdx + 1}º
+                                                    </span>
+                                                    {est.isPJ ? (
+                                                      <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                                    ) : (
+                                                      <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                                    )}
+                                                    <span className="truncate">{formatName(est.nome)}</span>
+                                                    <span className="text-[7.5px] text-slate-400 ml-1 shrink-0">
+                                                      ({est.isPJ ? "PJ" : "ESTÁGIO"})
+                                                    </span>
+                                                  </div>
+                                                  {est.supervisor && (
+                                                    <span className="text-[7.5px] font-bold text-slate-400 mt-0.5 pl-[36px] block shrink-0">
+                                                      SUP: {est.supervisor}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="text-right">
+                                                  <div className="text-[9.5px] text-[#1C2643] font-extrabold">{est.approvedTicketsCount || 0}</div>
+                                                  <div className="text-[7.5px] text-slate-400 font-bold uppercase">Chamados</div>
+                                                </div>
+                                                <div className="text-right flex flex-col items-end">
+                                                  <div className="text-[9.5px] text-emerald-600 font-extrabold">{formatCurrency(est.totalPaid)}</div>
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleOpenRankingModal({
+                                                        personId: est.estagiario_id,
+                                                        personName: est.nome,
+                                                        category: 'paid',
+                                                        categoryLabel: 'Produção (Pagos)',
+                                                        startDate,
+                                                        endDate
+                                                      });
+                                                    }}
+                                                    className="text-[7.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase transition-colors"
+                                                    title="Clique para ver contratos"
+                                                  >
+                                                    {est.countPaid} PG
+                                                  </button>
+                                                </div>
+                                                <div className="text-right flex flex-col items-end">
+                                                  <div className="text-[9.5px] text-orange-600 font-extrabold">{formatCurrency(est.totalInProcess)}</div>
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleOpenRankingModal({
+                                                        personId: est.estagiario_id,
+                                                        personName: est.nome,
+                                                        category: 'in_process',
+                                                        categoryLabel: 'Em Andamento',
+                                                        startDate,
+                                                        endDate
+                                                      });
+                                                    }}
+                                                    className="text-[7.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase transition-colors"
+                                                    title="Clique para ver contratos"
+                                                  >
+                                                    {est.countInProcess} AND
+                                                  </button>
+                                                </div>
+                                                <div className="text-right flex flex-col items-end">
+                                                  <div className="text-[9.5px] text-blue-600 font-extrabold">{formatCurrency(est.totalToday)}</div>
+                                                  <button
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleOpenRankingModal({
+                                                        personId: est.estagiario_id,
+                                                        personName: est.nome,
+                                                        category: 'today',
+                                                        categoryLabel: 'Digitadas Hoje',
+                                                        startDate,
+                                                        endDate
+                                                      });
+                                                    }}
+                                                    className="text-[7.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase transition-colors"
+                                                    title="Clique para ver contratos"
+                                                  >
+                                                    {est.countToday} DIG
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full py-8 opacity-40">
+                       <Trophy className="w-10 h-10 mb-3" />
+                       <p className="text-xs font-bold uppercase tracking-widest text-[#1C2643]">Sem rankings ainda</p>
+                    </div>
+                  )}
+                </div>
+              </DashboardCard>
+            </motion.div>
+
+            {/* SECTION 5: RANKING ESTAGIÁRIOS DA SUPERVISÃO */}
+            {supEstagiariosList.length > 0 && (
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.25 }} className="lg:col-span-12">
+                <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px]">
+                  <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-50">
+                    <div className="flex items-center gap-2">
+                      <GraduationCap className="w-5 h-5 text-emerald-500" />
+                      <h3 className="text-lg font-black text-[#1C2643] tracking-tight uppercase">Ranking Estagiários</h3>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 flex flex-col overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[750px]">
+                      <thead>
+                        <tr className="bg-slate-50/50 border-b border-slate-200">
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {supEstagiariosList.map((est, idx) => {
+                          const position = idx + 1
+                          return (
+                            <tr key={est.estagiario_id || idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="px-3 py-3">
+                                <div className="flex items-center gap-2.5">
+                                  <div className={cn(
+                                    "w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-black shrink-0",
+                                    position === 1 ? "bg-amber-100 text-amber-600" : 
+                                    position === 2 ? "bg-slate-100 text-slate-600" :
+                                    position === 3 ? "bg-orange-100 text-orange-600" :
+                                    "bg-slate-50 text-slate-400"
+                                  )}>
+                                    {position}º
+                                  </div>
+                                  <div className="flex flex-col min-w-[100px]">
+                                    <div className="flex items-center gap-1.5">
+                                      <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      <span className="text-[11.5px] font-black tracking-tight text-[#1C2643]">
+                                        {formatName(est.nome)}
+                                      </span>
+                                      <span className="text-[8px] font-black text-slate-400">
+                                        (ESTÁGIO)
+                                      </span>
+                                    </div>
+                                    {est.supervisor && (
+                                      <span className="text-[8px] font-bold text-slate-400 mt-0.5">
+                                        SUPERVISOR: {formatName(est.supervisor)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-slate-50/50">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[11.5px] font-black text-[#1C2643]">{est.approvedTicketsCount || 0}</span>
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    {(est.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-emerald-100/25">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenRankingModal({
+                                        personId: est.estagiario_id,
+                                        personName: est.nome,
+                                        category: 'paid',
+                                        categoryLabel: 'Produção (Pagos)',
+                                        startDate,
+                                        endDate
+                                      });
+                                    }}
+                                    className="text-[8.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                    title="Clique para ver contratos"
+                                  >
+                                    {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-orange-100/25">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenRankingModal({
+                                        personId: est.estagiario_id,
+                                        personName: est.nome,
+                                        category: 'in_process',
+                                        categoryLabel: 'Em Andamento',
+                                        startDate,
+                                        endDate
+                                      });
+                                    }}
+                                    className="text-[8.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                    title="Clique para ver contratos"
+                                  >
+                                    {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-blue-100/25">
+                                <div className="flex flex-col items-end">
+                                  <span className={cn(
+                                    "text-[11.5px] font-bold",
+                                    est.totalToday > 0 ? "text-emerald-600" : "text-slate-400"
+                                  )}>
+                                    {formatCurrency(est.totalToday)}
+                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenRankingModal({
+                                        personId: est.estagiario_id,
+                                        personName: est.nome,
+                                        category: 'today',
+                                        categoryLabel: 'Digitadas Hoje',
+                                        startDate,
+                                        endDate
+                                      });
+                                    }}
+                                    className="text-[8.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                    title="Clique para ver contratos"
+                                  >
+                                    {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </DashboardCard>
+              </motion.div>
+            )}
+
+            {/* SECTION 6: RANKING COLABORADORES PJ DA SUPERVISÃO */}
+            {supColaboradoresPJList.length > 0 && (
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }} className="lg:col-span-12">
+                <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px]">
+                  <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-50">
+                    <div className="flex items-center gap-2">
+                      <Briefcase className="w-5 h-5 text-blue-500" />
+                      <h3 className="text-lg font-black text-[#1C2643] tracking-tight uppercase">Ranking Colaboradores PJ</h3>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 flex flex-col overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[750px]">
+                      <thead>
+                        <tr className="bg-slate-50/50 border-b border-slate-200">
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                          <th className="px-3 py-2.5 text-[8.5px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {supColaboradoresPJList.map((est, idx) => {
+                          const position = idx + 1
+                          return (
+                            <tr key={est.estagiario_id || idx} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="px-3 py-3">
+                                <div className="flex items-center gap-2.5">
+                                  <div className={cn(
+                                    "w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-black shrink-0",
+                                    position === 1 ? "bg-amber-100 text-amber-600" : 
+                                    position === 2 ? "bg-slate-100 text-slate-600" :
+                                    position === 3 ? "bg-orange-100 text-orange-600" :
+                                    "bg-slate-50 text-slate-400"
+                                  )}>
+                                    {position}º
+                                  </div>
+                                  <div className="flex flex-col min-w-[100px]">
+                                    <div className="flex items-center gap-1.5">
+                                      <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                      <span className="text-[11.5px] font-black tracking-tight text-[#1C2643]">
+                                        {formatName(est.nome)}
+                                      </span>
+                                      <span className="text-[8px] font-black text-slate-400">
+                                        (PJ)
+                                      </span>
+                                    </div>
+                                    {est.supervisor && (
+                                      <span className="text-[8px] font-bold text-slate-400 mt-0.5">
+                                        SUPERVISOR: {formatName(est.supervisor)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-slate-50/50">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[11.5px] font-black text-[#1C2643]">{est.approvedTicketsCount || 0}</span>
+                                  <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                    {(est.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-emerald-100/25">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenRankingModal({
+                                        personId: est.estagiario_id,
+                                        personName: est.nome,
+                                        category: 'paid',
+                                        categoryLabel: 'Produção (Pagos)',
+                                        startDate,
+                                        endDate
+                                      });
+                                    }}
+                                    className="text-[8.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                    title="Clique para ver contratos"
+                                  >
+                                    {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-orange-100/25">
+                                <div className="flex flex-col items-end">
+                                  <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenRankingModal({
+                                        personId: est.estagiario_id,
+                                        personName: est.nome,
+                                        category: 'in_process',
+                                        categoryLabel: 'Em Andamento',
+                                        startDate,
+                                        endDate
+                                      });
+                                    }}
+                                    className="text-[8.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                    title="Clique para ver contratos"
+                                  >
+                                    {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right bg-blue-100/25">
+                                <div className="flex flex-col items-end">
+                                  <span className={cn(
+                                    "text-[11.5px] font-bold",
+                                    est.totalToday > 0 ? "text-emerald-600" : "text-slate-400"
+                                  )}>
+                                    {formatCurrency(est.totalToday)}
+                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenRankingModal({
+                                        personId: est.estagiario_id,
+                                        personName: est.nome,
+                                        category: 'today',
+                                        categoryLabel: 'Digitadas Hoje',
+                                        startDate,
+                                        endDate
+                                      });
+                                    }}
+                                    className="text-[8.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                    title="Clique para ver contratos"
+                                  >
+                                    {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </DashboardCard>
+              </motion.div>
+            )}
+          </div>
+        </motion.div>
       )}
 
       {activeTab === 'chamados' && (
