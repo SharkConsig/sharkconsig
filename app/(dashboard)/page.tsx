@@ -3307,11 +3307,12 @@ export default function DashboardPage() {
                     </div>
                     <div className="mt-auto pt-3.5">
                        <div className="flex justify-between items-center mb-1.5">
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{startDate || endDate ? "PAGO NO PERÍODO" : "PAGO HOJE"}</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
                           <p className="text-[9.5px] font-black text-[#1C2643]">
                             {isLoading ? "..." : (
                               <span className="flex items-center gap-1">
-                                {Math.round(((startDate || endDate ? displayMonthlyProduced : displayDailyProduced) / dailyGoal) * 100)}%
+                                {dailyGoal > 0 ? Math.round((displayDailyProduced / dailyGoal) * 100) : 0}%
+                                <span className="text-slate-400 font-bold">({formatCurrency(displayDailyProduced)})</span>
                               </span>
                             )}
                           </p>
@@ -3319,7 +3320,7 @@ export default function DashboardPage() {
                        <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                           <motion.div 
                             initial={{ width: 0 }}
-                            animate={{ width: `${Math.min(100, ((startDate || endDate ? displayMonthlyProduced : displayDailyProduced) / dailyGoal) * 100)}%` }}
+                            animate={{ width: `${Math.min(100, dailyGoal > 0 ? (displayDailyProduced / dailyGoal) * 100 : 0)}%` }}
                             transition={{ duration: 1, delay: 0.5 }}
                             className="h-full bg-amber-500" 
                           />
@@ -3648,11 +3649,11 @@ export default function DashboardPage() {
                        </div>
                        <div className="mt-auto pt-3.5">
                           <div className="flex justify-between items-center mb-1.5">
-                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{startDate || endDate ? "PAGO NO PERÍODO" : "PAGO HOJE"}</p>
+                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
                              <p className="text-[10.5px] font-black text-[#1C2643]">
                                {isLoading ? "..." : (
                                  <span className="flex items-center gap-1">
-                                   {Math.round(((startDate || endDate ? displayMonthlyProduced : displayDailyProduced) / dailyGoal) * 100)}%
+                                   {dailyGoal > 0 ? Math.round((displayDailyProduced / dailyGoal) * 100) : 0}%
                                    <span className="text-slate-400 font-bold">({formatCurrency(displayDailyProduced)})</span>
                                  </span>
                                )}
@@ -3661,7 +3662,7 @@ export default function DashboardPage() {
                           <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
                              <motion.div 
                                initial={{ width: 0 }}
-                               animate={{ width: `${Math.min(100, ((startDate || endDate ? displayMonthlyProduced : displayDailyProduced) / dailyGoal) * 100)}%` }}
+                               animate={{ width: `${Math.min(100, dailyGoal > 0 ? (displayDailyProduced / dailyGoal) * 100 : 0)}%` }}
                                transition={{ duration: 1, delay: 0.5 }}
                                className="h-full bg-amber-500" 
                              />
