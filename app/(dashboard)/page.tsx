@@ -2379,7 +2379,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [perfil?.id, perfil?.role, isRecursosHumanos, isCorretor, isAdmin, isOperational, isDeveloper, isSupervisor, startDate, endDate])
+  }, [perfil, isRecursosHumanos, isCorretor, isAdmin, isOperational, isDeveloper, isSupervisor, startDate, endDate])
 
   useEffect(() => {
     setMounted(true)
@@ -3807,7 +3807,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="flex-1 flex flex-col">
-                  {isLoading && (!rankings || rankings.length === 0) ? (
+                  {isLoading ? (
                     <div className="flex items-center justify-center h-full py-16">
                        <Loader2 className="w-6 h-6 animate-spin text-[#1C2643]" />
                     </div>
