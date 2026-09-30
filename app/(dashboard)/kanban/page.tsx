@@ -1528,6 +1528,20 @@ export default function KanbanPage() {
         setIsClientDetailsModalOpen(false)
         setSelectedClientCpf("")
 
+        try {
+          supabase.from("clientes_chamados").insert({
+            usuario_id: validOperadorId || user?.id,
+            usuario_nome: perfil?.nome || "Corretor",
+            usuario_funcao: perfil?.role || perfil?.funcao || "Corretor",
+            cliente_cpf: cleanCpf,
+            cliente_nome: clientInfo.nome,
+            telefones_contatados: clientInfo.telefones_selecionados || clientInfo.telefones || [],
+            tabulacao: "CLIENTE CHAMADO",
+            origem: "KANBAN",
+            data_chamado: new Date().toISOString().split("T")[0]
+          }).then(() => {})
+        } catch {}
+
         const { data: existing } = await supabase
           .from("kanban_fichas")
           .select("id, metadata, etapa")

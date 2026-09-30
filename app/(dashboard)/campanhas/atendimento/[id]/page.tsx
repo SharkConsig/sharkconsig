@@ -294,7 +294,7 @@ function LoanRow({ loan }: { loan: LoanData }) {
 export default function CampanhaAtendimentoPage() {
   const params = useParams()
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, perfil } = useAuth()
   const userId = user?.id
   
   const campaignId = params.id as string
@@ -1298,6 +1298,26 @@ export default function CampanhaAtendimentoPage() {
        
        if (error) throw error
 
+       if (tabulacao === "CLIENTE CHAMADO" && currentLead) {
+         try {
+           await supabase.from("clientes_chamados").insert({
+             campanha_id: campaign.id,
+             campanha_nome: campaign.nome,
+             usuario_id: userId,
+             usuario_nome: perfil?.nome || user?.user_metadata?.nome_completo || "Corretor",
+             usuario_funcao: perfil?.role || perfil?.funcao || user?.user_metadata?.funcao || "Corretor",
+             cliente_cpf: cleanLeadCpf || currentLead.cpf,
+             cliente_nome: currentLead.nome,
+             telefones_contatados: currentLead.telefones || [],
+             tabulacao: "CLIENTE CHAMADO",
+             origem: "CAMPANHA",
+             data_chamado: new Date().toISOString().split("T")[0]
+           })
+         } catch (ccErr) {
+           console.warn("Could not record in clientes_chamados:", ccErr)
+         }
+       }
+
        // Mark lead as completed in campaign JSON filters and campanha_vinculos statefully
        try {
          const { data: latestCamp } = await supabase.from('campanhas').select('filtros').eq('id', campaign.id).maybeSingle()
@@ -1369,6 +1389,26 @@ export default function CampanhaAtendimentoPage() {
         )
         
         if (error) throw error
+
+        if (tabulacao === 'CLIENTE CHAMADO' && currentLead) {
+          try {
+            await supabase.from('clientes_chamados').insert({
+              campanha_id: campaign.id,
+              campanha_nome: campaign.nome,
+              usuario_id: userId,
+              usuario_nome: perfil?.nome || user?.user_metadata?.nome_completo || 'Corretor',
+              usuario_funcao: perfil?.role || perfil?.funcao || user?.user_metadata?.funcao || 'Corretor',
+              cliente_cpf: cleanLeadCpf || currentLead.cpf,
+              cliente_nome: currentLead.nome,
+              telefones_contatados: currentLead.telefones || [],
+              tabulacao: 'CLIENTE CHAMADO',
+              origem: 'CAMPANHA',
+              data_chamado: new Date().toISOString().split('T')[0]
+            })
+          } catch (ccErr) {
+            console.warn("Could not record in clientes_chamados:", ccErr)
+          }
+        }
 
         // Mark lead as completed in campaign JSON filters and campanha_vinculos statefully
         try {

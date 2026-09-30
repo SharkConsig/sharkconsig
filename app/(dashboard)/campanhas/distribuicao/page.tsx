@@ -15,11 +15,18 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Calendar,
+  Filter,
+  Download,
+  Eye,
+  FileText,
+  CheckCircle2,
+  PhoneCall
 } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 import { supabase } from "@/lib/supabase"
-import { useState, useEffect, useCallback, Fragment } from "react"
+import { useState, useEffect, useCallback, useRef, Fragment } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -60,6 +67,7 @@ interface BrokerUser {
   id: string;
   nome: string;
   funcao?: string;
+  status?: string;
 }
 
 async function fetchClientDetailsFromTable(
@@ -176,8 +184,15 @@ export default function DistribuicaoCampanhaPage() {
   const { user, perfil, isAdmin, isDeveloper, isOperational } = useAuth()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  
+  const hasLoadedRef = useRef(false)
+  const isFetchingRef = useRef(false)
+  const currentUserId = user?.id
+  const currentPerfilId = perfil?.id
+  const currentSupervisorId = perfil?.supervisor_id
   
   const [startedCampaigns, setStartedCampaigns] = useState<string[]>([])
   const [workedCounts, setWorkedCounts] = useState<Record<string, number>>({})
@@ -232,6 +247,337 @@ export default function DistribuicaoCampanhaPage() {
 
   const [exportDropdownCampaignId, setExportDropdownCampaignId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState<string | null>(null);
+
+  // Estados para o Relatório de Clientes Chamados
+  const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
+  const [reportStartDate, setReportStartDate] = useState<string>(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+  });
+  const [reportEndDate, setReportEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [reportSelectedUser, setReportSelectedUser] = useState<string>("TODOS");
+  const [reportSelectedCampaign, setReportSelectedCampaign] = useState<string>("TODAS");
+  const [isLoadingReport, setIsLoadingReport] = useState<boolean>(false);
+  const [reportData, setReportData] = useState<any[]>([]);
+  const [detailModalUser, setDetailModalUser] = useState<{
+    userName: string;
+    campaignName?: string;
+    clients: Array<{ cpf: string; nome?: string; telefones?: string[]; data: string }>;
+  } | null>(null);
+
+  const fetchChamadosReport = async (
+    sDate = reportStartDate,
+    eDate = reportEndDate,
+    uId = reportSelectedUser,
+    cId = reportSelectedCampaign
+  ) => {
+    setIsLoadingReport(true);
+    try {
+      // 1. Consulta prioritária na tabela public.clientes_chamados com paginação completa
+      let allCcRows: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+
+      while (true) {
+        let query = supabase
+          .from('clientes_chamados')
+          .select('*')
+          .gte('data_chamado', sDate)
+          .lte('data_chamado', eDate)
+          .eq('tabulacao', 'CLIENTE CHAMADO');
+
+        if (uId !== 'TODOS') query = query.eq('usuario_id', uId);
+        if (cId !== 'TODAS') query = query.eq('campanha_id', cId);
+
+        const { data: batch, error: ccErr } = await query
+          .order('created_at', { ascending: false })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (ccErr) {
+          console.warn("Erro ao consultar clientes_chamados:", ccErr);
+          break;
+        }
+
+        if (batch && batch.length > 0) {
+          allCcRows = allCcRows.concat(batch);
+        }
+
+        if (!batch || batch.length < pageSize) {
+          break;
+        }
+        page++;
+      }
+
+      if (allCcRows.length > 0) {
+        setReportData(allCcRows);
+        return;
+      }
+
+      // 2. Fallback resiliente: consultar campanha_atendimentos também com paginação completa
+      let allCaRows: any[] = [];
+      let caPage = 0;
+
+      while (true) {
+        let caQuery = supabase
+          .from('campanha_atendimentos')
+          .select('id, campanha_id, corretor_id, cliente_cpf, tabulacao, created_at')
+          .eq('tabulacao', 'CLIENTE CHAMADO')
+          .neq('cliente_cpf', '00000000000')
+          .gte('created_at', `${sDate}T00:00:00.000Z`)
+          .lte('created_at', `${eDate}T23:59:59.999Z`);
+
+        if (uId !== 'TODOS') caQuery = caQuery.eq('corretor_id', uId);
+        if (cId !== 'TODAS') caQuery = caQuery.eq('campanha_id', cId);
+
+        const { data: caBatch, error: caErr } = await caQuery
+          .order('created_at', { ascending: false })
+          .range(caPage * pageSize, (caPage + 1) * pageSize - 1);
+
+        if (caErr) throw caErr;
+
+        if (caBatch && caBatch.length > 0) {
+          allCaRows = allCaRows.concat(caBatch);
+        }
+
+        if (!caBatch || caBatch.length < pageSize) {
+          break;
+        }
+        caPage++;
+      }
+
+      const userMap = new Map(allUsers.map(u => [u.id, u.nome]));
+      const campMap = new Map(campaigns.map(c => [c.id, c.nome]));
+
+      const mapped = (allCaRows || []).map(r => ({
+        id: r.id,
+        usuario_id: r.corretor_id,
+        usuario_nome: userMap.get(r.corretor_id) || 'Corretor',
+        usuario_funcao: allUsers.find(u => u.id === r.corretor_id)?.funcao || 'Corretor',
+        campanha_id: r.campanha_id,
+        campanha_nome: campMap.get(r.campanha_id) || 'Campanha',
+        cliente_cpf: r.cliente_cpf,
+        tabulacao: 'CLIENTE CHAMADO',
+        origem: 'CAMPANHA',
+        data_chamado: r.created_at ? r.created_at.split('T')[0] : sDate,
+        created_at: r.created_at
+      }));
+
+      setReportData(mapped);
+    } catch (err: any) {
+      console.error("Erro ao carregar relatório de chamados:", err);
+      toast.error("Erro ao carregar dados do relatório de chamados.");
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
+  const aggregatedReport = (() => {
+    const userGroups = new Map<string, {
+      userId: string;
+      userName: string;
+      userFuncao: string;
+      totalChamados: number;
+      uniqueCpfs: Set<string>;
+      campaigns: Map<string, {
+        campaignId: string;
+        campaignName: string;
+        total: number;
+        uniqueCpfs: Set<string>;
+        clients: Array<{ cpf: string; nome?: string; telefones?: string[]; data: string }>;
+      }>;
+    }>();
+
+    const overallUniqueCpfs = new Set<string>();
+    const overallCampaigns = new Set<string>();
+    const overallUsers = new Set<string>();
+
+    reportData.forEach(item => {
+      const uId = item.usuario_id || 'desconhecido';
+      const uName = item.usuario_nome || 'Usuário';
+      const uFuncao = item.usuario_funcao || 'Corretor';
+      const cId = item.campanha_id || 'sem_campanha';
+      const cName = item.campanha_nome || 'Sem Campanha';
+      const cpf = item.cliente_cpf || '';
+
+      overallUsers.add(uId);
+      if (cpf) overallUniqueCpfs.add(cpf);
+      overallCampaigns.add(cName);
+
+      if (!userGroups.has(uId)) {
+        userGroups.set(uId, {
+          userId: uId,
+          userName: uName,
+          userFuncao: uFuncao,
+          totalChamados: 0,
+          uniqueCpfs: new Set<string>(),
+          campaigns: new Map()
+        });
+      }
+
+      const uGroup = userGroups.get(uId)!;
+      uGroup.totalChamados += 1;
+      if (cpf) uGroup.uniqueCpfs.add(cpf);
+
+      if (!uGroup.campaigns.has(cId)) {
+        uGroup.campaigns.set(cId, {
+          campaignId: cId,
+          campaignName: cName,
+          total: 0,
+          uniqueCpfs: new Set<string>(),
+          clients: []
+        });
+      }
+
+      const cGroup = uGroup.campaigns.get(cId)!;
+      cGroup.total += 1;
+      if (cpf) cGroup.uniqueCpfs.add(cpf);
+      cGroup.clients.push({
+        cpf: item.cliente_cpf,
+        nome: item.cliente_nome,
+        telefones: item.telefones_contatados,
+        data: item.data_chamado || item.created_at?.split('T')[0] || ''
+      });
+    });
+
+    const userList = Array.from(userGroups.values()).sort((a, b) => b.totalChamados - a.totalChamados);
+
+    return {
+      users: userList,
+      totalChamadosGeral: reportData.length,
+      totalUnicosGeral: overallUniqueCpfs.size,
+      totalUsuariosAtivos: overallUsers.size,
+      totalCampanhasAtivas: overallCampaigns.size
+    };
+  })();
+
+  const handleExportChamadosExcel = async () => {
+    if (reportData.length === 0) {
+      toast.error("Nenhum dado para exportar no período selecionado.");
+      return;
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "SharkConsig CRM";
+      workbook.created = new Date();
+
+      const formatPeriodoData = (dStr: string) => {
+        if (!dStr) return "-";
+        const parts = dStr.split("-");
+        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        return dStr;
+      };
+      const periodoTexto = `${formatPeriodoData(reportStartDate)} até ${formatPeriodoData(reportEndDate)}`;
+
+      const wsResumo = workbook.addWorksheet("Resumo por Usuário");
+      wsResumo.columns = [
+        { header: "USUÁRIO", key: "usuario", width: 28 },
+        { header: "CARGO / FUNÇÃO", key: "funcao", width: 18 },
+        { header: "CAMPANHA", key: "campanha", width: 32 },
+        { header: "PERÍODO (INÍCIO A FIM)", key: "periodo", width: 26 },
+        { header: "TOTAL DE CHAMADOS", key: "total", width: 20 },
+        { header: "CLIENTES ÚNICOS", key: "unicos", width: 18 }
+      ];
+
+      wsResumo.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      wsResumo.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF1C2643" }
+      };
+
+      aggregatedReport.users.forEach(u => {
+        Array.from(u.campaigns.values()).forEach(c => {
+          wsResumo.addRow({
+            usuario: u.userName,
+            funcao: u.userFuncao,
+            campanha: c.campaignName,
+            periodo: periodoTexto,
+            total: c.total,
+            unicos: c.uniqueCpfs.size
+          });
+        });
+      });
+
+      // Linha final com a soma do total de chamados
+      const totalRowResumo = wsResumo.addRow({
+        usuario: "TOTAL GERAL",
+        funcao: "",
+        campanha: "-",
+        periodo: periodoTexto,
+        total: aggregatedReport.totalChamadosGeral,
+        unicos: aggregatedReport.totalUnicosGeral
+      });
+      totalRowResumo.font = { bold: true };
+      totalRowResumo.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF1F5F9" }
+      };
+
+      const wsDetalhado = workbook.addWorksheet("Lista Nominal de Chamados");
+      wsDetalhado.columns = [
+        { header: "DATA", key: "data", width: 14 },
+        { header: "HORA", key: "hora", width: 12 },
+        { header: "PERÍODO DO FILTRO", key: "periodo_filtro", width: 26 },
+        { header: "USUÁRIO", key: "usuario", width: 26 },
+        { header: "FUNÇÃO", key: "funcao", width: 16 },
+        { header: "CAMPANHA", key: "campanha", width: 30 },
+        { header: "CPF DO CLIENTE", key: "cpf", width: 18 },
+        { header: "NOME DO CLIENTE", key: "nome", width: 30 },
+        { header: "ORIGEM", key: "origem", width: 14 }
+      ];
+
+      wsDetalhado.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      wsDetalhado.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF1C2643" }
+      };
+
+      reportData.forEach(item => {
+        const dateObj = item.created_at ? new Date(item.created_at) : null;
+        wsDetalhado.addRow({
+          data: item.data_chamado || (dateObj ? dateObj.toLocaleDateString("pt-BR") : ""),
+          hora: dateObj ? dateObj.toLocaleTimeString("pt-BR") : "",
+          periodo_filtro: periodoTexto,
+          usuario: item.usuario_nome,
+          funcao: item.usuario_funcao,
+          campanha: item.campanha_nome,
+          cpf: item.cliente_cpf,
+          nome: item.cliente_nome || "",
+          origem: item.origem || "CAMPANHA"
+        });
+      });
+
+      // Linha final no detalhado com o total de chamados
+      const totalRowDetalhado = wsDetalhado.addRow({
+        data: "TOTAL",
+        hora: "",
+        periodo_filtro: periodoTexto,
+        usuario: `Total: ${aggregatedReport.totalChamadosGeral} chamados`,
+        funcao: "",
+        campanha: "-",
+        cpf: "-",
+        nome: `${aggregatedReport.totalUnicosGeral} clientes únicos`,
+        origem: "-"
+      });
+      totalRowDetalhado.font = { bold: true };
+      totalRowDetalhado.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FFF1F5F9" }
+      };
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      saveAs(blob, `relatorio_clientes_chamados_${reportStartDate}_a_${reportEndDate}.xlsx`);
+      toast.success("Planilha Excel exportada com sucesso!");
+    } catch (err) {
+      console.error("Erro ao exportar Excel:", err);
+      toast.error("Erro ao gerar arquivo Excel.");
+    }
+  };
 
   const handleExportTabulation = async (campaign: Campaign, tabName: string) => {
     const key = `${campaign.id}-${tabName}`;
@@ -723,14 +1069,19 @@ export default function DistribuicaoCampanhaPage() {
   // Access check removed - now accessible to all roles
   useEffect(() => {
     // Access is controlled by sidebar and supabase policies
-  }, [perfil, isAdmin, isDeveloper, router])
+  }, [isAdmin, isDeveloper, router])
 
   const fetchCampaigns = useCallback(async (silent = false) => {
-    if (!user || !perfil) return
-    if (!silent) {
+    if (!currentUserId || !currentPerfilId) return
+    if (isFetchingRef.current) return
+    isFetchingRef.current = true
+
+    const isFirstLoad = !hasLoadedRef.current
+    if (!silent && isFirstLoad) {
       setIsLoading(true)
       setError(null)
     }
+    setIsRefreshing(true)
     try {
       const query = supabase.from('campanhas').select('*')
       
@@ -752,12 +1103,9 @@ export default function DistribuicaoCampanhaPage() {
           if (c.filtros?.ativa === false) return false;
           if (!isDistributed) return false;
           
-          const userId = user.id
-          const supervisorId = perfil.supervisor_id
-          
-          const isSelectedBroker = Array.isArray(brokers) && brokers.includes(userId);
-          const isSelectedSupervisor = Array.isArray(distribution) && distribution.includes(userId);
-          const isUnderSelectedSupervisor = !!(supervisorId && Array.isArray(distribution) && distribution.includes(supervisorId));
+          const isSelectedBroker = Array.isArray(brokers) && brokers.includes(currentUserId);
+          const isSelectedSupervisor = Array.isArray(distribution) && distribution.includes(currentUserId);
+          const isUnderSelectedSupervisor = !!(currentSupervisorId && Array.isArray(distribution) && distribution.includes(currentSupervisorId));
 
           if (Array.isArray(brokers) && brokers.length > 0) {
             return isSelectedBroker || isSelectedSupervisor;
@@ -776,7 +1124,7 @@ export default function DistribuicaoCampanhaPage() {
         const { data: progressData } = await supabase
           .from('campanha_atendimentos')
           .select('campanha_id')
-          .eq('corretor_id', user.id)
+          .eq('corretor_id', currentUserId)
 
         if (progressData) {
           const uniqueIds = Array.from(new Set(progressData.map(p => p.campanha_id)))
@@ -828,20 +1176,25 @@ export default function DistribuicaoCampanhaPage() {
       }
     } catch (err: unknown) {
       console.error("Erro ao buscar campanhas distribuídas:", err)
-      if (!silent) {
+      if (!silent && isFirstLoad) {
         const errorMsg = err instanceof Error ? err.message : "Erro desconhecido";
         setError(errorMsg)
       }
     } finally {
-      if (!silent) {
+      hasLoadedRef.current = true
+      isFetchingRef.current = false
+      setIsRefreshing(false)
+      if (!silent || isFirstLoad) {
         setIsLoading(false)
       }
     }
-  }, [user, perfil, isAdmin, isDeveloper, isOperational])
+  }, [currentUserId, currentPerfilId, currentSupervisorId, isAdmin, isDeveloper, isOperational])
 
   useEffect(() => {
-    fetchCampaigns()
-  }, [fetchCampaigns])
+    if (currentUserId && currentPerfilId) {
+      fetchCampaigns(hasLoadedRef.current)
+    }
+  }, [fetchCampaigns, currentUserId, currentPerfilId])
 
   // Polling interval to auto-refresh campaign and monitoring stats in near real-time (every 5 seconds)
   useEffect(() => {
@@ -898,10 +1251,23 @@ export default function DistribuicaoCampanhaPage() {
                </div>
                <div className="flex items-center gap-3 w-full md:w-auto">
                  <Button 
-                   className="h-10 px-8 text-[12px] font-bold uppercase tracking-widest w-full md:w-auto"
-                   onClick={fetchCampaigns}
+                   variant="outline"
+                   className="h-10 px-4 text-[11px] font-extrabold uppercase tracking-wider border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 shadow-sm flex items-center gap-2 whitespace-nowrap"
+                   onClick={() => {
+                     setIsReportModalOpen(true);
+                     fetchChamadosReport();
+                   }}
                  >
-                   Atualizar
+                   <FileSpreadsheet className="w-4 h-4 text-amber-600" />
+                   Relatório de Clientes Chamados
+                 </Button>
+                 <Button 
+                   disabled={isRefreshing}
+                   className="h-10 px-8 text-[12px] font-bold uppercase tracking-widest w-full md:w-auto flex items-center justify-center gap-2"
+                   onClick={() => fetchCampaigns(true)}
+                 >
+                   {isRefreshing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                   <span>{isRefreshing ? "Atualizando..." : "Atualizar"}</span>
                  </Button>
                </div>
              </div>
@@ -1710,6 +2076,402 @@ export default function DistribuicaoCampanhaPage() {
               <Button 
                 onClick={() => setSelectedTabulationDetails(null)}
                 className="h-10 px-6 text-[10px] font-black uppercase tracking-widest rounded-xl bg-[#1C2643] text-white hover:bg-black active:scale-95 transition-all"
+              >
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RELATÓRIO DE CLIENTES CHAMADOS (TABULAÇÃO 'CLIENTE CHAMADO') */}
+      {isReportModalOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-3 md:p-6 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-[28px] p-5 md:p-7 max-w-5xl w-full border border-slate-200 shadow-2xl flex flex-col max-h-[92vh] text-slate-800 animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
+                  <PhoneCall className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-[15px] font-black uppercase tracking-tight text-[#1C2643]">
+                    Relatório de Clientes Chamados
+                  </h3>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsReportModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 rounded-full p-2 bg-slate-50 hover:bg-slate-100 transition-colors"
+                title="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Filtros */}
+            <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-4 mb-5 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Período De */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">
+                    Data Início
+                  </label>
+                  <input 
+                    type="date"
+                    value={reportStartDate}
+                    onChange={(e) => setReportStartDate(e.target.value)}
+                    className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500 [color-scheme:light] [&::-webkit-datetime-edit]:font-bold [&::-webkit-date-and-time-value]:font-bold [&::-webkit-datetime-edit-fields-wrapper]:font-bold"
+                  />
+                </div>
+
+                {/* Período Até */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">
+                    Data Fim
+                  </label>
+                  <input 
+                    type="date"
+                    value={reportEndDate}
+                    onChange={(e) => setReportEndDate(e.target.value)}
+                    className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500 [color-scheme:light] [&::-webkit-datetime-edit]:font-bold [&::-webkit-date-and-time-value]:font-bold [&::-webkit-datetime-edit-fields-wrapper]:font-bold"
+                  />
+                </div>
+
+                {/* Filtro Usuário */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">
+                    Usuário
+                  </label>
+                  <select
+                    value={reportSelectedUser}
+                    onChange={(e) => setReportSelectedUser(e.target.value)}
+                    className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500"
+                  >
+                    <option value="TODOS">TODOS OS USUÁRIOS</option>
+                    {allUsers
+                      .filter((u) => (u.status || 'ATIVO').trim().toUpperCase() === 'ATIVO')
+                      .slice()
+                      .sort((a, b) => a.nome.localeCompare(b.nome))
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.nome} {u.funcao ? `(${u.funcao})` : ""}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {/* Filtro Campanha */}
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">
+                    Campanha
+                  </label>
+                  <select
+                    value={reportSelectedCampaign}
+                    onChange={(e) => setReportSelectedCampaign(e.target.value)}
+                    className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500"
+                  >
+                    <option value="TODAS">TODAS AS CAMPANHAS</option>
+                    {campaigns
+                      .slice()
+                      .sort((a, b) => a.nome.localeCompare(b.nome))
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Barra de atalhos e ações */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/50">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-wider mr-1">Atalhos:</span>
+                  <button
+                    onClick={() => {
+                      const today = new Date().toISOString().split('T')[0];
+                      setReportStartDate(today);
+                      setReportEndDate(today);
+                      fetchChamadosReport(today, today);
+                    }}
+                    className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
+                  >
+                    Hoje
+                  </button>
+                  <button
+                    onClick={() => {
+                      const end = new Date().toISOString().split('T')[0];
+                      const d = new Date();
+                      d.setDate(d.getDate() - 7);
+                      const start = d.toISOString().split('T')[0];
+                      setReportStartDate(start);
+                      setReportEndDate(end);
+                      fetchChamadosReport(start, end);
+                    }}
+                    className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
+                  >
+                    Últimos 7 dias
+                  </button>
+                  <button
+                    onClick={() => {
+                      const now = new Date();
+                      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+                      const end = now.toISOString().split('T')[0];
+                      setReportStartDate(start);
+                      setReportEndDate(end);
+                      fetchChamadosReport(start, end);
+                    }}
+                    className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
+                  >
+                    Este Mês
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => fetchChamadosReport()}
+                    disabled={isLoadingReport}
+                    className="h-8 px-4 text-[10.5px] font-bold uppercase tracking-wider bg-[#1C2643] hover:bg-[#1C2643]/90 text-white rounded-lg flex items-center gap-1.5"
+                  >
+                    {isLoadingReport ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                    Filtrar
+                  </Button>
+
+                  <Button
+                    onClick={handleExportChamadosExcel}
+                    disabled={isLoadingReport || reportData.length === 0}
+                    variant="outline"
+                    className="h-8 px-3.5 text-[10.5px] font-bold uppercase tracking-wider border-emerald-300 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-lg flex items-center gap-1.5"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-600" />
+                    Exportar Excel
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Cards de Métricas Consolidadas */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                <span className="text-[9.5px] font-black text-amber-800 uppercase tracking-widest">Total Chamados</span>
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-xl md:text-2xl font-black text-amber-900 tracking-tight">
+                    {aggregatedReport.totalChamadosGeral}
+                  </span>
+                  <span className="text-[9px] font-extrabold text-amber-700 uppercase">Atendimentos</span>
+                </div>
+              </div>
+
+              <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                <span className="text-[9.5px] font-black text-emerald-800 uppercase tracking-widest">Clientes Únicos</span>
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-xl md:text-2xl font-black text-emerald-900 tracking-tight">
+                    {aggregatedReport.totalUnicosGeral}
+                  </span>
+                  <span className="text-[9px] font-extrabold text-emerald-700 uppercase">CPFs Distintos</span>
+                </div>
+              </div>
+
+              <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                <span className="text-[9.5px] font-black text-blue-800 uppercase tracking-widest">Usuários Ativos</span>
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-xl md:text-2xl font-black text-blue-900 tracking-tight">
+                    {aggregatedReport.totalUsuariosAtivos}
+                  </span>
+                  <span className="text-[9px] font-extrabold text-blue-700 uppercase">Operadores</span>
+                </div>
+              </div>
+
+              <div className="bg-indigo-50/70 border border-indigo-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                <span className="text-[9.5px] font-black text-indigo-800 uppercase tracking-widest">Campanhas</span>
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-xl md:text-2xl font-black text-indigo-900 tracking-tight">
+                    {aggregatedReport.totalCampanhasAtivas}
+                  </span>
+                  <span className="text-[9px] font-extrabold text-indigo-700 uppercase">Trabalhadas</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Cabeçalho do Relatório */}
+            <div className="flex items-center justify-end border-b border-slate-100 pb-2 mb-3">
+              <span className="text-[11px] font-bold text-black/70">
+                Período: {new Date(reportStartDate + "T00:00:00").toLocaleDateString("pt-BR")} até {new Date(reportEndDate + "T00:00:00").toLocaleDateString("pt-BR")}
+              </span>
+            </div>
+
+            {/* Corpo do Relatório */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+              {isLoadingReport ? (
+                <div className="py-16 flex flex-col items-center justify-center gap-3 text-slate-400">
+                  <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+                  <p className="text-[12px] font-bold uppercase tracking-wider">Carregando relatório de chamados...</p>
+                </div>
+              ) : reportData.length === 0 ? (
+                <div className="py-16 flex flex-col items-center justify-center gap-2 text-slate-400">
+                  <FileText className="w-10 h-10 opacity-30" />
+                  <p className="text-[12px] font-bold uppercase tracking-wider text-slate-500">
+                    Nenhum cliente chamado encontrado no período e filtros selecionados.
+                  </p>
+                  <p className="text-[10.5px] text-slate-400">
+                    Verifique o intervalo de datas ou selecione outros usuários/campanhas.
+                  </p>
+                </div>
+              ) : (
+                /* MODO CONSOLIDADO: O usuário X teve N clientes chamados no período Y, tantos da campanha W e tantos da Z */
+                <div className="space-y-3.5">
+                  {aggregatedReport.users.map((userGrp) => {
+                    const campaignList = Array.from(userGrp.campaigns.values()).sort((a, b) => b.total - a.total);
+                    return (
+                      <div 
+                        key={userGrp.userId} 
+                        className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:border-slate-300 transition-all"
+                      >
+                        {/* Header do Usuário */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-slate-100 text-[#1C2643] flex items-center justify-center font-black text-[12px] shrink-0">
+                              {userGrp.userName.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h4 className="text-[13px] font-black text-[#1C2643]">{userGrp.userName}</h4>
+                                <span className="px-2 py-0.5 rounded-full text-[8.5px] font-black uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                                  {userGrp.userFuncao}
+                                </span>
+                              </div>
+                              <p className="text-[11.5px] text-slate-500 mt-0.5">
+                                Teve <strong className="text-[#1C2643] font-black">{userGrp.totalChamados} clientes chamados</strong> ({userGrp.uniqueCpfs.size} clientes únicos) no período.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 self-end sm:self-center">
+                            <span className="text-[11px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-xl">
+                              Total: {userGrp.totalChamados} chamados
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Detalhamento por Campanha do Usuário */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-[11px] border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50/70 border-b border-slate-100">
+                                <th className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest">Campanha</th>
+                                <th className="px-3 py-2 text-[9px] font-black text-amber-700 uppercase tracking-widest text-center">Clientes Chamados</th>
+                                <th className="px-3 py-2 text-[9px] font-black text-emerald-700 uppercase tracking-widest text-center">Clientes Únicos</th>
+                                <th className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest text-center">% do Total</th>
+                                <th className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Ação</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {campaignList.map((c) => {
+                                const percent = userGrp.totalChamados > 0 ? Math.round((c.total / userGrp.totalChamados) * 100) : 0;
+                                return (
+                                  <tr key={c.campaignId} className="hover:bg-slate-50/60 transition-colors">
+                                    <td className="px-3 py-2.5 font-bold text-slate-700">
+                                      {c.campaignName}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-center font-black text-amber-900">
+                                      {c.total}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-center font-bold text-emerald-700">
+                                      {c.uniqueCpfs.size}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-center font-medium text-slate-500">
+                                      {percent}%
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setDetailModalUser({
+                                          userName: userGrp.userName,
+                                          campaignName: c.campaignName,
+                                          clients: c.clients
+                                        })}
+                                        className="h-7 px-2.5 text-[10px] font-extrabold uppercase text-[#1C2643] hover:bg-slate-100 flex items-center gap-1 ml-auto"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                        Ver Clientes
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Rodapé do Modal */}
+            <div className="border-t border-slate-100 pt-3.5 mt-3.5 flex items-center justify-between">
+              <span className="text-[10px] font-medium text-slate-400">
+                Mostrando {reportData.length} chamados registrados no total
+              </span>
+              <Button
+                variant="outline"
+                onClick={() => setIsReportModalOpen(false)}
+                className="h-9 px-5 text-[11px] font-bold uppercase tracking-wider"
+              >
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-MODAL: CLIENTES ESPECÍFICOS DE UM USUÁRIO / CAMPANHA */}
+      {detailModalUser && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[210] p-4 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl p-5 max-w-lg w-full border border-slate-200 shadow-2xl flex flex-col max-h-[80vh] text-slate-800">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+              <div>
+                <span className="text-[9.5px] font-bold text-amber-600 uppercase tracking-widest block">Lista de Clientes Chamados</span>
+                <h4 className="text-[13px] font-black text-[#1C2643] mt-0.5">
+                  {detailModalUser.userName} • {detailModalUser.campaignName || "Campanha"}
+                </h4>
+              </div>
+              <button 
+                onClick={() => setDetailModalUser(null)}
+                className="text-slate-400 hover:text-slate-700 rounded-full p-1 bg-slate-50 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100 mb-3 text-[11px]">
+              <span className="font-bold text-slate-600">Total de Chamados:</span>
+              <span className="font-black text-[#1C2643]">{detailModalUser.clients.length} clientes</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar border border-slate-100 rounded-xl divide-y divide-slate-100">
+              {detailModalUser.clients.map((c, idx) => (
+                <div key={idx} className="p-2.5 flex items-center justify-between hover:bg-slate-50 text-[11px]">
+                  <div>
+                    <span className="font-mono font-bold text-slate-800 block">{c.cpf}</span>
+                    {c.nome && <span className="text-[10px] text-slate-500 block truncate max-w-[240px]">{c.nome}</span>}
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 font-mono">{c.data}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-slate-100 pt-3 mt-3 flex justify-end">
+              <Button
+                size="sm"
+                onClick={() => setDetailModalUser(null)}
+                variant="outline"
+                className="h-8 px-4 text-[10px] font-bold uppercase tracking-wider"
               >
                 Fechar
               </Button>

@@ -21,7 +21,8 @@ import {
   FileSpreadsheet,
   Send,
   Zap,
-  UserCheck
+  UserCheck,
+  PhoneCall
 } from "lucide-react"
 import { cn, withRetry } from "@/lib/utils"
 import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
@@ -473,6 +474,9 @@ export default function TicketsPage() {
   const [selectedSecondaryStatus, setSelectedSecondaryStatus] = useState<string | null>(null)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
+  const [totalClientesChamados, setTotalClientesChamados] = useState<number>(0)
+  const [totalClientesUnicos, setTotalClientesUnicos] = useState<number>(0)
+  const [isLoadingClientesChamados, setIsLoadingClientesChamados] = useState<boolean>(false)
 
   // Novos estados para filtros avançados
   const [slaActive, setSlaActive] = useState(false)
@@ -996,6 +1000,187 @@ export default function TicketsPage() {
     }
     loadUsersMap()
   }, [])
+
+  const isFirstLoadCcRef = React.useRef(true);
+
+  const fetchClientesChamadosTotal = useCallback(async (isSilent = false) => {
+    if (!perfil?.id || !user?.id) return;
+    const silent = (typeof isSilent === "boolean" ? isSilent : false) || !isFirstLoadCcRef.current;
+    if (!silent) setIsLoadingClientesChamados(true);
+    isFirstLoadCcRef.current = false;
+    try {
+      let targetUserIds: string[] = [];
+      let targetUserNames: string[] = [];
+
+      if (filterCorretores && filterCorretores.length > 0) {
+        targetUserNames = filterCorretores;
+        targetUserIds = allUsersList.filter(u => filterCorretores.includes(u.nome)).map(u => u.id);
+      } else {
+        if (perfil.role === 'Estágio' || perfil.role === 'Estagio' || perfil.role === 'Processo Seletivo') {
+          targetUserIds = [user.id];
+          targetUserNames = [perfil.nome || user.user_metadata?.nome_completo || ''];
+        } else if (perfil.role === 'Corretor') {
+          const myEstagiarios = allUsersList
+            .filter((u: any) => u.padrinho_id === user.id)
+            .map(u => u.id);
+          targetUserIds = [user.id, ...myEstagiarios];
+        } else if (perfil.role === 'Supervisor') {
+          const subordinates = allUsersList
+            .filter((u: any) => u.supervisor_id === user.id || u.padrinho_id === user.id)
+            .map(u => u.id);
+          targetUserIds = [user.id, ...subordinates];
+        }
+      }
+
+      // 1. Consulta na tabela clientes_chamados com paginação para superar o limite de 1.000 linhas do PostgREST
+      let allRecords: { cliente_cpf: string }[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let totalExactCount: number | null = null;
+
+      while (true) {
+        let ccQuery = supabase
+          .from('clientes_chamados')
+          .select('cliente_cpf', { count: 'exact' })
+          .eq('tabulacao', 'CLIENTE CHAMADO');
+
+        const effectiveStartDate = (startDate && startDate.length === 10) ? startDate : '2026-09-16';
+        ccQuery = ccQuery.gte('data_chamado', effectiveStartDate);
+        if (endDate && endDate.length === 10) {
+          ccQuery = ccQuery.lte('data_chamado', endDate);
+        }
+
+        if (targetUserIds.length > 0) {
+          ccQuery = ccQuery.in('usuario_id', targetUserIds);
+        } else if (targetUserNames.length > 0) {
+          ccQuery = ccQuery.in('usuario_nome', targetUserNames);
+        }
+
+        const { data: batch, count, error: ccErr } = await ccQuery.range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (ccErr) {
+          console.warn("Erro ao consultar clientes_chamados:", ccErr);
+          break;
+        }
+
+        if (totalExactCount === null && typeof count === 'number') {
+          totalExactCount = count;
+        }
+
+        if (batch && batch.length > 0) {
+          allRecords = allRecords.concat(batch);
+        }
+
+        if (!batch || batch.length < pageSize) {
+          break;
+        }
+        page++;
+      }
+
+      if (allRecords.length > 0 || (totalExactCount !== null && totalExactCount > 0)) {
+        const finalTotal = totalExactCount !== null ? totalExactCount : allRecords.length;
+        setTotalClientesChamados(finalTotal);
+        const unicos = new Set(allRecords.map(c => c.cliente_cpf).filter(Boolean));
+        setTotalClientesUnicos(unicos.size);
+        return;
+      }
+
+      // 2. Fallback resiliente: consultar campanha_atendimentos também com paginação
+      let caRecords: { cliente_cpf: string }[] = [];
+      let caPage = 0;
+      let caTotalCount: number | null = null;
+
+      while (true) {
+        let caQuery = supabase
+          .from('campanha_atendimentos')
+          .select('cliente_cpf', { count: 'exact' })
+          .eq('tabulacao', 'CLIENTE CHAMADO')
+          .neq('cliente_cpf', '00000000000');
+
+        const effectiveStartDate = (startDate && startDate.length === 10) ? startDate : '2026-09-16';
+        caQuery = caQuery.gte('created_at', `${effectiveStartDate}T00:00:00.000Z`);
+        if (endDate && endDate.length === 10) {
+          caQuery = caQuery.lte('created_at', `${endDate}T23:59:59.999Z`);
+        }
+
+        if (targetUserIds.length > 0) {
+          caQuery = caQuery.in('corretor_id', targetUserIds);
+        }
+
+        const { data: caBatch, count: caCount, error: caErr } = await caQuery.range(caPage * pageSize, (caPage + 1) * pageSize - 1);
+        if (caErr) throw caErr;
+
+        if (caTotalCount === null && typeof caCount === 'number') {
+          caTotalCount = caCount;
+        }
+
+        if (caBatch && caBatch.length > 0) {
+          caRecords = caRecords.concat(caBatch);
+        }
+
+        if (!caBatch || caBatch.length < pageSize) {
+          break;
+        }
+        caPage++;
+      }
+
+      if (caRecords.length > 0 || (caTotalCount !== null && caTotalCount > 0)) {
+        const finalTotal = caTotalCount !== null ? caTotalCount : caRecords.length;
+        setTotalClientesChamados(finalTotal);
+        const unicos = new Set(caRecords.map(c => c.cliente_cpf).filter(Boolean));
+        setTotalClientesUnicos(unicos.size);
+      } else {
+        setTotalClientesChamados(0);
+        setTotalClientesUnicos(0);
+      }
+    } catch (err) {
+      console.error("Erro ao buscar total de clientes chamados:", err);
+      setTotalClientesChamados(0);
+      setTotalClientesUnicos(0);
+    } finally {
+      setIsLoadingClientesChamados(false);
+    }
+  }, [perfil?.id, perfil?.role, perfil?.nome, user?.id, startDate, endDate, filterCorretores.join(','), allUsersList.length]);
+
+  useEffect(() => {
+    fetchClientesChamadosTotal();
+  }, [fetchClientesChamadosTotal]);
+
+  const periodoChamadosLabel = useMemo(() => {
+    if (startDate && endDate) {
+      const s = startDate.split('-').reverse().join('/');
+      const e = endDate.split('-').reverse().join('/');
+      return `Período: ${s} até ${e}`;
+    }
+    if (startDate) {
+      const s = startDate.split('-').reverse().join('/');
+      return `A partir de: ${s}`;
+    }
+    if (endDate) {
+      const e = endDate.split('-').reverse().join('/');
+      return `Até: ${e}`;
+    }
+    return "Período: De 16/09/2026 até o presente momento";
+  }, [startDate, endDate]);
+
+  const usuarioChamadosLabel = useMemo(() => {
+    if (filterCorretores.length === 1) {
+      return `Usuário: ${filterCorretores[0]}`;
+    }
+    if (filterCorretores.length > 1) {
+      return `Usuários: ${filterCorretores.length} selecionados`;
+    }
+    if (perfil?.role === 'Estágio' || perfil?.role === 'Estagio') {
+      return `Usuário: ${perfil.nome || 'Individual'}`;
+    }
+    if (perfil?.role === 'Corretor') {
+      return `Usuários: Sua equipe/parceiros`;
+    }
+    if (perfil?.role === 'Supervisor') {
+      return `Usuários: Sua equipe supervisionada`;
+    }
+    return "Usuários: Todos os usuários";
+  }, [filterCorretores, perfil]);
 
   // Extração de valores únicos para os filtros
   const uniqueCorretores = useMemo(() => Array.from(new Set(tickets.map(t => t.user_nome).filter(Boolean))).sort() as string[], [tickets])
@@ -1818,6 +2003,7 @@ export default function TicketsPage() {
                       onClick={() => {
                         console.log("Fetching tickets manually...")
                         fetchTickets()
+                        fetchClientesChamadosTotal()
                       }}
                       disabled={isLoading}
                       className="bg-primary hover:bg-primary/90 text-white px-8 h-[38px] text-[12px] font-bold rounded-lg shadow-lg shadow-primary/20 cursor-pointer flex items-center gap-2"
@@ -1994,6 +2180,55 @@ export default function TicketsPage() {
                   >
                     Limpar Filtros
                   </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Card Resumo: Total de Clientes Chamados */}
+        <Card className="card-shadow border border-slate-200 bg-white overflow-hidden">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0 shadow-xs">
+                  <PhoneCall className="w-6 h-6 text-amber-600" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total de Clientes Chamados</span>
+                    <Badge variant="outline" className="text-[8.5px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border-amber-200">
+                      Tabulação
+                    </Badge>
+                  </div>
+                  <div className="flex items-baseline gap-2.5 mt-0.5">
+                    <span className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">
+                      {isLoadingClientesChamados && totalClientesChamados === 0 ? (
+                        <Loader2 className="w-6 h-6 animate-spin text-amber-500 inline-block" />
+                      ) : (
+                        totalClientesChamados.toLocaleString('pt-BR')
+                      )}
+                    </span>
+                    <span className="text-[11.5px] font-bold text-slate-500">
+                      ({totalClientesUnicos.toLocaleString('pt-BR')} clientes únicos)
+                    </span>
+                  </div>
+                  <p className="text-[10.5px] font-medium text-slate-400 mt-0.5">
+                    {periodoChamadosLabel} • {usuarioChamadosLabel}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 pt-3 md:pt-0 border-t md:border-t-0 border-slate-100">
+                <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-4 py-2 text-center md:text-right">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Chamados na Lista</span>
+                  <span className="text-lg font-black text-slate-800">{baseFilteredTickets.length}</span>
+                </div>
+                <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl px-4 py-2 text-center md:text-right">
+                  <span className="text-[9px] font-black text-emerald-800 uppercase tracking-widest block">Conversão em Chamados</span>
+                  <span className="text-lg font-black text-emerald-700">
+                    {totalClientesChamados > 0 ? `${Math.min(100, Math.round((baseFilteredTickets.length / totalClientesChamados) * 100))}%` : '0%'}
+                  </span>
                 </div>
               </div>
             </div>
