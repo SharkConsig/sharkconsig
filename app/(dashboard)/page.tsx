@@ -2379,7 +2379,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [perfil, isRecursosHumanos, isCorretor, isAdmin, isOperational, isDeveloper, isSupervisor, startDate, endDate])
+  }, [perfil?.id, perfil?.role, perfil?.funcao, perfil?.supervisor_id, isRecursosHumanos, isCorretor, isAdmin, isOperational, isDeveloper, isSupervisor, startDate, endDate])
 
   useEffect(() => {
     setMounted(true)
@@ -3223,7 +3223,7 @@ export default function DashboardPage() {
                           {progressPercent >= 100 ? "META ALCANÇADA! PARABÉNS!" : "Você está no caminho!"}
                         </span>
                       </div>
-                      <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 mt-1.5 text-center shrink-0">
+                      <p className="text-[11px] sm:text-[12px] font-bold text-slate-500 mt-1.5 text-center shrink-0">
                         {remainingValue > 0 ? (
                           <>Faltam <span className="text-[#1C2643] font-black">{formatCurrency(remainingValue)}</span> para a meta</>
                         ) : (
@@ -3648,8 +3648,8 @@ export default function DashboardPage() {
                        </div>
                        <div className="mt-auto pt-3.5">
                           <div className="flex justify-between items-center mb-1.5">
-                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{startDate || endDate ? "PAGO NO PERÍODO" : "PAGO HOJE"}</p>
-                             <p className="text-[9.5px] font-black text-[#1C2643]">
+                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{startDate || endDate ? "PAGO NO PERÍODO" : "PAGO HOJE"}</p>
+                             <p className="text-[10.5px] font-black text-[#1C2643]">
                                {isLoading ? "..." : (
                                  <span className="flex items-center gap-1">
                                    {Math.round(((startDate || endDate ? displayMonthlyProduced : displayDailyProduced) / dailyGoal) * 100)}%
@@ -3693,7 +3693,7 @@ export default function DashboardPage() {
                           <span className="text-[11.5px] font-bold text-[#1C2643]">
                             {teamInProcessCount} {teamInProcessCount === 1 ? 'Contrato' : 'Contratos'}
                           </span>
-                          <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 mt-6 text-center shrink-0">
+                          <p className="text-[11px] sm:text-[12px] font-bold text-slate-500 mt-6 text-center shrink-0">
                              Você tem <span className="text-[#1C2643] font-black">{formatCurrency(teamPendingInconsistencyValue)}</span> ({teamPendingInconsistencyCount} {teamPendingInconsistencyCount === 1 ? 'pendência' : 'pendências'}) pendentes de atuação
                           </p>
                         </div>
@@ -3807,7 +3807,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="flex-1 flex flex-col">
-                  {isLoading ? (
+                  {isLoading && rankings.length === 0 ? (
                     <div className="flex items-center justify-center h-full py-16">
                        <Loader2 className="w-6 h-6 animate-spin text-[#1C2643]" />
                     </div>
@@ -3849,7 +3849,7 @@ export default function DashboardPage() {
                                     <td className="px-3 py-3">
                                       <div className="flex items-center gap-2.5">
                                         <div className={cn(
-                                          "w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-black shrink-0",
+                                          "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
                                           position === 1 ? "bg-amber-100 text-amber-600" : 
                                           position === 2 ? "bg-slate-100 text-slate-600" :
                                           position === 3 ? "bg-orange-100 text-orange-600" :
@@ -3859,7 +3859,7 @@ export default function DashboardPage() {
                                         </div>
                                         <div className="flex items-center gap-1.5 min-w-[100px]">
                                           <span className={cn(
-                                            "text-[11.5px] font-black tracking-tight",
+                                            "text-[12.5px] font-black tracking-tight",
                                             isUser ? "text-[#1C2643]" : "text-slate-600"
                                           )}>
                                             {formatName(rank.nome)} {isUser && !isSupervisorRow && "(Você)"}
@@ -4144,7 +4144,7 @@ export default function DashboardPage() {
                         <div className="w-8.5 h-8.5 bg-white rounded-lg shadow-sm flex items-center justify-center shrink-0">
                            <Target className="w-4 h-4 text-amber-500" />
                         </div>
-                        <p className="text-[10px] font-bold text-[#1C2643] leading-tight flex-1">
+                        <p className="text-[12px] font-bold text-[#1C2643] leading-tight flex-1">
                            {userRank === 1 ? (
                              <span className="text-emerald-600 font-black tracking-tight">PARABÉNS! VOCÊ É O NÚMERO 1! CONTINUE LIDERANDO!</span>
                            ) : userRank > 1 ? (
@@ -4195,7 +4195,7 @@ export default function DashboardPage() {
                                     <td className="px-3 py-3">
                                       <div className="flex items-center gap-2.5">
                                         <div className={cn(
-                                          "w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-black shrink-0",
+                                          "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
                                           position === 1 ? "bg-amber-100 text-amber-600" : 
                                           position === 2 ? "bg-slate-100 text-slate-600" :
                                           position === 3 ? "bg-orange-100 text-orange-600" :
@@ -4206,15 +4206,15 @@ export default function DashboardPage() {
                                         <div className="flex flex-col min-w-[100px]">
                                           <div className="flex items-center gap-1.5">
                                             <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                            <span className="text-[11.5px] font-black tracking-tight text-[#1C2643]">
+                                            <span className="text-[12.5px] font-black tracking-tight text-[#1C2643]">
                                               {formatName(est.nome)}
                                             </span>
-                                            <span className="text-[8px] font-black text-slate-400">
+                                            <span className="text-[9px] font-black text-slate-400">
                                               (ESTÁGIO)
                                             </span>
                                           </div>
                                           {est.supervisor && (
-                                            <span className="text-[8px] font-bold text-slate-400 mt-0.5">
+                                            <span className="text-[9px] font-bold text-slate-400 mt-0.5">
                                               SUPERVISOR: {formatName(est.supervisor)}
                                             </span>
                                           )}
@@ -4340,7 +4340,7 @@ export default function DashboardPage() {
                                     <td className="px-3 py-3">
                                       <div className="flex items-center gap-2.5">
                                         <div className={cn(
-                                          "w-5 h-5 rounded-full flex items-center justify-center text-[8.5px] font-black shrink-0",
+                                          "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
                                           position === 1 ? "bg-amber-100 text-amber-600" : 
                                           position === 2 ? "bg-slate-100 text-slate-600" :
                                           position === 3 ? "bg-orange-100 text-orange-600" :
@@ -4351,15 +4351,15 @@ export default function DashboardPage() {
                                         <div className="flex flex-col min-w-[100px]">
                                           <div className="flex items-center gap-1.5">
                                             <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                                            <span className="text-[11.5px] font-black tracking-tight text-[#1C2643]">
+                                            <span className="text-[12.5px] font-black tracking-tight text-[#1C2643]">
                                               {formatName(est.nome)}
                                             </span>
-                                            <span className="text-[8px] font-black text-slate-400">
+                                            <span className="text-[9px] font-black text-slate-400">
                                               (PJ)
                                             </span>
                                           </div>
                                           {est.supervisor && (
-                                            <span className="text-[8px] font-bold text-slate-400 mt-0.5">
+                                            <span className="text-[9px] font-bold text-slate-400 mt-0.5">
                                               SUPERVISOR: {formatName(est.supervisor)}
                                             </span>
                                           )}
