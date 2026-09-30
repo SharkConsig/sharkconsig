@@ -181,7 +181,7 @@ async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: s
 
 export default function DistribuicaoCampanhaPage() {
   const router = useRouter()
-  const { user, perfil, isAdmin, isDeveloper, isOperational } = useAuth()
+  const { user, perfil, isAdmin, isDeveloper, isOperational, isSupervisor, isMonitoramento } = useAuth()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -202,6 +202,16 @@ export default function DistribuicaoCampanhaPage() {
 
   const canToggleActive = Boolean(isAdmin || isDeveloper || isOperational || perfil?.role === 'Operacional');
 
+  const userRole = (perfil?.role || '').trim().toLowerCase();
+  const canAccessChamadosReport = Boolean(
+    isAdmin ||
+    isDeveloper ||
+    isOperational ||
+    isSupervisor ||
+    isMonitoramento ||
+    ['desenvolvedor', 'administrador', 'admin', 'administrativo', 'operacional', 'monitoramento', 'supervisor'].includes(userRole)
+  );
+
   const canStart = !isAdmin && !isDeveloper && !isOperational && (
     perfil?.role === 'Corretor' || 
     perfil?.role === 'Estágio' || 
@@ -209,8 +219,6 @@ export default function DistribuicaoCampanhaPage() {
     perfil?.role === 'Processo Seletivo' ||
     perfil?.role === 'PROCESSO SELETIVO'
   );
-
-  const isSupervisor = perfil?.role === 'Supervisor';
 
   const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
   const [monitoringData, setMonitoringData] = useState<Record<string, Record<string, { total: number; tabulacoes: Record<string, number>; last_active: string | null; entrou?: string | null; saiu?: string | null; isOnline?: boolean }>>>({});
@@ -271,6 +279,10 @@ export default function DistribuicaoCampanhaPage() {
     uId = reportSelectedUser,
     cId = reportSelectedCampaign
   ) => {
+    if (!canAccessChamadosReport) {
+      toast.error("Acesso restrito. Função permitida apenas para cargos autorizados.");
+      return;
+    }
     setIsLoadingReport(true);
     try {
       // 1. Consulta prioritária na tabela public.clientes_chamados com paginação completa
@@ -451,6 +463,10 @@ export default function DistribuicaoCampanhaPage() {
   })();
 
   const handleExportChamadosExcel = async () => {
+    if (!canAccessChamadosReport) {
+      toast.error("Acesso restrito. Função permitida apenas para cargos autorizados.");
+      return;
+    }
     if (reportData.length === 0) {
       toast.error("Nenhum dado para exportar no período selecionado.");
       return;
@@ -1250,17 +1266,19 @@ export default function DistribuicaoCampanhaPage() {
                  />
                </div>
                <div className="flex items-center gap-3 w-full md:w-auto">
-                 <Button 
-                   variant="outline"
-                   className="h-10 px-4 text-[11px] font-extrabold uppercase tracking-wider border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 shadow-sm flex items-center gap-2 whitespace-nowrap"
-                   onClick={() => {
-                     setIsReportModalOpen(true);
-                     fetchChamadosReport();
-                   }}
-                 >
-                   <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-                   Relatório de Clientes Chamados
-                 </Button>
+                  {canAccessChamadosReport && (
+                    <Button 
+                      variant="outline"
+                      className="h-10 px-4 text-[11px] font-extrabold uppercase tracking-wider border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 shadow-sm flex items-center gap-2 whitespace-nowrap"
+                      onClick={() => {
+                        setIsReportModalOpen(true);
+                        fetchChamadosReport();
+                      }}
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-amber-600" />
+                      Relatório de Clientes Chamados
+                    </Button>
+                  )}
                  <Button 
                    disabled={isRefreshing}
                    className="h-10 px-8 text-[12px] font-bold uppercase tracking-widest w-full md:w-auto flex items-center justify-center gap-2"
@@ -2085,7 +2103,7 @@ export default function DistribuicaoCampanhaPage() {
       )}
 
       {/* MODAL: RELATÓRIO DE CLIENTES CHAMADOS (TABULAÇÃO 'CLIENTE CHAMADO') */}
-      {isReportModalOpen && (
+      {canAccessChamadosReport && isReportModalOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[200] p-3 md:p-6 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-[28px] p-5 md:p-7 max-w-5xl w-full border border-slate-200 shadow-2xl flex flex-col max-h-[92vh] text-slate-800 animate-in zoom-in-95 duration-150">
             {/* Header */}
