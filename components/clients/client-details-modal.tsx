@@ -169,6 +169,7 @@ export interface LeadContactInfo {
   nome: string;
   telefones: string[];
   telefones_selecionados?: string[];
+  convenio?: string;
 }
 
 interface ClientDetailsModalProps {
@@ -1989,11 +1990,32 @@ export function ClientDetailsModal({
                                 const phones = client ? [client.telefone_1, client.telefone_2, client.telefone_3].filter(
                                   (p): p is string => Boolean(p && p !== '0' && p !== 'NÃO INFORMADO')
                                 ) : [];
+                                const activeConvenio = 
+                                  clientType === 'siape' ? 'SIAPE' :
+                                  clientType === 'governo_sp' ? 'Governo São Paulo' :
+                                  clientType === 'prefeitura_sp' ? 'Prefeitura de São Paulo' :
+                                  clientType === 'governo_pi' ? 'Governo Piauí' :
+                                  clientType === 'governo_ma' ? 'Governo Maranhão' :
+                                  clientType === 'governo_rr' ? 'Governo Roraima' :
+                                  clientType === 'governo_rj' ? 'Governo Rio de Janeiro' :
+                                  clientType === 'prefeitura_santo_andre' ? 'Prefeitura Santo André' :
+                                  clientType === 'prefeitura_contagem' ? 'Prefeitura Contagem' :
+                                  clientType === 'governo_mg' ? 'Governo Minas Gerais' : 
+                                  clientType === 'governo_ms' ? 'Governo Mato Grosso do Sul' : 
+                                  clientType === 'prefeitura_natal' ? 'Prefeitura de Natal' :
+                                  clientType === 'prefeitura_porto_velho' ? 'Prefeitura de Porto Velho' :
+                                  clientType === 'governo_ba' ? 'Governo Bahia' :
+                                  clientType === 'governo_am' ? 'Governo Amazonas' :
+                                  clientType === 'governo_ce' ? 'Governo Ceará' :
+                                  clientType === 'governo_ro' ? 'Governo Rondônia' :
+                                  clientType === 'prefeitura_ponta_grossa' ? 'Prefeitura Ponta Grossa' : (clientType ? String(clientType).toUpperCase() : undefined);
+
                                 await onSelectTabulacao(status, {
                                   cpf: client?.cpf || cpf,
                                   nome: client?.nome || "Cliente sem Nome",
                                   telefones: phones,
-                                  telefones_selecionados: selectedPhones
+                                  telefones_selecionados: selectedPhones,
+                                  convenio: activeConvenio
                                 });
                               }
                               onClose();

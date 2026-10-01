@@ -185,6 +185,7 @@ interface TicketMetadata {
   tabulacao_whatsapp?: "NAO_EXISTE_WHATSAPP" | "WHATSAPP_DIVERGENTE" | null
   tabulado_por?: string
   telefones_selecionados?: string[]
+  convenio?: string
   selected_operation_type?: string
   enviado_para_corretor?: boolean
   corretor_id?: string
@@ -310,6 +311,32 @@ function formatPhone(phone: string = ""): string {
   return phone || "Não informado"
 }
 
+// Normalização e formatação do convênio de origem do lead
+function formatConvenioOrigem(raw: string = ""): string {
+  if (!raw) return "Não informado"
+  const upper = raw.toUpperCase().trim()
+  if (upper.includes("SIAPE")) return "SIAPE"
+  if (upper.includes("GOVERNO_SP") || upper.includes("GOVERNO SP") || (upper.includes("GOVERNO") && (upper.includes("SÃO PAULO") || upper.includes("SAO PAULO")))) return "Governo São Paulo"
+  if (upper.includes("PREFEITURA_SP") || upper.includes("PREFEITURA SP") || (upper.includes("PREFEITURA") && (upper.includes("SÃO PAULO") || upper.includes("SAO PAULO")))) return "Prefeitura de São Paulo"
+  if (upper.includes("GOVERNO_MG") || upper.includes("MINAS GERAIS")) return "Governo Minas Gerais"
+  if (upper.includes("GOVERNO_RJ") || upper.includes("RIO DE JANEIRO")) return "Governo Rio de Janeiro"
+  if (upper.includes("GOVERNO_BA") || upper.includes("BAHIA")) return "Governo Bahia"
+  if (upper.includes("GOVERNO_AM") || upper.includes("AMAZONAS")) return "Governo Amazonas"
+  if (upper.includes("GOVERNO_CE") || upper.includes("CEARÁ") || upper.includes("CEARA")) return "Governo Ceará"
+  if (upper.includes("GOVERNO_RO") || upper.includes("RONDÔNIA") || upper.includes("RONDONIA")) return "Governo Rondônia"
+  if (upper.includes("GOVERNO_PI") || upper.includes("PIAUÍ") || upper.includes("PIAUI")) return "Governo Piauí"
+  if (upper.includes("GOVERNO_MA") || upper.includes("MARANHÃO") || upper.includes("MARANHAO")) return "Governo Maranhão"
+  if (upper.includes("GOVERNO_RR") || upper.includes("RORAIMA")) return "Governo Roraima"
+  if (upper.includes("GOVERNO_MS") || upper.includes("MATO GROSSO DO SUL")) return "Governo Mato Grosso do Sul"
+  if (upper.includes("PREFEITURA_SANTO_ANDRE") || upper.includes("SANTO ANDRÉ") || upper.includes("SANTO ANDRE")) return "Prefeitura Santo André"
+  if (upper.includes("PREFEITURA_CONTAGEM") || upper.includes("CONTAGEM")) return "Prefeitura Contagem"
+  if (upper.includes("PREFEITURA_NATAL") || upper.includes("NATAL")) return "Prefeitura de Natal"
+  if (upper.includes("PREFEITURA_PORTO_VELHO") || upper.includes("PORTO VELHO")) return "Prefeitura de Porto Velho"
+  if (upper.includes("PREFEITURA_PONTA_GROSSA") || upper.includes("PONTA GROSSA")) return "Prefeitura Ponta Grossa"
+  if (upper.includes("INSS")) return "INSS"
+  return raw
+}
+
 export default function KanbanPage() {
   const { user, perfil, isAdmin } = useAuth()
 
@@ -336,6 +363,7 @@ export default function KanbanPage() {
   const [clientSearchError, setClientSearchError] = useState<string | null>(null)
   const [isClientDetailsModalOpen, setIsClientDetailsModalOpen] = useState(false)
   const [selectedClientCpf, setSelectedClientCpf] = useState<string>("")
+  const [isViewingLeadInAttendance, setIsViewingLeadInAttendance] = useState(false)
 
   const handleClientSearch = async () => {
     const raw = clientSearchQuery.trim()
@@ -625,6 +653,97 @@ export default function KanbanPage() {
   const [isSubmittingAtendimento, setIsSubmittingAtendimento] = useState(false)
   const [historicoMensagens, setHistoricoMensagens] = useState<any[]>([])
   const [isLoadingHistorico, setIsLoadingHistorico] = useState(false)
+  const [resolvedConvenio, setResolvedConvenio] = useState("")
+  const [opcaoSelecionada, setOpcaoSelecionada] = useState<"Sem interação" | "Sem interesse" | "">("")
+  const [isSavingOpcao, setIsSavingOpcao] = useState(false)
+
+  // Sincronizar opção selecionada a partir da observação da ficha
+  useEffect(() => {
+    if (!atendimentoModalTicket) {
+      setOpcaoSelecionada("")
+      return
+    }
+    const cleanObs = (atendimentoModalTicket.descricao || "")
+      .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
+      .trim()
+    if (cleanObs === "Sem interação") {
+      setOpcaoSelecionada("Sem interação")
+    } else if (cleanObs === "Sem interesse") {
+      setOpcaoSelecionada("Sem interesse")
+    } else {
+      setOpcaoSelecionada("")
+    }
+  }, [atendimentoModalTicket])
+
+  // Resolver e sincronizar convênio de origem do cliente no modal de atendimento
+  useEffect(() => {
+    if (!atendimentoModalTicket) {
+      setResolvedConvenio("")
+      return
+    }
+
+    const meta = parseMetadata(atendimentoModalTicket.descricao)
+    const initialConvenio = atendimentoModalTicket.convenio || meta.convenio || ""
+    if (initialConvenio && initialConvenio !== "Não informado") {
+      setResolvedConvenio(formatConvenioOrigem(initialConvenio))
+      return
+    }
+
+    let isMounted = true
+    const resolveConvenioFromDb = async () => {
+      const rawCpf = atendimentoModalTicket.cliente_cpf || ""
+      const digits = rawCpf.replace(/\D/g, "")
+      if (!digits) return
+      const padded = digits.padStart(11, "0")
+
+      const tables = [
+        { name: "siape_cadastros", label: "SIAPE" },
+        { name: "siape_clientes", label: "SIAPE" },
+        { name: "governo_sp_clientes", label: "Governo São Paulo" },
+        { name: "prefeitura_sp_clientes", label: "Prefeitura de São Paulo" },
+        { name: "governo_mg_clientes", label: "Governo Minas Gerais" },
+        { name: "governo_rj_clientes", label: "Governo Rio de Janeiro" },
+        { name: "governo_ba_clientes", label: "Governo Bahia" },
+        { name: "governo_am_clientes", label: "Governo Amazonas" },
+        { name: "governo_ce_clientes", label: "Governo Ceará" },
+        { name: "governo_ro_clientes", label: "Governo Rondônia" },
+        { name: "governo_pi_clientes", label: "Governo Piauí" },
+        { name: "governo_ma_clientes", label: "Governo Maranhão" },
+        { name: "governo_rr_clientes", label: "Governo Roraima" },
+        { name: "governo_ms_clientes", label: "Governo Mato Grosso do Sul" },
+        { name: "prefeitura_santo_andre_clientes", label: "Prefeitura Santo André" },
+        { name: "prefeitura_contagem_clientes", label: "Prefeitura Contagem" },
+        { name: "prefeitura_natal_clientes", label: "Prefeitura de Natal" },
+        { name: "prefeitura_porto_velho_clientes", label: "Prefeitura de Porto Velho" },
+        { name: "prefeitura_ponta_grossa_clientes", label: "Prefeitura Ponta Grossa" },
+        { name: "inss_clientes", label: "INSS" }
+      ]
+
+      for (const t of tables) {
+        try {
+          const { data } = await supabase.from(t.name).select("id").or(`cpf.eq.${padded},cpf.eq.${digits}`).limit(1)
+          if (data && data.length > 0 && isMounted) {
+            setResolvedConvenio(t.label)
+            if (atendimentoModalTicket.source_table === "kanban_fichas") {
+              const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+              currentMeta.convenio = t.label
+              atendimentoModalTicket.convenio = t.label
+              supabase.from("kanban_fichas").update({
+                convenio: t.label,
+                metadata: currentMeta
+              }).eq("id", atendimentoModalTicket.id).then(() => {})
+            }
+            return
+          }
+        } catch {}
+      }
+    }
+
+    resolveConvenioFromDb()
+    return () => {
+      isMounted = false
+    }
+  }, [atendimentoModalTicket])
 
   // Supervisão
   const [supervisaoNovoResponsavel, setSupervisaoNovoResponsavel] = useState("")
@@ -750,7 +869,7 @@ export default function KanbanPage() {
             : (Array.isArray(f.telefones_selecionados) ? f.telefones_selecionados : undefined),
           margem: f.margem_disponivel ? Number(f.margem_disponivel) : undefined,
           valor_operacao: f.valor_solicitado ? Number(f.valor_solicitado) : undefined,
-          convenio: f.convenio || undefined,
+          convenio: f.convenio || meta.convenio || undefined,
           equipe: f.equipe || undefined,
           descricao: stringifyWithMetadata(f.observacoes || "", meta),
           user_id: f.operador_id || meta.user_id || "",
@@ -1262,6 +1381,20 @@ export default function KanbanPage() {
         action: acaoTipo
       })
 
+      // Atualizar também na tabela kanban_fichas na coluna observacoes
+      if (atendimentoModalTicket.source_table === "kanban_fichas" || atendimentoModalTicket.id) {
+        await supabase
+          .from("kanban_fichas")
+          .update({
+            observacoes: atendimentoMensagem.trim(),
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", atendimentoModalTicket.id)
+
+        const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+        atendimentoModalTicket.descricao = stringifyWithMetadata(atendimentoMensagem.trim(), currentMeta)
+      }
+
       toast.success("Registro salvo no histórico do chamado!")
       setAtendimentoMensagem("")
       loadHistoricoChamado(atendimentoModalTicket.id)
@@ -1271,6 +1404,59 @@ export default function KanbanPage() {
       toast.error("Erro ao salvar mensagem.")
     } finally {
       setIsSubmittingAtendimento(false)
+    }
+  }
+
+  // Alternar opções rápidas (Sem interação / Sem interesse) com gravação direta em kanban_fichas
+  const handleToggleOpcaoAtendimento = async (opcao: "Sem interação" | "Sem interesse") => {
+    if (!atendimentoModalTicket) return
+    const novaOpcao = opcaoSelecionada === opcao ? "" : opcao
+    setOpcaoSelecionada(novaOpcao)
+    setIsSavingOpcao(true)
+
+    try {
+      // 1. Grava na tabela kanban_fichas na coluna observacoes
+      const { error } = await supabase
+        .from("kanban_fichas")
+        .update({
+          observacoes: novaOpcao,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", atendimentoModalTicket.id)
+
+      if (error) {
+        console.error("Erro ao atualizar kanban_fichas:", error)
+        toast.error("Erro ao registrar escolha em kanban_fichas.")
+        return
+      }
+
+      // 2. Atualizar em memória
+      const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+      atendimentoModalTicket.descricao = stringifyWithMetadata(novaOpcao, currentMeta)
+
+      // 3. Registrar no histórico se opção marcada
+      if (novaOpcao) {
+        await supabase.from("mensagens_chamado").insert({
+          chamado_id: parseInt(atendimentoModalTicket.id, 10),
+          user_id: user?.id,
+          user_nome: perfil?.nome || "Colaborador",
+          user_role: perfil?.role || "Corretor",
+          user_avatar: perfil?.avatar_url || null,
+          content: `📌 Registrado: ${novaOpcao}`,
+          action: "registro_opcao"
+        })
+        loadHistoricoChamado(atendimentoModalTicket.id)
+        toast.success(`"${novaOpcao}" registrado em kanban_fichas!`)
+      } else {
+        toast.info("Opção desmarcada em kanban_fichas.")
+      }
+
+      fetchChamados(true)
+    } catch (err) {
+      console.error("Erro ao salvar opção:", err)
+      toast.error("Erro ao salvar escolha.")
+    } finally {
+      setIsSavingOpcao(false)
     }
   }
 
@@ -1554,7 +1740,8 @@ export default function KanbanPage() {
             kanban_stage: "EM ABORDAGEM",
             proxima_acao: "Realizar Primeiro Contato Imediato",
             telefones: clientInfo.telefones,
-            telefones_selecionados: clientInfo.telefones_selecionados || (existing.metadata as any)?.telefones_selecionados || []
+            telefones_selecionados: clientInfo.telefones_selecionados || (existing.metadata as any)?.telefones_selecionados || [],
+            convenio: clientInfo.convenio || (existing.metadata as any)?.convenio
           }
           delete (updatedMeta as any).tabulacao_whatsapp
 
@@ -1566,6 +1753,7 @@ export default function KanbanPage() {
               metadata: updatedMeta,
               operador_id: validOperadorId,
               operador_nome: perfil?.nome || "Corretor",
+              convenio: clientInfo.convenio || existing.convenio,
               updated_at: new Date().toISOString()
             })
             .eq("id", existing.id)
@@ -1584,19 +1772,21 @@ export default function KanbanPage() {
             user_id: user?.id,
             user_nome: perfil?.nome || "Corretor",
             telefones: clientInfo.telefones,
-            telefones_selecionados: clientInfo.telefones_selecionados || []
+            telefones_selecionados: clientInfo.telefones_selecionados || [],
+            convenio: clientInfo.convenio
           }
           delete (meta as any).tabulacao_whatsapp
 
           const { error: insertErr } = await supabase.from("kanban_fichas").insert({
             cliente_nome: clientInfo.nome || "Cliente sem Nome",
             cliente_cpf: cleanCpf,
-            cliente_telefone: clientInfo.telefones[0] || "",
+            cliente_telefone: (clientInfo.telefones_selecionados && clientInfo.telefones_selecionados[0]) || clientInfo.telefones[0] || "",
             operador_id: validOperadorId,
             operador_nome: perfil?.nome || "Corretor",
             etapa: "EM ABORDAGEM",
             motivo_perda: null,
             metadata: meta,
+            convenio: clientInfo.convenio || undefined,
             observacoes: "Atendimento iniciado via modal (CLIENTE CHAMADO)"
           })
 
@@ -2327,7 +2517,7 @@ export default function KanbanPage() {
                       <div className="flex flex-col gap-0.5">
                         {modalPhones.map((tel, idx) => (
                           <div key={idx} className="flex items-center gap-1.5 text-xs text-slate-600">
-                            <span className="text-[10px] text-slate-400 font-semibold select-none">
+                            <span className="font-semibold text-slate-500 select-none">
                               {modalPhones.length > 1 ? `Tel ${idx + 1}:` : "Tel:"}
                             </span>
                             <span
@@ -2344,6 +2534,23 @@ export default function KanbanPage() {
                             </span>
                           </div>
                         ))}
+                      </div>
+                    )
+                  })()}
+
+                  {/* CONVÊNIO (EM ABORDAGEM) */}
+                  {(() => {
+                    const meta = parseMetadata(atendimentoModalTicket.descricao)
+                    const stage = inferKanbanStage(atendimentoModalTicket, meta)
+                    if (stage !== "EM ABORDAGEM") return null
+
+                    const conv = resolvedConvenio || formatConvenioOrigem(atendimentoModalTicket.convenio || meta.convenio) || "Não informado"
+                    return (
+                      <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                        <span className="font-semibold text-slate-500">Convênio:</span>
+                        <span className="font-medium text-slate-800">
+                          {conv}
+                        </span>
                       </div>
                     )
                   })()}
@@ -2379,141 +2586,184 @@ export default function KanbanPage() {
             </div>
 
             {/* Conteúdo Principal */}
-            <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#FAFAFA] text-slate-800">
-              {/* Informações Resumidas do Cliente */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
-                <div>
-                  <span className="text-slate-500 block text-[10px]">Telefone Principal</span>
-                  <span className="font-semibold text-slate-800">{atendimentoModalTicket.cliente_telefone || "Sem telefone"}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[10px]">Convênio / Órgão</span>
-                  <span className="font-semibold text-slate-800">{atendimentoModalTicket.convenio || "Não informado"}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[10px]">Valor da Operação</span>
-                  <span className="font-bold text-emerald-600">
-                    {Number(atendimentoModalTicket.valor_operacao || atendimentoModalTicket.margem || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  </span>
-                </div>
-              </div>
+            {(() => {
+              const modalMeta = parseMetadata(atendimentoModalTicket.descricao)
+              const modalStage = inferKanbanStage(atendimentoModalTicket, modalMeta)
+              const isEtapaAbordagem = modalStage === "EM ABORDAGEM"
 
-              {/* Ações Rápidas de Desfecho */}
-              <div>
-                <label className="text-xs font-bold text-slate-700 mb-1.5 block">
-                  Atalhos de Registro Rápido:
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-7 text-sky-700 bg-sky-50 border border-sky-200 hover:bg-sky-100"
-                    onClick={() => setAtendimentoMensagem("✅ Primeiro Contato (A0) realizado com sucesso via WhatsApp. Aguardando retorno do cliente.")}
-                  >
-                    A0 Realizado
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-7 text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100"
-                    onClick={() => setAtendimentoMensagem("📲 Régua de Retomada enviada no WhatsApp com nova simulação de valores.")}
-                  >
-                    Régua Enviada
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-7 text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100"
-                    onClick={() => setAtendimentoMensagem("📑 Cliente solicitou simulação personalizada de prazos e parcelas.")}
-                  >
-                    Simulação Solicitada
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-7 text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100"
-                    onClick={() => setAtendimentoMensagem("📄 Documentação de RG e comprovante recebida do cliente para digitação da proposta.")}
-                  >
-                    Documentos Recebidos
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-7 text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100"
-                    onClick={() => setAtendimentoMensagem("❌ Cliente declarou desinteresse no momento. Autorizou contato futuro.")}
-                  >
-                    Sem Interesse
-                  </Button>
-                </div>
-              </div>
+              const convenioOrigemDisplay = resolvedConvenio || formatConvenioOrigem(atendimentoModalTicket.convenio || modalMeta.convenio) || "Não informado"
 
-              {/* Campo para Registrar Interação */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 block">
-                  Registrar Resultado do Contato / Observação:
-                </label>
-                <textarea
-                  value={atendimentoMensagem}
-                  onChange={e => setAtendimentoMensagem(e.target.value)}
-                  placeholder="Descreva o andamento da conversa com o cliente, objeções ou próximos passos..."
-                  rows={3}
-                  className="w-full text-xs p-3 bg-white border border-slate-300 text-slate-800 placeholder:text-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-xs"
-                />
-                <div className="flex items-center justify-between pt-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSolicitarAcaoEspecial}
-                    className="text-xs h-8 text-amber-700 border border-amber-300 bg-amber-50 hover:bg-amber-100 gap-1"
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                    Solicitar Ação Especial à Gestão
-                  </Button>
-
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => handleSaveAtendimentoInteracao("atendimento_registro")}
-                    disabled={isSubmittingAtendimento || !atendimentoMensagem.trim()}
-                    className="text-xs h-8 bg-sky-600 hover:bg-sky-500 text-white gap-1 shadow-sm font-semibold"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    Salvar Registro
-                  </Button>
-                </div>
-              </div>
-
-              {/* Histórico Auditável de Mensagens */}
-              <div className="pt-3 border-t border-slate-200">
-                <h4 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-slate-500" />
-                  Histórico de Interações Auditáveis
-                </h4>
-                {isLoadingHistorico ? (
-                  <p className="text-xs text-slate-400 py-3 text-center">Carregando histórico...</p>
-                ) : historicoMensagens.length === 0 ? (
-                  <p className="text-xs text-slate-400 py-3 text-center">Nenhuma interação anterior registrada neste chamado.</p>
-                ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                    {historicoMensagens.map((msg, idx) => (
-                      <div key={idx} className="bg-white p-2.5 rounded-lg border border-slate-200 text-xs shadow-xs">
-                        <div className="flex items-center justify-between text-[10px] text-slate-500 mb-1">
-                          <span className="font-bold text-sky-700">{msg.user_nome} ({msg.user_role || "Colaborador"})</span>
-                          <span>{msg.created_at ? format(new Date(msg.created_at), "dd/MM/yyyy HH:mm") : ""}</span>
-                        </div>
-                        <p className="text-slate-800 whitespace-pre-wrap">{msg.content}</p>
+              return (
+                <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#FAFAFA] text-slate-800">
+                  {/* Informações Resumidas do Cliente */}
+                  {!isEtapaAbordagem && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                      <div>
+                        <span className="text-slate-500 block text-xs font-medium">Telefone Principal</span>
+                        <span className="font-semibold text-slate-800">{atendimentoModalTicket.cliente_telefone || "Sem telefone"}</span>
                       </div>
-                    ))}
+                      <div>
+                        <span className="text-slate-500 block text-xs font-medium">Convênio / Órgão</span>
+                        <span className="font-semibold text-slate-800">{convenioOrigemDisplay}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-xs font-medium">Valor da Operação</span>
+                        <span className="font-bold text-emerald-600">
+                          {Number(atendimentoModalTicket.valor_operacao || atendimentoModalTicket.margem || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Ações Rápidas de Desfecho (Ocultado na etapa EM ABORDAGEM) */}
+                  {!isEtapaAbordagem && (
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 mb-1.5 block">
+                        Atalhos de Registro Rápido:
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7 text-sky-700 bg-sky-50 border border-sky-200 hover:bg-sky-100"
+                          onClick={() => setAtendimentoMensagem("✅ Primeiro Contato (A0) realizado com sucesso via WhatsApp. Aguardando retorno do cliente.")}
+                        >
+                          A0 Realizado
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7 text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100"
+                          onClick={() => setAtendimentoMensagem("📲 Régua de Retomada enviada no WhatsApp com nova simulação de valores.")}
+                        >
+                          Régua Enviada
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7 text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100"
+                          onClick={() => setAtendimentoMensagem("📑 Cliente solicitou simulação personalizada de prazos e parcelas.")}
+                        >
+                          Simulação Solicitada
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7 text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100"
+                          onClick={() => setAtendimentoMensagem("📄 Documentação de RG e comprovante recebida do cliente para digitação da proposta.")}
+                        >
+                          Documentos Recebidos
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7 text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100"
+                          onClick={() => setAtendimentoMensagem("❌ Cliente declarou desinteresse no momento. Autorizou contato futuro.")}
+                        >
+                          Sem Interesse
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Opções com Caixas Seletoras */}
+                  <div className="flex items-center gap-5 mt-2 pb-4">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-slate-900 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={opcaoSelecionada === "Sem interação"}
+                        onChange={() => handleToggleOpcaoAtendimento("Sem interação")}
+                        disabled={isSavingOpcao}
+                        className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
+                      />
+                      <span>Sem interação</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-slate-900 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={opcaoSelecionada === "Sem interesse"}
+                        onChange={() => handleToggleOpcaoAtendimento("Sem interesse")}
+                        disabled={isSavingOpcao}
+                        className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
+                      />
+                      <span>Sem interesse</span>
+                    </label>
                   </div>
-                )}
-              </div>
-            </div>
+
+                  {/* Campo para Registrar Interação */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700 block">
+                      Registrar Resultado do Contato / Observação:
+                    </label>
+                    <textarea
+                      value={atendimentoMensagem}
+                      onChange={e => setAtendimentoMensagem(e.target.value)}
+                      placeholder="Descreva o andamento da conversa com o cliente, objeções ou próximos passos..."
+                      rows={3}
+                      className="w-full text-xs p-3 bg-white border border-slate-300 text-slate-800 placeholder:text-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-xs"
+                    />
+                    <div className={cn("flex items-center pt-1", isEtapaAbordagem ? "justify-end" : "justify-between")}>
+                      {!isEtapaAbordagem && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSolicitarAcaoEspecial}
+                          className="text-xs h-8 text-amber-700 border border-amber-300 bg-amber-50 hover:bg-amber-100 gap-1"
+                        >
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                          Solicitar Ação Especial à Gestão
+                        </Button>
+                      )}
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleSaveAtendimentoInteracao("atendimento_registro")}
+                        disabled={isSubmittingAtendimento || !atendimentoMensagem.trim()}
+                        className="text-xs h-8 bg-sky-600 hover:bg-sky-500 text-white gap-1 shadow-sm font-semibold"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        Salvar Registro
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Histórico Auditável de Mensagens (Ocultado na etapa EM ABORDAGEM) */}
+                  {!isEtapaAbordagem && (
+                    <div className="pt-3 border-t border-slate-200">
+                      <h4 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-slate-500" />
+                        Histórico de Interações Auditáveis
+                      </h4>
+                      {isLoadingHistorico ? (
+                        <p className="text-xs text-slate-400 py-3 text-center">Carregando histórico...</p>
+                      ) : historicoMensagens.length === 0 ? (
+                        <p className="text-xs text-slate-400 py-3 text-center">Nenhuma interação anterior registrada neste chamado.</p>
+                      ) : (
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                          {historicoMensagens.map((msg, idx) => (
+                            <div key={idx} className="bg-white p-2.5 rounded-lg border border-slate-200 text-xs shadow-xs">
+                              <div className="flex items-center justify-between text-[10px] text-slate-500 mb-1">
+                                <span className="font-bold text-sky-700">{msg.user_nome} ({msg.user_role || "Colaborador"})</span>
+                                <span>{msg.created_at ? format(new Date(msg.created_at), "dd/MM/yyyy HH:mm") : ""}</span>
+                              </div>
+                              <p className="text-slate-800 whitespace-pre-wrap">{msg.content}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Rodapé da Modal */}
             <div className="px-4 py-3 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between gap-3">
@@ -2552,7 +2802,13 @@ export default function KanbanPage() {
                     Supervisão e Gestão de Leads
                   </h2>
                   <p className="text-xs text-slate-600">
-                    Controle de titularidade e intervenções para <span className="font-semibold text-slate-800">{supervisaoModalTicket.cliente_nome}</span>
+                    {inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao)) === "EM ABORDAGEM" ? (
+                      "Controle de titularidade e intervenções"
+                    ) : (
+                      <>
+                        Controle de titularidade e intervenções para <span className="font-semibold text-slate-800">{supervisaoModalTicket.cliente_nome}</span>
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
@@ -2585,152 +2841,199 @@ export default function KanbanPage() {
             </div>
 
             {/* Conteúdo Principal */}
-            <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#FAFAFA] text-slate-800">
-              {/* Resumo do Lead */}
-              <div className="grid grid-cols-3 gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Responsável Atual</span>
-                  <span className="font-bold text-sky-700 text-[13px] truncate block">{supervisaoModalTicket.user_nome || "Não atribuído"}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Valor da Operação</span>
-                  <span className="font-bold text-emerald-600 text-[13px] block">
-                    {Number(supervisaoModalTicket.valor_operacao || supervisaoModalTicket.margem || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[11px]">Etapa Comercial</span>
-                  <span className="font-bold text-indigo-700 text-[13px] block">
-                    {inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao))}
-                  </span>
-                </div>
-              </div>
+            {(() => {
+              const meta = parseMetadata(supervisaoModalTicket.descricao)
+              const stage = inferKanbanStage(supervisaoModalTicket, meta)
+              const isEtapaAbordagem = stage === "EM ABORDAGEM"
 
-              {/* Bloco 1: Transferência de Responsável (Transbordo) */}
-              <div className="p-3.5 bg-white rounded-lg border border-slate-200 shadow-xs space-y-2.5">
-                <h4 className="font-bold text-slate-900 text-[13px] flex items-center gap-1.5">
-                  <UserCheck className="w-4 h-4 text-sky-600" />
-                  Transferir Lead para outro Colaborador
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[12px] text-slate-700 font-medium block mb-1">Novo Responsável:</label>
-                    <select
-                      value={supervisaoNovoResponsavel}
-                      onChange={e => setSupervisaoNovoResponsavel(e.target.value)}
-                      className="w-full h-8 px-2.5 text-xs bg-white border border-slate-300 text-slate-800 rounded-md focus:ring-1 focus:ring-sky-500"
-                    >
-                      {usersList.map(u => (
-                        <option key={u.id} value={u.id} className="bg-white text-slate-800">
-                          {u.nome} ({u.role || u.funcao || "Colaborador"})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+              return (
+                <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#FAFAFA] text-slate-800">
+                  {/* Resumo do Lead */}
+                  {isEtapaAbordagem ? (
+                    <div>
+                      <span className="text-slate-500 block text-[11px]">Responsável Atual</span>
+                      <span className="font-bold text-sky-700 text-[13px] truncate block">
+                        {supervisaoModalTicket.user_nome || "Não atribuído"}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Responsável Atual</span>
+                        <span className="font-bold text-sky-700 text-[13px] truncate block">{supervisaoModalTicket.user_nome || "Não atribuído"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Valor da Operação</span>
+                        <span className="font-bold text-emerald-600 text-[13px] block">
+                          {Number(supervisaoModalTicket.valor_operacao || supervisaoModalTicket.margem || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[11px]">Etapa Comercial</span>
+                        <span className="font-bold text-indigo-700 text-[13px] block">
+                          {stage}
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
-                  <div>
-                    <label className="text-[12px] text-slate-700 font-medium block mb-1">Prioridade na Fila:</label>
-                    <select
-                      value={supervisaoNovaPrioridade}
-                      onChange={e => setSupervisaoNovaPrioridade(e.target.value as any)}
-                      className="w-full h-8 px-2.5 text-xs bg-white border border-slate-300 text-slate-800 rounded-md focus:ring-1 focus:ring-sky-500"
-                    >
-                      <option value="NORMAL" className="bg-white text-slate-800">Normal</option>
-                      <option value="ALTA" className="bg-white text-slate-800">Alta</option>
-                      <option value="URGENTE" className="bg-white text-slate-800">Urgente / Crítica</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-[12px] text-slate-700 font-medium block mb-1">Justificativa da Reatribuição (Auditável):</label>
-                  <Input
-                    type="text"
-                    value={supervisaoMotivoTransbordo}
-                    onChange={e => setSupervisaoMotivoTransbordo(e.target.value)}
-                    placeholder="Ex: SLA de primeiro contato expirado / Readequação de carteira"
-                    className="text-xs h-8 bg-white border border-slate-300 text-slate-800 placeholder:text-slate-400 focus-visible:ring-sky-500"
-                  />
-                </div>
-
-                <div className="flex justify-end pt-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleConfirmSupervisaoTransbordo}
-                    disabled={isSubmittingSupervisao || supervisaoNovoResponsavel === supervisaoModalTicket.user_id}
-                    className="text-xs h-8 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-bold shadow-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Confirmar Transferência
-                  </Button>
-                </div>
-              </div>
-
-              {/* Bloco 2: Conflito de Titularidade & Duplicidades */}
-              <div className="p-3.5 bg-white rounded-lg border border-slate-200 shadow-xs space-y-2">
-                <h4 className="font-bold text-slate-900 text-[13px] flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4 text-amber-500" />
-                  Conflito de Titularidade e Negociação Simultânea
-                </h4>
-                <p className="text-slate-600 text-[12px]">
-                  Evita que dois corretores entrem em contato com o mesmo cliente simultaneamente. A supervisão pode decidir liberar ou bloquear o atendimento.
-                </p>
-                <div className="flex items-center gap-2 pt-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleResolverConflito(true)}
-                    className="text-xs h-8 text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 gap-1"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                    Liberar Atendimento (Sem Conflito)
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleResolverConflito(false)}
-                    className="text-xs h-8 text-rose-700 border-rose-300 bg-rose-50 hover:bg-rose-100 gap-1"
-                  >
-                    <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                    Marcar Conflito Ativo
-                  </Button>
-                </div>
-              </div>
-
-              {/* Bloco 3: Desfecho de Ação Especial */}
-              {(() => {
-                const meta = parseMetadata(supervisaoModalTicket.descricao)
-                return (
-                  <div className="p-3.5 bg-amber-50 rounded-lg border border-amber-200 shadow-xs space-y-2">
-                    <h4 className="font-bold text-amber-900 text-[13px] flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-amber-600" />
-                      Intervenção de Ação Especial
+                  {/* Bloco 1: Transferência de Responsável (Transbordo) */}
+                  <div className="p-3.5 bg-white rounded-lg border border-slate-200 shadow-xs space-y-2.5">
+                    <h4 className="font-bold text-slate-900 text-[13px] flex items-center gap-1.5">
+                      <UserCheck className="w-4 h-4 text-sky-600" />
+                      Transferir Lead para outro Colaborador
                     </h4>
-                    <p className="text-amber-800 text-[12px] font-medium">
-                      {meta.acao_especial_motivo 
-                        ? `Motivo: ${meta.acao_especial_motivo}` 
-                        : "Ticket alto ou solicitação da equipe comercial para suporte de negociação."}
-                    </p>
+                    {isEtapaAbordagem ? (
+                      <div>
+                        <label className="text-[12px] text-slate-700 font-medium block mb-1">Novo Responsável:</label>
+                        <select
+                          value={supervisaoNovoResponsavel}
+                          onChange={e => setSupervisaoNovoResponsavel(e.target.value)}
+                          className="w-full h-8 px-2.5 text-xs bg-white border border-slate-300 text-slate-800 rounded-md focus:ring-1 focus:ring-sky-500"
+                        >
+                          {usersList.map(u => (
+                            <option key={u.id} value={u.id} className="bg-white text-slate-800">
+                              {u.nome} ({u.role || u.funcao || "Colaborador"})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[12px] text-slate-700 font-medium block mb-1">Novo Responsável:</label>
+                          <select
+                            value={supervisaoNovoResponsavel}
+                            onChange={e => setSupervisaoNovoResponsavel(e.target.value)}
+                            className="w-full h-8 px-2.5 text-xs bg-white border border-slate-300 text-slate-800 rounded-md focus:ring-1 focus:ring-sky-500"
+                          >
+                            {usersList.map(u => (
+                              <option key={u.id} value={u.id} className="bg-white text-slate-800">
+                                {u.nome} ({u.role || u.funcao || "Colaborador"})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[12px] text-slate-700 font-medium block mb-1">Prioridade na Fila:</label>
+                          <select
+                            value={supervisaoNovaPrioridade}
+                            onChange={e => setSupervisaoNovaPrioridade(e.target.value as any)}
+                            className="w-full h-8 px-2.5 text-xs bg-white border border-slate-300 text-slate-800 rounded-md focus:ring-1 focus:ring-sky-500"
+                          >
+                            <option value="NORMAL" className="bg-white text-slate-800">Normal</option>
+                            <option value="ALTA" className="bg-white text-slate-800">Alta</option>
+                            <option value="URGENTE" className="bg-white text-slate-800">Urgente / Crítica</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-[12px] text-slate-700 font-medium block mb-1">Justificativa da Reatribuição (Auditável):</label>
+                      <Input
+                        type="text"
+                        value={supervisaoMotivoTransbordo}
+                        onChange={e => setSupervisaoMotivoTransbordo(e.target.value)}
+                        placeholder="Ex: SLA de primeiro contato expirado / Readequação de carteira"
+                        className="text-xs h-8 bg-white border border-slate-300 text-slate-800 placeholder:text-slate-400 focus-visible:ring-sky-500"
+                      />
+                    </div>
+
                     <div className="flex justify-end pt-1">
                       <Button
                         type="button"
                         size="sm"
-                        onClick={handleConcluirAcaoEspecial}
-                        className="text-xs h-8 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-bold gap-1 shadow-xs transition-all"
+                        onClick={handleConfirmSupervisaoTransbordo}
+                        disabled={isSubmittingSupervisao || supervisaoNovoResponsavel === supervisaoModalTicket.user_id}
+                        className="text-xs h-8 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-bold shadow-xs transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        <Check className="w-3.5 h-3.5" />
-                        Concluir Intervenção da Supervisão
+                        Confirmar Transferência
                       </Button>
                     </div>
                   </div>
-                )
-              })()}
-            </div>
+
+                  {/* Bloco 2: Conflito de Titularidade & Duplicidades (Ocultado em EM ABORDAGEM) */}
+                  {!isEtapaAbordagem && (
+                    <div className="p-3.5 bg-white rounded-lg border border-slate-200 shadow-xs space-y-2">
+                      <h4 className="font-bold text-slate-900 text-[13px] flex items-center gap-1.5">
+                        <ShieldAlert className="w-4 h-4 text-amber-500" />
+                        Conflito de Titularidade e Negociação Simultânea
+                      </h4>
+                      <p className="text-slate-600 text-[12px]">
+                        Evita que dois corretores entrem em contato com o mesmo cliente simultaneamente. A supervisão pode decidir liberar ou bloquear o atendimento.
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleResolverConflito(true)}
+                          className="text-xs h-8 text-emerald-700 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 gap-1"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          Liberar Atendimento (Sem Conflito)
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleResolverConflito(false)}
+                          className="text-xs h-8 text-rose-700 border-rose-300 bg-rose-50 hover:bg-rose-100 gap-1"
+                        >
+                          <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                          Marcar Conflito Ativo
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bloco 3: Desfecho de Ação Especial (Ocultado em EM ABORDAGEM) */}
+                  {!isEtapaAbordagem && (
+                    <div className="p-3.5 bg-amber-50 rounded-lg border border-amber-200 shadow-xs space-y-2">
+                      <h4 className="font-bold text-amber-900 text-[13px] flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-amber-600" />
+                        Intervenção de Ação Especial
+                      </h4>
+                      <p className="text-amber-800 text-[12px] font-medium">
+                        {meta.acao_especial_motivo 
+                          ? `Motivo: ${meta.acao_especial_motivo}` 
+                          : "Ticket alto ou solicitação da equipe comercial para suporte de negociação."}
+                      </p>
+                      <div className="flex justify-end pt-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleConcluirAcaoEspecial}
+                          className="text-xs h-8 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-bold gap-1 shadow-xs transition-all"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          Concluir Intervenção da Supervisão
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Rodapé da Modal */}
-            <div className="px-4 py-3 bg-slate-50/50 border-t border-slate-200 flex justify-end gap-2">
+            <div className={cn(
+              "px-4 py-3 bg-slate-50/50 border-t border-slate-200 flex gap-2",
+              inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao)) === "EM ABORDAGEM"
+                ? "items-center justify-between"
+                : "justify-end"
+            )}>
+              {inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao)) === "EM ABORDAGEM" && (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Etapa Atual:</span>
+                  <span className="inline-flex items-center font-bold text-sky-700 bg-sky-50 border border-sky-200/80 px-2.5 py-1 rounded-md text-xs">
+                    {inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao))}
+                  </span>
+                </div>
+              )}
+
               <Button
                 variant="outline"
                 size="sm"
@@ -3171,30 +3474,51 @@ export default function KanbanPage() {
       )}
 
       {/* Modal Completo de Detalhes do Cliente (Mesmo formato de ACESSAR CLIENTE) */}
-      {selectedClientCpf && (
-        <ClientDetailsModal
-          cpf={selectedClientCpf}
-          isOpen={isClientDetailsModalOpen}
-          onClose={() => {
-            setIsClientDetailsModalOpen(false)
-            setSelectedClientCpf("")
-          }}
-          onSelectTabulacao={handleTabulacaoFromModal}
-          onTelefonesSelecionadosChange={(cpf, selected) => {
-            const cleanCpf = cpf.replace(/\D/g, "")
-            setTickets(prev => prev.map(t => {
-              const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")
-              if (tCpf === cleanCpf || (cleanCpf.length === 11 && tCpf.padStart(11, '0') === cleanCpf)) {
-                return {
-                  ...t,
-                  telefones_selecionados: selected
+      {selectedClientCpf && (() => {
+        const isClientInAnyKanbanStage = Boolean(
+          isViewingLeadInAttendance || tickets.some(t => {
+            const cleanT = (t.cliente_cpf || "").replace(/\D/g, "")
+            const cleanS = selectedClientCpf.replace(/\D/g, "")
+            if (!cleanT || cleanT !== cleanS) return false
+            const meta = parseMetadata(t.descricao)
+            const isDrawer = (
+              t.status === "NÃO EXISTE WHATSAPP" ||
+              t.status === "NAO_EXISTE_WHATSAPP" ||
+              t.status === "WHATSAPP DIVERGENTE" ||
+              Boolean(meta.tabulacao_whatsapp)
+            )
+            return !isDrawer
+          })
+        )
+
+        return (
+          <ClientDetailsModal
+            cpf={selectedClientCpf}
+            isOpen={isClientDetailsModalOpen}
+            onClose={() => {
+              setIsClientDetailsModalOpen(false)
+              setSelectedClientCpf("")
+              setIsViewingLeadInAttendance(false)
+            }}
+            title="Informações sobre o Lead"
+            onSelectTabulacao={isClientInAnyKanbanStage ? undefined : handleTabulacaoFromModal}
+            showTabulacoes={!isClientInAnyKanbanStage}
+            onTelefonesSelecionadosChange={(cpf, selected) => {
+              const cleanCpf = cpf.replace(/\D/g, "")
+              setTickets(prev => prev.map(t => {
+                const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+                if (tCpf === cleanCpf || (cleanCpf.length === 11 && tCpf.padStart(11, '0') === cleanCpf)) {
+                  return {
+                    ...t,
+                    telefones_selecionados: selected
+                  }
                 }
-              }
-              return t
-            }))
-          }}
-        />
-      )}
+                return t
+              }))
+            }}
+          />
+        )
+      })()}
 
       {/* Modal de Notificação: Lead Já em Atendimento / Fechado / Perdido */}
       {leadEmAtendimentoInfo && (() => {
@@ -3384,6 +3708,7 @@ export default function KanbanPage() {
                     const cpf = leadEmAtendimentoInfo.cliente_cpf
                     setLeadEmAtendimentoInfo(null)
                     setSelectedClientCpf(cpf)
+                    setIsViewingLeadInAttendance(true)
                     setIsClientDetailsModalOpen(true)
                   }}
                   className="h-8 text-xs font-bold px-4 bg-[#171717] hover:bg-[#171717]/90 text-white cursor-pointer"
