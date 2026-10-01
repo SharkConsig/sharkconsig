@@ -1735,10 +1735,14 @@ export default function TreinamentoPage() {
   // Regra de desfoque anti-cola no 'Escreva com suas palavras':
   // Aplicada somente para: Estágio (Estagiário), Corretor do regime CLT, Processo Seletivo
   const roleLower = userRole.toLowerCase()
-  const isEstagioUser = roleLower.includes("estágio") || roleLower.includes("estagio")
+  const isEstagioUser = !isDevUser && !isAdminUser && !isSupervisorUser && !isOperacionalUser && !isRHUser && (roleLower.includes("estágio") || roleLower.includes("estagio") || roleLower.includes("estagiário") || roleLower.includes("estagiario"))
   const isProcessoSeletivoUser = roleLower.includes("processo seletivo")
-  const isCorretorCLT = (roleLower.includes("corretor") || roleLower === "") && !isPJ
+  const isCorretorCLT = !isDevUser && !isAdminUser && !isSupervisorUser && !isOperacionalUser && !isRHUser && (roleLower.includes("corretor") || roleLower === "") && !isPJ
   const aplicaDesfoqueConteudo = Boolean(isEstagioUser || isProcessoSeletivoUser || isCorretorCLT)
+
+  // Exigência de mínimo 100 caracteres no 'ESCREVA COM SUAS PALAVRAS':
+  // Aplicada exclusivamente para: Estágio (Estagiário) e Corretor do regime CLT
+  const exigeMinimo100Caracteres = Boolean(isEstagioUser || isCorretorCLT)
 
   const [selectedDia, setSelectedDia] = useState<number>(1)
   const [respostasAbertas, setRespostasAbertas] = useState<Record<number, string>>({})
@@ -2610,6 +2614,7 @@ export default function TreinamentoPage() {
   }, [iniciouCurso, selectedDia, carregandoDados, datasEntrada, diasConcluidos, user?.id, perfil?.id])
 
   const handleSalvarResposta = async (dia: number, texto: string) => {
+    if (exigeMinimo100Caracteres && (texto || "").trim().length < 100) return
     const updated = { ...respostasAbertas, [dia]: texto }
     setRespostasAbertas(updated)
     setRespostasSalvas(prev => ({ ...prev, [dia]: true }))
@@ -2786,7 +2791,7 @@ export default function TreinamentoPage() {
 
     // O encerramento/conclusão do dia ocorre exclusivamente ao clicar em 'Próximo Dia'
     if (!diasConcluidos.includes(diaAtual)) {
-      if (!isIsentoNavegacao && (!respostaAtual || decisaoAtual === undefined || decisaoAtual === null)) {
+      if (!isIsentoNavegacao && (!respostaAtual || (exigeMinimo100Caracteres && respostaAtual.length < 100) || decisaoAtual === undefined || decisaoAtual === null)) {
         return
       }
       const agoraIso = new Date().toISOString()
@@ -3288,7 +3293,7 @@ export default function TreinamentoPage() {
                                               const textoEscolhido = temResposta ? q.opcoes?.[respIdx] : "Não respondida"
 
                                               return (
-                                                <div key={q.numero} className="p-2.5 rounded-xl border text-xs bg-slate-50 border-slate-200 space-y-1">
+                                                <div key={q.numero} className="p-2.5 rounded-xl border text-xs bg-slate-50 border-slate-200 space-y-1.5">
                                                   <div className="flex items-center justify-between gap-1.5 font-bold text-[11px]">
                                                     <span className="text-slate-700 truncate">{q.titulo}</span>
                                                     <span
@@ -3300,6 +3305,12 @@ export default function TreinamentoPage() {
                                                       {acertou ? "✓ Gabarito Correto" : "✕ Incorreto"}
                                                     </span>
                                                   </div>
+                                                  {q.pergunta && (
+                                                    <div className="text-[11px] text-slate-800 bg-blue-100/90 p-1.5 rounded-lg border border-blue-300 leading-snug">
+                                                      <span className="font-bold text-blue-950 text-[10px] uppercase tracking-wider text-blue-800 block mb-0.5">Enunciado:</span>
+                                                      {q.pergunta}
+                                                    </div>
+                                                  )}
                                                   <div className="text-[11px] text-slate-800 font-medium leading-tight">
                                                     <span className="text-slate-500 font-semibold">Opção escolhida:</span> {textoEscolhido}
                                                   </div>
@@ -3375,22 +3386,36 @@ export default function TreinamentoPage() {
                                       </div>
 
                                       {/* Resposta de Tomada de Decisão */}
-                                      <div className="space-y-1">
+                                      <div className="space-y-1.5">
                                         <div className="text-[11px] font-bold text-slate-500 uppercase">
                                           Opção Escolhida na Tomada de Decisão:
                                         </div>
+                                        {diaInfo?.decisao?.pergunta && (
+                                          <div className="text-[11px] text-slate-800 bg-blue-100/90 p-2 rounded-xl border border-blue-300 leading-snug">
+                                            <span className="font-bold text-blue-950 block text-[10px] uppercase tracking-wider text-blue-800 mb-0.5">Enunciado:</span>
+                                            {diaInfo.decisao.pergunta}
+                                          </div>
+                                        )}
                                         <div className="text-xs font-semibold text-slate-800 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                          <span className="font-bold text-slate-500 block text-[10px] uppercase tracking-wider mb-0.5">Resposta do Aluno:</span>
                                           {item.decisao_opcao_texto || "Opção registrada"}
                                         </div>
                                       </div>
 
                                       {/* Resposta Reflexiva Aberta */}
                                       {item.resposta_aberta && (
-                                        <div className="space-y-1">
+                                        <div className="space-y-1.5">
                                           <div className="text-[11px] font-bold text-slate-500 uppercase">
-                                            Resposta Reflexiva do Aluno:
+                                            Resposta Reflexiva do Aluno (Escreva com suas palavras):
                                           </div>
-                                          <div className="text-xs text-slate-700 italic bg-blue-50/50 p-2.5 rounded-xl border border-blue-100 leading-relaxed">
+                                          {diaInfo?.perguntaAberta && (
+                                            <div className="text-[11px] text-slate-800 bg-amber-100/90 p-2 rounded-xl border border-amber-300 leading-snug">
+                                              <span className="font-bold text-amber-950 block text-[10px] uppercase tracking-wider text-amber-800 mb-0.5">Enunciado:</span>
+                                              {diaInfo.perguntaAberta}
+                                            </div>
+                                          )}
+                                          <div className="text-xs text-slate-800 font-semibold italic bg-blue-50/50 p-2.5 rounded-xl border border-blue-100 leading-relaxed">
+                                            <span className="font-bold text-slate-500 block text-[10px] uppercase tracking-wider not-italic mb-0.5">Resposta do Aluno:</span>
                                             "{item.resposta_aberta}"
                                           </div>
                                         </div>
@@ -4107,6 +4132,10 @@ export default function TreinamentoPage() {
               const isDiaBloqueado = diasConcluidos.includes(currentDiaData.dia)
               const isRespostaJaSalva = Boolean(respostasSalvas[currentDiaData.dia])
               const isTextareaBloqueado = isDiaBloqueado || isRespostaJaSalva
+              const textoAtual = respostasAbertas[currentDiaData.dia] || ""
+              const qtdCaracteres = textoAtual.trim().length
+              const atendeMinimo100 = !exigeMinimo100Caracteres || qtdCaracteres >= 100
+              const podeSalvarResposta = !exigeMinimo100Caracteres || qtdCaracteres >= 100
 
               return (
                 <>
@@ -4119,6 +4148,26 @@ export default function TreinamentoPage() {
                     <p className="text-xs sm:text-sm font-semibold text-slate-900">
                       {currentDiaData.perguntaAberta}
                     </p>
+
+                    {exigeMinimo100Caracteres && (
+                      <div className="flex items-center justify-between text-[11px] font-bold pb-0.5">
+                        <span className="text-amber-950 font-bold inline-flex items-center gap-1.5">
+                          <span className={cn(
+                            "w-2 h-2 rounded-full",
+                            atendeMinimo100 ? "bg-emerald-600" : "bg-amber-600 animate-pulse"
+                          )} />
+                          <span>Exigido no mínimo 100 caracteres</span>
+                        </span>
+                        <span className={cn(
+                          "px-2.5 py-1 rounded-lg font-black text-[11px] transition-colors border",
+                          atendeMinimo100 
+                            ? "bg-emerald-100/90 text-emerald-900 border-emerald-300" 
+                            : "bg-amber-200/60 text-amber-900 border-amber-300"
+                        )}>
+                          {qtdCaracteres} / 100 caracteres {atendeMinimo100 ? "✓" : ""}
+                        </span>
+                      </div>
+                    )}
 
                     <textarea
                       rows={4}
@@ -4176,8 +4225,19 @@ export default function TreinamentoPage() {
                       {!isTextareaBloqueado && (
                         <button
                           type="button"
-                          onClick={() => handleSalvarResposta(currentDiaData.dia, respostasAbertas[currentDiaData.dia] || "")}
-                          className="bg-[#0F172B] hover:bg-slate-800 text-white font-bold text-xs py-2 px-4 rounded-xl transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                          disabled={!podeSalvarResposta}
+                          onClick={() => podeSalvarResposta && handleSalvarResposta(currentDiaData.dia, respostasAbertas[currentDiaData.dia] || "")}
+                          title={
+                            exigeMinimo100Caracteres && !atendeMinimo100
+                              ? `Exigido no mínimo 100 caracteres para salvar (atual: ${qtdCaracteres}/100)`
+                              : undefined
+                          }
+                          className={cn(
+                            "bg-[#0F172B] text-white font-bold text-xs py-2 px-4 rounded-xl transition-all shadow-sm flex items-center gap-1.5",
+                            podeSalvarResposta
+                              ? "hover:bg-slate-800 cursor-pointer"
+                              : "opacity-40 cursor-not-allowed hover:bg-[#0F172B]"
+                          )}
                         >
                           <Save className="w-3.5 h-3.5" />
                           <span>Salvar Resposta</span>
@@ -4302,7 +4362,9 @@ export default function TreinamentoPage() {
                 )}
                 {(() => {
                   const isDiaConcluido = diasConcluidos.includes(currentDiaData.dia)
-                  const temResposta = Boolean(respostasAbertas[currentDiaData.dia]?.trim())
+                  const textoResposta = (respostasAbertas[currentDiaData.dia] || "").trim()
+                  const atendeMinimo100ParaAvancar = !exigeMinimo100Caracteres || textoResposta.length >= 100
+                  const temResposta = Boolean(textoResposta) && atendeMinimo100ParaAvancar
                   const temDecisao = decisoesTomadas[currentDiaData.dia] !== undefined && decisoesTomadas[currentDiaData.dia] !== null
                   const requisitosAtendidos = isIsentoNavegacao || isDiaConcluido || (temResposta && temDecisao)
                   const proximoDiaAlvo = selectedDia + 1
@@ -4327,7 +4389,9 @@ export default function TreinamentoPage() {
                           isIsentoNavegacao
                             ? "Avançar para o próximo dia"
                             : !requisitosAtendidos
-                            ? "Preencha a explicação em 'ESCREVA COM SUAS PALAVRAS' e selecione uma opção em 'TOME UMA DECISÃO' para avançar."
+                            ? (exigeMinimo100Caracteres && textoResposta.length < 100
+                                ? `A explicação em 'ESCREVA COM SUAS PALAVRAS' precisa ter no mínimo 100 caracteres (atual: ${textoResposta.length}/100).`
+                                : "Preencha a explicação em 'ESCREVA COM SUAS PALAVRAS' e selecione uma opção em 'TOME UMA DECISÃO' para avançar.")
                             : isDiaConcluido && !statusProximo.liberado
                             ? statusProximo.mensagemBloqueio
                             : undefined
