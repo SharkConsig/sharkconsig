@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useCallback, useMemo } from "react"
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { Card, CardContent } from "@/components/ui/card"
@@ -18,12 +18,12 @@ import {
   ArrowRight, 
   Clock, 
   AlertCircle, 
-  AlertTriangle, 
   ShieldAlert, 
   User, 
   DollarSign, 
   Users,
-  ChevronRight, 
+  ChevronRight,
+  ChevronDown, 
   Filter, 
   UserCheck, 
   Sparkles, 
@@ -226,6 +226,7 @@ interface UserSummary {
   role?: string
   equipe?: string
   avatar_url?: string
+  status?: string
 }
 
 // Auxiliar para ler e gravar metadados dentro de ticket.descricao
@@ -630,6 +631,52 @@ export default function KanbanPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedResponsavel, setSelectedResponsavel] = useState<string>("ALL")
   const [selectedAlertFilter, setSelectedAlertFilter] = useState<string>("ALL") // ALL, ATRASADO, ACAO_ESPECIAL, CONFLITO
+  const [isResponsavelDropdownOpen, setIsResponsavelDropdownOpen] = useState(false)
+  const [responsavelSearchQuery, setResponsavelSearchQuery] = useState("")
+  const responsavelDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Lista de usuários ativos ordenada alfabeticamente
+  const activeUsersList = useMemo(() => {
+    return usersList
+      .filter(u => !u.status || u.status === "ATIVO")
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }))
+  }, [usersList])
+
+  // Fechar dropdown de responsável ao clicar fora
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        responsavelDropdownRef.current &&
+        !responsavelDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsResponsavelDropdownOpen(false)
+        setResponsavelSearchQuery("")
+      }
+    }
+    if (isResponsavelDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [isResponsavelDropdownOpen])
+
+  // Filtragem na busca de responsáveis
+  const filteredResponsaveis = useMemo(() => {
+    const q = responsavelSearchQuery.trim().toLowerCase()
+    if (!q) return activeUsersList
+    return activeUsersList.filter(u =>
+      u.nome.toLowerCase().includes(q) ||
+      (u.role && u.role.toLowerCase().includes(q)) ||
+      (u.funcao && u.funcao.toLowerCase().includes(q))
+    )
+  }, [activeUsersList, responsavelSearchQuery])
+
+  // Objeto do usuário selecionado
+  const selectedUserObj = useMemo(() => {
+    if (selectedResponsavel === "ALL") return null
+    return usersList.find(u => u.id === selectedResponsavel)
+  }, [usersList, selectedResponsavel])
 
   // Estado de desmascarar CPF e Telefone temporariamente no card
   const [revealedCpfs, setRevealedCpfs] = useState<Record<string, boolean>>({})
@@ -774,7 +821,8 @@ export default function KanbanPage() {
               funcao: u.funcao || u.role,
               role: u.role,
               equipe: u.equipe,
-              avatar_url: u.avatar_url
+              avatar_url: u.avatar_url,
+              status: u.status ? String(u.status).trim().toUpperCase() : "ATIVO"
             })))
           }
         }
@@ -1460,42 +1508,6 @@ export default function KanbanPage() {
     }
   }
 
-  // Confirmar Ação Especial solicitada pelo Corretor
-  const handleSolicitarAcaoEspecial = async () => {
-    if (!atendimentoModalTicket || !user) return
-    try {
-      const meta = parseMetadata(atendimentoModalTicket.descricao)
-      const updatedMeta: TicketMetadata = {
-        ...meta,
-        acao_especial: true,
-        acao_especial_motivo: atendimentoMensagem.trim() || "Solicitação de apoio da supervisão para fechamento de proposta.",
-        acao_especial_status: "pendente"
-      }
-      const newDesc = stringifyWithMetadata(atendimentoModalTicket.descricao, updatedMeta)
-      await supabase
-        .from("chamados")
-        .update({ descricao: newDesc, updated_at: new Date().toISOString() })
-        .eq("id", atendimentoModalTicket.id)
-
-      await supabase.from("mensagens_chamado").insert({
-        chamado_id: parseInt(atendimentoModalTicket.id, 10),
-        user_id: user.id,
-        user_nome: perfil?.nome || "Colaborador",
-        user_role: perfil?.role || "Corretor",
-        user_avatar: perfil?.avatar_url || null,
-        content: `🟡 AÇÃO ESPECIAL SOLICITADA: ${atendimentoMensagem.trim() || "Apoio de supervisão requerido."}`,
-        action: "solicitacao_acao_especial"
-      })
-
-      toast.success("Ação Especial solicitada à Supervisão!")
-      setAtendimentoModalTicket(null)
-      fetchChamados(true)
-    } catch (err) {
-      console.error("Erro ao solicitar ação especial:", err)
-      toast.error("Erro ao solicitar intervenção.")
-    }
-  }
-
   // Executar Transbordo de Responsável na Modal de Supervisão
   const handleConfirmSupervisaoTransbordo = async () => {
     if (!supervisaoModalTicket || !user || !supervisaoNovoResponsavel) return
@@ -2064,21 +2076,137 @@ export default function KanbanPage() {
                 )}
               </div>
 
-              {/* Filtro por Responsável (Gestores) */}
+              {/* Filtro por Responsável (Gestores) com campo de busca e ordenação A-Z de ativos */}
               {isGestor && (
-                <div>
-                  <select
-                    value={selectedResponsavel}
-                    onChange={e => setSelectedResponsavel(e.target.value)}
-                    className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-slate-300 font-medium text-slate-700"
+                <div ref={responsavelDropdownRef} className="relative">
+                  <div
+                    onClick={() => {
+                      setIsResponsavelDropdownOpen(prev => !prev)
+                    }}
+                    className={cn(
+                      "w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md flex items-center justify-between font-medium text-slate-700 cursor-pointer hover:bg-slate-50 transition-colors shadow-2xs select-none",
+                      isResponsavelDropdownOpen && "ring-1 ring-sky-500 border-sky-400"
+                    )}
                   >
-                    <option value="ALL">👥 Todos os Responsáveis</option>
-                    {usersList.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.nome} ({u.role || u.funcao || "Colaborador"})
-                      </option>
-                    ))}
-                  </select>
+                    <div className="flex items-center gap-1.5 truncate">
+                      {selectedResponsavel === "ALL" ? (
+                        <>
+                          <span className="text-slate-400">👥</span>
+                          <span className="truncate">Todos os Responsáveis</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sky-600 font-bold">👤</span>
+                          <span className="font-semibold text-slate-900 truncate">
+                            {selectedUserObj ? selectedUserObj.nome : "Responsável selecionado"}
+                          </span>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                      {selectedResponsavel !== "ALL" && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedResponsavel("ALL")
+                          }}
+                          title="Limpar filtro de responsável"
+                          className="p-0.5 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-200/60"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 transition-transform", isResponsavelDropdownOpen && "rotate-180")} />
+                    </div>
+                  </div>
+
+                  {isResponsavelDropdownOpen && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden text-xs animate-in fade-in zoom-in-95 duration-100">
+                      {/* Campo de Busca de Responsável */}
+                      <div className="p-2 border-b border-slate-100 bg-slate-50/70">
+                        <div className="relative">
+                          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                          <Input
+                            autoFocus
+                            type="text"
+                            placeholder="Buscar responsável..."
+                            value={responsavelSearchQuery}
+                            onChange={e => setResponsavelSearchQuery(e.target.value)}
+                            className="pl-8 pr-7 h-8 text-xs bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-sky-500"
+                          />
+                          {responsavelSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setResponsavelSearchQuery("")}
+                              className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Lista de Opções (Ativos em ordem A-Z) */}
+                      <div className="max-h-56 overflow-y-auto p-1 divide-y divide-slate-50">
+                        {/* Opção Todos os Responsáveis */}
+                        {!responsavelSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedResponsavel("ALL")
+                              setIsResponsavelDropdownOpen(false)
+                              setResponsavelSearchQuery("")
+                            }}
+                            className={cn(
+                              "w-full text-left px-2.5 py-2 rounded flex items-center justify-between hover:bg-slate-100 transition-colors",
+                              selectedResponsavel === "ALL" ? "bg-sky-50 text-sky-800 font-bold" : "text-slate-700"
+                            )}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <span>👥</span>
+                              <span>Todos os Responsáveis</span>
+                            </span>
+                            {selectedResponsavel === "ALL" && <Check className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
+                          </button>
+                        )}
+
+                        {filteredResponsaveis.length === 0 ? (
+                          <div className="py-4 text-center text-slate-400 text-xs">
+                            Nenhum responsável encontrado.
+                          </div>
+                        ) : (
+                          filteredResponsaveis.map(u => {
+                            const isSelected = selectedResponsavel === u.id
+                            return (
+                              <button
+                                key={u.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedResponsavel(u.id)
+                                  setIsResponsavelDropdownOpen(false)
+                                  setResponsavelSearchQuery("")
+                                }}
+                                className={cn(
+                                  "w-full text-left px-2.5 py-2 rounded flex items-center justify-between hover:bg-slate-100 transition-colors",
+                                  isSelected ? "bg-sky-50 text-sky-800 font-bold" : "text-slate-700"
+                                )}
+                              >
+                                <div className="truncate pr-2">
+                                  <span className="block truncate font-medium text-slate-800">{u.nome}</span>
+                                  <span className="block text-[10px] text-slate-400 font-normal">
+                                    {u.role || u.funcao || "Colaborador"}
+                                  </span>
+                                </div>
+                                {isSelected && <Check className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
+                              </button>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2538,12 +2666,9 @@ export default function KanbanPage() {
                     )
                   })()}
 
-                  {/* CONVÊNIO (EM ABORDAGEM) */}
+                  {/* CONVÊNIO (EM TODAS AS ETAPAS) */}
                   {(() => {
                     const meta = parseMetadata(atendimentoModalTicket.descricao)
-                    const stage = inferKanbanStage(atendimentoModalTicket, meta)
-                    if (stage !== "EM ABORDAGEM") return null
-
                     const conv = resolvedConvenio || formatConvenioOrigem(atendimentoModalTicket.convenio || meta.convenio) || "Não informado"
                     return (
                       <div className="flex items-center gap-1.5 text-xs text-slate-600">
@@ -2589,14 +2714,14 @@ export default function KanbanPage() {
             {(() => {
               const modalMeta = parseMetadata(atendimentoModalTicket.descricao)
               const modalStage = inferKanbanStage(atendimentoModalTicket, modalMeta)
-              const isEtapaAbordagem = modalStage === "EM ABORDAGEM"
+              const isEtapaPersonalizada = true
 
               const convenioOrigemDisplay = resolvedConvenio || formatConvenioOrigem(atendimentoModalTicket.convenio || modalMeta.convenio) || "Não informado"
 
               return (
                 <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#FAFAFA] text-slate-800">
                   {/* Informações Resumidas do Cliente */}
-                  {!isEtapaAbordagem && (
+                  {!isEtapaPersonalizada && (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
                       <div>
                         <span className="text-slate-500 block text-xs font-medium">Telefone Principal</span>
@@ -2615,8 +2740,8 @@ export default function KanbanPage() {
                     </div>
                   )}
 
-                  {/* Ações Rápidas de Desfecho (Ocultado na etapa EM ABORDAGEM) */}
-                  {!isEtapaAbordagem && (
+                  {/* Ações Rápidas de Desfecho (Ocultado nas etapas personalizadas) */}
+                  {!isEtapaPersonalizada && (
                     <div>
                       <label className="text-xs font-bold text-slate-700 mb-1.5 block">
                         Atalhos de Registro Rápido:
@@ -2708,20 +2833,7 @@ export default function KanbanPage() {
                       rows={3}
                       className="w-full text-xs p-3 bg-white border border-slate-300 text-slate-800 placeholder:text-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-xs"
                     />
-                    <div className={cn("flex items-center pt-1", isEtapaAbordagem ? "justify-end" : "justify-between")}>
-                      {!isEtapaAbordagem && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={handleSolicitarAcaoEspecial}
-                          className="text-xs h-8 text-amber-700 border border-amber-300 bg-amber-50 hover:bg-amber-100 gap-1"
-                        >
-                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                          Solicitar Ação Especial à Gestão
-                        </Button>
-                      )}
-
+                    <div className="flex items-center justify-end pt-1">
                       <Button
                         type="button"
                         size="sm"
@@ -2735,8 +2847,8 @@ export default function KanbanPage() {
                     </div>
                   </div>
 
-                  {/* Histórico Auditável de Mensagens (Ocultado na etapa EM ABORDAGEM) */}
-                  {!isEtapaAbordagem && (
+                  {/* Histórico Auditável de Mensagens (Ocultado nas etapas personalizadas) */}
+                  {!isEtapaPersonalizada && (
                     <div className="pt-3 border-t border-slate-200">
                       <h4 className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-slate-500" />
@@ -2802,13 +2914,7 @@ export default function KanbanPage() {
                     Supervisão e Gestão de Leads
                   </h2>
                   <p className="text-xs text-slate-600">
-                    {inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao)) === "EM ABORDAGEM" ? (
-                      "Controle de titularidade e intervenções"
-                    ) : (
-                      <>
-                        Controle de titularidade e intervenções para <span className="font-semibold text-slate-800">{supervisaoModalTicket.cliente_nome}</span>
-                      </>
-                    )}
+                    Controle de titularidade e intervenções
                   </p>
                 </div>
               </div>
@@ -2844,7 +2950,7 @@ export default function KanbanPage() {
             {(() => {
               const meta = parseMetadata(supervisaoModalTicket.descricao)
               const stage = inferKanbanStage(supervisaoModalTicket, meta)
-              const isEtapaAbordagem = stage === "EM ABORDAGEM"
+              const isEtapaAbordagem = true
 
               return (
                 <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#FAFAFA] text-slate-800">
@@ -2891,7 +2997,7 @@ export default function KanbanPage() {
                           onChange={e => setSupervisaoNovoResponsavel(e.target.value)}
                           className="w-full h-8 px-2.5 text-xs bg-white border border-slate-300 text-slate-800 rounded-md focus:ring-1 focus:ring-sky-500"
                         >
-                          {usersList.map(u => (
+                          {activeUsersList.map(u => (
                             <option key={u.id} value={u.id} className="bg-white text-slate-800">
                               {u.nome} ({u.role || u.funcao || "Colaborador"})
                             </option>
@@ -3019,20 +3125,13 @@ export default function KanbanPage() {
             })()}
 
             {/* Rodapé da Modal */}
-            <div className={cn(
-              "px-4 py-3 bg-slate-50/50 border-t border-slate-200 flex gap-2",
-              inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao)) === "EM ABORDAGEM"
-                ? "items-center justify-between"
-                : "justify-end"
-            )}>
-              {inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao)) === "EM ABORDAGEM" && (
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Etapa Atual:</span>
-                  <span className="inline-flex items-center font-bold text-sky-700 bg-sky-50 border border-sky-200/80 px-2.5 py-1 rounded-md text-xs">
-                    {inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao))}
-                  </span>
-                </div>
-              )}
+            <div className="px-4 py-3 bg-slate-50/50 border-t border-slate-200 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Etapa Atual:</span>
+                <span className="inline-flex items-center font-bold text-sky-700 bg-sky-50 border border-sky-200/80 px-2.5 py-1 rounded-md text-xs">
+                  {inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao))}
+                </span>
+              </div>
 
               <Button
                 variant="outline"
