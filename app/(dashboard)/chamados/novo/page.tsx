@@ -691,7 +691,6 @@ export function NewTicketForm({
             </div>
             <div>
               <h2 className="text-sm font-black uppercase tracking-wider">ABRIR CHAMADO</h2>
-              <p className="text-[10px] text-slate-400 font-semibold">Preencha os dados do chamado para o operacional</p>
             </div>
           </div>
           <button 

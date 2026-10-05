@@ -40,14 +40,17 @@ import {
   SlidersHorizontal,
   X,
   Plus,
-  Trash2
+  Trash2,
+  Loader2,
+  History,
+  Download
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
 import { format, formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { cn } from "@/lib/utils"
+import { cn, formatShortName } from "@/lib/utils"
 import { ClientDetailsModal, type LeadContactInfo } from "@/components/clients/client-details-modal"
 
 // Definição das 7 Etapas Oficiais do Kanban Comercial
@@ -336,6 +339,11 @@ function formatConvenioOrigem(raw: string = ""): string {
   if (upper.includes("PREFEITURA_PONTA_GROSSA") || upper.includes("PONTA GROSSA")) return "Prefeitura Ponta Grossa"
   if (upper.includes("INSS")) return "INSS"
   return raw
+}
+
+const formatCurrency = (val: number | string | null | undefined): string => {
+  if (val === null || val === undefined || isNaN(Number(val))) return "R$ 0,00"
+  return Number(val).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 }
 
 export default function KanbanPage() {
@@ -703,6 +711,104 @@ export default function KanbanPage() {
   const [resolvedConvenio, setResolvedConvenio] = useState("")
   const [opcaoSelecionada, setOpcaoSelecionada] = useState<"Sem interação" | "Sem interesse" | "">("")
   const [isSavingOpcao, setIsSavingOpcao] = useState(false)
+
+  // Histórico de Atendimentos e Propostas do Cliente (Modal Atendimento)
+  const [clientTicketsHistory, setClientTicketsHistory] = useState<Record<string, unknown>[]>([])
+  const [isLoadingClientTicketsHistory, setIsLoadingClientTicketsHistory] = useState(false)
+  const [clientProposalsHistory, setClientProposalsHistory] = useState<Record<string, any>[]>([])
+  const [isLoadingClientProposalsHistory, setIsLoadingClientProposalsHistory] = useState(false)
+
+  // Carregar histórico de atendimentos e propostas para o cliente do modal de atendimento
+  useEffect(() => {
+    if (!atendimentoModalTicket) {
+      setClientTicketsHistory([])
+      setClientProposalsHistory([])
+      return
+    }
+
+    const rawCpf = atendimentoModalTicket.cliente_cpf || ""
+    const cleanCpf = rawCpf.replace(/\D/g, "")
+    if (!cleanCpf) {
+      setClientTicketsHistory([])
+      setClientProposalsHistory([])
+      return
+    }
+
+    let isMounted = true
+
+    // 1. Buscar Chamados (Histórico de Atendimento)
+    const loadTickets = async () => {
+      setIsLoadingClientTicketsHistory(true)
+      try {
+        const { data, error: fetchErr } = await supabase
+          .from('chamados')
+          .select(`
+            *,
+            status_chamados:status_id (nome)
+          `)
+          .eq('cliente_cpf', cleanCpf)
+          .order('created_at', { ascending: false })
+
+        if (!fetchErr && isMounted) {
+          setClientTicketsHistory(data || [])
+        }
+      } catch (err) {
+        console.error("Erro ao buscar histórico de chamados:", err)
+      } finally {
+        if (isMounted) setIsLoadingClientTicketsHistory(false)
+      }
+    }
+
+    // 2. Buscar Propostas Comerciais
+    const loadProposals = async () => {
+      setIsLoadingClientProposalsHistory(true)
+      try {
+        const [p1, p2, p3, p4] = await Promise.all([
+          supabase.from('historico_proposta_comercial').select('*').eq('cliente_cpf', cleanCpf),
+          supabase.from('historico_proposta_comercial_novo_formato').select('*').eq('cliente_cpf', cleanCpf),
+          supabase.from('historico_proposta_comercial_quitacao_contrato').select('*').eq('cliente_cpf', cleanCpf),
+          supabase.from('historico_proposta_comercial_calculadora').select('*').eq('cliente_cpf', cleanCpf)
+        ])
+
+        let combined: Record<string, any>[] = []
+        if (p1.data) combined = combined.concat(p1.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: false, isCalculadora: false })))
+        if (p2.data) combined = combined.concat(p2.data.map((item: any) => ({ ...item, isNovoFormato: true, isQuitacao: false, isCalculadora: false })))
+        if (p3.data) combined = combined.concat(p3.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: true, isCalculadora: false })))
+        if (p4.data) combined = combined.concat(p4.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: false, isCalculadora: true })))
+
+        combined.sort((a, b) => {
+          const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
+          const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
+          return dateB - dateA
+        })
+
+        if (isMounted) {
+          setClientProposalsHistory(combined)
+        }
+      } catch (err) {
+        console.error("Erro ao buscar histórico de propostas:", err)
+      } finally {
+        if (isMounted) setIsLoadingClientProposalsHistory(false)
+      }
+    }
+
+    loadTickets()
+    loadProposals()
+
+    return () => {
+      isMounted = false
+    }
+  }, [atendimentoModalTicket?.id, atendimentoModalTicket?.cliente_cpf])
+
+  const handleDownloadProposalHistory = (proposal: Record<string, any>) => {
+    if (!proposal.arquivo_url) return
+    const link = document.createElement("a")
+    link.href = proposal.arquivo_url
+    const extension = proposal.tipo_arquivo?.toLowerCase() === "pdf" ? "pdf" : "jpg"
+    const safeName = (proposal.cliente_nome || "Cliente").trim().replace(/\s+/g, "_")
+    link.download = `proposta_reducao_${safeName}.${extension}`
+    link.click()
+  }
 
   // Sincronizar opção selecionada a partir da observação da ficha
   useEffect(() => {
@@ -2895,6 +3001,322 @@ export default function KanbanPage() {
                         Salvar Registro
                       </Button>
                     </div>
+                  </div>
+
+                  {/* Histórico de Atendimento */}
+                  <div className="mt-5 pt-5 border-t border-slate-200 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-5 bg-rose-500 rounded-full"></div>
+                      <h4 className="text-[12px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                        Histórico de Atendimento{" "}
+                        <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-rose-500/10 text-rose-600 border-none font-black font-sans uppercase">
+                          {clientTicketsHistory.length} {clientTicketsHistory.length === 1 ? 'Chamado' : 'Chamados'}
+                        </Badge>
+                      </h4>
+                    </div>
+
+                    {isLoadingClientTicketsHistory ? (
+                      <div className="flex items-center gap-2 justify-center py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                        <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
+                        <span>Buscando histórico de atendimentos...</span>
+                      </div>
+                    ) : clientTicketsHistory.length === 0 ? (
+                      <div className="p-3.5 text-center text-xs font-semibold text-slate-400 bg-white rounded-xl border border-slate-200/80">
+                        Nenhum chamado de atendimento registrado para este cliente.
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2.5">
+                        {clientTicketsHistory.map((chamado: any) => {
+                          const statusLabel = chamado.status_chamados?.nome || chamado.status || "ABERTO";
+                          const statusUpper = statusLabel.toUpperCase();
+
+                          return (
+                            <div 
+                              key={chamado.id} 
+                              className="p-3 rounded-xl border border-rose-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs hover:border-rose-200 transition-all text-xs"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200/50 flex items-center justify-center font-bold text-[10px] text-rose-500 font-mono">
+                                  #{chamado.id}
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Corretor</span>
+                                  <span className="text-[12px] font-extrabold text-slate-700 uppercase leading-none block">{formatShortName(chamado.user_nome)}</span>
+                                </div>
+                              </div>
+                              
+                              <div className="flex flex-col md:items-end justify-center">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 md:text-right">Status do Chamado</span>
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase",
+                                  statusUpper === "ABERTO" ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                                  statusUpper === "FECHADO" || statusUpper === "CONCLUÍDO" || statusUpper === "CONCLUIDO" ? "bg-slate-100 text-slate-600 border-slate-200" :
+                                  "bg-amber-50 text-amber-700 border-amber-100"
+                                )}>
+                                  {statusUpper}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col md:items-end justify-center">
+                                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 md:text-right">Abertura</div>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-[12px] font-bold text-slate-700">
+                                    {(() => {
+                                      if (!chamado.created_at) return "--/--/----";
+                                      try {
+                                        const d = new Date(chamado.created_at);
+                                        if (isNaN(d.getTime())) return "--/--/----";
+                                        const day = String(d.getDate()).padStart(2, '0');
+                                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                                        const year = d.getFullYear();
+                                        return `${day}/${month}/${year}`;
+                                      } catch (e) {
+                                        return String(chamado.created_at).split('T')[0] || "Sem data";
+                                      }
+                                    })()}
+                                  </div>
+                                  <div className="text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200/60 rounded px-1.5 py-0.5 uppercase tracking-tight">
+                                    {(() => {
+                                      if (!chamado.created_at) return "0 dias passados";
+                                      try {
+                                        const createdDate = new Date(chamado.created_at);
+                                        if (isNaN(createdDate.getTime())) return "";
+                                        const today = new Date();
+                                        const createdDateZero = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
+                                        const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                                        const diffTime = todayZero.getTime() - createdDateZero.getTime();
+                                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                                        if (diffDays <= 0) {
+                                          return "0 dias passados (Hoje)";
+                                        }
+                                        return `${diffDays} ${diffDays === 1 ? "dia passado" : "dias passados"}`;
+                                      } catch (e) {
+                                        return "";
+                                      }
+                                    })()}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Histórico de Propostas Comerciais */}
+                  <div className="mt-5 pt-5 border-t border-slate-200 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-5 bg-[#162546] rounded-full"></div>
+                      <h4 className="text-[12px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                        Histórico de Propostas Comerciais{" "}
+                        <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-[#162546]/10 text-[#162546] border-none font-black font-sans uppercase">
+                          {clientProposalsHistory.length} {clientProposalsHistory.length === 1 ? 'Proposta' : 'Propostas'}
+                        </Badge>
+                      </h4>
+                    </div>
+
+                    {isLoadingClientProposalsHistory ? (
+                      <div className="flex items-center gap-2 justify-center py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                        <Loader2 className="w-4 h-4 animate-spin text-[#162546]" />
+                        <span>Buscando histórico de propostas...</span>
+                      </div>
+                    ) : clientProposalsHistory.length === 0 ? (
+                      <div className="p-3.5 text-center text-xs font-semibold text-slate-400 bg-white rounded-xl border border-slate-200/80">
+                        Nenhuma proposta comercial gerada para este cliente.
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2.5">
+                        {clientProposalsHistory.map((proposal: any) => {
+                          const dateStr = proposal.created_at ? (() => {
+                            try {
+                              const d = new Date(proposal.created_at);
+                              if (isNaN(d.getTime())) return "--/--/---- às --:--";
+                              const day = String(d.getDate()).padStart(2, '0');
+                              const month = String(d.getMonth() + 1).padStart(2, '0');
+                              const year = d.getFullYear();
+                              const hours = String(d.getHours()).padStart(2, '0');
+                              const minutes = String(d.getMinutes()).padStart(2, '0');
+                              return `${day}/${month}/${year} às ${hours}:${minutes}`;
+                            } catch (e) {
+                              return "Sem data";
+                            }
+                          })() : "--/--/---- às --:--";
+
+                          const roleLower = perfil?.role?.toLowerCase() || "";
+                          const isCorretor = roleLower === 'corretor';
+                          const isEstagiario = roleLower === 'estágio' || roleLower === 'estagio' || perfil?.funcao?.toLowerCase()?.includes('estag');
+                          const isSupervisor = roleLower === 'supervisor' || roleLower === 'supervisor/coordenador';
+                          const shouldHideDownload = isCorretor || isEstagiario || isSupervisor;
+
+                          return (
+                            <div 
+                              key={proposal.id} 
+                              className="p-3 rounded-xl border border-slate-200 bg-white flex flex-col md:flex-row md:items-center justify-between gap-3 hover:border-[#162546]/20 transition-all shadow-xs text-xs"
+                            >
+                              <div className="flex items-center gap-3 min-w-[150px]">
+                                <div className="w-8 h-8 rounded-lg bg-[#162546]/5 border border-[#162546]/15 flex items-center justify-center text-[#162546]">
+                                  <History className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerada por</span>
+                                  <span className="text-[12px] font-extrabold text-slate-700 uppercase leading-none block truncate max-w-[140px]">{formatShortName(proposal.user_nome || proposal.user_email)}</span>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Estratégia</span>
+                                {proposal.isCalculadora ? (
+                                  <span className="text-[11px] font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
+                                    PERSONALIZADA
+                                  </span>
+                                ) : proposal.isQuitacao ? (
+                                  <span className="text-[11px] font-bold text-[#162546] bg-amber-50 border border-amber-100 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
+                                    Quitação de Contrato
+                                  </span>
+                                ) : proposal.isNovoFormato ? (
+                                  <span className="text-[11px] font-bold text-yellow-600 bg-yellow-50 border border-yellow-100 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
+                                    Novo Formato
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
+                                    REDUÇÃO DE PARCELA
+                                  </span>
+                                )}
+                              </div>
+
+                              {proposal.isCalculadora && (
+                                <>
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor do Contrato</span>
+                                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                                      <span className="text-emerald-600 font-bold">{proposal.valor_contrato ? formatCurrency(proposal.valor_contrato) : "--"}</span>
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Duração</span>
+                                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                                      {proposal.prazo_estrategia ? `${proposal.prazo_estrategia}x` : "--"}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Parcela Média</span>
+                                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                                      {proposal.parcela_media ? formatCurrency(proposal.parcela_media) : "--"}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Taxa a.m.</span>
+                                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                                      {proposal.taxa_am !== null && proposal.taxa_am !== undefined ? `${Number(proposal.taxa_am).toFixed(2).replace('.', ',')}%` : "--"}
+                                    </span>
+                                  </div>
+                                </>
+                              )}
+
+                              {!proposal.isQuitacao && !proposal.isNovoFormato && !proposal.isCalculadora && (
+                                <div className="flex flex-col">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Liberado</span>
+                                  <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                                    {proposal.valor_liberado ? (
+                                      <span className="text-emerald-600 font-bold">{formatCurrency(proposal.valor_liberado)}</span>
+                                    ) : (
+                                      <span className="text-slate-400">--</span>
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+
+                              {proposal.isNovoFormato && (
+                                <>
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Antigo</span>
+                                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                                      {proposal.valor_liberado ? (
+                                        <span className="text-slate-500 font-bold">{formatCurrency(proposal.valor_liberado * 0.70)}</span>
+                                      ) : (
+                                        <span className="text-slate-400">--</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Valor Atual</span>
+                                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                                      {proposal.valor_liberado ? (
+                                        <span className="text-[#F4C600] font-black">{formatCurrency(proposal.valor_liberado)}</span>
+                                      ) : (
+                                        <span className="text-slate-400">--</span>
+                                      )}
+                                    </span>
+                                  </div>
+                                </>
+                              )}
+
+                              {!proposal.isNovoFormato && !proposal.isQuitacao && !proposal.isCalculadora && (
+                                <div className="flex flex-col">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
+                                    PARCELA ANTIGA {"->"} PARCELA NOVA
+                                  </span>
+                                  <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                                    <span className="text-slate-800">{formatCurrency(proposal.total_parcela_atual || 0)}</span> ➔ <span className="text-emerald-600 font-bold">{formatCurrency(proposal.total_parcela_nova || 0)}</span>
+                                  </span>
+                                </div>
+                              )}
+
+                              {proposal.isQuitacao && (
+                                <div className="flex flex-col">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
+                                    Saldo para Quitação
+                                  </span>
+                                  <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                                    <span className="text-[#c44a4a] font-bold">
+                                      {proposal.saldo_quitacao ? formatCurrency(proposal.saldo_quitacao) : "--"}
+                                    </span>
+                                  </span>
+                                </div>
+                              )}
+
+                              {proposal.isQuitacao && (() => {
+                                const prazo = parseInt(proposal.prazo_restante) || 96;
+                                const pAtual = parseFloat(proposal.parcela_atual) || 0;
+                                const pNova = parseFloat(proposal.nova_parcela) || 0;
+                                const economiaTotal = Math.max(0, (pAtual - pNova) * prazo);
+                                return (
+                                  <div className="flex flex-col">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">
+                                      Economia Total
+                                    </span>
+                                    <span className="text-[12px] font-extrabold text-slate-700 leading-none block">
+                                      <span className="text-emerald-600 font-bold">
+                                        {formatCurrency(economiaTotal)}
+                                      </span>
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Gerado em</span>
+                                <span className="text-[11px] font-bold text-slate-500 leading-none block">{dateStr}</span>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {!shouldHideDownload && (
+                                  <Button
+                                    type="button"
+                                    onClick={() => handleDownloadProposalHistory(proposal)}
+                                    className="h-8 px-3 text-[10px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-md transition-all rounded-lg flex items-center justify-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Download className="w-3.5 h-3.5" />
+                                    {proposal.tipo_arquivo || "PDF"}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Histórico Auditável de Mensagens (Ocultado nas etapas personalizadas) */}

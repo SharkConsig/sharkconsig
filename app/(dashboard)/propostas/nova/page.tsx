@@ -2791,7 +2791,6 @@ export function NewProposalForm({
             </div>
             <div>
               <h2 className="text-sm font-black uppercase tracking-wider">DIGITAR PROPOSTA</h2>
-              <p className="text-[10px] text-slate-400 font-semibold">Preencha e transmita a proposta comercial</p>
             </div>
           </div>
           <button 
