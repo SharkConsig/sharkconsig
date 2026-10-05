@@ -17,6 +17,7 @@ import {
   UploadCloud,
   Loader2,
   Check,
+  MessageSquare,
   X
 } from "lucide-react"
 import Image from "next/image"
@@ -25,12 +26,43 @@ import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
 import { withRetry, cn } from "@/lib/utils"
 
-function NewTicketForm() {
+export interface NewTicketFormProps {
+  isModal?: boolean;
+  modalInitialData?: {
+    nome?: string;
+    cpf?: string;
+    tel1?: string;
+    tel2?: string;
+    tel3?: string;
+    margem?: string;
+    liquida5?: string;
+    beneficio5?: string;
+    convenio?: string;
+    matricula?: string;
+    origem?: string;
+  };
+  onCloseModal?: () => void;
+  onSuccessModal?: () => void;
+}
+
+export function NewTicketForm({
+  isModal = false,
+  modalInitialData,
+  onCloseModal,
+  onSuccessModal
+}: NewTicketFormProps = {}) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user, perfil } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [description, setDescription] = useState<string>("")
+
+  const getParam = useCallback((key: string) => {
+    if (modalInitialData && key in modalInitialData) {
+      return (modalInitialData as any)[key] || ""
+    }
+    return searchParams.get(key) || ""
+  }, [modalInitialData, searchParams])
 
   // Persist window scroll
   useEffect(() => {
@@ -61,15 +93,15 @@ function NewTicketForm() {
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const isPontaGrossa = (searchParams.get("convenio") || "").toUpperCase().includes("PONTA GROSSA");
+  const isPontaGrossa = (getParam("convenio") || "").toUpperCase().includes("PONTA GROSSA");
   const pontaGrossaMargemDisp = isPontaGrossa 
-    ? (searchParams.get("liquida5") || searchParams.get("margem_disponivel") || searchParams.get("margem") || "")
+    ? (getParam("liquida5") || getParam("margem_disponivel") || getParam("margem") || "")
     : "";
 
   const [originalMargins] = useState({
-    margem: isPontaGrossa ? "" : (searchParams.get("margem") || ""),
-    liquida5: isPontaGrossa ? pontaGrossaMargemDisp : (searchParams.get("liquida5") || ""),
-    beneficio5: searchParams.get("beneficio5") || ""
+    margem: isPontaGrossa ? "" : (getParam("margem") || ""),
+    liquida5: isPontaGrossa ? pontaGrossaMargemDisp : (getParam("liquida5") || ""),
+    beneficio5: getParam("beneficio5") || ""
   })
 
   const [coefficients, setCoefficients] = useState({
@@ -102,20 +134,20 @@ function NewTicketForm() {
     return `R$ ${res.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const isFromClient = !!searchParams.get("nome")
+  const isFromClient = !!getParam("nome")
 
   const [formData, setFormData] = useState({
-    origem: searchParams.get("origem") || "",
+    origem: getParam("origem") || (isModal ? "KANBAN" : ""),
     equipe: (perfil?.role === 'Supervisor' ? perfil?.nome : perfil?.supervisor_nome) || "",
-    nome: searchParams.get("nome") || "",
-    cpf: searchParams.get("cpf") || "",
-    tel1: searchParams.get("tel1") || "",
-    tel2: searchParams.get("tel2") || "",
-    tel3: searchParams.get("tel3") || "",
+    nome: getParam("nome") || "",
+    cpf: getParam("cpf") || "",
+    tel1: getParam("tel1") || "",
+    tel2: getParam("tel2") || "",
+    tel3: getParam("tel3") || "",
     margem: "", 
     liquida5: isPontaGrossa ? pontaGrossaMargemDisp : "", 
     beneficio5: "", 
-    convenio: searchParams.get("convenio") || ""
+    convenio: getParam("convenio") || ""
   })
 
   // Selected files state
@@ -129,7 +161,7 @@ function NewTicketForm() {
   })
 
   // Captured matricula from URL
-  const matriculaUrl = searchParams.get("matricula") || ""
+  const matriculaUrl = getParam("matricula") || ""
 
   // Pasted images from clipboard
   const [pastedImages, setPastedImages] = useState<File[]>([])
@@ -633,7 +665,12 @@ function NewTicketForm() {
       localStorage.removeItem('new_ticket_draft');
       toast.dismiss(loadingToast);
       toast.success("Chamado aberto com sucesso!");
-      router.push("/chamados");
+      if (isModal) {
+        if (onSuccessModal) onSuccessModal();
+        if (onCloseModal) onCloseModal();
+      } else {
+        router.push("/chamados");
+      }
     } catch (error: unknown) {
       const err = error as { message?: string };
       console.error("Erro crítico no handleSubmit:", err);
@@ -645,10 +682,34 @@ function NewTicketForm() {
   };
 
   return (
-    <div className="flex-1 flex flex-col">
-      <Header title="ABRIR CHAMADO" />
+    <div className="flex-1 flex flex-col h-full overflow-hidden">
+      {isModal ? (
+        <div className="px-6 py-4 bg-[#171717] text-white flex items-center justify-between shrink-0 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-amber-400">
+              <MessageSquare className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-black uppercase tracking-wider">ABRIR CHAMADO</h2>
+              <p className="text-[10px] text-slate-400 font-semibold">Preencha os dados do chamado para o operacional</p>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            onClick={onCloseModal}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      ) : (
+        <Header title="ABRIR CHAMADO" />
+      )}
       
-      <main className="flex-1 p-6 bg-slate-50/50">
+      <main className={cn(
+        "flex-1 bg-slate-50/50",
+        isModal ? "p-4 sm:p-6 overflow-y-auto h-[calc(92vh-65px)]" : "p-6"
+      )}>
         <Card className="card-shadow border border-slate-200 overflow-hidden">
           <CardContent className="p-4 sm:p-8">
             <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-6 border-b border-slate-100 pb-8">
@@ -665,10 +726,10 @@ function NewTicketForm() {
                 <select 
                   value={formData.convenio}
                   onChange={(e) => handleInputChange("convenio", e.target.value)}
-                  disabled={!!searchParams.get("convenio")}
+                  disabled={!!getParam("convenio")}
                   className={cn(
                     "w-full h-[34px] px-3 rounded-lg border border-slate-100 text-[12px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none",
-                    !!searchParams.get("convenio") ? "bg-slate-200 text-slate-500 cursor-not-allowed opacity-70" : "bg-[#E8E8E8] text-slate-900"
+                    !!getParam("convenio") ? "bg-slate-200 text-slate-500 cursor-not-allowed opacity-70" : "bg-[#E8E8E8] text-slate-900"
                   )}
                 >
                   <option value="">Selecione</option>
@@ -1115,11 +1176,21 @@ function NewTicketForm() {
                 <Button 
                   onClick={handleSubmit}
                   disabled={isSubmitting}
-                  className="bg-primary hover:bg-primary/90 text-white px-8 h-10 text-xs font-bold rounded-lg shadow-lg shadow-primary/20 flex items-center gap-2"
+                  className="bg-primary hover:bg-primary/90 text-white px-8 h-10 text-xs font-bold rounded-lg shadow-lg shadow-primary/20 flex items-center gap-2 cursor-pointer"
                 >
                   {isSubmitting && <Loader2 className="w-3 h-3 animate-spin" />}
                   {isSubmitting ? "ENVIANDO..." : "ENVIAR"}
                 </Button>
+                {isModal && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onCloseModal}
+                    className="h-10 px-6 text-xs font-bold rounded-lg cursor-pointer"
+                  >
+                    CANCELAR
+                  </Button>
+                )}
                 {validationError && (
                   <span className="text-red-500 text-[10px] font-bold uppercase tracking-widest animate-in fade-in slide-in-from-left-2 duration-300">
                     {validationError}

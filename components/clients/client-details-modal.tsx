@@ -1,6 +1,11 @@
 "use client"
 import React, { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { useAuth } from "@/context/auth-context"
+import { SimulationModal } from "@/components/simulation/simulation-modal"
+import { NovoChamadoModal } from "@/components/tickets/novo-chamado-modal"
+import { NovaPropostaModal } from "@/components/propostas/nova-proposta-modal"
 import {
   Dialog,
   DialogContent,
@@ -25,6 +30,9 @@ import {
   Check, 
   Building,
   AlertCircle,
+  Calculator,
+  MessageSquare,
+  FileEdit,
   X 
 } from "lucide-react"
 import { cn, withRetry } from "@/lib/utils"
@@ -184,6 +192,8 @@ interface ClientDetailsModalProps {
   onTelefonesSelecionadosChange?: (cpf: string, selectedPhones: string[]) => void;
   title?: string;
   showTabulacoes?: boolean;
+  hidePhoneSelectionBanner?: boolean;
+  showPipelineActionButtons?: boolean;
 }
 
 export function ClientDetailsModal({ 
@@ -194,7 +204,9 @@ export function ClientDetailsModal({
   onSelectTabulacao,
   onTelefonesSelecionadosChange,
   title,
-  showTabulacoes
+  showTabulacoes,
+  hidePhoneSelectionBanner,
+  showPipelineActionButtons = false
 }: ClientDetailsModalProps) {
   const rawTitle = title || (onSelectTabulacao ? "Informações sobre o Lead" : "INFORMAÇÕES DO CLIENTE")
   const modalTitle = (rawTitle.toUpperCase() === "INFORMAÇÕES DO LEAD" || rawTitle.toUpperCase() === "INFORMACOES DO LEAD") 
@@ -202,6 +214,14 @@ export function ClientDetailsModal({
     : rawTitle
   const hasTabulacoes = showTabulacoes !== undefined ? showTabulacoes : Boolean(onSelectTabulacao)
   const isKanbanLeadModal = Boolean(onSelectTabulacao) || hasTabulacoes || modalTitle.toLowerCase().includes("lead")
+  const router = useRouter()
+  const { perfil, isEstagio } = useAuth()
+  const [isSimulationModalOpen, setIsSimulationModalOpen] = useState(false)
+  const [isNovoChamadoModalOpen, setIsNovoChamadoModalOpen] = useState(false)
+  const [chamadoModalData, setChamadoModalData] = useState<any>(null)
+  const [isNovaPropostaModalOpen, setIsNovaPropostaModalOpen] = useState(false)
+  const [propostaModalData, setPropostaModalData] = useState<any>(null)
+  const isUserEstagio = Boolean(isEstagio || perfil?.role?.toLowerCase()?.includes('estag') || perfil?.funcao?.toLowerCase()?.includes('estag'))
   const [isLoading, setIsLoading] = useState(false)
   const [showSensitiveData, setShowSensitiveData] = useState(false)
   const [client, setClient] = useState<ClientData | null>(null)
@@ -209,6 +229,35 @@ export function ClientDetailsModal({
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
+
+  const allRegs = React.useMemo(() => {
+    if (!client) return []
+    if (clientType === "siape") {
+      return registrations.flatMap(reg => {
+        const isPension = reg.situacao_funcional === "BENEFICIARIO PENSAO"
+        if (!reg.instituidores || reg.instituidores.length === 0) {
+          const rawName = isPension ? "" : (reg.orgao || "")
+          return [{
+            ...reg,
+            currentInstituidor: isPension ? rawName : translateOrgao(rawName),
+            currentInstituidorId: null
+          }]
+        }
+        return reg.instituidores.map((inst) => ({
+          ...reg,
+          ...inst,
+          id: reg.id,
+          instituidor_id: inst.id,
+          currentInstituidor: inst.nome ? (isPension ? inst.nome : translateOrgao(inst.nome)) : (isPension ? "" : translateOrgao(reg.orgao || "")),
+          currentInstituidorId: inst.id
+        }))
+      })
+    }
+    return registrations.map(reg => ({
+      ...reg,
+      displayId: reg.matricula || reg.identificacao || reg.numero_matricula || "---"
+    }))
+  }, [client, clientType, registrations])
   const [error, setError] = useState<string | null>(null)
   const [selectedStatuses, setSelectedStatuses] = useState<Record<string, boolean>>({})
   const [selectedPhones, setSelectedPhones] = useState<string[]>([])
@@ -1257,6 +1306,90 @@ export function ClientDetailsModal({
     }
   };
 
+  const getConvenioParam = (type: ConvenioType | null) => {
+    switch (type) {
+      case 'siape': return 'FEDERAL'
+      case 'governo_sp': return 'GOVERNO SP'
+      case 'prefeitura_sp': return 'PREFEITURA SP'
+      case 'governo_pi': return 'GOVERNO PI'
+      case 'governo_ma': return 'GOVERNO MA'
+      case 'governo_rr': return 'GOVERNO RR'
+      case 'governo_rj': return 'GOVERNO RJ'
+      case 'prefeitura_santo_andre': return 'PREFEITURA SANTO ANDRÉ'
+      case 'prefeitura_contagem': return 'PREFEITURA CONTAGEM'
+      case 'governo_mg': return 'GOVERNO MG'
+      case 'governo_ms': return 'GOVERNO MS'
+      case 'prefeitura_natal': return 'PREFEITURA NATAL'
+      case 'prefeitura_porto_velho': return 'PREFEITURA PORTO VELHO'
+      case 'governo_ba': return 'GOVERNO BA'
+      case 'governo_am': return 'GOVERNO AM'
+      case 'governo_ce': return 'GOVERNO CE'
+      case 'governo_ro': return 'GOVERNO RO'
+      case 'prefeitura_ponta_grossa': return 'PREFEITURA PONTA GROSSA'
+      default: return 'FEDERAL'
+    }
+  };
+
+  const handleAbrirChamado = (activeRegistration?: Registration) => {
+    if (!client) return
+    const rawCpf = client.cpf || cpf || ""
+    const formattedCpf = rawCpf.replace(/\D/g, "").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
+    const resolvedConvenio = getConvenioParam(clientType)
+    const reg = activeRegistration || allRegs[activeRegIndex] || ({} as Registration)
+
+    const initialData = {
+      nome: client.nome || "NOME NÃO INFORMADO",
+      cpf: formattedCpf,
+      tel1: (client.telefone_1 || "").replace(/\D/g, ""),
+      tel2: (client.telefone_2 || "").replace(/\D/g, ""),
+      tel3: (client.telefone_3 || "").replace(/\D/g, ""),
+      margem: formatCurrency(Number(reg.margem_35 || reg.margem_emprestimo || 0)),
+      liquida5: formatCurrency(Number(reg.liquida_5 || reg.margem_cartao || 0)),
+      beneficio5: formatCurrency(Number(reg.beneficio_liquida_5 || reg.margem_cartao_beneficio || 0)),
+      convenio: resolvedConvenio,
+      matricula: String(reg.numero_matricula || reg.identificacao || reg.matricula || ""),
+      origem: "KANBAN"
+    }
+
+    if (showPipelineActionButtons) {
+      setChamadoModalData(initialData)
+      setIsNovoChamadoModalOpen(true)
+      return
+    }
+
+    const params = new URLSearchParams(initialData)
+    onClose()
+    router.push(`/chamados/novo?${params.toString()}`)
+  };
+
+  const handleDigitarProposta = (activeRegistration?: Registration) => {
+    if (!client) return
+    const resolvedConvenio = getConvenioParam(clientType)
+    const reg = activeRegistration || allRegs[activeRegIndex] || ({} as Registration)
+
+    const initialData = {
+      nome: client.nome || "NOME NÃO INFORMADO",
+      cpf: (client.cpf || cpf || "").replace(/\D/g, ""),
+      nascimento: formatDate(client.data_nascimento),
+      matricula: String(reg.numero_matricula || reg.identificacao || reg.matricula || ""),
+      tel1: (client.telefone_1 || "").replace(/\D/g, ""),
+      tel2: (client.telefone_2 || "").replace(/\D/g, ""),
+      tel3: (client.telefone_3 || "").replace(/\D/g, ""),
+      origem: "kanban",
+      convenio: resolvedConvenio
+    }
+
+    if (showPipelineActionButtons) {
+      setPropostaModalData(initialData)
+      setIsNovaPropostaModalOpen(true)
+      return
+    }
+
+    const params = new URLSearchParams(initialData)
+    onClose()
+    router.push(`/propostas/nova?${params.toString()}`)
+  };
+
   const getConvenioName = (type: ConvenioType | string | null | undefined) => {
     switch (type) {
       case "siape": return "SIAPE (Federal)";
@@ -1282,7 +1415,7 @@ export function ClientDetailsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent showCloseButton={false} className="max-w-[95vw] lg:max-w-6xl max-h-[92vh] overflow-hidden p-0 border border-slate-200 bg-[#FBFBFB] rounded-2xl shadow-2xl flex flex-col">
+      <DialogContent showCloseButton={false} className="w-full max-w-[95vw] lg:max-w-6xl h-[92vh] max-h-[92vh] overflow-hidden p-0 border border-slate-200 bg-[#FBFBFB] rounded-2xl shadow-2xl flex flex-col">
         <DialogTitle className="sr-only">{modalTitle}</DialogTitle>
 
         {/* Modal Top Header */}
@@ -1316,34 +1449,6 @@ export function ClientDetailsModal({
             <Button variant="outline" onClick={onClose}>Fechar</Button>
           </div>
         ) : client && (() => {
-          let allRegs: Registration[] = [];
-          if (clientType === "siape") {
-            allRegs = registrations.flatMap(reg => {
-              const isPension = reg.situacao_funcional === "BENEFICIARIO PENSAO";
-              if (!reg.instituidores || reg.instituidores.length === 0) {
-                const rawName = isPension ? "" : (reg.orgao || "");
-                return [{
-                  ...reg,
-                  currentInstituidor: isPension ? rawName : translateOrgao(rawName),
-                  currentInstituidorId: null
-                }];
-              }
-              return reg.instituidores.map((inst) => ({
-                ...reg,
-                ...inst,
-                id: reg.id,
-                instituidor_id: inst.id,
-                currentInstituidor: inst.nome ? (isPension ? inst.nome : translateOrgao(inst.nome)) : (isPension ? "" : translateOrgao(reg.orgao || "")),
-                currentInstituidorId: inst.id
-              }));
-            });
-          } else {
-            allRegs = registrations.map(reg => ({
-              ...reg,
-              displayId: reg.matricula || reg.identificacao || reg.numero_matricula || "---"
-            }));
-          }
-
           const activeReg = allRegs[activeRegIndex] || allRegs[0];
 
           // Extração normalizada de margens conforme padrão do sistema
@@ -1538,7 +1643,7 @@ export function ClientDetailsModal({
                       </div>
 
                       {/* Card ambar de orientação para marcação dos telefones (exclusivo para o Kanban / Informações sobre o Lead) */}
-                      {isKanbanLeadModal && (
+                      {isKanbanLeadModal && !hidePhoneSelectionBanner && (
                         <div className="col-span-full -mb-4 bg-amber-50/90 border border-amber-200/90 rounded-lg p-3 flex items-center gap-2.5 text-amber-900 shadow-xs">
                           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                           <p className="text-xs font-semibold text-amber-900 leading-none">
@@ -1961,6 +2066,40 @@ export function ClientDetailsModal({
                                 </div>
                               </div>
                             </div>
+
+                            {/* Botões de Ação do Pipeline: SIMULAR PROPOSTA, ABRIR CHAMADO e DIGITAR PROPOSTA */}
+                            {showPipelineActionButtons && (
+                              <div className="flex flex-col sm:flex-row items-center justify-end gap-3 pt-6 border-t border-slate-100">
+                                <Button
+                                  type="button"
+                                  onClick={() => setIsSimulationModalOpen(true)}
+                                  className="w-full sm:w-auto h-11 px-8 text-[11px] font-bold uppercase tracking-widest bg-[#162546] hover:bg-[#162546]/90 text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                  <Calculator className="w-4 h-4" />
+                                  SIMULAR PROPOSTA
+                                </Button>
+
+                                <Button
+                                  type="button"
+                                  onClick={() => handleAbrirChamado(activeReg)}
+                                  className="w-full sm:w-auto h-11 px-8 text-[11px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                  <MessageSquare className="w-4 h-4" />
+                                  ABRIR CHAMADO
+                                </Button>
+
+                                {!isUserEstagio && (
+                                  <Button
+                                    type="button"
+                                    onClick={() => handleDigitarProposta(activeReg)}
+                                    className="w-full sm:w-auto h-11 px-8 text-[11px] font-bold uppercase tracking-widest bg-white border-2 border-[#171717] text-[#171717] hover:bg-[#171717]/5 shadow-xs transition-all rounded-xl flex items-center justify-center gap-2 cursor-pointer"
+                                  >
+                                    <FileEdit className="w-4 h-4" />
+                                    DIGITAR PROPOSTA
+                                  </Button>
+                                )}
+                              </div>
+                            )}
                           </CardContent>
                         </Card>
                       )}
@@ -2039,6 +2178,36 @@ export function ClientDetailsModal({
             </>
           );
         })()}
+
+        {/* Modal de Simulação de Proposta */}
+        {isSimulationModalOpen && (
+          <SimulationModal 
+            isOpen={isSimulationModalOpen} 
+            onClose={() => setIsSimulationModalOpen(false)} 
+            client={client} 
+            registrations={allRegs as unknown as any[]} 
+            perfil={perfil} 
+            activeRegIndex={activeRegIndex}
+          />
+        )}
+
+        {/* Modal de Abertura de Chamado */}
+        {isNovoChamadoModalOpen && (
+          <NovoChamadoModal
+            isOpen={isNovoChamadoModalOpen}
+            onClose={() => setIsNovoChamadoModalOpen(false)}
+            initialData={chamadoModalData}
+          />
+        )}
+
+        {/* Modal de Digitar Proposta */}
+        {isNovaPropostaModalOpen && (
+          <NovaPropostaModal
+            isOpen={isNovaPropostaModalOpen}
+            onClose={() => setIsNovaPropostaModalOpen(false)}
+            initialData={propostaModalData}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

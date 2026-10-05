@@ -1824,13 +1824,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       <div 
         key="simulation-modal-overlay"
         id="simulation-modal-container" 
-        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto"
+        className="fixed inset-0 z-[250] flex items-center justify-center p-0 bg-slate-900/60 backdrop-blur-sm"
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="relative w-full max-w-7xl bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[90vh] overflow-hidden"
+          className="relative w-full max-w-[95vw] lg:max-w-6xl h-[92vh] max-h-[92vh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
         >
           {/* Header */}
           <div className="flex items-center justify-between px-8 py-5 border-b border-slate-100 bg-slate-50/50">
@@ -3336,7 +3336,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
         <div 
           key="simulation-modal-zoom"
           onClick={() => setIsZoomed(false)}
-          className="fixed inset-0 z-[160] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
+          className="fixed inset-0 z-[260] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
         >
           {/* Close Button */}
           <button 

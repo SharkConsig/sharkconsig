@@ -124,7 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return
           }
         } catch (apiErr) {
-          console.error("Erro ao carregar dados do usuário da API:", apiErr)
+          console.warn("Erro ao carregar dados do usuário da API:", apiErr)
         }
 
         const metadata = currentUser.user_metadata

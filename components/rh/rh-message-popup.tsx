@@ -75,7 +75,7 @@ export function RHMessagePopup() {
         triggerPopup(msg, img, orient, userId, keyToken)
       }
     } catch (e) {
-      console.error("Erro ao verificar mensagem do RH:", e)
+      console.warn("Erro ao verificar mensagem do RH:", e)
     }
   }
 

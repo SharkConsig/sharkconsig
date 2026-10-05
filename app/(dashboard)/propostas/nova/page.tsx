@@ -32,37 +32,73 @@ import {
   UploadCloud,
   CheckCircle2,
   Phone,
+  FileEdit,
   X
 } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
 
-function NewProposalForm() {
+export interface NewProposalFormProps {
+  isModal?: boolean;
+  modalInitialData?: {
+    nome?: string;
+    cpf?: string;
+    nascimento?: string;
+    matricula?: string;
+    origem?: string;
+    tel1?: string;
+    tel2?: string;
+    tel3?: string;
+    tel4?: string;
+    convenio?: string;
+  };
+  onCloseModal?: () => void;
+  onSuccessModal?: () => void;
+}
+
+export function NewProposalForm({
+  isModal = false,
+  modalInitialData,
+  onCloseModal,
+  onSuccessModal
+}: NewProposalFormProps = {}) {
   const { user, isCorretor, perfil, isEstagio, isMonitoramento } = useAuth()
   const isPJ = (perfil?.regime_contratacao || "").trim().toUpperCase() === "PJ" || (perfil?.role || "").trim().toUpperCase() === "PJ" || (perfil as any)?.funcao?.trim()?.toUpperCase() === "PJ"
   const roleLower = perfil?.role?.toLowerCase() || ""
   const canEditPreFilled = ["operacional", "monitoramento", "administrador", "desenvolvedor", "admin"].includes(roleLower)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const isFromChamado = !!searchParams.get("idChamado")
+
+  const getParam = (key: string) => {
+    if (modalInitialData && key in modalInitialData) {
+      return (modalInitialData as any)[key] || ""
+    }
+    return searchParams.get(key) || ""
+  }
+
+  const isFromChamado = !!getParam("idChamado")
 
   const [initialParams] = useState({
-    nome: !!searchParams.get("nome"),
-    cpf: !!searchParams.get("cpf"),
-    nascimento: !!searchParams.get("nascimento"),
-    matricula: !!searchParams.get("matricula"),
-    origem: !!searchParams.get("origem"),
-    tel_1: !!searchParams.get("tel1"),
-    tel_2: !!searchParams.get("tel2"),
-    tel_3: !!searchParams.get("tel3"),
-    tel_4: !!searchParams.get("tel4"),
+    nome: !!getParam("nome"),
+    cpf: !!getParam("cpf"),
+    nascimento: !!getParam("nascimento"),
+    matricula: !!getParam("matricula"),
+    origem: !!getParam("origem"),
+    tel_1: !!getParam("tel1"),
+    tel_2: !!getParam("tel2"),
+    tel_3: !!getParam("tel3"),
+    tel_4: !!getParam("tel4"),
   })
 
   useEffect(() => {
     if (perfil && (isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio')) {
       toast.error("Você não tem acesso a esta página.")
-      router.push("/")
+      if (isModal) {
+        if (onCloseModal) onCloseModal()
+      } else {
+        router.push("/")
+      }
     }
-  }, [perfil, isEstagio, router])
+  }, [perfil, isEstagio, router, isModal, onCloseModal])
   
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
@@ -80,7 +116,7 @@ function NewProposalForm() {
   const [selectedComissaoPercent, setSelectedComissaoPercent] = useState<number | null>(null)
 
   const [selection, setSelection] = useState({
-    convenio: searchParams.get("convenio") || "",
+    convenio: getParam("convenio") || "",
     convenioId: "",
     banco: "",
     bancoId: "",
@@ -92,12 +128,12 @@ function NewProposalForm() {
   })
 
   const [formData, setFormData] = useState({
-    nome: searchParams.get("nome") || "",
-    cpf: searchParams.get("cpf") || "",
-    nascimento: searchParams.get("nascimento") || "",
-    idLead: searchParams.get("idLead") || "",
-    origem: searchParams.get("origem")?.toUpperCase() || "",
-    matricula: searchParams.get("matricula") || "",
+    nome: getParam("nome") || "",
+    cpf: getParam("cpf") || "",
+    nascimento: getParam("nascimento") || "",
+    idLead: getParam("idLead") || "",
+    origem: getParam("origem")?.toUpperCase() || (isModal ? "KANBAN" : ""),
+    matricula: getParam("matricula") || "",
     naturalidade: "",
     uf_naturalidade: "",
     identidade: "",
@@ -106,10 +142,10 @@ function NewProposalForm() {
     data_emissao: "",
     nome_pai: "",
     nome_mae: "",
-    tel_1: searchParams.get("tel1") || "",
-    tel_2: searchParams.get("tel2") || "",
-    tel_3: searchParams.get("tel3") || "",
-    tel_4: searchParams.get("tel4") || "",
+    tel_1: getParam("tel1") || "",
+    tel_2: getParam("tel2") || "",
+    tel_3: getParam("tel3") || "",
+    tel_4: getParam("tel4") || "",
     telefone_selecionado: "",
     email: "",
     equipe: (perfil?.role === 'Supervisor' ? perfil?.nome : perfil?.supervisor_nome) || "",
@@ -1077,7 +1113,12 @@ function NewProposalForm() {
 
       toast.dismiss(loadingToast)
       toast.success("Proposta salva com sucesso!")
-      router.push("/propostas")
+      if (isModal) {
+        if (onSuccessModal) onSuccessModal()
+        if (onCloseModal) onCloseModal()
+      } else {
+        router.push("/propostas")
+      }
     } catch (err: unknown) {
       console.error("Erro ao salvar proposta:", JSON.stringify(err, null, 2))
       console.log("Detalhes do erro:", err)
@@ -2741,10 +2782,34 @@ function NewProposalForm() {
 }
 
   return (
-    <div className="flex-1 flex flex-col">
-      <Header title="DIGITAR PROPOSTA" />
+    <div className="flex-1 flex flex-col h-full overflow-hidden">
+      {isModal ? (
+        <div className="px-6 py-4 bg-[#171717] text-white flex items-center justify-between shrink-0 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-amber-400">
+              <FileEdit className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-black uppercase tracking-wider">DIGITAR PROPOSTA</h2>
+              <p className="text-[10px] text-slate-400 font-semibold">Preencha e transmita a proposta comercial</p>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            onClick={onCloseModal}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      ) : (
+        <Header title="DIGITAR PROPOSTA" />
+      )}
       
-      <main className="flex-1 p-4 lg:p-8 bg-slate-50/50">
+      <main className={cn(
+        "flex-1 bg-slate-50/50",
+        isModal ? "p-4 sm:p-6 overflow-y-auto h-[calc(92vh-65px)]" : "p-4 lg:p-8"
+      )}>
         <div className="max-w-[1400px] mx-auto w-full">
           {isPJ ? (
             <>

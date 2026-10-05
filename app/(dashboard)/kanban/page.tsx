@@ -1508,6 +1508,44 @@ export default function KanbanPage() {
     }
   }
 
+  // Ação para abrir o modal 'Informações do Lead' ao clicar em 'INICIAR ABORDAGEM'
+  const handleIniciarAbordagem = async () => {
+    if (!atendimentoModalTicket) return
+    const rawCpf = atendimentoModalTicket.cliente_cpf || ""
+    let cleanCpf = rawCpf.replace(/\D/g, "")
+
+    if (!cleanCpf || cleanCpf.length !== 11) {
+      // Tentar localizar pelo telefone se o CPF não estiver completo
+      const tel = (atendimentoModalTicket.cliente_telefone || "").replace(/\D/g, "")
+      const last8 = tel.length >= 8 ? tel.slice(-8) : tel
+      if (last8) {
+        try {
+          const { data: cByTel } = await supabase
+            .from("clientes")
+            .select("cpf")
+            .or(`telefone_1.ilike.%${last8}%,telefone_2.ilike.%${last8}%,telefone_3.ilike.%${last8}%`)
+            .limit(1)
+            .maybeSingle()
+          if (cByTel?.cpf) {
+            cleanCpf = cByTel.cpf.replace(/\D/g, "")
+          }
+        } catch (e) {
+          console.error("Erro ao localizar CPF por telefone:", e)
+        }
+      }
+    }
+
+    if (!cleanCpf) {
+      toast.error("CPF do cliente não localizado para abrir Informações do Lead.")
+      return
+    }
+
+    setAtendimentoModalTicket(null)
+    setSelectedClientCpf(cleanCpf)
+    setIsViewingLeadInAttendance(true)
+    setIsClientDetailsModalOpen(true)
+  }
+
   // Executar Transbordo de Responsável na Modal de Supervisão
   const handleConfirmSupervisaoTransbordo = async () => {
     if (!supervisaoModalTicket || !user || !supervisaoNovoResponsavel) return
@@ -2796,29 +2834,41 @@ export default function KanbanPage() {
                     </div>
                   )}
 
-                  {/* Opções com Caixas Seletoras */}
-                  <div className="flex items-center gap-5 mt-2 pb-4">
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-slate-900 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={opcaoSelecionada === "Sem interação"}
-                        onChange={() => handleToggleOpcaoAtendimento("Sem interação")}
-                        disabled={isSavingOpcao}
-                        className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
-                      />
-                      <span>Sem interação</span>
-                    </label>
+                  {/* Opções com Caixas Seletoras e Botão INICIAR ABORDAGEM */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 mt-2 pb-4">
+                    <div className="flex items-center gap-5">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-slate-900 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={opcaoSelecionada === "Sem interação"}
+                          onChange={() => handleToggleOpcaoAtendimento("Sem interação")}
+                          disabled={isSavingOpcao}
+                          className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
+                        />
+                        <span>Sem interação</span>
+                      </label>
 
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-slate-900 transition-colors">
-                      <input
-                        type="checkbox"
-                        checked={opcaoSelecionada === "Sem interesse"}
-                        onChange={() => handleToggleOpcaoAtendimento("Sem interesse")}
-                        disabled={isSavingOpcao}
-                        className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
-                      />
-                      <span>Sem interesse</span>
-                    </label>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-slate-900 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={opcaoSelecionada === "Sem interesse"}
+                          onChange={() => handleToggleOpcaoAtendimento("Sem interesse")}
+                          disabled={isSavingOpcao}
+                          className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
+                        />
+                        <span>Sem interesse</span>
+                      </label>
+                    </div>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleIniciarAbordagem}
+                      className="text-xs h-7.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      INICIAR ABORDAGEM
+                    </Button>
                   </div>
 
                   {/* Campo para Registrar Interação */}
@@ -3602,6 +3652,8 @@ export default function KanbanPage() {
             title="Informações sobre o Lead"
             onSelectTabulacao={isClientInAnyKanbanStage ? undefined : handleTabulacaoFromModal}
             showTabulacoes={!isClientInAnyKanbanStage}
+            hidePhoneSelectionBanner={isClientInAnyKanbanStage}
+            showPipelineActionButtons={isClientInAnyKanbanStage}
             onTelefonesSelecionadosChange={(cpf, selected) => {
               const cleanCpf = cpf.replace(/\D/g, "")
               setTickets(prev => prev.map(t => {

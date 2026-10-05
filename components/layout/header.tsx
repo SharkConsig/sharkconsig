@@ -145,7 +145,7 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
           userProfiles = await uRes.json()
         }
       } catch (profileErr) {
-        console.error("Erro ao buscar usuários para filtrar apoios:", profileErr)
+        console.warn("Erro ao buscar usuários para filtrar apoios:", profileErr)
       }
 
       const allActive: ApoioRequest[] = activeList.map((msg: any) => ({
