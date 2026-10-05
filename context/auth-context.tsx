@@ -177,6 +177,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             padrinho_id: metadata.padrinho_id || "",
             padrinho_nome: metadata.padrinho_nome || ""
           })
+          // Se o token em cache local for maior que 8KB (ex: metadados antigos com imagem base64), renova o JWT imediatamente
+          if (session?.access_token && session.access_token.length > 8000) {
+            supabase.auth.refreshSession().catch(console.error)
+          }
           // Busca dados atualizados do servidor para evitar cache local obsoleto do metadata do auth
           refreshPerfil()
         } else {

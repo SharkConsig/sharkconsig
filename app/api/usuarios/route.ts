@@ -213,6 +213,9 @@ export async function PUT(request: Request) {
         ? "" 
         : foto_proposta_url;
     }
+    // Previne que imagens em base64 inflem o JWT do Supabase Auth e gerem Bad Request 400
+    metadata.rh_mensagem_imagem = null;
+    metadata.rh_mensagem_imagem_orientacao = null;
 
     if (Object.keys(metadata).length > 0) {
       updateData.user_metadata = metadata

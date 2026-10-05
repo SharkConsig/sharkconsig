@@ -667,7 +667,10 @@ export default function DashboardPage() {
         // PostgrestFilterBuilder doesn't have .clone(), but .range() returns a new instance
         // so we can use baseQuery as a template for each iteration.
         const { data, error } = await withRetry(() => baseQuery.range(from, from + step - 1))
-        if (error) throw error
+        if (error) {
+          console.warn("[fetchAll Error]:", error?.message || error)
+          throw error
+        }
         if (!data || data.length === 0) {
           finished = true
         } else {
@@ -892,11 +895,17 @@ export default function DashboardPage() {
         userPaidQuery = userPaidQuery.lte("updated_at", customEnd.toISOString())
       }
 
-      if (isCorretor) {
+      if (isCorretor && targetCorretorId && typeof targetCorretorId === 'string' && targetCorretorId.trim() !== '') {
         userPaidQuery = userPaidQuery.or(`corretor_id.eq.${targetCorretorId},estagiario_colaborador_id.eq.${targetCorretorId}`)
       }
 
-      let userPaid = await fetchAll(userPaidQuery)
+      let userPaid: any[] = []
+      try {
+        userPaid = await fetchAll(userPaidQuery)
+      } catch (uErr: any) {
+        console.warn("Could not fetch user paid proposals:", uErr?.message || uErr)
+        userPaid = []
+      }
 
       setUserProposals(userPaid || [])
 
@@ -1025,7 +1034,8 @@ export default function DashboardPage() {
                 if (isUserAdminRole(u)) return false
                 return (u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId) && u.status?.toUpperCase() !== 'INATIVO'
               })
-          const teamIds = team.map((m: User) => m.id)
+          const validTeamIds = team.map((m: User) => m.id).filter(id => Boolean(id && typeof id === 'string' && id.trim() !== ''))
+          const teamIds = validTeamIds
 
           // Ensure we always fetch at least the full current month for MTD calculations, and the week and month of the selected filter to avoid missing entries
           const datesToCompare = [startOfCurrentMonth, targetMonthStart, targetWeekStart]
@@ -1034,7 +1044,7 @@ export default function DashboardPage() {
           const queryStart = queryStartDate.toISOString()
           
           const activeStatuses = Array.from(new Set([...inProcessStatuses, ...opStatuses]))
-          const activeStatusFilters = activeStatuses.map(s => `status.eq."${s}"`).join(",")
+          const activeStatusList = activeStatuses.map(s => `"${s}"`).join(",")
 
           // Fetch proposals for the team (or all if admin/operational/monitoramento) with graceful fallback if intervention columns do not exist yet in DB
           let teamProposals: any[] = []
@@ -1043,30 +1053,37 @@ export default function DashboardPage() {
               .from("propostas")
               .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome, intervencao_operacional, intervencao_operacional_id, intervencao_operacional_nome, intervencao_motivo")
 
-            if (!isPrivilegedStatsUser && !isUserMonitoramento) {
-              if (teamIds.length > 0) {
-                teamProposalsQuery = teamProposalsQuery.or(`corretor_id.in.(${teamIds.join(",")}),estagiario_colaborador_id.in.(${teamIds.join(",")}),intervencao_operacional_id.in.(${teamIds.join(",")})`)
-              }
+            if (!isPrivilegedStatsUser && !isUserMonitoramento && validTeamIds.length > 0) {
+              teamProposalsQuery = teamProposalsQuery.or(`corretor_id.in.(${validTeamIds.join(",")}),estagiario_colaborador_id.in.(${validTeamIds.join(",")}),intervencao_operacional_id.in.(${validTeamIds.join(",")})`)
             }
 
-            teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte."${queryStart}",created_at.gte."${queryStart}",${activeStatusFilters}`)
+            teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte.${queryStart},created_at.gte.${queryStart},status.in.(${activeStatusList})`)
             teamProposals = await fetchAll(teamProposalsQuery)
           } catch (colErr: any) {
-            if (colErr?.code === '42703' || colErr?.message?.includes('intervencao_operacional') || colErr?.message?.includes('column')) {
+            console.warn("Error fetching team proposals with interventions, trying fallback:", colErr?.message || colErr)
+            try {
               let fallbackQuery = supabase
                 .from("propostas")
                 .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
 
-              if (!isPrivilegedStatsUser && !isUserMonitoramento) {
-                if (teamIds.length > 0) {
-                  fallbackQuery = fallbackQuery.or(`corretor_id.in.(${teamIds.join(",")}),estagiario_colaborador_id.in.(${teamIds.join(",")})`)
-                }
+              if (!isPrivilegedStatsUser && !isUserMonitoramento && validTeamIds.length > 0) {
+                fallbackQuery = fallbackQuery.or(`corretor_id.in.(${validTeamIds.join(",")}),estagiario_colaborador_id.in.(${validTeamIds.join(",")})`)
               }
 
-              fallbackQuery = fallbackQuery.or(`updated_at.gte."${queryStart}",created_at.gte."${queryStart}",${activeStatusFilters}`)
+              fallbackQuery = fallbackQuery.or(`updated_at.gte.${queryStart},created_at.gte.${queryStart},status.in.(${activeStatusList})`)
               teamProposals = await fetchAll(fallbackQuery)
-            } else {
-              throw colErr
+            } catch (fallbackErr: any) {
+              console.warn("Fallback query also failed, using simplified query:", fallbackErr?.message || fallbackErr)
+              try {
+                let simpleQuery = supabase
+                  .from("propostas")
+                  .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente")
+                  .gte("updated_at", queryStart)
+                teamProposals = await fetchAll(simpleQuery)
+              } catch (simpleErr) {
+                console.error("Simple proposals fetch also failed:", simpleErr)
+                teamProposals = []
+              }
             }
           }
 
@@ -1760,7 +1777,8 @@ export default function DashboardPage() {
 
           allPaid = await fetchAll(rankingQuery)
         } catch (rErr: any) {
-          if (rErr?.code === '42703' || rErr?.message?.includes('intervencao_operacional') || rErr?.message?.includes('column')) {
+          console.warn("Error in rankingQuery, trying fallback:", rErr?.message || rErr)
+          try {
             let fallbackRanking = supabase
               .from("propostas")
               .select("corretor_id, valor_producao, updated_at, data_pago_cliente")
@@ -1772,8 +1790,9 @@ export default function DashboardPage() {
             }
 
             allPaid = await fetchAll(fallbackRanking)
-          } else {
-            throw rErr
+          } catch (fallbackRankErr) {
+            console.error("Fallback ranking query failed:", fallbackRankErr)
+            allPaid = []
           }
         }
         const aggregated = allPaid.reduce((acc: Record<string, number>, curr) => {
@@ -2249,7 +2268,7 @@ export default function DashboardPage() {
             .from('propostas')
             .select('valor_producao, updated_at, data_pago_cliente')
             .in('status', paidStatuses)
-            .or(`updated_at.gte."${startOfYearISO}",data_pago_cliente.gte."${startOfYearISO}"`)
+            .or(`updated_at.gte.${startOfYearISO},data_pago_cliente.gte.${startOfYearISO}`)
           
           const annualProposals = await fetchAll(annualQuery)
 
@@ -2375,7 +2394,7 @@ export default function DashboardPage() {
       }
 
     } catch (error: any) {
-      console.error("Erro dashboard:", error?.message || error?.details || error)
+      console.error("Erro dashboard:", error?.message || error?.details || error, error)
     } finally {
       setIsLoading(false)
     }
