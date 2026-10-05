@@ -10,50 +10,134 @@ export async function GET(request: Request) {
     const supabaseAdmin = createAdminClient();
 
     if (id) {
-      const { data: { user }, error } = await supabaseAdmin.auth.admin.getUserById(id)
-      if (error) throw error
-      if (!user) return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
+      // 1. Tenta carregar dados diretamente da tabela public.perfis (Virada da Leitura)
+      let perfilRow: any = null
+      try {
+        const { data } = await supabaseAdmin
+          .from('perfis')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle()
+        perfilRow = data
+      } catch (_) {}
 
-      const metadata = user.user_metadata || {};
-      let supervisorNome = metadata.supervisor_nome;
+      // 2. Busca Auth como fallback seguro de compatibilidade
+      let authUser: any = null
+      try {
+        const { data } = await supabaseAdmin.auth.admin.getUserById(id)
+        authUser = data?.user
+      } catch (_) {}
 
-      // If supervisor_nome is missing but id is present, try to find it
-      if (!supervisorNome && metadata.supervisor_id) {
-        const { data: supervisorUser } = await supabaseAdmin.auth.admin.getUserById(metadata.supervisor_id)
-        if (supervisorUser?.user?.user_metadata) {
-          const sMeta = supervisorUser.user.user_metadata;
-          supervisorNome = sMeta.nome_completo || sMeta.full_name || 'Sem Nome';
+      if (!perfilRow && !authUser) {
+        return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 })
+      }
+
+      const metadata = authUser?.user_metadata || {}
+      let supervisorNome = perfilRow?.supervisor_nome || metadata.supervisor_nome
+      const supervisorId = perfilRow?.supervisor_id || metadata.supervisor_id
+
+      // Se o nome do supervisor estiver ausente mas o ID existir, busca na tabela perfis ou no auth
+      if (!supervisorNome && supervisorId) {
+        const { data: supPerfil } = await supabaseAdmin
+          .from('perfis')
+          .select('nome')
+          .eq('id', supervisorId)
+          .maybeSingle()
+
+        if (supPerfil?.nome) {
+          supervisorNome = supPerfil.nome
+        } else if (authUser) {
+          const { data: supervisorUser } = await supabaseAdmin.auth.admin.getUserById(supervisorId)
+          if (supervisorUser?.user?.user_metadata) {
+            const sMeta = supervisorUser.user.user_metadata
+            supervisorNome = sMeta.nome_completo || sMeta.full_name || 'Sem Nome'
+          }
         }
       }
 
-      let rawName = metadata.nome_completo || metadata.full_name || 'Sem Nome'
+      const rawName = perfilRow?.nome || metadata.nome_completo || metadata.full_name || 'Sem Nome'
 
-      const rhMsgUpdatedAt = metadata.rh_mensagem_updated_at;
-      let activeRhMsg = metadata.rh_mensagem_destaque || '';
+      const rhMsgUpdatedAt = perfilRow?.rh_mensagem_updated_at || metadata.rh_mensagem_updated_at
+      let activeRhMsg = perfilRow?.rh_mensagem_destaque || metadata.rh_mensagem_destaque || ''
       if (activeRhMsg && rhMsgUpdatedAt && (Date.now() - new Date(rhMsgUpdatedAt).getTime() > 24 * 60 * 60 * 1000)) {
-        activeRhMsg = '';
+        activeRhMsg = ''
       }
 
       return NextResponse.json({
-        id: user.id,
-        email: user.email,
+        id: perfilRow?.id || authUser?.id || id,
+        email: perfilRow?.email || authUser?.email,
         nome: rawName,
-        username: metadata.username,
-        funcao: metadata.funcao || 'Corretor',
-        regime_contratacao: metadata.regime_contratacao || '',
-        equipe: metadata.equipe || 'Shark',
-        supervisor_id: metadata.supervisor_id,
-        supervisor_nome: supervisorNome,
-        avatar_url: metadata.avatar_url || `https://picsum.photos/seed/${metadata.username || user.id}/200/200`,
-        foto_campanha_url: metadata.foto_campanha_url || '',
-        foto_proposta_url: metadata.foto_proposta_url || '',
-        status: (metadata.status || 'ATIVO').toUpperCase(),
-        padrinho_id: metadata.padrinho_id || '',
-        padrinho_nome: metadata.padrinho_nome || '',
+        username: perfilRow?.username || metadata.username,
+        funcao: perfilRow?.funcao || metadata.funcao || 'Corretor',
+        regime_contratacao: perfilRow?.regime_contratacao || metadata.regime_contratacao || '',
+        equipe: perfilRow?.equipe || metadata.equipe || 'Shark',
+        supervisor_id: supervisorId,
+        supervisor_nome: supervisorNome || 'Nenhum',
+        avatar_url: perfilRow?.avatar_url || metadata.avatar_url || `https://picsum.photos/seed/${perfilRow?.username || metadata.username || id}/200/200`,
+        foto_campanha_url: perfilRow?.foto_campanha_url || metadata.foto_campanha_url || '',
+        foto_proposta_url: perfilRow?.foto_proposta_url || metadata.foto_proposta_url || '',
+        status: (perfilRow?.status || metadata.status || 'ATIVO').toUpperCase(),
+        padrinho_id: perfilRow?.padrinho_id || metadata.padrinho_id || '',
+        padrinho_nome: perfilRow?.padrinho_nome || metadata.padrinho_nome || '',
         rh_mensagem_destaque: activeRhMsg
       })
     }
 
+    // 1. Tenta consulta direta e veloz na tabela public.perfis (Virada da Leitura)
+    try {
+      const { data: perfisData, error: perfisError } = await supabaseAdmin
+        .from('perfis')
+        .select('*')
+        .order('nome', { ascending: true })
+
+      if (!perfisError && perfisData && perfisData.length > 0) {
+        const nameMap = new Map<string, string>()
+        perfisData.forEach(p => {
+          nameMap.set(p.id, p.nome || 'Sem Nome')
+        })
+
+        const combinedUsers = perfisData.map((p) => {
+          const supervisorId = p.supervisor_id
+          let supervisorNome = p.supervisor_nome
+          if (!supervisorNome && supervisorId && nameMap.has(supervisorId)) {
+            supervisorNome = nameMap.get(supervisorId)
+          }
+
+          const rhMsgUpdatedAt = p.rh_mensagem_updated_at
+          let activeRhMsg = p.rh_mensagem_destaque || ''
+          if (activeRhMsg && rhMsgUpdatedAt && (Date.now() - new Date(rhMsgUpdatedAt).getTime() > 24 * 60 * 60 * 1000)) {
+            activeRhMsg = ''
+          }
+
+          return {
+            id: p.id,
+            email: p.email,
+            nome: p.nome || 'Sem Nome',
+            username: p.username,
+            funcao: p.funcao || 'Corretor',
+            regime_contratacao: p.regime_contratacao || '',
+            equipe: p.equipe || 'Shark',
+            supervisor_id: supervisorId,
+            supervisor_nome: supervisorNome || 'Nenhum',
+            avatar_url: p.avatar_url || `https://picsum.photos/seed/${p.username || p.id}/200/200`,
+            foto_campanha_url: p.foto_campanha_url || '',
+            foto_proposta_url: p.foto_proposta_url || '',
+            status: (p.status || 'ATIVO').toUpperCase(),
+            padrinho_id: p.padrinho_id || '',
+            padrinho_nome: p.padrinho_nome || '',
+            rh_mensagem_destaque: activeRhMsg,
+            created_at: p.created_at,
+            last_sign_in_at: null
+          }
+        })
+
+        return NextResponse.json(combinedUsers)
+      }
+    } catch (perfisErr) {
+      console.warn('[API Usuarios] Consulta a public.perfis falhou, usando fallback no Auth:', perfisErr)
+    }
+
+    // 2. Fallback de compatibilidade no Auth caso a tabela não responda
     let users: any[] = []
     let page = 1
     const perPage = 1000
