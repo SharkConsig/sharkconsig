@@ -320,6 +320,7 @@ const roleOptions = [
   { value: "Marketing", label: "Marketing", bg: "bg-[#b91c1c] hover:bg-[#991b1b]", border: "border-transparent", text: "text-white" },
   { value: "Serviços Gerais", label: "Serviços Gerais", bg: "bg-[#fef3c7] hover:bg-[#fde68a]", border: "border-[#fcd34d]", text: "text-[#92400e]" },
   { value: "Monitoria", label: "Monitoria", bg: "bg-[#4b5563] hover:bg-[#374151]", border: "border-transparent", text: "text-white" },
+  { value: "Estagiário", label: "Estagiário", bg: "bg-[#1e3a8a] hover:bg-[#172554]", border: "border-transparent", text: "text-white" },
   { value: "Estagiário Operacional", label: "Estagiário Operacional", bg: "bg-[#31006f] hover:bg-[#20005a]", border: "border-transparent", text: "text-white" },
   { value: "TI", label: "TI", bg: "bg-cyan-700 hover:bg-cyan-800", border: "border-transparent", text: "text-white" }
 ]
