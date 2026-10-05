@@ -114,8 +114,8 @@ export async function GET(request: Request) {
           metaTipoTeste = userData?.user?.user_metadata?.tipo_teste_atribuido || null
           if (userData?.user?.user_metadata?.perfil_profissional) {
             const meta = { ...userData.user.user_metadata }
-            delete meta.perfil_profissional
-            delete meta.perfil_profissional_checkpoint
+            meta.perfil_profissional = null
+            meta.perfil_profissional_checkpoint = null
             await supabaseAdmin.auth.admin.updateUserById(userId, { user_metadata: meta })
           }
         } catch (_) {}

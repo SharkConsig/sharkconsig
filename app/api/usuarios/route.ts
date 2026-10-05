@@ -226,6 +226,30 @@ export async function PUT(request: Request) {
       if (authError) throw authError
     }
 
+    // Sincroniza com public.perfis se a tabela estiver criada
+    try {
+      const perfisPayload: Record<string, unknown> = {}
+      if (nome_completo) perfisPayload.nome = nome_completo
+      if (username) perfisPayload.username = username
+      if (funcao) {
+        perfisPayload.funcao = funcao
+        perfisPayload.role = funcao
+      }
+      if (regime_contratacao !== undefined) perfisPayload.regime_contratacao = regime_contratacao
+      if (status) perfisPayload.status = status.toUpperCase()
+      if (supervisor_id !== undefined) perfisPayload.supervisor_id = supervisor_id || null
+      if (supervisor_nome !== undefined) perfisPayload.supervisor_nome = supervisor_nome
+      if (padrinho_id !== undefined) perfisPayload.padrinho_id = padrinho_id
+      if (padrinho_nome !== undefined) perfisPayload.padrinho_nome = padrinho_nome
+      if (avatar_url !== undefined) perfisPayload.avatar_url = metadata.avatar_url
+      if (foto_campanha_url !== undefined) perfisPayload.foto_campanha_url = metadata.foto_campanha_url
+      if (foto_proposta_url !== undefined) perfisPayload.foto_proposta_url = metadata.foto_proposta_url
+
+      if (Object.keys(perfisPayload).length > 0) {
+        await supabaseAdmin.from('perfis').update(perfisPayload).eq('id', id)
+      }
+    } catch (_) {}
+
     return NextResponse.json({ success: true })
   } catch (error: unknown) {
     console.error('Erro ao atualizar usuário:', error)
