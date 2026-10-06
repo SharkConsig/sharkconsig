@@ -3149,8 +3149,8 @@ export default function KanbanPage() {
                     )}
                   </div>
 
-                  {/* Campo para Registrar Interação */}
-                  <div className="space-y-1.5">
+                  {/* Card da Seção de Observações */}
+                  <div className="bg-white rounded-xl border border-slate-200/90 p-4 shadow-xs space-y-2.5">
                     <label className="text-xs font-bold text-slate-700 block">
                       Registrar Resultado do Contato / Observação:
                     </label>
@@ -3159,7 +3159,7 @@ export default function KanbanPage() {
                       onChange={e => setAtendimentoMensagem(e.target.value)}
                       placeholder="Descreva o andamento da conversa com o cliente, objeções ou próximos passos..."
                       rows={3}
-                      className="w-full text-xs p-3 bg-white border border-slate-300 text-slate-800 placeholder:text-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-xs"
+                      className="w-full text-xs p-3 bg-slate-50/50 border border-slate-200 text-slate-800 placeholder:text-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white transition-colors shadow-2xs"
                     />
                     <div className="flex items-center justify-end pt-1">
                       <Button
@@ -3167,7 +3167,7 @@ export default function KanbanPage() {
                         size="sm"
                         onClick={() => handleSaveAtendimentoInteracao("atendimento_registro")}
                         disabled={isSubmittingAtendimento || !atendimentoMensagem.trim()}
-                        className="text-xs h-8 bg-sky-600 hover:bg-sky-500 text-white gap-1 shadow-sm font-semibold"
+                        className="text-xs h-8 bg-sky-600 hover:bg-sky-500 text-white gap-1 shadow-sm font-semibold cursor-pointer"
                       >
                         <Send className="w-3.5 h-3.5" />
                         Salvar Registro
@@ -3245,7 +3245,10 @@ export default function KanbanPage() {
                       })
 
                       return (
-                        <div className="pt-2 space-y-2">
+                        <div className="pt-2.5 border-t border-slate-100 space-y-2">
+                          <h5 className="text-xs font-bold text-slate-700 block">
+                            Últimas observações
+                          </h5>
                           {lista.map((obs, idx) => {
                             let formattedDate = ""
                             let periodoText = ""
@@ -3284,7 +3287,7 @@ export default function KanbanPage() {
                   <div className="mt-5 pt-5 border-t border-slate-200 space-y-3">
                     <div className="flex items-center gap-2">
                       <div className="w-1.5 h-5 bg-rose-500 rounded-full"></div>
-                      <h4 className="text-[12px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                      <h4 className="text-[11px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
                         Histórico de Chamados{" "}
                         <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-rose-500/10 text-rose-600 border-none font-black font-sans uppercase">
                           {clientTicketsHistory.length} {clientTicketsHistory.length === 1 ? 'Chamado' : 'Chamados'}
@@ -3385,7 +3388,7 @@ export default function KanbanPage() {
                   <div className="mt-5 pt-5 border-t border-slate-200 space-y-3">
                     <div className="flex items-center gap-2">
                       <div className="w-1.5 h-5 bg-[#162546] rounded-full"></div>
-                      <h4 className="text-[12px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                      <h4 className="text-[11px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
                         Histórico de Propostas Comerciais{" "}
                         <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-[#162546]/10 text-[#162546] border-none font-black font-sans uppercase">
                           {clientProposalsHistory.length} {clientProposalsHistory.length === 1 ? 'Proposta' : 'Propostas'}
