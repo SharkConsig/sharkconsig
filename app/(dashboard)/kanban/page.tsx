@@ -195,6 +195,12 @@ interface TicketMetadata {
   corretor_nome?: string
   estagiario_id?: string
   estagiario_nome?: string
+  observacao_data?: string
+  observacoes_historico?: Array<{
+    texto: string
+    data: string
+    autor?: string
+  }>
 }
 
 interface TicketItem {
@@ -251,6 +257,19 @@ function stringifyWithMetadata(desc: string = "", meta: TicketMetadata): string 
 }
 
 // Mapeia o chamado para a etapa do Kanban
+function isUserObservation(text?: string | null): boolean {
+  if (!text || typeof text !== "string") return false
+  const trimmed = text.trim()
+  if (!trimmed) return false
+  const lower = trimmed.toLowerCase()
+  if (lower === "sem interação" || lower === "sem interacao") return false
+  if (lower === "sem interesse") return false
+  if (lower.startsWith("atendimento iniciado via modal")) return false
+  if (lower.startsWith("lead arquivado na gaveta")) return false
+  if (lower.startsWith("registro de fluxo")) return false
+  return true
+}
+
 function inferKanbanStage(ticket: TicketItem, meta: TicketMetadata): KanbanStage {
   if (meta.kanban_stage) {
     return meta.kanban_stage
@@ -819,9 +838,12 @@ export default function KanbanPage() {
     const cleanObs = (atendimentoModalTicket.descricao || "")
       .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
       .trim()
+    const meta = parseMetadata(atendimentoModalTicket.descricao)
+    const stage = inferKanbanStage(atendimentoModalTicket, meta)
+
     if (cleanObs === "Sem interação") {
       setOpcaoSelecionada("Sem interação")
-    } else if (cleanObs === "Sem interesse") {
+    } else if (cleanObs === "Sem interesse" && stage === "SEM INTERESSE") {
       setOpcaoSelecionada("Sem interesse")
     } else {
       setOpcaoSelecionada("")
@@ -1371,6 +1393,13 @@ export default function KanbanPage() {
       else if (novaEtapaSelecionada === "FECHADO") proximaAcaoPadrao = "Proposta Digitada e Formalizada"
       else if (novaEtapaSelecionada === "PERDIDO") proximaAcaoPadrao = "Atendimento Encerrado"
 
+      const isSaindoDeSemInteresse = novaEtapaSelecionada !== "SEM INTERESSE"
+      const cleanObs = (moverModalTicket.descricao || "")
+        .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
+        .trim()
+      const deveLimparSemInteresse = isSaindoDeSemInteresse && cleanObs === "Sem interesse"
+      const novaObservacao = deveLimparSemInteresse ? "" : cleanObs
+
       const historicoAtual = meta.historico_kanban || []
       const updatedMeta: TicketMetadata = {
         ...meta,
@@ -1390,16 +1419,21 @@ export default function KanbanPage() {
         ]
       }
 
-      const newDesc = stringifyWithMetadata(moverModalTicket.descricao, updatedMeta)
+      const newDesc = stringifyWithMetadata(novaObservacao, updatedMeta)
       
       if (moverModalTicket.source_table === "kanban_fichas") {
+        const updatePayload: any = {
+          etapa: novaEtapaSelecionada,
+          metadata: updatedMeta,
+          updated_at: new Date().toISOString()
+        }
+        if (deveLimparSemInteresse) {
+          updatePayload.observacoes = ""
+        }
+
         const { error } = await supabase
           .from("kanban_fichas")
-          .update({
-            etapa: novaEtapaSelecionada,
-            metadata: updatedMeta,
-            updated_at: new Date().toISOString()
-          })
+          .update(updatePayload)
           .eq("id", moverModalTicket.id)
 
         if (error) throw error
@@ -1423,6 +1457,17 @@ export default function KanbanPage() {
           content: `➡️ Etapa alterada no Kanban: [${etapaAtual}] ➔ [${novaEtapaSelecionada}]. ${motivoMudancaEtapa ? `Motivo: ${motivoMudancaEtapa}` : ""}`,
           action: "etapa_kanban_change"
         })
+      }
+
+      if (atendimentoModalTicket && atendimentoModalTicket.id === moverModalTicket.id) {
+        if (deveLimparSemInteresse) {
+          setOpcaoSelecionada("")
+        }
+        setAtendimentoModalTicket(prev => prev ? {
+          ...prev,
+          status: novaEtapaSelecionada,
+          descricao: newDesc
+        } : null)
       }
 
       toast.success(`Ficha movida para "${novaEtapaSelecionada}"!`)
@@ -1524,6 +1569,7 @@ export default function KanbanPage() {
       return
     }
     setIsSubmittingAtendimento(true)
+    const nowIso = new Date().toISOString()
     try {
       await supabase.from("mensagens_chamado").insert({
         chamado_id: parseInt(atendimentoModalTicket.id, 10),
@@ -1537,16 +1583,81 @@ export default function KanbanPage() {
 
       // Atualizar também na tabela kanban_fichas na coluna observacoes
       if (atendimentoModalTicket.source_table === "kanban_fichas" || atendimentoModalTicket.id) {
+        const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+
+        // Recuperar histórico de observações existente para não sobrescrever (follow-up)
+        const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
+        if (Array.isArray(currentMeta.observacoes_historico)) {
+          currentMeta.observacoes_historico.forEach((item: any) => {
+            if (item && isUserObservation(item.texto)) {
+              historicoExistente.push({
+                texto: String(item.texto).trim(),
+                data: item.data || nowIso,
+                autor: item.autor
+              })
+            }
+          })
+        }
+
+        // Se havia uma observação anterior que ainda não estava no array
+        const cleanObsAnterior = (atendimentoModalTicket.descricao || "")
+          .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
+          .trim()
+        if (isUserObservation(cleanObsAnterior) && !historicoExistente.some(h => h.texto === cleanObsAnterior)) {
+          historicoExistente.push({
+            texto: cleanObsAnterior,
+            data: currentMeta.observacao_data || atendimentoModalTicket.updated_at || nowIso
+          })
+        }
+
+        // Adicionar nova observação ao histórico acumulado
+        const novaObsItem = {
+          texto: atendimentoMensagem.trim(),
+          data: nowIso,
+          autor: perfil?.nome || "Colaborador"
+        }
+        const updatedHistoricoObs = [...historicoExistente, novaObsItem]
+
+        // Na coluna observacoes de kanban_fichas, manter o histórico acumulado
+        const observacoesAcumuladas = isUserObservation(cleanObsAnterior) && cleanObsAnterior !== atendimentoMensagem.trim()
+          ? `${atendimentoMensagem.trim()}\n\n${cleanObsAnterior}`
+          : atendimentoMensagem.trim()
+
+        const updatedMeta: TicketMetadata = {
+          ...currentMeta,
+          observacoes_historico: updatedHistoricoObs,
+          observacao_data: nowIso
+        }
+
         await supabase
           .from("kanban_fichas")
           .update({
-            observacoes: atendimentoMensagem.trim(),
-            updated_at: new Date().toISOString()
+            observacoes: observacoesAcumuladas,
+            metadata: updatedMeta,
+            updated_at: nowIso
           })
           .eq("id", atendimentoModalTicket.id)
 
-        const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
-        atendimentoModalTicket.descricao = stringifyWithMetadata(atendimentoMensagem.trim(), currentMeta)
+        const novaDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+        atendimentoModalTicket.descricao = novaDesc
+        setAtendimentoModalTicket(prev => prev ? {
+          ...prev,
+          descricao: novaDesc
+        } : null)
+
+        setHistoricoMensagens(prev => [
+          {
+            id: Date.now(),
+            chamado_id: parseInt(atendimentoModalTicket.id, 10),
+            user_id: user.id,
+            user_nome: perfil?.nome || "Colaborador",
+            user_role: perfil?.role || "Corretor",
+            content: atendimentoMensagem.trim(),
+            created_at: nowIso,
+            action: acaoTipo
+          },
+          ...(Array.isArray(prev) ? prev : [])
+        ])
       }
 
       toast.success("Registro salvo no histórico do chamado!")
@@ -1565,17 +1676,48 @@ export default function KanbanPage() {
   const handleToggleOpcaoAtendimento = async (opcao: "Sem interação" | "Sem interesse") => {
     if (!atendimentoModalTicket) return
     const novaOpcao = opcaoSelecionada === opcao ? "" : opcao
+    const isSemInteresse = novaOpcao === "Sem interesse"
     setOpcaoSelecionada(novaOpcao)
     setIsSavingOpcao(true)
 
     try {
-      // 1. Grava na tabela kanban_fichas na coluna observacoes
+      const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+      const etapaAtual = inferKanbanStage(atendimentoModalTicket, currentMeta)
+
+      const updatedMeta: TicketMetadata = {
+        ...currentMeta,
+        ...(isSemInteresse ? {
+          kanban_stage: "SEM INTERESSE",
+          proxima_acao: "Cadência de Longo Prazo / Nutrição",
+          vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+          alerta_atrasado: false,
+          historico_kanban: [
+            ...(currentMeta.historico_kanban || []),
+            {
+              data: new Date().toISOString(),
+              etapa_anterior: etapaAtual,
+              etapa_nova: "SEM INTERESSE",
+              autor: perfil?.nome || "Usuário",
+              motivo: "Opção rápida 'Sem interesse' selecionada"
+            }
+          ]
+        } : {})
+      }
+
+      const updateData: any = {
+        observacoes: novaOpcao,
+        updated_at: new Date().toISOString()
+      }
+
+      if (isSemInteresse) {
+        updateData.etapa = "SEM INTERESSE"
+        updateData.metadata = updatedMeta
+      }
+
+      // 1. Grava na tabela kanban_fichas na coluna observacoes e etapa se 'Sem interesse'
       const { error } = await supabase
         .from("kanban_fichas")
-        .update({
-          observacoes: novaOpcao,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq("id", atendimentoModalTicket.id)
 
       if (error) {
@@ -1584,9 +1726,29 @@ export default function KanbanPage() {
         return
       }
 
-      // 2. Atualizar em memória
-      const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
-      atendimentoModalTicket.descricao = stringifyWithMetadata(novaOpcao, currentMeta)
+      // 2. Atualizar em memória e sincronizar estado do modal e do Kanban
+      const novaDescricao = stringifyWithMetadata(novaOpcao, updatedMeta)
+      atendimentoModalTicket.descricao = novaDescricao
+      if (isSemInteresse) {
+        atendimentoModalTicket.status = "SEM INTERESSE"
+      }
+
+      setAtendimentoModalTicket(prev => prev ? {
+        ...prev,
+        status: isSemInteresse ? "SEM INTERESSE" : prev.status,
+        descricao: novaDescricao
+      } : null)
+
+      setTickets(prev => prev.map(t => {
+        if (t.id === atendimentoModalTicket.id) {
+          return {
+            ...t,
+            status: isSemInteresse ? "SEM INTERESSE" : t.status,
+            descricao: novaDescricao
+          }
+        }
+        return t
+      }))
 
       // 3. Registrar no histórico se opção marcada
       if (novaOpcao) {
@@ -1596,11 +1758,16 @@ export default function KanbanPage() {
           user_nome: perfil?.nome || "Colaborador",
           user_role: perfil?.role || "Corretor",
           user_avatar: perfil?.avatar_url || null,
-          content: `📌 Registrado: ${novaOpcao}`,
-          action: "registro_opcao"
+          content: isSemInteresse
+            ? `📌 Registrado: Sem interesse (Cartão movido automaticamente para a coluna SEM INTERESSE)`
+            : `📌 Registrado: ${novaOpcao}`,
+          action: isSemInteresse ? "etapa_kanban_change" : "registro_opcao"
         })
         loadHistoricoChamado(atendimentoModalTicket.id)
-        toast.success(`"${novaOpcao}" registrado em kanban_fichas!`)
+        toast.success(isSemInteresse 
+          ? `Cartão movido automaticamente para a coluna "SEM INTERESSE"!` 
+          : `"${novaOpcao}" registrado em kanban_fichas!`
+        )
       } else {
         toast.info("Opção desmarcada em kanban_fichas.")
       }
@@ -1782,13 +1949,16 @@ export default function KanbanPage() {
         tabulacao_whatsapp: drawerType === "NAO_EXISTE" ? "NAO_EXISTE_WHATSAPP" : "WHATSAPP_DIVERGENTE",
         tabulado_por: perfil?.nome || user?.email || "Corretor"
       }
-      const newDesc = stringifyWithMetadata(ticket.descricao, updatedMeta)
+      const cleanObs = (ticket.descricao || "").replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "").trim()
+      const novaObservacao = cleanObs === "Sem interesse" ? "" : cleanObs
+      const newDesc = stringifyWithMetadata(novaObservacao, updatedMeta)
 
       if (ticket.source_table === "kanban_fichas") {
         await supabase.from("kanban_fichas").update({
           etapa: "PERDIDO",
           motivo_perda: label,
           operador_nome: perfil?.nome || ticket.user_nome || "Corretor",
+          observacoes: novaObservacao,
           metadata: updatedMeta,
           updated_at: new Date().toISOString()
         }).eq("id", ticket.id)
@@ -2482,28 +2652,28 @@ export default function KanbanPage() {
                             )}
                           >
                             {/* 1. Cabeçalho Visual: Tags de Alerta e Cronômetro/Prazo */}
-                            <div className="flex items-start justify-between gap-1.5 text-[10px]">
+                            <div className="flex items-start justify-between gap-1.5 text-[11px]">
                               <div className="flex flex-wrap gap-1">
                                 {meta.alerta_atrasado && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-rose-100 text-rose-800 border border-rose-200 animate-pulse">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-rose-100 text-rose-800 border border-rose-200 animate-pulse text-[12px]">
                                     🔴 ATRASADO
                                   </span>
                                 )}
                                 {(meta.acao_especial || isAltoValor) && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800 border border-amber-200 text-[12px]">
                                     🟡 AÇÃO ESPECIAL
                                   </span>
                                 )}
                                 {meta.conflito_titularidade && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-sky-100 text-sky-800 border border-sky-200">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-sky-100 text-sky-800 border border-sky-200 text-[12px]">
                                     🔵 EM NEGOCIAÇÃO COM OUTRO
                                   </span>
                                 )}
                               </div>
 
                               {/* Cronômetro / Tempo na Etapa */}
-                              <span className="text-slate-400 font-medium whitespace-nowrap flex items-center gap-1 text-[10px]">
-                                <Clock className="w-3 h-3 text-slate-400" />
+                              <span className="text-slate-700 font-medium whitespace-nowrap flex items-center gap-1 text-[12px]">
+                                <Clock className="w-3 h-3 text-slate-600" />
                                 {ticket.updated_at 
                                   ? formatDistanceToNow(new Date(ticket.updated_at), { addSuffix: false, locale: ptBR })
                                   : "recente"}
@@ -2513,7 +2683,7 @@ export default function KanbanPage() {
                             {/* 2. Dados Principais do Cliente */}
                             <div className="space-y-0.5">
                               <div className="flex items-center gap-1.5">
-                                <h3 className="text-xs font-bold text-slate-900 tracking-tight line-clamp-1 group-hover:text-sky-600 transition-colors">
+                                <h3 className="text-[13px] font-bold text-slate-900 tracking-tight line-clamp-1 group-hover:text-sky-600 transition-colors">
                                   {ticket.cliente_nome || "Nome não informado"}
                                 </h3>
                                 <button
@@ -2522,14 +2692,14 @@ export default function KanbanPage() {
                                     e.stopPropagation()
                                     toggleRevealCard(ticket.id)
                                   }}
-                                  className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer shrink-0 transition-colors"
+                                  className="text-slate-700 hover:text-slate-900 p-0.5 cursor-pointer shrink-0 transition-colors"
                                   title={isCardRevealed ? "Ocultar dados" : "Revelar dados"}
                                 >
-                                  {isCardRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                                  {isCardRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                                 </button>
                               </div>
 
-                              <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                              <div className="flex items-center gap-1 text-[12px] text-slate-500">
                                 <span>CPF:</span>
                                 <span
                                   onClick={(e) => {
@@ -2583,10 +2753,10 @@ export default function KanbanPage() {
                                 }
 
                                 return (
-                                  <div className="flex flex-col gap-0.5 text-[11px] text-slate-500">
+                                  <div className="flex flex-col gap-0.5 text-[12px] text-slate-500">
                                     {cardPhones.map((phone, pIdx) => (
                                       <div key={pIdx} className="flex items-center gap-1">
-                                        <span className="text-[10px] text-slate-400 font-semibold">
+                                        <span className="text-[11px] text-slate-400 font-semibold">
                                           {cardPhones.length > 1 ? `Tel ${pIdx + 1}:` : "Tel:"}
                                         </span>
                                         <span
@@ -2612,7 +2782,7 @@ export default function KanbanPage() {
                             </div>
 
                             {/* 3. Informações Comerciais e de Titularidade */}
-                            <div className="bg-slate-50/90 rounded-md p-2 border border-slate-100 text-[11px] space-y-1">
+                            <div className="bg-slate-50/90 rounded-md p-2 border border-slate-100 text-[12px] space-y-1">
                               <div className="flex items-center justify-between">
                                 <span className="text-slate-500">Valor Operação:</span>
                                 <span className="font-bold text-slate-900">
@@ -2638,15 +2808,15 @@ export default function KanbanPage() {
                             </div>
 
                             {/* 4. Bloco da Próxima Ação */}
-                            <div className="bg-amber-100/90 border border-amber-300 rounded-md p-2 text-[11px] space-y-0.5 shadow-2xs">
+                            <div className="bg-amber-100/90 border border-amber-300 rounded-md p-2 text-[12px] space-y-0.5 shadow-2xs">
                               <div className="font-extrabold text-amber-950 flex items-center gap-1">
                                 <span>📌 PRÓXIMA AÇÃO:</span>
                               </div>
-                              <p className="text-amber-900 font-semibold line-clamp-2">
+                              <p className="text-[12px] text-amber-900 font-semibold line-clamp-2">
                                 {proximaAcaoTexto}
                               </p>
-                              <div className="text-[10px] text-amber-800 flex items-center gap-1 pt-0.5 font-semibold">
-                                <Clock className="w-3 h-3 text-amber-700" />
+                              <div className="text-[12px] text-amber-800 flex items-center gap-1 pt-0.5 font-semibold">
+                                <Clock className="w-3.5 h-3.5 text-amber-700" />
                                 <span>Vencimento: {vencimentoLabel}</span>
                               </div>
                             </div>
@@ -2957,7 +3127,7 @@ export default function KanbanPage() {
                       <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-slate-900 transition-colors">
                         <input
                           type="checkbox"
-                          checked={opcaoSelecionada === "Sem interesse"}
+                          checked={opcaoSelecionada === "Sem interesse" && modalStage === "SEM INTERESSE"}
                           onChange={() => handleToggleOpcaoAtendimento("Sem interesse")}
                           disabled={isSavingOpcao}
                           className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
@@ -2966,15 +3136,17 @@ export default function KanbanPage() {
                       </label>
                     </div>
 
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleIniciarAbordagem}
-                      className="text-xs h-7.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer"
-                    >
-                      <UserCheck className="w-3.5 h-3.5" />
-                      INICIAR ABORDAGEM
-                    </Button>
+                    {(modalStage === "EM ABORDAGEM" || modalStage === "EM RETOMADA") && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleIniciarAbordagem}
+                        className="text-xs h-7.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        INICIAR ABORDAGEM
+                      </Button>
+                    )}
                   </div>
 
                   {/* Campo para Registrar Interação */}
@@ -3001,14 +3173,119 @@ export default function KanbanPage() {
                         Salvar Registro
                       </Button>
                     </div>
+
+                    {/* Observações registradas exibidas logo abaixo da linha do botão, somente texto preto 70%, sem card, com data e hora ao lado esquerdo e texto em itálico */}
+                    {(() => {
+                      const cleanObservacaoFicha = (atendimentoModalTicket.descricao || "")
+                        .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
+                        .trim()
+                      const meta = parseMetadata(atendimentoModalTicket.descricao)
+
+                      // Lista bruta combinada de itens
+                      const itensBrutos: Array<{ texto: string; data?: string }> = []
+
+                      // 1. Do histórico de observações salvas no metadata da ficha
+                      if (Array.isArray(meta.observacoes_historico)) {
+                        meta.observacoes_historico.forEach((item: any) => {
+                          if (item && isUserObservation(item.texto)) {
+                            itensBrutos.push({
+                              texto: String(item.texto).trim(),
+                              data: item.data
+                            })
+                          }
+                        })
+                      }
+
+                      // 2. Do histórico de mensagens do chamado (mensagens_chamado)
+                      if (Array.isArray(historicoMensagens)) {
+                        historicoMensagens.forEach((m: any) => {
+                          if (!m || !m.content) return
+                          const txt = String(m.content).replace(/^📌 Registrado:\s*/, "").trim()
+                          if (isUserObservation(txt)) {
+                            itensBrutos.push({
+                              texto: txt,
+                              data: m.created_at
+                            })
+                          }
+                        })
+                      }
+
+                      // 3. Da coluna observações direta da ficha (caso não tenha histórico estruturado)
+                      if (itensBrutos.length === 0 && isUserObservation(cleanObservacaoFicha)) {
+                        const blocos = cleanObservacaoFicha.split(/\n\s*\n/)
+                        blocos.forEach(b => {
+                          const trimmed = b.trim()
+                          if (isUserObservation(trimmed)) {
+                            itensBrutos.push({
+                              texto: trimmed,
+                              data: meta.observacao_data || atendimentoModalTicket.updated_at || atendimentoModalTicket.created_at
+                            })
+                          }
+                        })
+                      }
+
+                      // Deduplicação estrita por texto normalizado
+                      const seen = new Set<string>()
+                      const lista: Array<{ texto: string; data?: string }> = []
+
+                      itensBrutos.forEach(item => {
+                        const key = item.texto.trim().toLowerCase().replace(/\s+/g, " ")
+                        if (!key || seen.has(key)) return
+                        seen.add(key)
+                        lista.push(item)
+                      })
+
+                      if (lista.length === 0) return null
+
+                      // Ordenar para follow-up cronológico (mais recentes primeiro)
+                      lista.sort((a, b) => {
+                        const tA = a.data ? new Date(a.data).getTime() : 0
+                        const tB = b.data ? new Date(b.data).getTime() : 0
+                        return tB - tA
+                      })
+
+                      return (
+                        <div className="pt-2 space-y-2">
+                          {lista.map((obs, idx) => {
+                            let formattedDate = ""
+                            let periodoText = ""
+                            if (obs.data) {
+                              try {
+                                const dataObj = new Date(obs.data)
+                                formattedDate = format(dataObj, "dd/MM/yyyy HH:mm")
+                                periodoText = formatDistanceToNow(dataObj, { addSuffix: false, locale: ptBR })
+                                  .replace(/^cerca de\s*/i, "")
+                                  .replace(/^aproximadamente\s*/i, "")
+                              } catch {
+                                formattedDate = ""
+                                periodoText = ""
+                              }
+                            }
+
+                            return (
+                              <p key={idx} className="whitespace-pre-wrap leading-relaxed">
+                                {formattedDate && (
+                                  <span className="text-[11.5px] font-semibold not-italic text-black/45 mr-1.5">
+                                    {formattedDate} {periodoText ? `(${periodoText})` : ""} -
+                                  </span>
+                                )}
+                                <span className="text-[12.7px] italic text-black/90">
+                                  {obs.texto}
+                                </span>
+                              </p>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
                   </div>
 
-                  {/* Histórico de Atendimento */}
+                  {/* Histórico de Chamados */}
                   <div className="mt-5 pt-5 border-t border-slate-200 space-y-3">
                     <div className="flex items-center gap-2">
                       <div className="w-1.5 h-5 bg-rose-500 rounded-full"></div>
                       <h4 className="text-[12px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                        Histórico de Atendimento{" "}
+                        Histórico de Chamados{" "}
                         <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-rose-500/10 text-rose-600 border-none font-black font-sans uppercase">
                           {clientTicketsHistory.length} {clientTicketsHistory.length === 1 ? 'Chamado' : 'Chamados'}
                         </Badge>
@@ -3018,11 +3295,11 @@ export default function KanbanPage() {
                     {isLoadingClientTicketsHistory ? (
                       <div className="flex items-center gap-2 justify-center py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
                         <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
-                        <span>Buscando histórico de atendimentos...</span>
+                        <span>Buscando histórico de chamados...</span>
                       </div>
                     ) : clientTicketsHistory.length === 0 ? (
                       <div className="p-3.5 text-center text-xs font-semibold text-slate-400 bg-white rounded-xl border border-slate-200/80">
-                        Nenhum chamado de atendimento registrado para este cliente.
+                        Nenhum chamado registrado para este cliente.
                       </div>
                     ) : (
                       <div className="flex flex-col gap-2.5">

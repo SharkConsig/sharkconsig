@@ -276,6 +276,13 @@ export function ClientDetailsModal({
 
     setSelectedPhones(newSelected)
 
+    if (newSelected.length === 0) {
+      setSelectedStatuses(prev => ({
+        ...prev,
+        "CLIENTE CHAMADO": false
+      }))
+    }
+
     try {
       const digits = (client?.cpf || cpf).replace(/\D/g, "")
       const paddedCpf = digits.padStart(11, '0')
@@ -2124,6 +2131,10 @@ export function ClientDetailsModal({
                           onChange={async (e) => {
                             const checked = e.target.checked;
                             if (checked) {
+                              if (status === "CLIENTE CHAMADO" && (!selectedPhones || selectedPhones.length === 0)) {
+                                toast.error("É obrigatório marcar pelo menos 1 telefone para poder selecionar a tabulação 'CLIENTE CHAMADO'.");
+                                return;
+                              }
                               setSelectedStatuses({ [status]: true });
                               if (onSelectTabulacao) {
                                 const phones = client ? [client.telefone_1, client.telefone_2, client.telefone_3].filter(
