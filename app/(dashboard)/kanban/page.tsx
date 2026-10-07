@@ -1362,39 +1362,34 @@ export default function KanbanPage() {
     }
   }
 
-  // Ação Rápida: Mover de Etapa
-  const handleOpenMoverEtapa = (ticket: TicketItem, etapaDestino?: KanbanStage) => {
-    const meta = parseMetadata(ticket.descricao)
-    const current = inferKanbanStage(ticket, meta)
-    setMoverModalTicket(ticket)
-    setNovaEtapaSelecionada(etapaDestino || current)
-    setMotivoMudancaEtapa("")
-  }
-
-  const handleConfirmMoverEtapa = async () => {
-    if (!moverModalTicket || !user) return
+  // Execução unificada da mudança de etapa
+  const executarMoverEtapa = async (
+    ticket: TicketItem,
+    destinoEtapa: KanbanStage,
+    motivo?: string
+  ) => {
+    if (!ticket || !user) return
     try {
-      const meta = parseMetadata(moverModalTicket.descricao)
-      const etapaAtual = inferKanbanStage(moverModalTicket, meta)
+      const meta = parseMetadata(ticket.descricao)
+      const etapaAtual = inferKanbanStage(ticket, meta)
 
-      if (novaEtapaSelecionada === etapaAtual) {
+      if (destinoEtapa === etapaAtual) {
         toast.info("O chamado já se encontra nesta etapa.")
-        setMoverModalTicket(null)
         return
       }
 
       // Próxima ação padrão da nova etapa (sem siglas)
       let proximaAcaoPadrao = ""
-      if (novaEtapaSelecionada === "EM ABORDAGEM") proximaAcaoPadrao = "Realizar Primeiro Contato Imediato"
-      else if (novaEtapaSelecionada === "EM RETOMADA") proximaAcaoPadrao = "Enviar Régua de Retomada 1"
-      else if (novaEtapaSelecionada === "EM NEGOCIAÇÃO") proximaAcaoPadrao = "Enviar simulação e recolher documentos"
-      else if (novaEtapaSelecionada === "EM REATIVAÇÃO") proximaAcaoPadrao = "Resgatar oportunidade esfriada"
-      else if (novaEtapaSelecionada === "SEM INTERESSE") proximaAcaoPadrao = "Cadência de Longo Prazo / Nutrição"
-      else if (novaEtapaSelecionada === "FECHADO") proximaAcaoPadrao = "Proposta Digitada e Formalizada"
-      else if (novaEtapaSelecionada === "PERDIDO") proximaAcaoPadrao = "Atendimento Encerrado"
+      if (destinoEtapa === "EM ABORDAGEM") proximaAcaoPadrao = "Realizar Primeiro Contato Imediato"
+      else if (destinoEtapa === "EM RETOMADA") proximaAcaoPadrao = "Enviar Régua de Retomada 1"
+      else if (destinoEtapa === "EM NEGOCIAÇÃO") proximaAcaoPadrao = "Enviar simulação e recolher documentos"
+      else if (destinoEtapa === "EM REATIVAÇÃO") proximaAcaoPadrao = "Resgatar oportunidade esfriada"
+      else if (destinoEtapa === "SEM INTERESSE") proximaAcaoPadrao = "Cadência de Longo Prazo / Nutrição"
+      else if (destinoEtapa === "FECHADO") proximaAcaoPadrao = "Proposta Digitada e Formalizada"
+      else if (destinoEtapa === "PERDIDO") proximaAcaoPadrao = "Atendimento Encerrado"
 
-      const isSaindoDeSemInteresse = novaEtapaSelecionada !== "SEM INTERESSE"
-      const cleanObs = (moverModalTicket.descricao || "")
+      const isSaindoDeSemInteresse = destinoEtapa !== "SEM INTERESSE"
+      const cleanObs = (ticket.descricao || "")
         .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
         .trim()
       const deveLimparSemInteresse = isSaindoDeSemInteresse && cleanObs === "Sem interesse"
@@ -1403,7 +1398,7 @@ export default function KanbanPage() {
       const historicoAtual = meta.historico_kanban || []
       const updatedMeta: TicketMetadata = {
         ...meta,
-        kanban_stage: novaEtapaSelecionada,
+        kanban_stage: destinoEtapa,
         proxima_acao: proximaAcaoPadrao,
         vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
         alerta_atrasado: false,
@@ -1412,18 +1407,18 @@ export default function KanbanPage() {
           {
             data: new Date().toISOString(),
             etapa_anterior: etapaAtual,
-            etapa_nova: novaEtapaSelecionada,
+            etapa_nova: destinoEtapa,
             autor: perfil?.nome || "Usuário",
-            motivo: motivoMudancaEtapa || undefined
+            motivo: motivo || undefined
           }
         ]
       }
 
       const newDesc = stringifyWithMetadata(novaObservacao, updatedMeta)
       
-      if (moverModalTicket.source_table === "kanban_fichas") {
+      if (ticket.source_table === "kanban_fichas") {
         const updatePayload: any = {
-          etapa: novaEtapaSelecionada,
+          etapa: destinoEtapa,
           metadata: updatedMeta,
           updated_at: new Date().toISOString()
         }
@@ -1434,7 +1429,7 @@ export default function KanbanPage() {
         const { error } = await supabase
           .from("kanban_fichas")
           .update(updatePayload)
-          .eq("id", moverModalTicket.id)
+          .eq("id", ticket.id)
 
         if (error) throw error
       } else {
@@ -1444,39 +1439,57 @@ export default function KanbanPage() {
             descricao: newDesc,
             updated_at: new Date().toISOString()
           })
-          .eq("id", moverModalTicket.id)
+          .eq("id", ticket.id)
 
         if (error) throw error
 
         await supabase.from("mensagens_chamado").insert({
-          chamado_id: parseInt(moverModalTicket.id, 10),
+          chamado_id: parseInt(ticket.id, 10),
           user_id: user.id,
           user_nome: perfil?.nome || "Colaborador",
           user_role: perfil?.role || "Corretor",
           user_avatar: perfil?.avatar_url || null,
-          content: `➡️ Etapa alterada no Kanban: [${etapaAtual}] ➔ [${novaEtapaSelecionada}]. ${motivoMudancaEtapa ? `Motivo: ${motivoMudancaEtapa}` : ""}`,
+          content: `➡️ Etapa alterada no Kanban: [${etapaAtual}] ➔ [${destinoEtapa}]. ${motivo ? `Motivo: ${motivo}` : ""}`,
           action: "etapa_kanban_change"
         })
       }
 
-      if (atendimentoModalTicket && atendimentoModalTicket.id === moverModalTicket.id) {
+      if (atendimentoModalTicket && atendimentoModalTicket.id === ticket.id) {
         if (deveLimparSemInteresse) {
           setOpcaoSelecionada("")
         }
         setAtendimentoModalTicket(prev => prev ? {
           ...prev,
-          status: novaEtapaSelecionada,
+          status: destinoEtapa,
           descricao: newDesc
         } : null)
       }
 
-      toast.success(`Ficha movida para "${novaEtapaSelecionada}"!`)
-      setMoverModalTicket(null)
+      toast.success(`Ficha movida para "${destinoEtapa}"!`)
       fetchChamados(true)
     } catch (err) {
       console.error("Erro ao mover etapa:", err)
       toast.error("Erro ao mover a ficha de etapa.")
     }
+  }
+
+  // Ação Manual via Botão: Abre o Modal "Mover Etapa Comercial"
+  const handleOpenMoverEtapa = (ticket: TicketItem, etapaDestino?: KanbanStage) => {
+    const meta = parseMetadata(ticket.descricao)
+    const current = inferKanbanStage(ticket, meta)
+    setMoverModalTicket(ticket)
+    setNovaEtapaSelecionada(etapaDestino || current)
+    setMotivoMudancaEtapa("")
+  }
+
+  // Confirmação via Modal
+  const handleConfirmMoverEtapa = async () => {
+    if (!moverModalTicket) return
+    const ticket = moverModalTicket
+    const destino = novaEtapaSelecionada
+    const motivo = motivoMudancaEtapa
+    setMoverModalTicket(null)
+    await executarMoverEtapa(ticket, destino, motivo)
   }
 
   // Excluir card/ficha do Kanban
@@ -2567,7 +2580,7 @@ export default function KanbanPage() {
                         const ticketId = e.dataTransfer.getData("text/plain")
                         const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
                         if (ticketToMove) {
-                          handleOpenMoverEtapa(ticketToMove, col.id)
+                          executarMoverEtapa(ticketToMove, col.id)
                         }
                         setDraggedTicket(null)
                       }}

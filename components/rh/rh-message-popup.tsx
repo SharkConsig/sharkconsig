@@ -157,13 +157,13 @@ export function RHMessagePopup() {
             </h4>
           </div>
 
-          {/* Imagem em Destaque respeitando a Proporção Oficial do Instagram */}
+          {/* Imagem em Destaque respeitando as Proporções (Vertical 1024x1536 ou Paisagem 1448x1086) */}
           {imageUrl && (
             <div className="w-full flex justify-center bg-slate-950/90 rounded-2xl p-2.5 shadow-inner overflow-hidden border border-slate-200">
               <div className={`relative overflow-hidden rounded-xl shadow-lg bg-black ${
                 orientation === 'vertical' 
-                  ? 'aspect-[4/5] max-h-[380px] w-auto' 
-                  : 'aspect-[1.91/1] w-full max-h-[300px]'
+                  ? 'aspect-[1024/1536] max-h-[420px] w-auto' 
+                  : 'aspect-[1448/1086] w-full max-h-[320px]'
               }`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img

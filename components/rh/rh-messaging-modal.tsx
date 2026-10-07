@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from "react"
-import { MessageSquare, Send, X, Check, Loader2, User, Sparkles, Trash2, Image as ImageIcon, Smartphone, Monitor, Upload, RefreshCw } from "lucide-react"
+import { MessageSquare, Send, X, Check, Loader2, User, Sparkles, Trash2, Image as ImageIcon, Smartphone, Monitor, Upload, RefreshCw, Move } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface SystemUser {
@@ -92,26 +92,34 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
   const [activeCommunicado, setActiveCommunicado] = useState<{ mensagem: string; imagem_url: string | null; imagem_orientacao: string } | null>(null)
   const [loadingCommunicado, setLoadingCommunicado] = useState(false)
 
-  // Estado para Anexo de Imagem (Instagram Vertical 4:5 e Horizontal 1.91:1)
+  // Estado para Anexo de Imagem (Paisagem 1448x1086 e Vertical 1024x1536 com enquadramento ajustável)
   const [selectedImageOriginal, setSelectedImageOriginal] = useState<string | null>(null)
   const [processedImageDataUrl, setProcessedImageDataUrl] = useState<string | null>(null)
   const [orientation, setOrientation] = useState<'vertical' | 'horizontal'>('vertical')
   const [imageSizeKb, setImageSizeKb] = useState<number | null>(null)
   const [isProcessingImage, setIsProcessingImage] = useState(false)
+  const [cropPosition, setCropPosition] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 })
+  const [isDraggingImage, setIsDraggingImage] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const previewContainerRef = useRef<HTMLDivElement | null>(null)
+  const dragStartRef = useRef<{ clientX: number; clientY: number; startX: number; startY: number } | null>(null)
 
   // Função de processamento e compressão inteligente no navegador com Canvas (< 180 KB)
-  const processImageWithCanvas = (imageSrc: string, targetOrientation: 'vertical' | 'horizontal'): Promise<{ dataUrl: string; sizeKb: number }> => {
+  // Dimensões solicitadas:
+  // - Paisagem (horizontal): 1448 x 1086 px
+  // - Vertical: 1024 x 1536 px
+  const processImageWithCanvas = (
+    imageSrc: string,
+    targetOrientation: 'vertical' | 'horizontal',
+    cropPos: { x: number; y: number } = cropPosition
+  ): Promise<{ dataUrl: string; sizeKb: number }> => {
     return new Promise((resolve, reject) => {
       const img = new Image()
       img.crossOrigin = "anonymous"
       img.onload = () => {
         try {
-          // Dimensões oficiais padrão do Instagram:
-          // Vertical (4:5): 1080 x 1350 px (Retrato / Feed / Stories)
-          // Horizontal (1.91:1): 1200 x 628 px (Paisagem / Feed)
-          const targetW = targetOrientation === 'vertical' ? 1080 : 1200
-          const targetH = targetOrientation === 'vertical' ? 1350 : 628
+          const targetW = targetOrientation === 'vertical' ? 1024 : 1448
+          const targetH = targetOrientation === 'vertical' ? 1536 : 1086
           const targetAspect = targetW / targetH
 
           const canvas = document.createElement("canvas")
@@ -124,21 +132,24 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
             return
           }
 
-          // Cálculo do corte central proporcional (Center Crop)
+          // Cálculo do corte com suporte ao reposicionamento interativo do usuário
           const srcAspect = img.width / img.height
           let sW = img.width
           let sH = img.height
           let sX = 0
           let sY = 0
 
+          const posX = Math.max(0, Math.min(1, cropPos.x))
+          const posY = Math.max(0, Math.min(1, cropPos.y))
+
           if (srcAspect > targetAspect) {
-            // Imagem original é mais larga: corta laterais
+            // Imagem original é mais larga: corta laterais usando a posição horizontal escolhida
             sW = img.height * targetAspect
-            sX = (img.width - sW) / 2
+            sX = (img.width - sW) * posX
           } else {
-            // Imagem original é mais alta: corta topo e base
+            // Imagem original é mais alta: corta topo e base usando a posição vertical escolhida
             sH = img.width / targetAspect
-            sY = (img.height - sH) / 2
+            sY = (img.height - sH) * posY
           }
 
           // Preenchimento de fundo e interpolação de alta qualidade
@@ -175,6 +186,66 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
     })
   }
 
+  // Interatividade de enquadramento: Clicar, segurar e posicionar a imagem
+  const handleDragStart = (clientX: number, clientY: number) => {
+    if (!selectedImageOriginal && !processedImageDataUrl) return
+    setIsDraggingImage(true)
+    dragStartRef.current = {
+      clientX,
+      clientY,
+      startX: cropPosition.x,
+      startY: cropPosition.y,
+    }
+  }
+
+  const handleDragMove = (clientX: number, clientY: number) => {
+    if (!isDraggingImage || !dragStartRef.current || !previewContainerRef.current) return
+    const rect = previewContainerRef.current.getBoundingClientRect()
+    const deltaX = clientX - dragStartRef.current.clientX
+    const deltaY = clientY - dragStartRef.current.clientY
+
+    // Deslocamento suave inverso (arrastar imagem para esquerda move o enquadramento para a direita)
+    const factorX = (rect.width || 300) * 0.95
+    const factorY = (rect.height || 300) * 0.95
+
+    const newX = Math.max(0, Math.min(1, dragStartRef.current.startX - (deltaX / factorX)))
+    const newY = Math.max(0, Math.min(1, dragStartRef.current.startY - (deltaY / factorY)))
+
+    setCropPosition({ x: newX, y: newY })
+  }
+
+  const handleDragEnd = async () => {
+    if (!isDraggingImage) return
+    setIsDraggingImage(false)
+    dragStartRef.current = null
+
+    const srcToUse = selectedImageOriginal || processedImageDataUrl
+    if (srcToUse) {
+      try {
+        const { dataUrl, sizeKb } = await processImageWithCanvas(srcToUse, orientation, cropPosition)
+        setProcessedImageDataUrl(dataUrl)
+        setImageSizeKb(sizeKb)
+      } catch (err) {
+        console.error("Erro ao recalcular enquadramento:", err)
+      }
+    }
+  }
+
+  const handleResetCrop = async () => {
+    const centerPos = { x: 0.5, y: 0.5 }
+    setCropPosition(centerPos)
+    const srcToUse = selectedImageOriginal || processedImageDataUrl
+    if (srcToUse) {
+      try {
+        const { dataUrl, sizeKb } = await processImageWithCanvas(srcToUse, orientation, centerPos)
+        setProcessedImageDataUrl(dataUrl)
+        setImageSizeKb(sizeKb)
+      } catch (err) {
+        console.error("Erro ao resetar enquadramento:", err)
+      }
+    }
+  }
+
   // Mudança do arquivo via input
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -187,6 +258,8 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
 
     setIsProcessingImage(true)
     setStatusBanner(null)
+    const centerCrop = { x: 0.5, y: 0.5 }
+    setCropPosition(centerCrop)
 
     const reader = new FileReader()
     reader.onload = async (event) => {
@@ -199,7 +272,7 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
       setSelectedImageOriginal(rawDataUrl)
 
       try {
-        const { dataUrl, sizeKb } = await processImageWithCanvas(rawDataUrl, orientation)
+        const { dataUrl, sizeKb } = await processImageWithCanvas(rawDataUrl, orientation, centerCrop)
         setProcessedImageDataUrl(dataUrl)
         setImageSizeKb(sizeKb)
       } catch (err) {
@@ -212,15 +285,18 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
     reader.readAsDataURL(file)
   }
 
-  // Alternar orientação (Vertical 4:5 ou Horizontal 1.91:1) com reprocessamento instantâneo
+  // Alternar orientação (Vertical 1024x1536 ou Paisagem 1448x1086) com reprocessamento instantâneo
   const handleOrientationChange = async (newOrientation: 'vertical' | 'horizontal') => {
     if (newOrientation === orientation) return
     setOrientation(newOrientation)
+    const centerCrop = { x: 0.5, y: 0.5 }
+    setCropPosition(centerCrop)
 
-    if (selectedImageOriginal) {
+    const srcToUse = selectedImageOriginal || processedImageDataUrl
+    if (srcToUse) {
       setIsProcessingImage(true)
       try {
-        const { dataUrl, sizeKb } = await processImageWithCanvas(selectedImageOriginal, newOrientation)
+        const { dataUrl, sizeKb } = await processImageWithCanvas(srcToUse, newOrientation, centerCrop)
         setProcessedImageDataUrl(dataUrl)
         setImageSizeKb(sizeKb)
       } catch (err) {
@@ -236,6 +312,7 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
     setSelectedImageOriginal(null)
     setProcessedImageDataUrl(null)
     setImageSizeKb(null)
+    setCropPosition({ x: 0.5, y: 0.5 })
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
@@ -620,15 +697,15 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
             />
           </div>
 
-          {/* Anexo de Imagem (Padrão Instagram Vertical 4:5 e Horizontal 1.91:1) */}
+          {/* Anexo de Imagem (Paisagem 1448x1086 e Vertical 1024x1536 com enquadramento interativo) */}
           <div className="space-y-3 pt-1 border-t border-slate-100">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <label className="text-xs font-extrabold uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
                 <ImageIcon className="w-3.5 h-3.5 text-amber-500" />
-                Imagem Anexa (Opcional - Padrão Instagram):
+                Imagem Anexa (Opcional):
               </label>
 
-              {/* Seletor de Orientações com proporções oficiais do Instagram */}
+              {/* Seletor de Orientações com proporções solicitadas */}
               <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold shrink-0">
                 <button
                   type="button"
@@ -639,10 +716,10 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
                       ? 'bg-white text-slate-900 shadow-xs border border-slate-200 font-extrabold'
                       : 'text-slate-500 hover:text-slate-900'
                   }`}
-                  title="Formato Retrato oficial Instagram (4:5 / 1080x1350)"
+                  title="Formato Vertical (1024 x 1536 px)"
                 >
                   <Smartphone className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Vertical (4:5)</span>
+                  <span>Vertical (1024x1536)</span>
                 </button>
                 <button
                   type="button"
@@ -653,10 +730,10 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
                       ? 'bg-white text-slate-900 shadow-xs border border-slate-200 font-extrabold'
                       : 'text-slate-500 hover:text-slate-900'
                   }`}
-                  title="Formato Paisagem oficial Instagram (1.91:1 / 1200x628)"
+                  title="Formato Paisagem (1448 x 1086 px)"
                 >
                   <Monitor className="w-3.5 h-3.5 text-sky-600" />
-                  <span>Horizontal (1.91:1)</span>
+                  <span>Paisagem (1448x1086)</span>
                 </button>
               </div>
             </div>
@@ -690,26 +767,15 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
                       Clique para anexar imagem comemorativa
                     </p>
                     <p className="text-[10px] text-slate-400 font-medium">
-                      Suporta JPG, PNG ou WEBP • Auto-ajuste para Instagram {orientation === 'vertical' ? '4:5 (Retrato)' : '1.91:1 (Paisagem)'} • Peso ultraleve (&lt; 180 KB)
+                      Suporta JPG, PNG ou WEBP • Formatos: Paisagem (1448x1086) ou Vertical (1024x1536) • Peso ultraleve (&lt; 180 KB)
                     </p>
                   </div>
                 )}
               </div>
             ) : (
-              /* Pré-visualização com Proporção Real e Botão de Remoção */
+              /* Pré-visualização com Proporção Real, Ajuste de Enquadramento e Botões */
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-800 rounded-lg text-[10px] font-extrabold">
-                      {orientation === 'vertical' ? 'Vertical 4:5 (Retrato)' : 'Horizontal 1.91:1 (Paisagem)'}
-                    </span>
-                    {imageSizeKb && (
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
-                        {imageSizeKb} KB (Ultraleve)
-                      </span>
-                    )}
-                  </div>
-
+                <div className="flex items-center justify-end text-xs">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -732,20 +798,61 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
                   </div>
                 </div>
 
-                {/* Box de Pré-visualização com corte da proporção */}
-                <div className="w-full flex justify-center bg-slate-900/90 rounded-xl p-2 overflow-hidden">
-                  <div className={`relative overflow-hidden rounded-lg shadow-inner bg-black ${
-                    orientation === 'vertical' 
-                      ? 'aspect-[4/5] max-h-56 w-auto' 
-                      : 'aspect-[1.91/1] w-full max-h-48'
-                  }`}>
+                {/* Box de Pré-visualização com recurso de Clicar, Segurar e Posicionar para Enquadramento */}
+                <div className="w-full flex flex-col items-center bg-slate-900/95 rounded-xl p-3 overflow-hidden select-none">
+                  <div
+                    ref={previewContainerRef}
+                    onMouseDown={(e) => handleDragStart(e.clientX, e.clientY)}
+                    onMouseMove={(e) => handleDragMove(e.clientX, e.clientY)}
+                    onMouseUp={handleDragEnd}
+                    onMouseLeave={handleDragEnd}
+                    onTouchStart={(e) => {
+                      if (e.touches[0]) handleDragStart(e.touches[0].clientX, e.touches[0].clientY)
+                    }}
+                    onTouchMove={(e) => {
+                      if (e.touches[0]) handleDragMove(e.touches[0].clientX, e.touches[0].clientY)
+                    }}
+                    onTouchEnd={handleDragEnd}
+                    className={`relative overflow-hidden rounded-lg shadow-inner bg-black cursor-grab active:cursor-grabbing touch-none ${
+                      orientation === 'vertical' 
+                        ? 'aspect-[1024/1536] max-h-64 w-auto' 
+                        : 'aspect-[1448/1086] w-full max-h-56'
+                    }`}
+                    title="Clique, segure e arraste para posicionar a imagem"
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={processedImageDataUrl}
+                      src={selectedImageOriginal || processedImageDataUrl}
                       alt="Pré-visualização do comunicado"
-                      className="w-full h-full object-cover"
+                      draggable={false}
+                      className="w-full h-full object-cover pointer-events-none select-none transition-none"
+                      style={{
+                        objectPosition: `${cropPosition.x * 100}% ${cropPosition.y * 100}%`
+                      }}
                     />
+
+                    {/* Dica de posicionamento sobreposta */}
+                    <div className="absolute bottom-2 inset-x-2 pointer-events-none flex items-center justify-center">
+                      <span className="bg-black/60 backdrop-blur-xs text-white/90 text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs border border-white/10">
+                        <Move className="w-2.5 h-2.5" />
+                        {isDraggingImage ? "Reposicionando..." : "Arraste para enquadrar"}
+                      </span>
+                    </div>
                   </div>
+
+                  {/* Botão de Centralizar (quando enquadramento foi alterado) */}
+                  {(cropPosition.x !== 0.5 || cropPosition.y !== 0.5) && (
+                    <div className="w-full flex items-center justify-end pt-2 px-1 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={handleResetCrop}
+                        className="text-[10px] font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                        title="Resetar enquadramento ao centro"
+                      >
+                        Centralizar
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
