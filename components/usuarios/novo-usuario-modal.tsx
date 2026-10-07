@@ -18,10 +18,10 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select"
-import { Lock, Camera, Pencil, Loader2, Eye, EyeOff, X } from "lucide-react"
+import { Lock, Camera, Pencil, Loader2, Eye, EyeOff, X, Move } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Image from "next/image"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { supabase } from "@/lib/supabase"
 import { useSidebar } from "@/context/sidebar-context"
@@ -67,14 +67,176 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
   // Profile Photo State
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [originalAvatarSrc, setOriginalAvatarSrc] = useState<string | null>(null)
+  const [cropAvatar, setCropAvatar] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 })
+  const avatarContainerRef = useRef<HTMLDivElement | null>(null)
 
   // Campaign Photo State
   const [selectedCampanhaFile, setSelectedCampanhaFile] = useState<File | null>(null)
   const [previewCampanhaUrl, setPreviewCampanhaUrl] = useState<string | null>(null)
+  const [originalCampanhaSrc, setOriginalCampanhaSrc] = useState<string | null>(null)
+  const [cropCampanha, setCropCampanha] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 })
+  const campanhaContainerRef = useRef<HTMLDivElement | null>(null)
 
   // Proposal Photo State
   const [selectedPropostaFile, setSelectedPropostaFile] = useState<File | null>(null)
   const [previewPropostaUrl, setPreviewPropostaUrl] = useState<string | null>(null)
+  const [originalPropostaSrc, setOriginalPropostaSrc] = useState<string | null>(null)
+  const [cropProposta, setCropProposta] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 })
+  const propostaContainerRef = useRef<HTMLDivElement | null>(null)
+
+  // Drag & Reposition State
+  const [activeDragField, setActiveDragField] = useState<'avatar' | 'campanha' | 'proposta' | null>(null)
+  const dragStartRef = useRef<{ clientX: number; clientY: number; startX: number; startY: number } | null>(null)
+
+  // Função utilitária para aplicar o recorte exato do enquadramento no Canvas
+  const processCropToFile = (
+    imageSrc: string,
+    targetW: number,
+    targetH: number,
+    cropPos: { x: number; y: number },
+    fileName: string,
+    fileType: string = "image/jpeg"
+  ): Promise<{ file: File; dataUrl: string }> => {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image()
+      img.crossOrigin = "anonymous"
+      img.onload = () => {
+        try {
+          const targetAspect = targetW / targetH
+          const canvas = document.createElement("canvas")
+          canvas.width = targetW
+          canvas.height = targetH
+          const ctx = canvas.getContext("2d")
+          if (!ctx) {
+            reject(new Error("Canvas indisponível"))
+            return
+          }
+
+          const srcAspect = img.width / img.height
+          let sW = img.width
+          let sH = img.height
+          let sX = 0
+          let sY = 0
+
+          const posX = Math.max(0, Math.min(1, cropPos.x))
+          const posY = Math.max(0, Math.min(1, cropPos.y))
+
+          if (srcAspect > targetAspect) {
+            sW = img.height * targetAspect
+            sX = (img.width - sW) * posX
+          } else {
+            sH = img.width / targetAspect
+            sY = (img.height - sH) * posY
+          }
+
+          const isPng = fileType.includes("png") || fileName.toLowerCase().endsWith(".png")
+          if (isPng) {
+            ctx.clearRect(0, 0, targetW, targetH)
+          } else {
+            ctx.fillStyle = "#ffffff"
+            ctx.fillRect(0, 0, targetW, targetH)
+          }
+
+          ctx.imageSmoothingEnabled = true
+          ctx.imageSmoothingQuality = "high"
+          ctx.drawImage(img, sX, sY, sW, sH, 0, 0, targetW, targetH)
+
+          const outputType = isPng ? "image/png" : "image/jpeg"
+          const quality = isPng ? undefined : 0.9
+
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              reject(new Error("Falha ao gerar blob"))
+              return
+            }
+            const finalFile = new File([blob], fileName, { type: outputType })
+            const dataUrl = canvas.toDataURL(outputType, quality)
+            resolve({ file: finalFile, dataUrl })
+          }, outputType, quality)
+        } catch (err) {
+          reject(err)
+        }
+      }
+      img.onerror = (e) => reject(e)
+      img.src = imageSrc
+    })
+  }
+
+  // Interatividade de Enquadramento (Pan / Arraste)
+  const handleDragStart = (field: 'avatar' | 'campanha' | 'proposta', clientX: number, clientY: number) => {
+    setActiveDragField(field)
+    let startCrop = { x: 0.5, y: 0.5 }
+    if (field === 'avatar') startCrop = cropAvatar
+    else if (field === 'campanha') startCrop = cropCampanha
+    else if (field === 'proposta') startCrop = cropProposta
+
+    dragStartRef.current = {
+      clientX,
+      clientY,
+      startX: startCrop.x,
+      startY: startCrop.y
+    }
+  }
+
+  const handleDragMove = (field: 'avatar' | 'campanha' | 'proposta', clientX: number, clientY: number) => {
+    if (activeDragField !== field || !dragStartRef.current) return
+
+    let container: HTMLDivElement | null = null
+    if (field === 'avatar') container = avatarContainerRef.current
+    else if (field === 'campanha') container = campanhaContainerRef.current
+    else if (field === 'proposta') container = propostaContainerRef.current
+
+    const rect = container?.getBoundingClientRect()
+    const factorX = (rect?.width || 128) * 0.95
+    const factorY = (rect?.height || 128) * 0.95
+
+    const deltaX = clientX - dragStartRef.current.clientX
+    const deltaY = clientY - dragStartRef.current.clientY
+
+    const newX = Math.max(0, Math.min(1, dragStartRef.current.startX - (deltaX / factorX)))
+    const newY = Math.max(0, Math.min(1, dragStartRef.current.startY - (deltaY / factorY)))
+
+    if (field === 'avatar') setCropAvatar({ x: newX, y: newY })
+    else if (field === 'campanha') setCropCampanha({ x: newX, y: newY })
+    else if (field === 'proposta') setCropProposta({ x: newX, y: newY })
+  }
+
+  const handleDragEnd = async (field: 'avatar' | 'campanha' | 'proposta') => {
+    if (activeDragField !== field) return
+    setActiveDragField(null)
+    dragStartRef.current = null
+
+    try {
+      if (field === 'avatar') {
+        const src = originalAvatarSrc || previewUrl
+        if (src) {
+          const name = selectedFile?.name || `${formData.username || 'avatar'}.jpg`
+          const { file, dataUrl } = await processCropToFile(src, 512, 512, cropAvatar, name, selectedFile?.type || 'image/jpeg')
+          setSelectedFile(file)
+          setPreviewUrl(dataUrl)
+        }
+      } else if (field === 'campanha') {
+        const src = originalCampanhaSrc || previewCampanhaUrl
+        if (src) {
+          const name = selectedCampanhaFile?.name || `campanha-${formData.username || 'user'}.jpg`
+          const { file, dataUrl } = await processCropToFile(src, 640, 465, cropCampanha, name, selectedCampanhaFile?.type || 'image/jpeg')
+          setSelectedCampanhaFile(file)
+          setPreviewCampanhaUrl(dataUrl)
+        }
+      } else if (field === 'proposta') {
+        const src = originalPropostaSrc || previewPropostaUrl
+        if (src) {
+          const name = selectedPropostaFile?.name || `proposta-${formData.username || 'user'}.png`
+          const { file, dataUrl } = await processCropToFile(src, 640, 465, cropProposta, name, selectedPropostaFile?.type || 'image/png')
+          setSelectedPropostaFile(file)
+          setPreviewPropostaUrl(dataUrl)
+        }
+      }
+    } catch (err) {
+      console.error(`Erro ao enquadrar imagem de ${field}:`, err)
+    }
+  }
 
   useEffect(() => {
     if (usuario && isOpen) {
@@ -90,8 +252,16 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         supervisor_id: usuario.supervisor_id || (usuario.supervisor_nome === "Nenhum" ? "nenhum" : (usuario.supervisor_nome || "nenhum"))
       })
       setPreviewUrl(usuario.avatar_url || null)
+      setOriginalAvatarSrc(usuario.avatar_url || null)
+      setCropAvatar({ x: 0.5, y: 0.5 })
+
       setPreviewCampanhaUrl(usuario.foto_campanha_url || null)
+      setOriginalCampanhaSrc(usuario.foto_campanha_url || null)
+      setCropCampanha({ x: 0.5, y: 0.5 })
+
       setPreviewPropostaUrl(usuario.foto_proposta_url || null)
+      setOriginalPropostaSrc(usuario.foto_proposta_url || null)
+      setCropProposta({ x: 0.5, y: 0.5 })
     } else if (!usuario && isOpen) {
       setFormData({
         nome_completo: "",
@@ -106,10 +276,18 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       })
       setPreviewUrl(null)
       setSelectedFile(null)
+      setOriginalAvatarSrc(null)
+      setCropAvatar({ x: 0.5, y: 0.5 })
+
       setPreviewCampanhaUrl(null)
       setSelectedCampanhaFile(null)
+      setOriginalCampanhaSrc(null)
+      setCropCampanha({ x: 0.5, y: 0.5 })
+
       setPreviewPropostaUrl(null)
       setSelectedPropostaFile(null)
+      setOriginalPropostaSrc(null)
+      setCropProposta({ x: 0.5, y: 0.5 })
     }
   }, [usuario, isOpen])
 
@@ -163,7 +341,10 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       setSelectedFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
-        setPreviewUrl(reader.result as string)
+        const raw = reader.result as string
+        setOriginalAvatarSrc(raw)
+        setPreviewUrl(raw)
+        setCropAvatar({ x: 0.5, y: 0.5 })
       }
       reader.readAsDataURL(file)
     }
@@ -172,6 +353,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
   const removeFile = () => {
     setSelectedFile(null)
     setPreviewUrl(null)
+    setOriginalAvatarSrc(null)
+    setCropAvatar({ x: 0.5, y: 0.5 })
   }
 
   const handleCampanhaFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,7 +368,10 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       setSelectedCampanhaFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
-        setPreviewCampanhaUrl(reader.result as string)
+        const raw = reader.result as string
+        setOriginalCampanhaSrc(raw)
+        setPreviewCampanhaUrl(raw)
+        setCropCampanha({ x: 0.5, y: 0.5 })
       }
       reader.readAsDataURL(file)
     }
@@ -194,6 +380,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
   const removeCampanhaFile = () => {
     setSelectedCampanhaFile(null)
     setPreviewCampanhaUrl(null)
+    setOriginalCampanhaSrc(null)
+    setCropCampanha({ x: 0.5, y: 0.5 })
   }
 
   const handlePropostaFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -207,7 +395,10 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       setSelectedPropostaFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
-        setPreviewPropostaUrl(reader.result as string)
+        const raw = reader.result as string
+        setOriginalPropostaSrc(raw)
+        setPreviewPropostaUrl(raw)
+        setCropProposta({ x: 0.5, y: 0.5 })
       }
       reader.readAsDataURL(file)
     }
@@ -216,6 +407,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
   const removePropostaFile = () => {
     setSelectedPropostaFile(null)
     setPreviewPropostaUrl(null)
+    setOriginalPropostaSrc(null)
+    setCropProposta({ x: 0.5, y: 0.5 })
   }
 
   const uploadAvatar = async (file: File, username: string) => {
@@ -599,18 +792,55 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                 <div className="flex flex-col items-center w-full">
                   <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-4 block text-center w-full">Foto de Perfil</Label>
                   <div className="relative group mb-4">
-                    <Avatar className="w-32 h-32 border-4 border-slate-50 shadow-xl ring-1 ring-slate-100">
-                      <AvatarImage src={previewUrl || undefined} />
-                      <AvatarFallback className="bg-slate-100 text-slate-300">
-                        <Camera className="w-10 h-10" />
-                      </AvatarFallback>
-                    </Avatar>
+                    <div 
+                      ref={avatarContainerRef}
+                      onMouseDown={(e) => previewUrl && handleDragStart('avatar', e.clientX, e.clientY)}
+                      onMouseMove={(e) => handleDragMove('avatar', e.clientX, e.clientY)}
+                      onMouseUp={() => handleDragEnd('avatar')}
+                      onMouseLeave={() => handleDragEnd('avatar')}
+                      onTouchStart={(e) => {
+                        if (previewUrl && e.touches[0]) handleDragStart('avatar', e.touches[0].clientX, e.touches[0].clientY)
+                      }}
+                      onTouchMove={(e) => {
+                        if (e.touches[0]) handleDragMove('avatar', e.touches[0].clientX, e.touches[0].clientY)
+                      }}
+                      onTouchEnd={() => handleDragEnd('avatar')}
+                      className={cn(
+                        "w-32 h-32 rounded-full overflow-hidden border-4 border-slate-50 shadow-xl ring-1 ring-slate-100 relative select-none bg-slate-100 flex items-center justify-center",
+                        previewUrl ? "cursor-grab active:cursor-grabbing touch-none" : ""
+                      )}
+                      title={previewUrl ? "Clique, segure e arraste para posicionar a foto" : undefined}
+                    >
+                      {previewUrl ? (
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img 
+                            src={originalAvatarSrc || previewUrl} 
+                            alt="Foto de Perfil" 
+                            draggable={false}
+                            className="w-full h-full object-cover pointer-events-none select-none transition-none"
+                            style={{
+                              objectPosition: `${cropAvatar.x * 100}% ${cropAvatar.y * 100}%`
+                            }}
+                          />
+                          <div className="absolute inset-x-0 bottom-2 pointer-events-none flex justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="bg-black/60 backdrop-blur-xs text-white text-[8px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs border border-white/10">
+                              <Move className="w-2.5 h-2.5" />
+                              Arraste
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <Camera className="w-10 h-10 text-slate-300" />
+                      )}
+                    </div>
                     
                     {previewUrl ? (
                       <button 
                         type="button"
                         onClick={removeFile}
-                        className="absolute -top-1 -right-1 bg-rose-500 text-white p-1.5 rounded-full shadow-lg hover:bg-rose-600 transition-all z-10"
+                        className="absolute -top-1 -right-1 bg-rose-500 text-white p-1.5 rounded-full shadow-lg hover:bg-rose-600 transition-all z-10 cursor-pointer"
+                        title="Remover foto"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -618,7 +848,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
 
                     <label 
                       htmlFor="avatar-upload"
-                      className="absolute bottom-0 right-0 bg-white border border-slate-200 p-2 rounded-lg shadow-lg cursor-pointer hover:bg-slate-50 transition-all hover:scale-110"
+                      className="absolute bottom-0 right-0 bg-white border border-slate-200 p-2 rounded-lg shadow-lg cursor-pointer hover:bg-slate-50 transition-all hover:scale-110 z-10"
+                      title="Substituir foto"
                     >
                       <Pencil className="w-3.5 h-3.5 text-slate-600" />
                       <input 
@@ -635,7 +866,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                     type="button"
                     variant="outline"
                     onClick={() => document.getElementById('avatar-upload')?.click()}
-                    className="h-[32px] w-full border-slate-100 bg-slate-50/50 text-slate-500 font-bold text-[9px] rounded-lg hover:bg-slate-100 transition-all uppercase tracking-widest"
+                    className="h-[32px] w-full border-slate-100 bg-slate-50/50 text-slate-500 font-bold text-[9px] rounded-lg hover:bg-slate-100 transition-all uppercase tracking-widest cursor-pointer"
                   >
                     Selecionar Foto
                   </Button>
@@ -645,15 +876,44 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                 <div className="flex flex-col items-center w-full pt-8 border-t border-slate-100">
                   <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-4 block text-center w-full">Foto Campanha</Label>
                   <div className="relative group mb-4">
-                    <div className="w-32 h-[93px] relative overflow-hidden rounded-2xl border-4 border-slate-50 shadow-xl ring-1 ring-slate-100 flex items-center justify-center bg-slate-50">
+                    <div 
+                      ref={campanhaContainerRef}
+                      onMouseDown={(e) => previewCampanhaUrl && handleDragStart('campanha', e.clientX, e.clientY)}
+                      onMouseMove={(e) => handleDragMove('campanha', e.clientX, e.clientY)}
+                      onMouseUp={() => handleDragEnd('campanha')}
+                      onMouseLeave={() => handleDragEnd('campanha')}
+                      onTouchStart={(e) => {
+                        if (previewCampanhaUrl && e.touches[0]) handleDragStart('campanha', e.touches[0].clientX, e.touches[0].clientY)
+                      }}
+                      onTouchMove={(e) => {
+                        if (e.touches[0]) handleDragMove('campanha', e.touches[0].clientX, e.touches[0].clientY)
+                      }}
+                      onTouchEnd={() => handleDragEnd('campanha')}
+                      className={cn(
+                        "w-32 h-[93px] relative overflow-hidden rounded-2xl border-4 border-slate-50 shadow-xl ring-1 ring-slate-100 flex items-center justify-center bg-slate-50 select-none",
+                        previewCampanhaUrl ? "cursor-grab active:cursor-grabbing touch-none" : ""
+                      )}
+                      title={previewCampanhaUrl ? "Clique, segure e arraste para posicionar a foto" : undefined}
+                    >
                       {previewCampanhaUrl ? (
-                        <Image 
-                          src={previewCampanhaUrl} 
-                          alt="Foto Campanha" 
-                          fill 
-                          className="object-cover rounded-xl"
-                          referrerPolicy="no-referrer"
-                        />
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img 
+                            src={originalCampanhaSrc || previewCampanhaUrl} 
+                            alt="Foto Campanha" 
+                            draggable={false}
+                            className="w-full h-full object-cover pointer-events-none select-none rounded-xl transition-none"
+                            style={{
+                              objectPosition: `${cropCampanha.x * 100}% ${cropCampanha.y * 100}%`
+                            }}
+                          />
+                          <div className="absolute inset-x-0 bottom-1 pointer-events-none flex justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="bg-black/60 backdrop-blur-xs text-white text-[8px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs border border-white/10">
+                              <Move className="w-2.5 h-2.5" />
+                              Arraste
+                            </span>
+                          </div>
+                        </>
                       ) : (
                         <Camera className="w-8 h-8 text-slate-300" />
                       )}
@@ -663,7 +923,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                       <button 
                         type="button"
                         onClick={removeCampanhaFile}
-                        className="absolute -top-1 -right-1 bg-rose-500 text-white p-1.5 rounded-full shadow-lg hover:bg-rose-600 transition-all z-10"
+                        className="absolute -top-1 -right-1 bg-rose-500 text-white p-1.5 rounded-full shadow-lg hover:bg-rose-600 transition-all z-10 cursor-pointer"
+                        title="Remover foto"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -671,7 +932,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
 
                     <label 
                       htmlFor="campanha-upload"
-                      className="absolute bottom-0 right-0 bg-white border border-slate-200 p-2 rounded-lg shadow-lg cursor-pointer hover:bg-slate-50 transition-all hover:scale-110"
+                      className="absolute bottom-0 right-0 bg-white border border-slate-200 p-2 rounded-lg shadow-lg cursor-pointer hover:bg-slate-50 transition-all hover:scale-110 z-10"
+                      title="Substituir foto"
                     >
                       <Pencil className="w-3.5 h-3.5 text-slate-600" />
                       <input 
@@ -688,7 +950,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                     type="button"
                     variant="outline"
                     onClick={() => document.getElementById('campanha-upload')?.click()}
-                    className="h-[32px] w-full border-slate-100 bg-slate-50/50 text-slate-500 font-bold text-[9px] rounded-lg hover:bg-slate-100 transition-all uppercase tracking-widest"
+                    className="h-[32px] w-full border-slate-100 bg-slate-50/50 text-slate-500 font-bold text-[9px] rounded-lg hover:bg-slate-100 transition-all uppercase tracking-widest cursor-pointer"
                   >
                     Selecionar Foto
                   </Button>
@@ -698,15 +960,44 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                 <div className="flex flex-col items-center w-full pt-8 border-t border-slate-100">
                   <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-4 block text-center w-full">Foto Proposta (PNG sem fundo)</Label>
                   <div className="relative group mb-4">
-                    <div className="w-32 h-[93px] relative overflow-hidden rounded-2xl border-4 border-slate-50 shadow-xl ring-1 ring-slate-100 flex items-center justify-center bg-slate-50">
+                    <div 
+                      ref={propostaContainerRef}
+                      onMouseDown={(e) => previewPropostaUrl && handleDragStart('proposta', e.clientX, e.clientY)}
+                      onMouseMove={(e) => handleDragMove('proposta', e.clientX, e.clientY)}
+                      onMouseUp={() => handleDragEnd('proposta')}
+                      onMouseLeave={() => handleDragEnd('proposta')}
+                      onTouchStart={(e) => {
+                        if (previewPropostaUrl && e.touches[0]) handleDragStart('proposta', e.touches[0].clientX, e.touches[0].clientY)
+                      }}
+                      onTouchMove={(e) => {
+                        if (e.touches[0]) handleDragMove('proposta', e.touches[0].clientX, e.touches[0].clientY)
+                      }}
+                      onTouchEnd={() => handleDragEnd('proposta')}
+                      className={cn(
+                        "w-32 h-[93px] relative overflow-hidden rounded-2xl border-4 border-slate-50 shadow-xl ring-1 ring-slate-100 flex items-center justify-center bg-slate-50 select-none",
+                        previewPropostaUrl ? "cursor-grab active:cursor-grabbing touch-none" : ""
+                      )}
+                      title={previewPropostaUrl ? "Clique, segure e arraste para posicionar a foto" : undefined}
+                    >
                       {previewPropostaUrl ? (
-                        <Image 
-                          src={previewPropostaUrl} 
-                          alt="Foto Proposta" 
-                          fill 
-                          className="object-cover rounded-xl"
-                          referrerPolicy="no-referrer"
-                        />
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img 
+                            src={originalPropostaSrc || previewPropostaUrl} 
+                            alt="Foto Proposta" 
+                            draggable={false}
+                            className="w-full h-full object-cover pointer-events-none select-none rounded-xl transition-none"
+                            style={{
+                              objectPosition: `${cropProposta.x * 100}% ${cropProposta.y * 100}%`
+                            }}
+                          />
+                          <div className="absolute inset-x-0 bottom-1 pointer-events-none flex justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span className="bg-black/60 backdrop-blur-xs text-white text-[8px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs border border-white/10">
+                              <Move className="w-2.5 h-2.5" />
+                              Arraste
+                            </span>
+                          </div>
+                        </>
                       ) : (
                         <Camera className="w-8 h-8 text-slate-300" />
                       )}
@@ -716,7 +1007,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                       <button 
                         type="button"
                         onClick={removePropostaFile}
-                        className="absolute -top-1 -right-1 bg-rose-500 text-white p-1.5 rounded-full shadow-lg hover:bg-rose-600 transition-all z-10"
+                        className="absolute -top-1 -right-1 bg-rose-500 text-white p-1.5 rounded-full shadow-lg hover:bg-rose-600 transition-all z-10 cursor-pointer"
+                        title="Remover foto"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -724,7 +1016,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
 
                     <label 
                       htmlFor="proposta-upload"
-                      className="absolute bottom-0 right-0 bg-white border border-slate-200 p-2 rounded-lg shadow-lg cursor-pointer hover:bg-slate-50 transition-all hover:scale-110"
+                      className="absolute bottom-0 right-0 bg-white border border-slate-200 p-2 rounded-lg shadow-lg cursor-pointer hover:bg-slate-50 transition-all hover:scale-110 z-10"
+                      title="Substituir foto"
                     >
                       <Pencil className="w-3.5 h-3.5 text-slate-600" />
                       <input 
@@ -741,7 +1034,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                     type="button"
                     variant="outline"
                     onClick={() => document.getElementById('proposta-upload')?.click()}
-                    className="h-[32px] w-full border-slate-100 bg-slate-50/50 text-slate-500 font-bold text-[9px] rounded-lg hover:bg-slate-100 transition-all uppercase tracking-widest"
+                    className="h-[32px] w-full border-slate-100 bg-slate-50/50 text-slate-500 font-bold text-[9px] rounded-lg hover:bg-slate-100 transition-all uppercase tracking-widest cursor-pointer"
                   >
                     Selecionar Foto
                   </Button>
