@@ -1,8 +1,9 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useRef, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { toast } from "sonner"
 import { Header } from "@/components/layout/header"
 import { useAuth } from "@/context/auth-context"
 import { 
@@ -40,6 +41,7 @@ import {
   Compass,
   CheckCheck,
   Download,
+  Upload,
   Mic,
   Video
 } from "lucide-react"
@@ -63,6 +65,10 @@ export default function StartComercialDevPage() {
   const [isDadosContaImageModalOpen, setIsDadosContaImageModalOpen] = useState(false)
   const [isImageBankModalOpen, setIsImageBankModalOpen] = useState(false)
   const [downloadingImage, setDownloadingImage] = useState<string | null>(null)
+  const [bancoImagensList, setBancoImagensList] = useState<Array<{ id: string; title: string; filename: string; url: string }>>([])
+  const [isLoadingBancoImagens, setIsLoadingBancoImagens] = useState(false)
+  const [isUploadingImages, setIsUploadingImages] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const BANCO_DE_IMAGENS = [
     {
@@ -156,6 +162,84 @@ export default function StartComercialDevPage() {
       url: "https://ezvownnpgayspkereexu.supabase.co/storage/v1/object/public/capacitacao-pj/imagens%20para%20mensagens/retomada_video.png"
     }
   ]
+
+  const fetchBancoImagens = async () => {
+    try {
+      setIsLoadingBancoImagens(true)
+      const res = await fetch("/api/banco-imagens")
+      const data = await res.json()
+      if (data && Array.isArray(data.imagens) && data.imagens.length > 0) {
+        const seenUrls = new Set<string>()
+        const merged: Array<{ id: string; title: string; filename: string; url: string }> = []
+        data.imagens.forEach((img: any) => {
+          if (!seenUrls.has(img.url)) {
+            seenUrls.add(img.url)
+            merged.push(img)
+          }
+        })
+        BANCO_DE_IMAGENS.forEach((img) => {
+          if (!seenUrls.has(img.url)) {
+            seenUrls.add(img.url)
+            merged.push(img)
+          }
+        })
+        setBancoImagensList(merged)
+      } else {
+        setBancoImagensList(BANCO_DE_IMAGENS)
+      }
+    } catch (err) {
+      console.error("Erro ao carregar banco de imagens:", err)
+      setBancoImagensList(BANCO_DE_IMAGENS)
+    } finally {
+      setIsLoadingBancoImagens(false)
+    }
+  }
+
+  useEffect(() => {
+    if (isImageBankModalOpen) {
+      fetchBancoImagens()
+    }
+  }, [isImageBankModalOpen])
+
+  const handleUploadMultipleImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    const validFiles = Array.from(files).filter(f => f.type.startsWith("image/"))
+    if (validFiles.length === 0) {
+      toast.error("Por favor, selecione arquivos de imagem válidos (JPEG, PNG, WEBP, etc).")
+      return
+    }
+
+    setIsUploadingImages(true)
+    try {
+      const formData = new FormData()
+      validFiles.forEach(file => {
+        formData.append("files", file)
+      })
+
+      const response = await fetch("/api/banco-imagens", {
+        method: "POST",
+        body: formData
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Erro no upload das imagens.")
+      }
+
+      toast.success(`${result.uploadedCount || validFiles.length} imagem(ns) adicionada(s) com sucesso ao Banco de Imagens!`)
+      await fetchBancoImagens()
+    } catch (err: any) {
+      console.error("Erro no upload de imagens:", err)
+      toast.error(err?.message || "Erro ao realizar o upload das imagens.")
+    } finally {
+      setIsUploadingImages(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    }
+  }
 
   const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
   const isCorretorPJ = (perfil?.role === 'Corretor' || isCorretor) && regimeUpper === 'PJ'
@@ -4495,86 +4579,123 @@ export default function StartComercialDevPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Banco de Imagens - Criativos para Mensagens</h3>
-                  <p className="text-xs text-slate-500">Clique na miniatura desejada para baixar a imagem original para seu computador</p>
+                  <p className="text-xs text-slate-500">Clique na miniatura desejada para baixar a imagem original ou faça upload de novas imagens</p>
                 </div>
               </div>
-              <button
-                id="btn-fechar-modal-banco-imagens"
-                onClick={() => setIsImageBankModalOpen(false)}
-                className="p-1.5 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 transition-colors cursor-pointer"
-                title="Fechar banco de imagens"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/png,image/jpeg,image/webp,image/jpg"
+                  onChange={handleUploadMultipleImages}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  id="btn-upload-imagens-modal"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingImages}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                  title="Fazer upload de várias imagens simultaneamente"
+                >
+                  {isUploadingImages ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Enviando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload de Imagens</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  id="btn-fechar-modal-banco-imagens"
+                  onClick={() => setIsImageBankModalOpen(false)}
+                  className="p-1.5 rounded-lg bg-slate-200/80 hover:bg-slate-300 text-slate-700 transition-colors cursor-pointer"
+                  title="Fechar banco de imagens"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* GRID DE MINIATURAS */}
             <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 bg-slate-100/60">
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                {BANCO_DE_IMAGENS.map((item) => {
-                  const isDownloading = downloadingImage === item.id
-                  return (
-                    <div
-                      key={item.id}
-                      id={`card-imagem-${item.id}`}
-                      onClick={async () => {
-                        if (isDownloading) return
-                        setDownloadingImage(item.id)
-                        try {
-                          await downloadImage(item.url, item.filename)
-                        } finally {
-                          setDownloadingImage(null)
-                        }
-                      }}
-                      className="group relative bg-white border border-slate-200 hover:border-blue-500 rounded-xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col cursor-pointer"
-                      title={`Clique para baixar ${item.title}`}
-                    >
-                      {/* PREVIEW CONTAINER */}
-                      <div className="relative w-full aspect-[4/3] bg-slate-900 flex items-center justify-center overflow-hidden">
-                        <img
-                          src={item.url}
-                          alt={item.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          loading="lazy"
-                        />
-                        {/* OVERLAY DE DOWNLOAD */}
-                        <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white p-2 text-center">
-                          {isDownloading ? (
-                            <>
-                              <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
-                              <span className="text-[11px] font-bold">Baixando...</span>
-                            </>
-                          ) : (
-                            <>
-                              <div className="p-2 rounded-full bg-blue-600 shadow-md">
-                                <Download className="w-4 h-4 text-white" />
-                              </div>
-                              <span className="text-[11px] font-bold">Clique para baixar</span>
-                            </>
-                          )}
+              {isLoadingBancoImagens && bancoImagensList.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-500">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                  <span className="text-xs font-medium">Carregando criativos do banco...</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  {(bancoImagensList.length > 0 ? bancoImagensList : BANCO_DE_IMAGENS).map((item) => {
+                    const isDownloading = downloadingImage === item.id
+                    return (
+                      <div
+                        key={item.id}
+                        id={`card-imagem-${item.id}`}
+                        onClick={async () => {
+                          if (isDownloading) return
+                          setDownloadingImage(item.id)
+                          try {
+                            await downloadImage(item.url, item.filename)
+                          } finally {
+                            setDownloadingImage(null)
+                          }
+                        }}
+                        className="group relative bg-white border border-slate-200 hover:border-blue-500 rounded-xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col cursor-pointer"
+                        title={`Clique para baixar ${item.title}`}
+                      >
+                        {/* PREVIEW CONTAINER */}
+                        <div className="relative w-full aspect-[4/3] bg-slate-900 flex items-center justify-center overflow-hidden">
+                          <img
+                            src={item.url}
+                            alt={item.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                          />
+                          {/* OVERLAY DE DOWNLOAD */}
+                          <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 text-white p-2 text-center">
+                            {isDownloading ? (
+                              <>
+                                <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+                                <span className="text-[11px] font-bold">Baixando...</span>
+                              </>
+                            ) : (
+                              <>
+                                <div className="p-2 rounded-full bg-blue-600 shadow-md">
+                                  <Download className="w-4 h-4 text-white" />
+                                </div>
+                                <span className="text-[11px] font-bold">Clique para baixar</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* LEGENDA / NOME */}
+                        <div className="p-2.5 bg-white border-t border-slate-100 flex items-center justify-between gap-1.5">
+                          <span className="text-xs font-semibold text-slate-800 truncate" title={item.title}>
+                            {item.title}
+                          </span>
+                          <span className="text-[10px] text-blue-600 font-bold shrink-0 flex items-center gap-0.5">
+                            <Download className="w-3 h-3" />
+                            Baixar
+                          </span>
                         </div>
                       </div>
-
-                      {/* LEGENDA / NOME */}
-                      <div className="p-2.5 bg-white border-t border-slate-100 flex items-center justify-between gap-1.5">
-                        <span className="text-xs font-semibold text-slate-800 truncate" title={item.title}>
-                          {item.title}
-                        </span>
-                        <span className="text-[10px] text-blue-600 font-bold shrink-0 flex items-center gap-0.5">
-                          <Download className="w-3 h-3" />
-                          Baixar
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
             {/* RODAPÉ DO MODAL */}
             <div className="flex items-center justify-between gap-3 px-5 py-3 bg-white border-t border-slate-200 shrink-0">
               <span className="text-xs text-slate-500">
-                Total de <strong>{BANCO_DE_IMAGENS.length} imagens</strong> disponíveis para download
+                Total de <strong>{(bancoImagensList.length > 0 ? bancoImagensList : BANCO_DE_IMAGENS).length} imagens</strong> disponíveis para download
               </span>
               <button
                 onClick={() => setIsImageBankModalOpen(false)}

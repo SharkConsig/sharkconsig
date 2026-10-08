@@ -1309,19 +1309,90 @@ export default function KanbanPage() {
 
   // Ação Rápida: Agendar Retorno
   const handleOpenAgendar = (ticket: TicketItem) => {
-    const meta = parseMetadata(ticket.descricao)
     setAgendarModalTicket(ticket)
-    setAgendamentoData(meta.agendamento_data ? meta.agendamento_data.split("T")[0] : format(new Date(), "yyyy-MM-dd"))
+    setAgendamentoData(format(new Date(), "yyyy-MM-dd"))
     setAgendamentoHora("14:30")
-    setAgendamentoObs(meta.agendamento_obs || "")
+    setAgendamentoObs("")
   }
 
   const handleConfirmAgendamento = async () => {
     if (!agendarModalTicket || !user) return
     try {
       const meta = parseMetadata(agendarModalTicket.descricao)
-      const dataHoraIso = `${agendamentoData}T${agendamentoHora}:00`
-      const dataFormatada = `${format(new Date(`${agendamentoData}T${agendamentoHora}:00`), "dd/MM 'às' HH:mm")}`
+      const nowIso = new Date().toISOString()
+      const dataHoraIso = `${agendamentoData}T${agendamentoHora || "14:30"}:00`
+      let dataFormatada = ""
+      try {
+        dataFormatada = `${format(new Date(dataHoraIso), "dd/MM 'às' HH:mm")}`
+      } catch {
+        dataFormatada = `${agendamentoData} às ${agendamentoHora || "14:30"}`
+      }
+
+      // Montar texto da observação de agendamento junto com as demais observações
+      const textoObsAgendamento = agendamentoObs.trim()
+      const registroAgendamentoTexto = textoObsAgendamento
+        ? `📅 Retorno agendado para ${dataFormatada} - ${textoObsAgendamento}`
+        : `📅 Retorno agendado para ${dataFormatada}`
+
+      // Recuperar histórico de observações existente para não sobrescrever e evitar duplicação
+      const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
+      const seenTexts = new Set<string>()
+
+      if (Array.isArray(meta.observacoes_historico)) {
+        meta.observacoes_historico.forEach((item: any) => {
+          if (item && isUserObservation(item.texto)) {
+            const partes = String(item.texto).trim().split(/\n\s*\n/)
+            partes.forEach(p => {
+              const trimmed = p.trim()
+              const key = trimmed.toLowerCase().replace(/\s+/g, " ")
+              if (trimmed && isUserObservation(trimmed) && !seenTexts.has(key)) {
+                seenTexts.add(key)
+                historicoExistente.push({
+                  texto: trimmed,
+                  data: item.data || nowIso,
+                  autor: item.autor
+                })
+              }
+            })
+          }
+        })
+      }
+
+      const cleanObsAnterior = (agendarModalTicket.descricao || "")
+        .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
+        .trim()
+      if (isUserObservation(cleanObsAnterior)) {
+        const blocos = cleanObsAnterior.split(/\n\s*\n/)
+        blocos.forEach(b => {
+          const trimmed = b.trim()
+          const key = trimmed.toLowerCase().replace(/\s+/g, " ")
+          if (trimmed && isUserObservation(trimmed) && !seenTexts.has(key)) {
+            seenTexts.add(key)
+            historicoExistente.push({
+              texto: trimmed,
+              data: meta.observacao_data || agendarModalTicket.updated_at || nowIso
+            })
+          }
+        })
+      }
+
+      // Adicionar novo registro de agendamento ao histórico sem duplicidade
+      const keyNovoAgendamento = registroAgendamentoTexto.toLowerCase().replace(/\s+/g, " ")
+      let updatedHistoricoObs = [...historicoExistente]
+      if (!seenTexts.has(keyNovoAgendamento)) {
+        updatedHistoricoObs.push({
+          texto: registroAgendamentoTexto,
+          data: nowIso,
+          autor: perfil?.nome || "Colaborador"
+        })
+      }
+
+      const observacoesAcumuladas = updatedHistoricoObs
+        .slice()
+        .reverse()
+        .map(item => item.texto.trim())
+        .filter(Boolean)
+        .join("\n\n")
 
       const updatedMeta: TicketMetadata = {
         ...meta,
@@ -1329,35 +1400,62 @@ export default function KanbanPage() {
         vencimento_acao: dataHoraIso,
         agendamento_data: dataHoraIso,
         agendamento_obs: agendamentoObs,
+        observacoes_historico: updatedHistoricoObs,
+        observacao_data: nowIso,
         alerta_atrasado: false
       }
 
-      const newDesc = stringifyWithMetadata(agendarModalTicket.descricao, updatedMeta)
-      const { error } = await supabase
-        .from("chamados")
-        .update({ 
-          descricao: newDesc,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", agendarModalTicket.id)
+      const newDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+      if (agendarModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(agendarModalTicket.id)) {
+        const { error } = await supabase
+          .from("kanban_fichas")
+          .update({
+            observacoes: observacoesAcumuladas,
+            metadata: updatedMeta,
+            updated_at: nowIso
+          })
+          .eq("id", agendarModalTicket.id)
 
-      if (error) throw error
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from("chamados")
+          .update({ 
+            descricao: newDesc,
+            updated_at: nowIso
+          })
+          .eq("id", agendarModalTicket.id)
 
-      await supabase.from("mensagens_chamado").insert({
-        chamado_id: parseInt(agendarModalTicket.id, 10),
-        user_id: user.id,
-        user_nome: perfil?.nome || "Colaborador",
-        user_role: perfil?.role || "Corretor",
-        user_avatar: perfil?.avatar_url || null,
-        content: `📅 Retorno agendado para ${dataFormatada}. Observação: ${agendamentoObs || "Sem observações adicionais."}`,
-        action: "retorno_agendado"
-      })
+        if (error) throw error
+
+        const numId = parseInt(agendarModalTicket.id, 10)
+        if (!isNaN(numId)) {
+          await supabase.from("mensagens_chamado").insert({
+            chamado_id: numId,
+            user_id: user.id,
+            user_nome: perfil?.nome || "Colaborador",
+            user_role: perfil?.role || "Corretor",
+            user_avatar: perfil?.avatar_url || null,
+            content: `📅 Retorno agendado para ${dataFormatada}. Observação: ${agendamentoObs || "Sem observações adicionais."}`,
+            action: "retorno_agendado"
+          })
+        }
+      }
+
+      agendarModalTicket.descricao = newDesc
+      if (atendimentoModalTicket && atendimentoModalTicket.id === agendarModalTicket.id) {
+        setAtendimentoModalTicket(prev => prev ? {
+          ...prev,
+          descricao: newDesc
+        } : null)
+      }
 
       toast.success(`Retorno agendado para ${dataFormatada}!`)
+      setAgendamentoObs("")
       setAgendarModalTicket(null)
       fetchChamados(true)
-    } catch (err) {
-      console.error("Erro ao agendar retorno:", err)
+    } catch (err: any) {
+      console.error("Erro ao agendar retorno:", err?.message || err)
       toast.error("Não foi possível salvar o agendamento.")
     }
   }
@@ -1575,7 +1673,7 @@ export default function KanbanPage() {
     }
   }
 
-  // Enviar anotação na Modal de Atendimento
+  // Enviar anotação na Modal de Atendimento (exclusivamente na tabela kanban_fichas)
   const handleSaveAtendimentoInteracao = async (acaoTipo = "registro_contato") => {
     if (!atendimentoModalTicket || !user || !atendimentoMensagem.trim()) {
       toast.warning("Digite uma mensagem ou observação do contato.")
@@ -1584,102 +1682,96 @@ export default function KanbanPage() {
     setIsSubmittingAtendimento(true)
     const nowIso = new Date().toISOString()
     try {
-      await supabase.from("mensagens_chamado").insert({
-        chamado_id: parseInt(atendimentoModalTicket.id, 10),
-        user_id: user.id,
-        user_nome: perfil?.nome || "Colaborador",
-        user_role: perfil?.role || "Corretor",
-        user_avatar: perfil?.avatar_url || null,
-        content: atendimentoMensagem.trim(),
-        action: acaoTipo
-      })
+      // Atualizar exclusivamente na tabela kanban_fichas na coluna observacoes
+      const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
 
-      // Atualizar também na tabela kanban_fichas na coluna observacoes
-      if (atendimentoModalTicket.source_table === "kanban_fichas" || atendimentoModalTicket.id) {
-        const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+      // Recuperar histórico de observações existente para não sobrescrever (follow-up)
+      const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
+      const seenTexts = new Set<string>()
 
-        // Recuperar histórico de observações existente para não sobrescrever (follow-up)
-        const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
-        if (Array.isArray(currentMeta.observacoes_historico)) {
-          currentMeta.observacoes_historico.forEach((item: any) => {
-            if (item && isUserObservation(item.texto)) {
-              historicoExistente.push({
-                texto: String(item.texto).trim(),
-                data: item.data || nowIso,
-                autor: item.autor
-              })
-            }
-          })
-        }
-
-        // Se havia uma observação anterior que ainda não estava no array
-        const cleanObsAnterior = (atendimentoModalTicket.descricao || "")
-          .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
-          .trim()
-        if (isUserObservation(cleanObsAnterior) && !historicoExistente.some(h => h.texto === cleanObsAnterior)) {
-          historicoExistente.push({
-            texto: cleanObsAnterior,
-            data: currentMeta.observacao_data || atendimentoModalTicket.updated_at || nowIso
-          })
-        }
-
-        // Adicionar nova observação ao histórico acumulado
-        const novaObsItem = {
-          texto: atendimentoMensagem.trim(),
-          data: nowIso,
-          autor: perfil?.nome || "Colaborador"
-        }
-        const updatedHistoricoObs = [...historicoExistente, novaObsItem]
-
-        // Na coluna observacoes de kanban_fichas, manter o histórico acumulado
-        const observacoesAcumuladas = isUserObservation(cleanObsAnterior) && cleanObsAnterior !== atendimentoMensagem.trim()
-          ? `${atendimentoMensagem.trim()}\n\n${cleanObsAnterior}`
-          : atendimentoMensagem.trim()
-
-        const updatedMeta: TicketMetadata = {
-          ...currentMeta,
-          observacoes_historico: updatedHistoricoObs,
-          observacao_data: nowIso
-        }
-
-        await supabase
-          .from("kanban_fichas")
-          .update({
-            observacoes: observacoesAcumuladas,
-            metadata: updatedMeta,
-            updated_at: nowIso
-          })
-          .eq("id", atendimentoModalTicket.id)
-
-        const novaDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
-        atendimentoModalTicket.descricao = novaDesc
-        setAtendimentoModalTicket(prev => prev ? {
-          ...prev,
-          descricao: novaDesc
-        } : null)
-
-        setHistoricoMensagens(prev => [
-          {
-            id: Date.now(),
-            chamado_id: parseInt(atendimentoModalTicket.id, 10),
-            user_id: user.id,
-            user_nome: perfil?.nome || "Colaborador",
-            user_role: perfil?.role || "Corretor",
-            content: atendimentoMensagem.trim(),
-            created_at: nowIso,
-            action: acaoTipo
-          },
-          ...(Array.isArray(prev) ? prev : [])
-        ])
+      if (Array.isArray(currentMeta.observacoes_historico)) {
+        currentMeta.observacoes_historico.forEach((item: any) => {
+          if (item && isUserObservation(item.texto)) {
+            const partes = String(item.texto).trim().split(/\n\s*\n/)
+            partes.forEach(p => {
+              const trimmed = p.trim()
+              const key = trimmed.toLowerCase().replace(/\s+/g, " ")
+              if (trimmed && isUserObservation(trimmed) && !seenTexts.has(key)) {
+                seenTexts.add(key)
+                historicoExistente.push({
+                  texto: trimmed,
+                  data: item.data || nowIso,
+                  autor: item.autor
+                })
+              }
+            })
+          }
+        })
       }
 
-      toast.success("Registro salvo no histórico do chamado!")
+      // Se havia alguma observação anterior que ainda não estava no array
+      const cleanObsAnterior = (atendimentoModalTicket.descricao || "")
+        .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
+        .trim()
+      if (isUserObservation(cleanObsAnterior)) {
+        const blocos = cleanObsAnterior.split(/\n\s*\n/)
+        blocos.forEach(b => {
+          const trimmed = b.trim()
+          const key = trimmed.toLowerCase().replace(/\s+/g, " ")
+          if (trimmed && isUserObservation(trimmed) && !seenTexts.has(key)) {
+            seenTexts.add(key)
+            historicoExistente.push({
+              texto: trimmed,
+              data: currentMeta.observacao_data || atendimentoModalTicket.updated_at || nowIso
+            })
+          }
+        })
+      }
+
+      // Adicionar nova observação ao histórico acumulado
+      const novaObsItem = {
+        texto: atendimentoMensagem.trim(),
+        data: nowIso,
+        autor: perfil?.nome || "Colaborador"
+      }
+      const updatedHistoricoObs = [...historicoExistente, novaObsItem]
+
+      // Na coluna observacoes de kanban_fichas, manter o histórico unificado sem duplicações
+      const observacoesAcumuladas = updatedHistoricoObs
+        .slice()
+        .reverse()
+        .map(item => item.texto.trim())
+        .filter(Boolean)
+        .join("\n\n")
+
+      const updatedMeta: TicketMetadata = {
+        ...currentMeta,
+        observacoes_historico: updatedHistoricoObs,
+        observacao_data: nowIso
+      }
+
+      await supabase
+        .from("kanban_fichas")
+        .update({
+          observacoes: observacoesAcumuladas,
+          metadata: updatedMeta,
+          updated_at: nowIso
+        })
+        .eq("id", atendimentoModalTicket.id)
+
+      const novaDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+      atendimentoModalTicket.descricao = novaDesc
+      setAtendimentoModalTicket(prev => prev ? {
+        ...prev,
+        descricao: novaDesc
+      } : null)
+
+      toast.success("Observação registrada na ficha com sucesso!")
       setAtendimentoMensagem("")
-      loadHistoricoChamado(atendimentoModalTicket.id)
       fetchChamados(true)
     } catch (err) {
-      console.error("Erro ao salvar interação:", err)
-      toast.error("Erro ao salvar mensagem.")
+      console.error("Erro ao salvar observação:", err)
+      toast.error("Erro ao salvar observação.")
     } finally {
       setIsSubmittingAtendimento(false)
     }
@@ -1839,42 +1931,154 @@ export default function KanbanPage() {
     try {
       const targetUser = usersList.find(u => u.id === supervisaoNovoResponsavel)
       const targetName = targetUser?.nome || "Novo Colaborador"
+      const nowIso = new Date().toISOString()
+      const textoJustificativa = supervisaoMotivoTransbordo.trim()
 
       const meta = parseMetadata(supervisaoModalTicket.descricao)
+
+      // Registrar justificativa da transferência no histórico de observações da ficha sem duplicação
+      const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
+      const seenTexts = new Set<string>()
+
+      if (Array.isArray(meta.observacoes_historico)) {
+        meta.observacoes_historico.forEach((item: any) => {
+          if (item && isUserObservation(item.texto)) {
+            const partes = String(item.texto).trim().split(/\n\s*\n/)
+            partes.forEach(p => {
+              const trimmed = p.trim()
+              const key = trimmed.toLowerCase().replace(/\s+/g, " ")
+              if (trimmed && isUserObservation(trimmed) && !seenTexts.has(key)) {
+                seenTexts.add(key)
+                historicoExistente.push({
+                  texto: trimmed,
+                  data: item.data || nowIso,
+                  autor: item.autor
+                })
+              }
+            })
+          }
+        })
+      }
+
+      const cleanObsAnterior = (supervisaoModalTicket.descricao || "")
+        .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
+        .trim()
+      if (isUserObservation(cleanObsAnterior)) {
+        const blocos = cleanObsAnterior.split(/\n\s*\n/)
+        blocos.forEach(b => {
+          const trimmed = b.trim()
+          const key = trimmed.toLowerCase().replace(/\s+/g, " ")
+          if (trimmed && isUserObservation(trimmed) && !seenTexts.has(key)) {
+            seenTexts.add(key)
+            historicoExistente.push({
+              texto: trimmed,
+              data: meta.observacao_data || supervisaoModalTicket.updated_at || nowIso
+            })
+          }
+        })
+      }
+
+      let updatedHistoricoObs = historicoExistente
+
+      if (textoJustificativa) {
+        const keyJust = textoJustificativa.toLowerCase().replace(/\s+/g, " ")
+        if (!seenTexts.has(keyJust)) {
+          const novaObsItem = {
+            texto: textoJustificativa,
+            data: nowIso,
+            autor: perfil?.nome || "Supervisor"
+          }
+          updatedHistoricoObs = [...historicoExistente, novaObsItem]
+        }
+      }
+
+      const observacoesAcumuladas = updatedHistoricoObs
+        .slice()
+        .reverse()
+        .map(item => item.texto.trim())
+        .filter(Boolean)
+        .join("\n\n")
+
       const updatedMeta: TicketMetadata = {
         ...meta,
+        user_id: supervisaoNovoResponsavel,
+        user_nome: targetName,
+        operador_id: supervisaoNovoResponsavel,
+        operador_nome: targetName,
         prioridade: supervisaoNovaPrioridade,
-        conflito_titularidade: false
+        conflito_titularidade: false,
+        ...(textoJustificativa ? {
+          observacoes_historico: updatedHistoricoObs,
+          observacao_data: nowIso
+        } : {})
       }
-      const newDesc = stringifyWithMetadata(supervisaoModalTicket.descricao, updatedMeta)
+      const newDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
 
-      const { error } = await supabase
-        .from("chamados")
-        .update({
+      if (supervisaoModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(supervisaoModalTicket.id)) {
+        const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
+        const dbPrioridade: "BAIXA" | "MÉDIA" | "ALTA" | "URGENTE" =
+          supervisaoNovaPrioridade === "ALTA" ? "ALTA" :
+          supervisaoNovaPrioridade === "URGENTE" ? "URGENTE" : "MÉDIA"
+
+        const updatePayload: any = {
+          operador_id: isUuid(supervisaoNovoResponsavel) ? supervisaoNovoResponsavel : null,
+          operador_nome: targetName,
+          prioridade: dbPrioridade,
+          metadata: updatedMeta,
+          updated_at: nowIso
+        }
+        if (textoJustificativa) {
+          updatePayload.observacoes = observacoesAcumuladas
+        }
+
+        const { error } = await supabase
+          .from("kanban_fichas")
+          .update(updatePayload)
+          .eq("id", supervisaoModalTicket.id)
+
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from("chamados")
+          .update({
+            user_id: supervisaoNovoResponsavel,
+            user_nome: targetName,
+            descricao: newDesc,
+            updated_at: nowIso
+          })
+          .eq("id", supervisaoModalTicket.id)
+
+        if (error) throw error
+
+        const numId = parseInt(supervisaoModalTicket.id, 10)
+        if (!isNaN(numId)) {
+          await supabase.from("mensagens_chamado").insert({
+            chamado_id: numId,
+            user_id: user.id,
+            user_nome: perfil?.nome || "Supervisor",
+            user_role: perfil?.role || "Supervisor",
+            user_avatar: perfil?.avatar_url || null,
+            content: `🔄 TRANSBORDO DE LEAD: Reatribuído para ${targetName} pela Supervisão. Motivo: ${supervisaoMotivoTransbordo || "Redistribuição estratégica de carteira"}.`,
+            action: "transbordo_supervisao"
+          })
+        }
+      }
+
+      if (atendimentoModalTicket && atendimentoModalTicket.id === supervisaoModalTicket.id) {
+        setAtendimentoModalTicket(prev => prev ? {
+          ...prev,
           user_id: supervisaoNovoResponsavel,
           user_nome: targetName,
-          descricao: newDesc,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", supervisaoModalTicket.id)
-
-      if (error) throw error
-
-      await supabase.from("mensagens_chamado").insert({
-        chamado_id: parseInt(supervisaoModalTicket.id, 10),
-        user_id: user.id,
-        user_nome: perfil?.nome || "Supervisor",
-        user_role: perfil?.role || "Supervisor",
-        user_avatar: perfil?.avatar_url || null,
-        content: `🔄 TRANSBORDO DE LEAD: Reatribuído para ${targetName} pela Supervisão. Motivo: ${supervisaoMotivoTransbordo || "Redistribuição estratégica de carteira"}.`,
-        action: "transbordo_supervisao"
-      })
+          descricao: newDesc
+        } : null)
+      }
+      setSupervisaoMotivoTransbordo("")
 
       toast.success(`Lead reatribuído com sucesso para ${targetName}!`)
       setSupervisaoModalTicket(null)
       fetchChamados(true)
-    } catch (err) {
-      console.error("Erro ao salvar supervisão:", err)
+    } catch (err: any) {
+      console.error("Erro ao salvar supervisão:", err?.message || err)
       toast.error("Erro ao reatribuir o chamado.")
     } finally {
       setIsSubmittingSupervisao(false)
@@ -1891,28 +2095,39 @@ export default function KanbanPage() {
         conflito_titularidade: !liberar
       }
       const newDesc = stringifyWithMetadata(supervisaoModalTicket.descricao, updatedMeta)
-      await supabase
-        .from("chamados")
-        .update({ descricao: newDesc, updated_at: new Date().toISOString() })
-        .eq("id", supervisaoModalTicket.id)
 
-      await supabase.from("mensagens_chamado").insert({
-        chamado_id: parseInt(supervisaoModalTicket.id, 10),
-        user_id: user.id,
-        user_nome: perfil?.nome || "Supervisor",
-        user_role: perfil?.role || "Supervisor",
-        user_avatar: perfil?.avatar_url || null,
-        content: liberar 
-          ? `🛡️ Conflito de titularidade auditado e LIBERADO pela supervisão.` 
-          : `🛡️ Conflito de titularidade mantido como BLOQUEADO para concorrência de atendimento.`,
-        action: "conflito_titularidade_decisao"
-      })
+      if (supervisaoModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(supervisaoModalTicket.id)) {
+        await supabase
+          .from("kanban_fichas")
+          .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
+          .eq("id", supervisaoModalTicket.id)
+      } else {
+        await supabase
+          .from("chamados")
+          .update({ descricao: newDesc, updated_at: new Date().toISOString() })
+          .eq("id", supervisaoModalTicket.id)
+
+        const numId = parseInt(supervisaoModalTicket.id, 10)
+        if (!isNaN(numId)) {
+          await supabase.from("mensagens_chamado").insert({
+            chamado_id: numId,
+            user_id: user.id,
+            user_nome: perfil?.nome || "Supervisor",
+            user_role: perfil?.role || "Supervisor",
+            user_avatar: perfil?.avatar_url || null,
+            content: liberar 
+              ? `🛡️ Conflito de titularidade auditado e LIBERADO pela supervisão.` 
+              : `🛡️ Conflito de titularidade mantido como BLOQUEADO para concorrência de atendimento.`,
+            action: "conflito_titularidade_decisao"
+          })
+        }
+      }
 
       toast.success(liberar ? "Conflito liberado!" : "Conflito mantido!")
       setSupervisaoModalTicket(null)
       fetchChamados(true)
-    } catch (err) {
-      console.error("Erro ao resolver conflito:", err)
+    } catch (err: any) {
+      console.error("Erro ao resolver conflito:", err?.message || err)
       toast.error("Erro ao atualizar conflito.")
     }
   }
@@ -1928,26 +2143,37 @@ export default function KanbanPage() {
         acao_especial_status: "concluido"
       }
       const newDesc = stringifyWithMetadata(supervisaoModalTicket.descricao, updatedMeta)
-      await supabase
-        .from("chamados")
-        .update({ descricao: newDesc, updated_at: new Date().toISOString() })
-        .eq("id", supervisaoModalTicket.id)
 
-      await supabase.from("mensagens_chamado").insert({
-        chamado_id: parseInt(supervisaoModalTicket.id, 10),
-        user_id: user.id,
-        user_nome: perfil?.nome || "Supervisor",
-        user_role: perfil?.role || "Supervisor",
-        user_avatar: perfil?.avatar_url || null,
-        content: `✅ Ação Especial analisada e concluída pela Supervisão. Oportunidade liberada para avanço comercial.`,
-        action: "acao_especial_concluida"
-      })
+      if (supervisaoModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(supervisaoModalTicket.id)) {
+        await supabase
+          .from("kanban_fichas")
+          .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
+          .eq("id", supervisaoModalTicket.id)
+      } else {
+        await supabase
+          .from("chamados")
+          .update({ descricao: newDesc, updated_at: new Date().toISOString() })
+          .eq("id", supervisaoModalTicket.id)
+
+        const numId = parseInt(supervisaoModalTicket.id, 10)
+        if (!isNaN(numId)) {
+          await supabase.from("mensagens_chamado").insert({
+            chamado_id: numId,
+            user_id: user.id,
+            user_nome: perfil?.nome || "Supervisor",
+            user_role: perfil?.role || "Supervisor",
+            user_avatar: perfil?.avatar_url || null,
+            content: `✅ Ação Especial analisada e concluída pela Supervisão. Oportunidade liberada para avanço comercial.`,
+            action: "acao_especial_concluida"
+          })
+        }
+      }
 
       toast.success("Ação Especial concluída!")
       setSupervisaoModalTicket(null)
       fetchChamados(true)
-    } catch (err) {
-      console.error("Erro ao concluir ação especial:", err)
+    } catch (err: any) {
+      console.error("Erro ao concluir ação especial:", err?.message || err)
       toast.error("Erro ao concluir ação especial.")
     }
   }
@@ -3149,17 +3375,17 @@ export default function KanbanPage() {
                       </label>
                     </div>
 
-                    {(modalStage === "EM ABORDAGEM" || modalStage === "EM RETOMADA") && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={handleIniciarAbordagem}
-                        className="text-xs h-7.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer"
-                      >
-                        <UserCheck className="w-3.5 h-3.5" />
-                        INICIAR ABORDAGEM
-                      </Button>
-                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleIniciarAbordagem}
+                      className="text-xs h-7.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      {modalStage === "EM ABORDAGEM" || modalStage === "EM RETOMADA"
+                        ? "INICIAR ABORDAGEM"
+                        : "INFORMAÇÕES DO CLIENTE"}
+                    </Button>
                   </div>
 
                   {/* Card da Seção de Observações */}
@@ -3194,37 +3420,29 @@ export default function KanbanPage() {
                         .trim()
                       const meta = parseMetadata(atendimentoModalTicket.descricao)
 
-                      // Lista bruta combinada de itens
+                      // Lista bruta consultada EXCLUSIVAMENTE da tabela kanban_fichas
                       const itensBrutos: Array<{ texto: string; data?: string }> = []
 
-                      // 1. Do histórico de observações salvas no metadata da ficha
+                      // 1. Do histórico de observações salvas na própria ficha (coluna metadata de kanban_fichas)
                       if (Array.isArray(meta.observacoes_historico)) {
                         meta.observacoes_historico.forEach((item: any) => {
                           if (item && isUserObservation(item.texto)) {
-                            itensBrutos.push({
-                              texto: String(item.texto).trim(),
-                              data: item.data
+                            const partes = String(item.texto).trim().split(/\n\s*\n/)
+                            partes.forEach(p => {
+                              const trimmed = p.trim()
+                              if (trimmed && isUserObservation(trimmed)) {
+                                itensBrutos.push({
+                                  texto: trimmed,
+                                  data: item.data
+                                })
+                              }
                             })
                           }
                         })
                       }
 
-                      // 2. Do histórico de mensagens do chamado (mensagens_chamado)
-                      if (Array.isArray(historicoMensagens)) {
-                        historicoMensagens.forEach((m: any) => {
-                          if (!m || !m.content) return
-                          const txt = String(m.content).replace(/^📌 Registrado:\s*/, "").trim()
-                          if (isUserObservation(txt)) {
-                            itensBrutos.push({
-                              texto: txt,
-                              data: m.created_at
-                            })
-                          }
-                        })
-                      }
-
-                      // 3. Da coluna observações direta da ficha (caso não tenha histórico estruturado)
-                      if (itensBrutos.length === 0 && isUserObservation(cleanObservacaoFicha)) {
+                      // 2. Da coluna observações direta da tabela kanban_fichas
+                      if (isUserObservation(cleanObservacaoFicha)) {
                         const blocos = cleanObservacaoFicha.split(/\n\s*\n/)
                         blocos.forEach(b => {
                           const trimmed = b.trim()
@@ -3234,6 +3452,22 @@ export default function KanbanPage() {
                               data: meta.observacao_data || atendimentoModalTicket.updated_at || atendimentoModalTicket.created_at
                             })
                           }
+                        })
+                      }
+
+                      // 3. Do agendamento salvo na ficha
+                      if (meta.agendamento_obs && isUserObservation(meta.agendamento_obs)) {
+                        const dataAg = meta.agendamento_data || meta.vencimento_acao
+                        let textoAg = meta.agendamento_obs.trim()
+                        if (dataAg) {
+                          try {
+                            const dFormat = format(new Date(dataAg), "dd/MM 'às' HH:mm")
+                            textoAg = `📅 Retorno agendado para ${dFormat} - ${meta.agendamento_obs.trim()}`
+                          } catch {}
+                        }
+                        itensBrutos.push({
+                          texto: textoAg,
+                          data: dataAg || meta.observacao_data || atendimentoModalTicket.updated_at
                         })
                       }
 
