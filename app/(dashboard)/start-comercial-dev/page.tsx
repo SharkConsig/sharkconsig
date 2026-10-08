@@ -42,13 +42,14 @@ import {
   CheckCheck,
   Download,
   Upload,
+  Trash2,
   Mic,
   Video
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export default function StartComercialDevPage() {
-  const { perfil, user, isLoading, isAdmin, isDeveloper, isCorretor } = useAuth()
+  const { perfil, user, isLoading, isAdmin, isDeveloper, isCorretor, isRecursosHumanos } = useAuth()
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState<string>("todos")
@@ -68,7 +69,27 @@ export default function StartComercialDevPage() {
   const [bancoImagensList, setBancoImagensList] = useState<Array<{ id: string; title: string; filename: string; url: string }>>([])
   const [isLoadingBancoImagens, setIsLoadingBancoImagens] = useState(false)
   const [isUploadingImages, setIsUploadingImages] = useState(false)
+  const [selectedImages, setSelectedImages] = useState<string[]>([])
+  const [isDeletingImages, setIsDeletingImages] = useState(false)
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
+    open: boolean
+    isBulk: boolean
+    item?: { id: string; filename: string; title: string }
+  }>({ open: false, isBulk: false })
+  const deletedFilenamesRef = useRef<Set<string>>(new Set())
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const userRole = (perfil?.role || "").trim().toLowerCase()
+  const canManageBancoImagens = Boolean(
+    isAdmin ||
+    isDeveloper ||
+    isRecursosHumanos ||
+    userRole === "desenvolvedor" ||
+    userRole === "administrador" ||
+    userRole === "admin" ||
+    userRole === "recursos humanos" ||
+    userRole === "rh"
+  )
 
   const BANCO_DE_IMAGENS = [
     {
@@ -166,30 +187,55 @@ export default function StartComercialDevPage() {
   const fetchBancoImagens = async () => {
     try {
       setIsLoadingBancoImagens(true)
-      const res = await fetch("/api/banco-imagens")
+      const res = await fetch(`/api/banco-imagens?t=${Date.now()}`, { cache: "no-store" })
       const data = await res.json()
       if (data && Array.isArray(data.imagens) && data.imagens.length > 0) {
-        const seenUrls = new Set<string>()
-        const merged: Array<{ id: string; title: string; filename: string; url: string }> = []
-        data.imagens.forEach((img: any) => {
-          if (!seenUrls.has(img.url)) {
-            seenUrls.add(img.url)
-            merged.push(img)
-          }
+        setBancoImagensList(prev => {
+          const seenUrls = new Set<string>()
+          const seenFilenames = new Set<string>()
+          const merged: Array<{ id: string; title: string; filename: string; url: string }> = []
+
+          // 1. Prioriza imagens já presentes no estado atual (ex: recém-adicionadas por upload)
+          prev.forEach((img) => {
+            if (!seenUrls.has(img.url) && !seenFilenames.has(img.filename) && !deletedFilenamesRef.current.has(img.filename)) {
+              seenUrls.add(img.url)
+              seenFilenames.add(img.filename)
+              merged.push(img)
+            }
+          })
+
+          // 2. Imagens retornadas pelo Storage do Supabase
+          data.imagens.forEach((img: any) => {
+            if (!seenUrls.has(img.url) && !seenFilenames.has(img.filename) && !deletedFilenamesRef.current.has(img.filename)) {
+              seenUrls.add(img.url)
+              seenFilenames.add(img.filename)
+              merged.push(img)
+            }
+          })
+
+          // 3. Fallback de criativos padrão
+          BANCO_DE_IMAGENS.forEach((img) => {
+            if (!seenUrls.has(img.url) && !seenFilenames.has(img.filename) && !deletedFilenamesRef.current.has(img.filename)) {
+              seenUrls.add(img.url)
+              seenFilenames.add(img.filename)
+              merged.push(img)
+            }
+          })
+
+          return merged
         })
-        BANCO_DE_IMAGENS.forEach((img) => {
-          if (!seenUrls.has(img.url)) {
-            seenUrls.add(img.url)
-            merged.push(img)
-          }
-        })
-        setBancoImagensList(merged)
       } else {
-        setBancoImagensList(BANCO_DE_IMAGENS)
+        setBancoImagensList(prev => {
+          if (prev.length > 0) return prev
+          return BANCO_DE_IMAGENS.filter(img => !deletedFilenamesRef.current.has(img.filename))
+        })
       }
     } catch (err) {
       console.error("Erro ao carregar banco de imagens:", err)
-      setBancoImagensList(BANCO_DE_IMAGENS)
+      setBancoImagensList(prev => {
+        if (prev.length > 0) return prev
+        return BANCO_DE_IMAGENS.filter(img => !deletedFilenamesRef.current.has(img.filename))
+      })
     } finally {
       setIsLoadingBancoImagens(false)
     }
@@ -202,6 +248,11 @@ export default function StartComercialDevPage() {
   }, [isImageBankModalOpen])
 
   const handleUploadMultipleImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canManageBancoImagens) {
+      toast.error("Você não tem permissão para fazer upload de imagens.")
+      return
+    }
+
     const files = e.target.files
     if (!files || files.length === 0) return
 
@@ -228,8 +279,22 @@ export default function StartComercialDevPage() {
         throw new Error(result.error || "Erro no upload das imagens.")
       }
 
+      // Se a rota retornou as imagens recém-enviadas, injeta imediatamente e permanentemente no estado da lista
+      if (Array.isArray(result.uploaded) && result.uploaded.length > 0) {
+        result.uploaded.forEach((u: any) => {
+          if (u.filename) deletedFilenamesRef.current.delete(u.filename)
+        })
+
+        setBancoImagensList(prev => {
+          const current = prev.length > 0 ? prev : BANCO_DE_IMAGENS
+          const newUrls = new Set(result.uploaded.map((u: any) => u.url))
+          const newFilenames = new Set(result.uploaded.map((u: any) => u.filename))
+          const existingFiltered = current.filter(item => !newUrls.has(item.url) && !newFilenames.has(item.filename))
+          return [...result.uploaded, ...existingFiltered]
+        })
+      }
+
       toast.success(`${result.uploadedCount || validFiles.length} imagem(ns) adicionada(s) com sucesso ao Banco de Imagens!`)
-      await fetchBancoImagens()
     } catch (err: any) {
       console.error("Erro no upload de imagens:", err)
       toast.error(err?.message || "Erro ao realizar o upload das imagens.")
@@ -238,6 +303,80 @@ export default function StartComercialDevPage() {
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
+    }
+  }
+
+  const handleToggleSelectImage = (filename: string) => {
+    setSelectedImages(prev => 
+      prev.includes(filename) ? prev.filter(f => f !== filename) : [...prev, filename]
+    )
+  }
+
+  const handleSelectAllImages = () => {
+    const currentList = (bancoImagensList.length > 0 ? bancoImagensList : BANCO_DE_IMAGENS).filter(
+      img => !deletedFilenamesRef.current.has(img.filename)
+    )
+    const activeFilenames = currentList.map(img => img.filename)
+    if (selectedImages.length === activeFilenames.length && activeFilenames.length > 0) {
+      setSelectedImages([])
+    } else {
+      setSelectedImages(activeFilenames)
+    }
+  }
+
+  const handleOpenDeleteConfirm = (item?: { id: string; filename: string; title: string }) => {
+    if (!canManageBancoImagens) {
+      toast.error("Você não tem permissão para excluir imagens.")
+      return
+    }
+    if (item) {
+      setDeleteConfirmModal({ open: true, isBulk: false, item })
+    } else {
+      if (selectedImages.length === 0) return
+      setDeleteConfirmModal({ open: true, isBulk: true })
+    }
+  }
+
+  const handleConfirmDeleteImages = async () => {
+    if (!canManageBancoImagens) {
+      toast.error("Você não tem permissão para excluir imagens.")
+      return
+    }
+
+    const filenamesToDelete = deleteConfirmModal.isBulk
+      ? [...selectedImages]
+      : deleteConfirmModal.item
+        ? [deleteConfirmModal.item.filename]
+        : []
+
+    if (filenamesToDelete.length === 0) return
+
+    setIsDeletingImages(true)
+    try {
+      const response = await fetch("/api/banco-imagens", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filenames: filenamesToDelete })
+      })
+
+      const result = await response.json()
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Erro ao excluir imagens no Storage.")
+      }
+
+      filenamesToDelete.forEach(fn => deletedFilenamesRef.current.add(fn))
+
+      // Atualização imediata no frontend
+      setBancoImagensList(prev => prev.filter(img => !filenamesToDelete.includes(img.filename)))
+      setSelectedImages(prev => prev.filter(fn => !filenamesToDelete.includes(fn)))
+
+      toast.success(`${filenamesToDelete.length} imagem(ns) excluída(s) com sucesso do Banco e do Storage!`)
+      setDeleteConfirmModal({ open: false, isBulk: false })
+    } catch (err: any) {
+      console.error("Erro na exclusão de imagens:", err)
+      toast.error(err?.message || "Não foi possível excluir a(s) imagem(ns).")
+    } finally {
+      setIsDeletingImages(false)
     }
   }
 
@@ -4579,38 +4718,46 @@ export default function StartComercialDevPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Banco de Imagens - Criativos para Mensagens</h3>
-                  <p className="text-xs text-slate-500">Clique na miniatura desejada para baixar a imagem original ou faça upload de novas imagens</p>
+                  <p className="text-xs text-slate-500">
+                    {canManageBancoImagens
+                      ? "Clique na miniatura desejada para baixar a imagem original ou faça upload de novas imagens"
+                      : "Clique na miniatura desejada para baixar a imagem original"}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/png,image/jpeg,image/webp,image/jpg"
-                  onChange={handleUploadMultipleImages}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  id="btn-upload-imagens-modal"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploadingImages}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-                  title="Fazer upload de várias imagens simultaneamente"
-                >
-                  {isUploadingImages ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Enviando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload de Imagens</span>
-                    </>
-                  )}
-                </button>
+                {canManageBancoImagens && (
+                  <>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept="image/png,image/jpeg,image/webp,image/jpg"
+                      onChange={handleUploadMultipleImages}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      id="btn-upload-imagens-modal"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingImages}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      title="Fazer upload de várias imagens simultaneamente"
+                    >
+                      {isUploadingImages ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Enviando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Upload de Imagens</span>
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
                 <button
                   id="btn-fechar-modal-banco-imagens"
                   onClick={() => setIsImageBankModalOpen(false)}
@@ -4621,6 +4768,54 @@ export default function StartComercialDevPage() {
                 </button>
               </div>
             </div>
+
+            {/* BARRA DE SELEÇÃO E AÇÕES EM MASSA */}
+            {canManageBancoImagens && (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-2.5 bg-slate-100/90 border-b border-slate-200 shrink-0">
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={
+                        (bancoImagensList.length > 0 ? bancoImagensList : BANCO_DE_IMAGENS).length > 0 &&
+                        selectedImages.length === (bancoImagensList.length > 0 ? bancoImagensList : BANCO_DE_IMAGENS).length
+                      }
+                      onChange={handleSelectAllImages}
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                    />
+                    <span>Selecionar todas ({(bancoImagensList.length > 0 ? bancoImagensList : BANCO_DE_IMAGENS).length})</span>
+                  </label>
+
+                  {selectedImages.length > 0 && (
+                    <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
+                      {selectedImages.length} selecionada(s)
+                    </span>
+                  )}
+                </div>
+
+                {selectedImages.length > 0 && (
+                  <div className="flex items-center gap-2 animate-in fade-in">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedImages([])}
+                      className="text-xs text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
+                    >
+                      Desmarcar todas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDeleteConfirm()}
+                      disabled={isDeletingImages}
+                      className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      title="Excluir imagens selecionadas do Banco e do Storage"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Excluir selecionadas ({selectedImages.length})</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* GRID DE MINIATURAS */}
             <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 bg-slate-100/60">
@@ -4633,6 +4828,7 @@ export default function StartComercialDevPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                   {(bancoImagensList.length > 0 ? bancoImagensList : BANCO_DE_IMAGENS).map((item) => {
                     const isDownloading = downloadingImage === item.id
+                    const isSelected = selectedImages.includes(item.filename)
                     return (
                       <div
                         key={item.id}
@@ -4646,9 +4842,46 @@ export default function StartComercialDevPage() {
                             setDownloadingImage(null)
                           }
                         }}
-                        className="group relative bg-white border border-slate-200 hover:border-blue-500 rounded-xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col cursor-pointer"
+                        className={cn(
+                          "group relative bg-white border rounded-xl overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col cursor-pointer",
+                          isSelected ? "border-blue-600 ring-2 ring-blue-500/30" : "border-slate-200 hover:border-blue-500"
+                        )}
                         title={`Clique para baixar ${item.title}`}
                       >
+                        {/* CAIXA DE SELEÇÃO INDIVIDUAL */}
+                        {canManageBancoImagens && (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleToggleSelectImage(item.filename)
+                            }}
+                            className="absolute top-2 left-2 z-20 flex items-center justify-center p-1 rounded-md bg-black/50 hover:bg-black/75 backdrop-blur-xs transition-colors cursor-pointer"
+                            title={isSelected ? "Desmarcar imagem" : "Selecionar imagem"}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}}
+                              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600"
+                            />
+                          </div>
+                        )}
+
+                        {/* BOTÃO EXCLUIR INDIVIDUAL */}
+                        {canManageBancoImagens && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleOpenDeleteConfirm(item)
+                            }}
+                            className="absolute top-2 right-2 z-20 p-1.5 rounded-md bg-black/50 hover:bg-red-600 text-white backdrop-blur-xs transition-all cursor-pointer opacity-80 hover:opacity-100"
+                            title={`Excluir "${item.title}" do Storage`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
                         {/* PREVIEW CONTAINER */}
                         <div className="relative w-full aspect-[4/3] bg-slate-900 flex items-center justify-center overflow-hidden">
                           <img
@@ -4695,7 +4928,7 @@ export default function StartComercialDevPage() {
             {/* RODAPÉ DO MODAL */}
             <div className="flex items-center justify-between gap-3 px-5 py-3 bg-white border-t border-slate-200 shrink-0">
               <span className="text-xs text-slate-500">
-                Total de <strong>{(bancoImagensList.length > 0 ? bancoImagensList : BANCO_DE_IMAGENS).length} imagens</strong> disponíveis para download
+                Total de <strong>{(bancoImagensList.length > 0 ? bancoImagensList : BANCO_DE_IMAGENS).length} imagens</strong> disponíveis
               </span>
               <button
                 onClick={() => setIsImageBankModalOpen(false)}
@@ -4704,6 +4937,77 @@ export default function StartComercialDevPage() {
                 Fechar
               </button>
             </div>
+
+            {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+            {deleteConfirmModal.open && (
+              <div 
+                className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+                onClick={() => !isDeletingImages && setDeleteConfirmModal({ open: false, isBulk: false })}
+              >
+                <div 
+                  className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 sm:p-6 flex flex-col gap-4 animate-in zoom-in-95"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-start gap-3.5">
+                    <div className="p-2.5 rounded-xl bg-red-100 text-red-600 shrink-0">
+                      <AlertTriangle className="w-6 h-6" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-base font-bold text-slate-900">
+                        {deleteConfirmModal.isBulk 
+                          ? `Excluir ${selectedImages.length} imagem(ns) selecionada(s)?` 
+                          : `Excluir imagem "${deleteConfirmModal.item?.title}"?`}
+                      </h4>
+                      <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                        {deleteConfirmModal.isBulk ? (
+                          <>
+                            Tem certeza de que deseja excluir as <strong>{selectedImages.length} imagens selecionadas</strong>? 
+                            Elas serão apagadas definitivamente do Banco de Imagens e do <strong>Storage (bucket capacitacao-pj &gt; pasta imagens para mensagens)</strong>.
+                          </>
+                        ) : (
+                          <>
+                            Tem certeza de que deseja excluir o arquivo <strong>{deleteConfirmModal.item?.filename}</strong>? 
+                            Ele será apagado definitivamente do Banco de Imagens e do <strong>Storage (bucket capacitacao-pj &gt; pasta imagens para mensagens)</strong>.
+                          </>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-red-600 font-semibold mt-2">
+                        ⚠️ Esta ação é irreversível.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      disabled={isDeletingImages}
+                      onClick={() => setDeleteConfirmModal({ open: false, isBulk: false })}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDeletingImages}
+                      onClick={handleConfirmDeleteImages}
+                      className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isDeletingImages ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Excluindo...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Confirmar Exclusão</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

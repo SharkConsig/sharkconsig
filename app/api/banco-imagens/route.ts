@@ -47,7 +47,16 @@ export async function GET() {
         }
       })
 
-    return NextResponse.json({ imagens })
+    return NextResponse.json(
+      { imagens },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          Pragma: 'no-cache',
+          Expires: '0'
+        }
+      }
+    )
   } catch (err: any) {
     console.error('Erro ao buscar banco de imagens:', err)
     return NextResponse.json({ error: err?.message || 'Erro desconhecido' }, { status: 500 })
@@ -120,5 +129,41 @@ export async function POST(request: NextRequest) {
   } catch (err: any) {
     console.error('Erro na rota de upload de imagens:', err)
     return NextResponse.json({ error: err?.message || 'Erro interno no upload' }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const filenames: string[] = Array.isArray(body?.filenames)
+      ? body.filenames
+      : body?.filename
+        ? [body.filename]
+        : []
+
+    if (!filenames || filenames.length === 0) {
+      return NextResponse.json({ error: 'Nenhum arquivo informado para exclusão.' }, { status: 400 })
+    }
+
+    const supabaseAdmin = createAdminClient()
+    const pathsToRemove = filenames.map((name: string) => `${FOLDER_PATH}/${name}`)
+
+    const { data, error } = await supabaseAdmin.storage
+      .from(BUCKET_NAME)
+      .remove(pathsToRemove)
+
+    if (error) {
+      console.error('Erro ao excluir imagens no storage:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      removedCount: data?.length ?? filenames.length,
+      removed: data
+    })
+  } catch (err: any) {
+    console.error('Erro na rota de exclusão de imagens:', err)
+    return NextResponse.json({ error: err?.message || 'Erro interno na exclusão' }, { status: 500 })
   }
 }
