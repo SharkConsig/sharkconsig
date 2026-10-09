@@ -1463,21 +1463,32 @@ export default function TicketsPage() {
     };
   }, [baseFilteredTickets]);
 
+  const isTicketFromKanban = useCallback((ticket: Ticket) => {
+    const o = (ticket.origem || "").trim().toUpperCase()
+    const s = (ticket.status_chamados?.nome || ticket.status || "").trim().toUpperCase()
+    if (o === "KANBAN" || s.includes("KANBAN")) return true
+    const meta = parseDescriptionMetadata(ticket.descricao || "")
+    if (meta?.from_kanban || meta?.origem_pipeline === "KANBAN") return true
+    const d = (ticket.descricao || "").toUpperCase()
+    return d.includes('"FROM_KANBAN":TRUE') || d.includes('"ORIGEM_PIPELINE":"KANBAN"')
+  }, [])
+
   const counts = useMemo(() => {
     const res: Record<string, number> = {}
     baseFilteredTickets.forEach(t => {
+      if (isTicketFromKanban(t)) return
       const s = (t.status_chamados?.nome || t.status || "").trim().toUpperCase()
       res[s] = (res[s] || 0) + 1
     })
     return res
-  }, [baseFilteredTickets])
+  }, [baseFilteredTickets, isTicketFromKanban])
 
   const filteredTickets = useMemo(() => {
     return baseFilteredTickets.filter(ticket => {
       // Status category filter
       let matchesStatus = true
       const ticketStatusUpper = (ticket.status_chamados?.nome || ticket.status || "").trim().toUpperCase()
-      const ticketOrigemUpper = (ticket.origem || "").trim().toUpperCase()
+      const isKanbanTicket = isTicketFromKanban(ticket)
       
       if (selectedSecondaryStatus) {
         const u = selectedSecondaryStatus.toUpperCase()
@@ -1488,8 +1499,11 @@ export default function TicketsPage() {
           matchesStatus = ticketStatusUpper === u || ticketStatusUpper === ua
         }
       } else if (selectedStatus && selectedStatus !== "TODOS") {
-        if (selectedStatus === "TESTES KANBAN") {
-          matchesStatus = ticketOrigemUpper === "KANBAN" || ticketStatusUpper.includes("KANBAN")
+        if (selectedStatus === "TESTE KANBAN" || selectedStatus === "TESTES KANBAN") {
+          matchesStatus = isKanbanTicket
+        } else if (isKanbanTicket) {
+          // Chamados abertos a partir da área KANBAN são guardados exclusivamente na pasta TESTE KANBAN
+          matchesStatus = false
         } else if (selectedStatus === "APROVADOS") {
           matchesStatus = APROVADOS_LABELS.some(label => {
             const u = label.toUpperCase()
@@ -1522,30 +1536,27 @@ export default function TicketsPage() {
       
       return matchesStatus
     })
-  }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus])
+  }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus, isTicketFromKanban])
 
   // Summing values per status label
   const statusValues = useMemo(() => {
     const res: Record<string, number> = {}
     baseFilteredTickets.forEach(t => {
+      if (isTicketFromKanban(t)) return
       const s = (t.status_chamados?.nome || t.status || "").trim().toUpperCase()
       const opData = getValorOperacaoDeAbertura(t)
       const opVal = parseValorToNumber(opData.valor)
       res[s] = (res[s] || 0) + opVal
     })
     return res;
-  }, [baseFilteredTickets])
+  }, [baseFilteredTickets, isTicketFromKanban])
 
   const statusCards = useMemo(() => {
     const list = statusCardsList.map(c => ({ ...c }))
 
-    // Adiciona pasta TESTES KANBAN ao lado direito de TODOS exclusivamente para Desenvolvedor e Administrador
+    // Adiciona pasta TESTE KANBAN ao lado direito de TODOS exclusivamente para Desenvolvedor e Administrador
     if (isUserAdmin) {
-      const kanbanTickets = baseFilteredTickets.filter(t => {
-        const o = (t.origem || "").trim().toUpperCase()
-        const s = (t.status_chamados?.nome || t.status || "").trim().toUpperCase()
-        return o === "KANBAN" || s.includes("KANBAN")
-      })
+      const kanbanTickets = baseFilteredTickets.filter(t => isTicketFromKanban(t))
       const kanbanCount = kanbanTickets.length
       const kanbanTotalValor = kanbanTickets.reduce((acc, t) => {
         const opData = getValorOperacaoDeAbertura(t)
@@ -1553,7 +1564,7 @@ export default function TicketsPage() {
       }, 0)
 
       const kanbanCard = {
-        label: "TESTES KANBAN",
+        label: "TESTE KANBAN",
         count: kanbanCount,
         totalValor: kanbanTotalValor,
         color: "border-t-indigo-600 bg-indigo-50/20",
@@ -1569,7 +1580,7 @@ export default function TicketsPage() {
     }
 
     return list.map(card => {
-      if (card.label === "TESTES KANBAN") {
+      if (card.label === "TESTE KANBAN" || card.label === "TESTES KANBAN") {
         return card
       }
       let count = counts[card.label] || 0

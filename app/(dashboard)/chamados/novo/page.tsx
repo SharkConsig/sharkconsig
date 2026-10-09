@@ -135,9 +135,10 @@ export function NewTicketForm({
   };
 
   const isFromClient = !!getParam("nome")
+  const isFromKanban = getParam("from_kanban") === "true" || getParam("origem") === "KANBAN" || (isModal && !getParam("origem"))
 
   const [formData, setFormData] = useState({
-    origem: getParam("origem") || (isModal ? "KANBAN" : ""),
+    origem: (getParam("origem") && getParam("origem") !== "KANBAN") ? getParam("origem") : "",
     equipe: (perfil?.role === 'Supervisor' ? perfil?.nome : perfil?.supervisor_nome) || "",
     nome: getParam("nome") || "",
     cpf: getParam("cpf") || "",
@@ -614,7 +615,9 @@ export function NewTicketForm({
         coeficiente_beneficio5: coefficients.beneficio5,
         valor_operacao_margem: calculateValorOperacao(formData.margem || originalMargins.margem, coefficients.margem),
         valor_operacao_liquida5: calculateValorOperacao(formData.liquida5 || originalMargins.liquida5, coefficients.liquida5),
-        valor_operacao_beneficio5: calculateValorOperacao(formData.beneficio5 || originalMargins.beneficio5, coefficients.beneficio5)
+        valor_operacao_beneficio5: calculateValorOperacao(formData.beneficio5 || originalMargins.beneficio5, coefficients.beneficio5),
+        from_kanban: isFromKanban,
+        origem_pipeline: isFromKanban ? "KANBAN" : undefined
       };
       finalDescription += `\n\n<!-- TICKET_METADATA: ${JSON.stringify(initialMetadata)} -->`;
 

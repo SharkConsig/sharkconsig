@@ -18,6 +18,7 @@ export interface NovoChamadoModalProps {
     convenio?: string;
     matricula?: string;
     origem?: string;
+    from_kanban?: string;
   };
   onSuccess?: () => void;
 }

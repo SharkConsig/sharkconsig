@@ -1355,7 +1355,7 @@ export function ClientDetailsModal({
       beneficio5: formatCurrency(Number(reg.beneficio_liquida_5 || reg.margem_cartao_beneficio || 0)),
       convenio: resolvedConvenio,
       matricula: String(reg.numero_matricula || reg.identificacao || reg.matricula || ""),
-      origem: "KANBAN"
+      from_kanban: "true"
     }
 
     if (showPipelineActionButtons) {

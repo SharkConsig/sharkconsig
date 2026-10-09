@@ -215,6 +215,8 @@ interface TicketItem {
   telefones?: string[]
   telefones_selecionados?: string[]
   margem?: number
+  margem_liquida_5?: number
+  margem_beneficio_5?: number
   valor_operacao?: number
   convenio?: string
   equipe?: string
@@ -254,6 +256,134 @@ function parseMetadata(desc: string = ""): TicketMetadata {
 function stringifyWithMetadata(desc: string = "", meta: TicketMetadata): string {
   const cleaned = desc.replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "").trim()
   return `${cleaned}\n\n<!-- TICKET_METADATA: ${JSON.stringify(meta)} -->`
+}
+
+const formatValorBrl = (val: any): string => {
+  if (val === null || val === undefined || val === "") return "R$ 0,00"
+  if (typeof val === "string" && val.trim().startsWith("R$")) return val.trim()
+  const num = typeof val === "number" ? val : parseFloat(String(val).replace(/[^0-9.,-]/g, "").replace(",", "."))
+  if (isNaN(num)) return "R$ 0,00"
+  return "R$ " + num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+const parseValorToNumber = (valStr: string) => {
+  if (!valStr) return 0
+  const clean = valStr.replace("R$", "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
+  const num = parseFloat(clean)
+  return isNaN(num) ? 0 : num
+}
+
+// Regra idêntica à lista de chamados da área 'CHAMADOS' para cálculo e exibição do Valor da Operação
+const getValorOperacaoDeAbertura = (ticket: any) => {
+  if (!ticket) return { valor: "R$ 0,00", label: "Valor Operação", color: "text-slate-400" }
+  const desc = ticket.descricao || ticket.description || ticket.content || ""
+  const meta = parseMetadata(desc)
+  const conv = (ticket.convenio || meta.convenio || "")?.toUpperCase()
+  const isSantoAndre = conv.includes("SANTO ANDRÉ") || conv.includes("SANTO ANDRE")
+
+  // 1. Tipo selecionado nos metadados
+  const selectedType = meta?.selected_operation_type
+  if (selectedType) {
+    if (selectedType === 'margem') {
+      return { valor: formatValorBrl(meta.valor_operacao_margem), label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
+    }
+    if (selectedType === 'liquida5') {
+      return { valor: formatValorBrl(meta.valor_operacao_liquida5), label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
+    }
+    if (selectedType === 'beneficio5') {
+      return { valor: formatValorBrl(meta.valor_operacao_beneficio5), label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
+    }
+  }
+
+  // 2. Coluna valor_operacao no banco
+  if (ticket.valor_operacao !== null && ticket.valor_operacao !== undefined && ticket.valor_operacao !== 0) {
+    const valStr = "R$ " + Number(ticket.valor_operacao).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return { valor: valStr, label: "Valor Operação", color: "text-slate-900" }
+  }
+
+  // 3. Inferência pelo texto da descrição
+  let textSelectedType: 'margem' | 'liquida5' | 'beneficio5' | null = null
+  if (desc.includes("MARGEM 35%") || desc.includes("MARGEM LÍQUIDA EMPRÉSTIMO")) {
+    textSelectedType = 'margem'
+  } else if (desc.includes("LÍQUIDA 5%") || desc.includes("MARGEM LÍQUIDA CARTÃO")) {
+    textSelectedType = 'liquida5'
+  } else if (desc.includes("BENEFÍCIO 5%") || desc.includes("CARTÃO BENEFÍCIO") || desc.includes("CARTÃO CONSIGINADO") || desc.includes("CARTAO CONSIGINADO") || desc.includes("CARTÃO")) {
+    textSelectedType = 'beneficio5'
+  }
+
+  if (textSelectedType) {
+    if (textSelectedType === 'margem') {
+      if (meta && meta.valor_operacao_margem) return { valor: formatValorBrl(meta.valor_operacao_margem), label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
+      const mVal = ticket.margem || 0
+      const opVal = mVal / 0.028
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
+        color: "text-amber-600" 
+      }
+    }
+    if (textSelectedType === 'liquida5') {
+      if (meta && meta.valor_operacao_liquida5) return { valor: formatValorBrl(meta.valor_operacao_liquida5), label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
+      const mVal = ticket.margem_liquida_5 || 0
+      const opVal = mVal / 0.053
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", 
+        color: "text-emerald-600" 
+      }
+    }
+    if (textSelectedType === 'beneficio5') {
+      if (meta && meta.valor_operacao_beneficio5) return { valor: formatValorBrl(meta.valor_operacao_beneficio5), label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
+      const mVal = ticket.margem_beneficio_5 || 0
+      const opVal = mVal / 0.053
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
+        color: "text-blue-600" 
+      }
+    }
+  }
+
+  // 4. Campos dos metadados sem seleção explícita
+  if (meta) {
+    if (meta.margem && meta.margem !== "" && meta.margem !== "R$ 0,00") {
+      return { valor: formatValorBrl(meta.valor_operacao_margem), label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
+    }
+    if (meta.liquida5 && meta.liquida5 !== "" && meta.liquida5 !== "R$ 0,00") {
+      return { valor: formatValorBrl(meta.valor_operacao_liquida5), label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
+    }
+    if (meta.beneficio5 && meta.beneficio5 !== "" && meta.beneficio5 !== "R$ 0,00") {
+      return { valor: formatValorBrl(meta.valor_operacao_beneficio5), label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
+    }
+  }
+
+  // 5. Fallback das margens da base de dados
+  if (typeof ticket.margem === 'number' && ticket.margem !== 0) {
+    const opVal = ticket.margem / 0.028
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
+      color: "text-amber-600" 
+    }
+  }
+  if (typeof ticket.margem_liquida_5 === 'number' && ticket.margem_liquida_5 !== 0) {
+    const opVal = ticket.margem_liquida_5 / 0.053
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", 
+      color: "text-emerald-600" 
+    }
+  }
+  if (typeof ticket.margem_beneficio_5 === 'number' && ticket.margem_beneficio_5 !== 0) {
+    const opVal = ticket.margem_beneficio_5 / 0.053
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
+      color: "text-blue-600" 
+    }
+  }
+
+  return { valor: "R$ 0,00", label: "Valor Operação", color: "text-slate-400" }
 }
 
 // Mapeia o chamado para a etapa do Kanban
@@ -718,6 +848,7 @@ export default function KanbanPage() {
   const [supervisaoModalTicket, setSupervisaoModalTicket] = useState<TicketItem | null>(null)
   const [agendarModalTicket, setAgendarModalTicket] = useState<TicketItem | null>(null)
   const [moverModalTicket, setMoverModalTicket] = useState<TicketItem | null>(null)
+  const [historicoModalTicket, setHistoricoModalTicket] = useState<TicketItem | null>(null)
   const [callFeedbackTicket, setCallFeedbackTicket] = useState<TicketItem | null>(null)
   const [selectedDrawer, setSelectedDrawer] = useState<"NAO_EXISTE" | "DIVERGENTE" | null>(null)
   const [dragOverDrawer, setDragOverDrawer] = useState<"NAO_EXISTE" | "DIVERGENTE" | null>(null)
@@ -1043,8 +1174,8 @@ export default function KanbanPage() {
           telefones_selecionados: Array.isArray(meta.telefones_selecionados) 
             ? meta.telefones_selecionados 
             : (Array.isArray(f.telefones_selecionados) ? f.telefones_selecionados : undefined),
-          margem: f.margem_disponivel ? Number(f.margem_disponivel) : undefined,
-          valor_operacao: f.valor_solicitado ? Number(f.valor_solicitado) : undefined,
+          margem: (f.margem_disponivel !== null && f.margem_disponivel !== undefined) ? Number(f.margem_disponivel) : (meta.margem ? parseValorToNumber(meta.margem) : undefined),
+          valor_operacao: (f.valor_solicitado !== null && f.valor_solicitado !== undefined) ? Number(f.valor_solicitado) : (meta.valor_operacao ? parseValorToNumber(meta.valor_operacao) : undefined),
           convenio: f.convenio || meta.convenio || undefined,
           equipe: f.equipe || undefined,
           descricao: stringifyWithMetadata(f.observacoes || "", meta),
@@ -1180,7 +1311,9 @@ export default function KanbanPage() {
 
     filteredTickets.forEach(t => {
       const meta = parseMetadata(t.descricao)
-      const val = Number(t.valor_operacao || t.margem || 0)
+      const opData = getValorOperacaoDeAbertura(t)
+      const opNum = parseValorToNumber(opData.valor)
+      const val = opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0)
       totalValor += val
       if (meta.alerta_atrasado) totalAtrasados++
       if (meta.acao_especial) totalAcaoEspecial++
@@ -2783,7 +2916,11 @@ export default function KanbanPage() {
               <div className="flex items-start gap-4 min-w-[1850px] h-full">
                 {KANBAN_COLUMNS.map(col => {
                   const colTickets = groupedColumns[col.id] || []
-                  const totalColValor = colTickets.reduce((acc, t) => acc + Number(t.valor_operacao || t.margem || 0), 0)
+                  const totalColValor = colTickets.reduce((acc, t) => {
+                    const opData = getValorOperacaoDeAbertura(t)
+                    const opNum = parseValorToNumber(opData.valor)
+                    return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+                  }, 0)
 
                   return (
                     <div
@@ -2847,7 +2984,9 @@ export default function KanbanPage() {
                     ) : (
                       colTickets.map(ticket => {
                         const meta = parseMetadata(ticket.descricao)
-                        const valorTotal = Number(ticket.valor_operacao || ticket.margem || 0)
+                        const opData = getValorOperacaoDeAbertura(ticket)
+                        const opValorNum = parseValorToNumber(opData.valor)
+                        const valorTotal = opValorNum > 0 ? opValorNum : Number(ticket.valor_operacao || ticket.margem || 0)
                         const isCardRevealed = Boolean(revealedCpfs[ticket.id] || revealedPhones[ticket.id])
                         const isCpfRevealed = isCardRevealed
                         const isPhoneRevealed = isCardRevealed
@@ -3024,11 +3163,14 @@ export default function KanbanPage() {
                             <div className="bg-slate-50/90 rounded-md p-2 border border-slate-100 text-[12px] space-y-1">
                               <div className="flex items-center justify-between">
                                 <span className="text-slate-500">Valor Operação:</span>
-                                <span className="font-bold text-slate-900">
-                                  {valorTotal > 0 
-                                    ? valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) 
-                                    : "Sob Consulta"}
-                                </span>
+                                <div className="flex flex-col items-end">
+                                  <span className="font-bold text-slate-900 leading-tight">
+                                    {opData.valor}
+                                  </span>
+                                  <span className={cn("text-[8.5px] uppercase font-black tracking-tight mt-0.5", opData.color)}>
+                                    {opData.label}
+                                  </span>
+                                </div>
                               </div>
                               <div className="flex items-center justify-between">
                                 <span className="text-slate-500">Tipo:</span>
@@ -3096,6 +3238,17 @@ export default function KanbanPage() {
                                 aria-label="Mover"
                               >
                                 <ArrowRight className="w-3.5 h-3.5 transition-colors" />
+                              </Button>
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setHistoricoModalTicket(ticket)}
+                                className="h-7 p-0 flex items-center justify-center text-purple-600 bg-white hover:bg-purple-600 hover:border-purple-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-purple-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
+                                title="Histórico do Atendimento"
+                                aria-label="Histórico do Atendimento"
+                              >
+                                <History className="w-3.5 h-3.5 transition-colors" />
                               </Button>
                             </div>
                           </div>
@@ -3286,9 +3439,19 @@ export default function KanbanPage() {
                       </div>
                       <div>
                         <span className="text-slate-500 block text-xs font-medium">Valor da Operação</span>
-                        <span className="font-bold text-emerald-600">
-                          {Number(atendimentoModalTicket.valor_operacao || atendimentoModalTicket.margem || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </span>
+                        {(() => {
+                          const modalOpData = getValorOperacaoDeAbertura(atendimentoModalTicket)
+                          return (
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-900 text-sm leading-tight">
+                                {modalOpData.valor}
+                              </span>
+                              <span className={cn("text-[10px] uppercase font-black tracking-tight mt-0.5", modalOpData.color)}>
+                                {modalOpData.label}
+                              </span>
+                            </div>
+                          )
+                        })()}
                       </div>
                     </div>
                   )}
@@ -3883,6 +4046,17 @@ export default function KanbanPage() {
                 <span className="inline-flex items-center font-bold text-sky-700 bg-sky-50 border border-sky-200/80 px-2.5 py-1 rounded-md text-xs">
                   {inferKanbanStage(atendimentoModalTicket, parseMetadata(atendimentoModalTicket.descricao))}
                 </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setHistoricoModalTicket(atendimentoModalTicket)}
+                  className="h-7 px-2.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 hover:text-purple-800 border border-purple-200 flex items-center gap-1.5 rounded-md cursor-pointer shadow-2xs transition-colors"
+                  title="Histórico do Atendimento"
+                >
+                  <History className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Histórico do Atendimento</span>
+                </Button>
               </div>
 
               <Button
@@ -3969,9 +4143,19 @@ export default function KanbanPage() {
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[11px]">Valor da Operação</span>
-                        <span className="font-bold text-emerald-600 text-[13px] block">
-                          {Number(supervisaoModalTicket.valor_operacao || supervisaoModalTicket.margem || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                        </span>
+                        {(() => {
+                          const modalOpData = getValorOperacaoDeAbertura(supervisaoModalTicket)
+                          return (
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-900 text-[13px] block leading-tight">
+                                {modalOpData.valor}
+                              </span>
+                              <span className={cn("text-[9px] uppercase font-black tracking-tight mt-0.5", modalOpData.color)}>
+                                {modalOpData.label}
+                              </span>
+                            </div>
+                          )
+                        })()}
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[11px]">Etapa Comercial</span>
@@ -4298,6 +4482,214 @@ export default function KanbanPage() {
           </div>
         </div>
       )}
+
+      {/* MODAL: HISTÓRICO DO ATENDIMENTO (LOG DE ETAPAS KANBAN) */}
+      {historicoModalTicket && (() => {
+        const meta = parseMetadata(historicoModalTicket.descricao)
+        const rawLog = Array.isArray(meta.historico_kanban) ? meta.historico_kanban : []
+        const totalMovimentacoes = rawLog.length
+        // Numeração sequencial: 1 para a mais antiga até N para a atual
+        // Ordenação exibida: mais recente no topo até a mais antiga lá embaixo
+        const log = rawLog
+          .map((item, idx) => ({
+            ...item,
+            numero: idx + 1,
+            isAtual: idx === totalMovimentacoes - 1,
+            isMaisAntiga: idx === 0
+          }))
+          .reverse()
+        const etapaAtual = inferKanbanStage(historicoModalTicket, meta)
+        const isRevealed = Boolean(revealedCpfs[historicoModalTicket.id] || revealedPhones[historicoModalTicket.id])
+
+        // Cores oficiais das etiquetas conforme colunas do Kanban
+        const getStageBadgeStyle = (stageName?: string) => {
+          const s = (stageName || "").trim().toUpperCase()
+          if (s.includes("ABORDAGEM")) {
+            return "bg-sky-100 text-sky-950 border border-sky-400 font-bold"
+          }
+          if (s.includes("RETOMADA")) {
+            return "bg-amber-100 text-amber-950 border border-amber-400 font-bold"
+          }
+          if (s.includes("NEGOCIAÇÃO") || s.includes("NEGOCIACAO")) {
+            return "bg-indigo-100 text-indigo-950 border border-indigo-400 font-bold"
+          }
+          if (s.includes("REATIVAÇÃO") || s.includes("REATIVACAO")) {
+            return "bg-purple-100 text-purple-950 border border-purple-400 font-bold"
+          }
+          if (s.includes("SEM INTERESSE")) {
+            return "bg-slate-200 text-slate-900 border border-slate-400 font-bold"
+          }
+          if (s.includes("FECHADO")) {
+            return "bg-emerald-100 text-emerald-950 border border-emerald-400 font-bold"
+          }
+          if (s.includes("PERDIDO")) {
+            return "bg-rose-100 text-rose-950 border border-rose-400 font-bold"
+          }
+          return "bg-slate-100 text-slate-800 border border-slate-300 font-medium"
+        }
+
+        return (
+          <div className="fixed inset-0 z-[350] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+              {/* Header */}
+              <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-purple-100 border border-purple-200 flex items-center justify-center shrink-0">
+                    <History className="w-4 h-4 text-purple-700" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                      Histórico do Atendimento
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Log auditável de movimentações no pipeline
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
+                  onClick={() => setHistoricoModalTicket(null)}
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {/* Informações Resumidas do Lead */}
+              <div className="px-4 py-3 bg-purple-50/40 border-b border-purple-100/60 flex items-center justify-between gap-2 text-xs">
+                <div>
+                  <h4 className="font-extrabold text-slate-900 line-clamp-1">
+                    {historicoModalTicket.cliente_nome || "Cliente sem Nome"}
+                  </h4>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span
+                      onClick={() => historicoModalTicket.cliente_cpf && handleCopy(historicoModalTicket.cliente_cpf, "CPF")}
+                      className={cn(
+                        "text-[11px] font-mono text-slate-500 transition-colors",
+                        historicoModalTicket.cliente_cpf && "cursor-pointer hover:text-purple-700"
+                      )}
+                      title={historicoModalTicket.cliente_cpf ? "Clique para copiar CPF" : undefined}
+                    >
+                      CPF: {isRevealed ? (historicoModalTicket.cliente_cpf || "---") : maskCpf(historicoModalTicket.cliente_cpf)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleRevealCard(historicoModalTicket.id)}
+                      className="text-slate-400 hover:text-slate-700 p-0.5 rounded cursor-pointer transition-colors"
+                      title={isRevealed ? "Ocultar CPF" : "Mostrar números ocultados"}
+                      aria-label={isRevealed ? "Ocultar CPF" : "Mostrar números ocultados"}
+                    >
+                      {isRevealed ? (
+                        <EyeOff className="w-3.5 h-3.5 text-slate-500 hover:text-slate-700" />
+                      ) : (
+                        <Eye className="w-3.5 h-3.5 text-slate-400 hover:text-slate-700" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Etapa Atual</span>
+                  <span className={cn("inline-flex items-center px-2 py-0.5 rounded text-[11px] shadow-2xs", getStageBadgeStyle(etapaAtual))}>
+                    {etapaAtual}
+                  </span>
+                </div>
+              </div>
+
+              {/* Lista do Log (Timeline) */}
+              <div className="p-4 overflow-y-auto flex-1 space-y-3 custom-scrollbar">
+                {log.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-slate-400 space-y-1">
+                    <History className="w-8 h-8 text-slate-300 mx-auto mb-2 opacity-50" />
+                    <p className="font-semibold text-slate-600">Nenhuma troca de etapa registrada</p>
+                    <p className="text-[11px]">As movimentações do cartão entre as colunas serão listadas aqui.</p>
+                  </div>
+                ) : (
+                  <div className="relative pl-8 before:content-[''] before:absolute before:left-3 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200 space-y-3">
+                    {log.map((item, idx) => {
+                      let dataFormatada = "--/--/---- --:--"
+                      try {
+                        if (item.data) {
+                          dataFormatada = format(new Date(item.data), "dd/MM/yyyy 'às' HH:mm:ss")
+                        }
+                      } catch {}
+
+                      return (
+                        <div key={idx} className="relative bg-slate-50 border border-slate-200/80 rounded-lg p-3 space-y-1.5 shadow-2xs">
+                          {/* Marcador numérico na linha do tempo: 1 (mais antiga) até N (atual) */}
+                          <div className={cn(
+                            "absolute -left-8 top-3 w-6 h-6 rounded-full font-black text-[11px] flex items-center justify-center ring-2 ring-white shadow-xs select-none",
+                            item.isAtual 
+                              ? "bg-purple-700 text-white ring-purple-100" 
+                              : "bg-purple-600 text-white"
+                          )}>
+                            {item.numero}
+                          </div>
+
+                          {/* Cabeçalho do evento */}
+                          <div className="flex items-center justify-between text-[11px] gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="font-bold text-purple-900 truncate">
+                                {item.autor || "Usuário não informado"}
+                              </span>
+                              {item.isAtual && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                                  Atual
+                                </span>
+                              )}
+                              {item.isMaisAntiga && totalMovimentacoes > 1 && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                                  1ª Movimentação
+                                </span>
+                              )}
+                            </div>
+                            <span className="font-medium text-slate-600 text-[10.5px] shrink-0">
+                              {dataFormatada}
+                            </span>
+                          </div>
+
+                          {/* Transição de Etapa com cores originais das colunas */}
+                          <div className="flex items-center gap-1.5 text-xs font-semibold pt-0.5 flex-wrap">
+                            <span className={cn("px-2 py-0.5 rounded text-[11px] shadow-2xs", getStageBadgeStyle(item.etapa_anterior))}>
+                              {item.etapa_anterior || "Inicial"}
+                            </span>
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className={cn("px-2 py-0.5 rounded text-[11px] shadow-2xs", getStageBadgeStyle(item.etapa_nova))}>
+                              {item.etapa_nova}
+                            </span>
+                          </div>
+
+                          {/* Motivo (se houver) */}
+                          {item.motivo && (
+                            <p className="text-[11px] text-slate-600 italic bg-white p-1.5 rounded border border-slate-100 mt-1">
+                              "{item.motivo}"
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Rodapé */}
+              <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-slate-500">
+                  {log.length} {log.length === 1 ? "movimentação registrada" : "movimentações registradas"}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-7.5 font-bold px-4 cursor-pointer"
+                  onClick={() => setHistoricoModalTicket(null)}
+                >
+                  Fechar
+                </Button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* MODAL 5: REGISTRO RÁPIDO DE LIGAÇÃO */}
       {callFeedbackTicket && (

@@ -263,8 +263,34 @@ export default function DistribuicaoCampanhaPage() {
     return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
   });
   const [reportEndDate, setReportEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [reportSelectedUser, setReportSelectedUser] = useState<string>("TODOS");
-  const [reportSelectedCampaign, setReportSelectedCampaign] = useState<string>("TODAS");
+  const [reportSelectedUsers, setReportSelectedUsers] = useState<string[]>([]);
+  const [reportSelectedCampaigns, setReportSelectedCampaigns] = useState<string[]>([]);
+  const [isUserDropdownOpen, setIsUserDropdownOpen] = useState<boolean>(false);
+  const [isCampaignDropdownOpen, setIsCampaignDropdownOpen] = useState<boolean>(false);
+  const [userSearchTerm, setUserSearchTerm] = useState<string>("");
+  const [campaignSearchTerm, setCampaignSearchTerm] = useState<string>("");
+  const [periodUsers, setPeriodUsers] = useState<Array<{ id: string; nome: string; funcao?: string }>>([]);
+  const [periodCampaigns, setPeriodCampaigns] = useState<Array<{ id: string; nome: string }>>([]);
+  const [rawPeriodData, setRawPeriodData] = useState<any[]>([]);
+  const [lastLoadedPeriod, setLastLoadedPeriod] = useState<string>("");
+  const userDropdownRef = useRef<HTMLDivElement>(null);
+  const campaignDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target as Node)) {
+        setIsUserDropdownOpen(false);
+      }
+      if (campaignDropdownRef.current && !campaignDropdownRef.current.contains(event.target as Node)) {
+        setIsCampaignDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   const [isLoadingReport, setIsLoadingReport] = useState<boolean>(false);
   const [reportData, setReportData] = useState<any[]>([]);
   const [detailModalUser, setDetailModalUser] = useState<{
@@ -276,8 +302,8 @@ export default function DistribuicaoCampanhaPage() {
   const fetchChamadosReport = async (
     sDate = reportStartDate,
     eDate = reportEndDate,
-    uId = reportSelectedUser,
-    cId = reportSelectedCampaign
+    uIds = reportSelectedUsers,
+    cIds = reportSelectedCampaigns
   ) => {
     if (!canAccessChamadosReport) {
       toast.error("Acesso restrito. Função permitida apenas para cargos autorizados.");
@@ -285,96 +311,135 @@ export default function DistribuicaoCampanhaPage() {
     }
     setIsLoadingReport(true);
     try {
-      // 1. Consulta prioritária na tabela public.clientes_chamados com paginação completa
-      let allCcRows: any[] = [];
-      let page = 0;
-      const pageSize = 1000;
+      const periodKey = `${sDate}_${eDate}`;
+      let allPeriodRows: any[] = [];
 
-      while (true) {
-        let query = supabase
-          .from('clientes_chamados')
-          .select('*')
-          .gte('data_chamado', sDate)
-          .lte('data_chamado', eDate)
-          .eq('tabulacao', 'CLIENTE CHAMADO');
+      // Cache local do período para economia de recursos
+      if (lastLoadedPeriod === periodKey && rawPeriodData.length > 0) {
+        allPeriodRows = rawPeriodData;
+      } else {
+        // 1. Consulta prioritária na tabela public.clientes_chamados com paginação completa
+        let allCcRows: any[] = [];
+        let page = 0;
+        const pageSize = 1000;
 
-        if (uId !== 'TODOS') query = query.eq('usuario_id', uId);
-        if (cId !== 'TODAS') query = query.eq('campanha_id', cId);
+        while (true) {
+          const { data: batch, error: ccErr } = await supabase
+            .from('clientes_chamados')
+            .select('*')
+            .gte('data_chamado', sDate)
+            .lte('data_chamado', eDate)
+            .eq('tabulacao', 'CLIENTE CHAMADO')
+            .order('created_at', { ascending: false })
+            .range(page * pageSize, (page + 1) * pageSize - 1);
 
-        const { data: batch, error: ccErr } = await query
-          .order('created_at', { ascending: false })
-          .range(page * pageSize, (page + 1) * pageSize - 1);
+          if (ccErr) {
+            console.warn("Erro ao consultar clientes_chamados:", ccErr);
+            break;
+          }
 
-        if (ccErr) {
-          console.warn("Erro ao consultar clientes_chamados:", ccErr);
-          break;
+          if (batch && batch.length > 0) {
+            allCcRows = allCcRows.concat(batch);
+          }
+
+          if (!batch || batch.length < pageSize) {
+            break;
+          }
+          page++;
         }
 
-        if (batch && batch.length > 0) {
-          allCcRows = allCcRows.concat(batch);
+        if (allCcRows.length > 0) {
+          allPeriodRows = allCcRows;
+        } else {
+          // 2. Fallback resiliente: consultar campanha_atendimentos também com paginação completa
+          let allCaRows: any[] = [];
+          let caPage = 0;
+
+          while (true) {
+            const { data: caBatch, error: caErr } = await supabase
+              .from('campanha_atendimentos')
+              .select('id, campanha_id, corretor_id, cliente_cpf, tabulacao, created_at')
+              .eq('tabulacao', 'CLIENTE CHAMADO')
+              .neq('cliente_cpf', '00000000000')
+              .gte('created_at', `${sDate}T00:00:00.000Z`)
+              .lte('created_at', `${eDate}T23:59:59.999Z`)
+              .order('created_at', { ascending: false })
+              .range(caPage * pageSize, (caPage + 1) * pageSize - 1);
+
+            if (caErr) throw caErr;
+
+            if (caBatch && caBatch.length > 0) {
+              allCaRows = allCaRows.concat(caBatch);
+            }
+
+            if (!caBatch || caBatch.length < pageSize) {
+              break;
+            }
+            caPage++;
+          }
+
+          const userMap = new Map(allUsers.map(u => [u.id, u.nome]));
+          const campMap = new Map(campaigns.map(c => [c.id, c.nome]));
+
+          allPeriodRows = (allCaRows || []).map(r => ({
+            id: r.id,
+            usuario_id: r.corretor_id,
+            usuario_nome: userMap.get(r.corretor_id) || 'Corretor',
+            usuario_funcao: allUsers.find(u => u.id === r.corretor_id)?.funcao || 'Corretor',
+            campanha_id: r.campanha_id,
+            campanha_nome: campMap.get(r.campanha_id) || 'Campanha',
+            cliente_cpf: r.cliente_cpf,
+            tabulacao: 'CLIENTE CHAMADO',
+            origem: 'CAMPANHA',
+            data_chamado: r.created_at ? r.created_at.split('T')[0] : sDate,
+            created_at: r.created_at
+          }));
         }
 
-        if (!batch || batch.length < pageSize) {
-          break;
-        }
-        page++;
+        setRawPeriodData(allPeriodRows);
+        setLastLoadedPeriod(periodKey);
+
+        // Extrai usuários ativos e campanhas trabalhadas de acordo com o período selecionado
+        const pUsersMap = new Map<string, { id: string; nome: string; funcao?: string }>();
+        const pCampsMap = new Map<string, { id: string; nome: string }>();
+
+        allPeriodRows.forEach(r => {
+          const uId = r.usuario_id;
+          if (uId) {
+            const uObj = allUsers.find(u => u.id === uId);
+            const isUserActive = uObj ? (uObj.status || '').trim().toUpperCase() === 'ATIVO' : true;
+            if (isUserActive) {
+              pUsersMap.set(uId, {
+                id: uId,
+                nome: r.usuario_nome || uObj?.nome || 'Usuário',
+                funcao: r.usuario_funcao || uObj?.funcao || ''
+              });
+            }
+          }
+          const cId = r.campanha_id;
+          if (cId) {
+            const cObj = campaigns.find(c => c.id === cId);
+            pCampsMap.set(cId, {
+              id: cId,
+              nome: r.campanha_nome || cObj?.nome || 'Campanha'
+            });
+          }
+        });
+
+        setPeriodUsers(Array.from(pUsersMap.values()).sort((a, b) => a.nome.localeCompare(b.nome)));
+        setPeriodCampaigns(Array.from(pCampsMap.values()).sort((a, b) => a.nome.localeCompare(b.nome)));
       }
 
-      if (allCcRows.length > 0) {
-        setReportData(allCcRows);
-        return;
+      // Aplica os filtros de múltiplos usuários e/ou campanhas sobre os dados do período
+      let filtered = allPeriodRows;
+      if (uIds.length > 0) {
+        filtered = filtered.filter(r => uIds.includes(r.usuario_id));
+      }
+      if (cIds.length > 0) {
+        filtered = filtered.filter(r => cIds.includes(r.campanha_id));
       }
 
-      // 2. Fallback resiliente: consultar campanha_atendimentos também com paginação completa
-      let allCaRows: any[] = [];
-      let caPage = 0;
-
-      while (true) {
-        let caQuery = supabase
-          .from('campanha_atendimentos')
-          .select('id, campanha_id, corretor_id, cliente_cpf, tabulacao, created_at')
-          .eq('tabulacao', 'CLIENTE CHAMADO')
-          .neq('cliente_cpf', '00000000000')
-          .gte('created_at', `${sDate}T00:00:00.000Z`)
-          .lte('created_at', `${eDate}T23:59:59.999Z`);
-
-        if (uId !== 'TODOS') caQuery = caQuery.eq('corretor_id', uId);
-        if (cId !== 'TODAS') caQuery = caQuery.eq('campanha_id', cId);
-
-        const { data: caBatch, error: caErr } = await caQuery
-          .order('created_at', { ascending: false })
-          .range(caPage * pageSize, (caPage + 1) * pageSize - 1);
-
-        if (caErr) throw caErr;
-
-        if (caBatch && caBatch.length > 0) {
-          allCaRows = allCaRows.concat(caBatch);
-        }
-
-        if (!caBatch || caBatch.length < pageSize) {
-          break;
-        }
-        caPage++;
-      }
-
-      const userMap = new Map(allUsers.map(u => [u.id, u.nome]));
-      const campMap = new Map(campaigns.map(c => [c.id, c.nome]));
-
-      const mapped = (allCaRows || []).map(r => ({
-        id: r.id,
-        usuario_id: r.corretor_id,
-        usuario_nome: userMap.get(r.corretor_id) || 'Corretor',
-        usuario_funcao: allUsers.find(u => u.id === r.corretor_id)?.funcao || 'Corretor',
-        campanha_id: r.campanha_id,
-        campanha_nome: campMap.get(r.campanha_id) || 'Campanha',
-        cliente_cpf: r.cliente_cpf,
-        tabulacao: 'CLIENTE CHAMADO',
-        origem: 'CAMPANHA',
-        data_chamado: r.created_at ? r.created_at.split('T')[0] : sDate,
-        created_at: r.created_at
-      }));
-
-      setReportData(mapped);
+      setReportData(filtered);
     } catch (err: any) {
       console.error("Erro ao carregar relatório de chamados:", err);
       toast.error("Erro ao carregar dados do relatório de chamados.");
@@ -1228,10 +1293,31 @@ export default function DistribuicaoCampanhaPage() {
     const fetchAllUsers = async () => {
       try {
         const response = await fetch('/api/usuarios')
+        let usersData: BrokerUser[] = []
         if (response.ok) {
-          const data = await response.json()
-          setAllUsers(data || [])
+          usersData = await response.json()
         }
+
+        // Identifica colaboradores inativos do RH para exclusão completa da listagem
+        try {
+          const { data: hrInactive } = await supabase
+            .from('hr_colaboradores')
+            .select('usuario_id, nome')
+            .eq('status', 'Inativo')
+
+          if (hrInactive && hrInactive.length > 0) {
+            const inactIds = new Set(hrInactive.map((h: { usuario_id?: string | null }) => h.usuario_id).filter(Boolean))
+            const inactNames = new Set(hrInactive.map((h: { nome?: string | null }) => (h.nome || '').trim().toLowerCase()).filter(Boolean))
+            usersData = usersData.map((u: BrokerUser) => {
+              if (inactIds.has(u.id) || inactNames.has(u.nome.trim().toLowerCase())) {
+                return { ...u, status: 'INATIVO' }
+              }
+              return u
+            })
+          }
+        } catch (_) {}
+
+        setAllUsers(usersData || [])
       } catch (err) {
         console.error("Erro ao buscar usuários do sistema:", err)
       }
@@ -1272,6 +1358,8 @@ export default function DistribuicaoCampanhaPage() {
                       className="h-10 px-4 text-[11px] font-extrabold uppercase tracking-wider border-amber-300 text-amber-900 bg-amber-50 hover:bg-amber-100 shadow-sm flex items-center gap-2 whitespace-nowrap"
                       onClick={() => {
                         setIsReportModalOpen(true);
+                        setReportSelectedUsers([]);
+                        setReportSelectedCampaigns([]);
                         fetchChamadosReport();
                       }}
                     >
@@ -2156,50 +2244,250 @@ export default function DistribuicaoCampanhaPage() {
                   />
                 </div>
 
-                {/* Filtro Usuário */}
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">
-                    Usuário
-                  </label>
-                  <select
-                    value={reportSelectedUser}
-                    onChange={(e) => setReportSelectedUser(e.target.value)}
-                    className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500"
-                  >
-                    <option value="TODOS">TODOS OS USUÁRIOS</option>
-                    {allUsers
-                      .filter((u) => (u.status || 'ATIVO').trim().toUpperCase() === 'ATIVO')
-                      .slice()
-                      .sort((a, b) => a.nome.localeCompare(b.nome))
-                      .map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.nome} {u.funcao ? `(${u.funcao})` : ""}
-                        </option>
-                      ))}
-                  </select>
-                </div>
+                {/* Filtro Usuário com Caixas Seletoras para Múltipla Escolha */}
+                {(() => {
+                  const activeReportUsers = periodUsers;
 
-                {/* Filtro Campanha */}
-                <div>
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">
-                    Campanha
-                  </label>
-                  <select
-                    value={reportSelectedCampaign}
-                    onChange={(e) => setReportSelectedCampaign(e.target.value)}
-                    className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500"
-                  >
-                    <option value="TODAS">TODAS AS CAMPANHAS</option>
-                    {campaigns
-                      .slice()
-                      .sort((a, b) => a.nome.localeCompare(b.nome))
-                      .map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.nome}
-                        </option>
-                      ))}
-                  </select>
-                </div>
+                  const isAllUsersSelected = activeReportUsers.length > 0 && reportSelectedUsers.length === activeReportUsers.length;
+
+                  const handleToggleAllUsers = () => {
+                    if (isAllUsersSelected) {
+                      setReportSelectedUsers([]);
+                    } else {
+                      setReportSelectedUsers(activeReportUsers.map(u => u.id));
+                    }
+                  };
+
+                  const handleToggleUser = (userId: string) => {
+                    if (reportSelectedUsers.includes(userId)) {
+                      setReportSelectedUsers(reportSelectedUsers.filter(id => id !== userId));
+                    } else {
+                      setReportSelectedUsers([...reportSelectedUsers, userId]);
+                    }
+                  };
+
+                  const userLabel = (() => {
+                    if (reportSelectedUsers.length === 0) return "Selecione usuários...";
+                    if (isAllUsersSelected) return "TODOS OS USUÁRIOS";
+                    if (reportSelectedUsers.length === 1) {
+                      const u = periodUsers.find(item => item.id === reportSelectedUsers[0]) || allUsers.find(item => item.id === reportSelectedUsers[0]);
+                      return u ? `${u.nome} ${u.funcao ? `(${u.funcao})` : ""}` : "1 usuário selecionado";
+                    }
+                    return `${reportSelectedUsers.length} usuários selecionados`;
+                  })();
+
+                  const filteredUsers = activeReportUsers.filter(u =>
+                    !userSearchTerm.trim() ||
+                    u.nome.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+                    (u.funcao && u.funcao.toLowerCase().includes(userSearchTerm.toLowerCase()))
+                  );
+
+                  return (
+                    <div className="relative" ref={userDropdownRef}>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">
+                        Usuário
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsUserDropdownOpen(!isUserDropdownOpen);
+                          setIsCampaignDropdownOpen(false);
+                        }}
+                        className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500 flex items-center justify-between text-left transition-colors cursor-pointer"
+                        title={userLabel}
+                      >
+                        <span className={cn("truncate", reportSelectedUsers.length === 0 && "text-slate-400 font-medium")}>{userLabel}</span>
+                        <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform shrink-0 ml-1.5", isUserDropdownOpen && "rotate-180")} />
+                      </button>
+
+                      {isUserDropdownOpen && (
+                        <div className="absolute left-0 right-0 top-full mt-1.5 z-[100] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 min-w-[260px]">
+                          <div className="p-2 border-b border-slate-100 bg-slate-50/50">
+                            <div className="relative">
+                              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                placeholder="Buscar usuário..."
+                                value={userSearchTerm}
+                                onChange={(e) => setUserSearchTerm(e.target.value)}
+                                className="w-full h-7 pl-8 pr-2.5 text-[11px] bg-white border border-slate-200 rounded-md outline-none focus:border-amber-500 text-slate-700 font-medium"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="max-h-56 overflow-y-auto p-1.5 space-y-0.5 divide-y divide-slate-50">
+                            <label
+                              className="flex items-center gap-2.5 px-2.5 py-1.5 hover:bg-amber-50/60 rounded-lg cursor-pointer text-[11px] font-bold text-slate-800 transition-colors select-none"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isAllUsersSelected}
+                                onChange={handleToggleAllUsers}
+                                className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer shrink-0"
+                              />
+                              <span className="truncate">TODOS OS USUÁRIOS</span>
+                            </label>
+
+                            <div className="pt-0.5 space-y-0.5">
+                              {filteredUsers.length === 0 ? (
+                                <div className="px-3 py-3 text-center text-[11px] text-slate-400 font-medium">
+                                  {activeReportUsers.length === 0 ? "Nenhum usuário ativo no período." : "Nenhum usuário ativo encontrado."}
+                                </div>
+                              ) : (
+                                filteredUsers.map((u) => {
+                                  const isChecked = reportSelectedUsers.includes(u.id);
+                                  return (
+                                    <label
+                                      key={u.id}
+                                      className={cn(
+                                        "flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer text-[11px] font-medium transition-colors select-none",
+                                        isChecked ? "bg-amber-50/40 text-amber-950 font-semibold" : "hover:bg-slate-50 text-slate-700"
+                                      )}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => handleToggleUser(u.id)}
+                                        className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer shrink-0"
+                                      />
+                                      <span className="truncate">
+                                        {u.nome} {u.funcao ? `(${u.funcao})` : ""}
+                                      </span>
+                                    </label>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Filtro Campanha com Caixas Seletoras para Múltipla Escolha */}
+                {(() => {
+                  const sortedReportCampaigns = periodCampaigns;
+
+                  const isAllCampaignsSelected = sortedReportCampaigns.length > 0 && reportSelectedCampaigns.length === sortedReportCampaigns.length;
+
+                  const handleToggleAllCampaigns = () => {
+                    if (isAllCampaignsSelected) {
+                      setReportSelectedCampaigns([]);
+                    } else {
+                      setReportSelectedCampaigns(sortedReportCampaigns.map(c => c.id));
+                    }
+                  };
+
+                  const handleToggleCampaign = (campaignId: string) => {
+                    if (reportSelectedCampaigns.includes(campaignId)) {
+                      setReportSelectedCampaigns(reportSelectedCampaigns.filter(id => id !== campaignId));
+                    } else {
+                      setReportSelectedCampaigns([...reportSelectedCampaigns, campaignId]);
+                    }
+                  };
+
+                  const campaignLabel = (() => {
+                    if (reportSelectedCampaigns.length === 0) return "Selecione campanhas...";
+                    if (isAllCampaignsSelected) return "TODAS AS CAMPANHAS";
+                    if (reportSelectedCampaigns.length === 1) {
+                      const c = periodCampaigns.find(item => item.id === reportSelectedCampaigns[0]) || campaigns.find(item => item.id === reportSelectedCampaigns[0]);
+                      return c ? c.nome : "1 campanha selecionada";
+                    }
+                    return `${reportSelectedCampaigns.length} campanhas selecionadas`;
+                  })();
+
+                  const filteredCampaigns = sortedReportCampaigns.filter(c =>
+                    !campaignSearchTerm.trim() ||
+                    c.nome.toLowerCase().includes(campaignSearchTerm.toLowerCase())
+                  );
+
+                  return (
+                    <div className="relative" ref={campaignDropdownRef}>
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 block">
+                        Campanha
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCampaignDropdownOpen(!isCampaignDropdownOpen);
+                          setIsUserDropdownOpen(false);
+                        }}
+                        className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 outline-none focus:ring-1 focus:ring-amber-500 flex items-center justify-between text-left transition-colors cursor-pointer"
+                        title={campaignLabel}
+                      >
+                        <span className={cn("truncate", reportSelectedCampaigns.length === 0 && "text-slate-400 font-medium")}>{campaignLabel}</span>
+                        <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform shrink-0 ml-1.5", isCampaignDropdownOpen && "rotate-180")} />
+                      </button>
+
+                      {isCampaignDropdownOpen && (
+                        <div className="absolute left-0 right-0 top-full mt-1.5 z-[100] bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 min-w-[260px]">
+                          <div className="p-2 border-b border-slate-100 bg-slate-50/50">
+                            <div className="relative">
+                              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                              <input
+                                type="text"
+                                placeholder="Buscar campanha..."
+                                value={campaignSearchTerm}
+                                onChange={(e) => setCampaignSearchTerm(e.target.value)}
+                                className="w-full h-7 pl-8 pr-2.5 text-[11px] bg-white border border-slate-200 rounded-md outline-none focus:border-amber-500 text-slate-700 font-medium"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="max-h-56 overflow-y-auto p-1.5 space-y-0.5 divide-y divide-slate-50">
+                            <label
+                              className="flex items-center gap-2.5 px-2.5 py-1.5 hover:bg-amber-50/60 rounded-lg cursor-pointer text-[11px] font-bold text-slate-800 transition-colors select-none"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isAllCampaignsSelected}
+                                onChange={handleToggleAllCampaigns}
+                                className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer shrink-0"
+                              />
+                              <span className="truncate">TODAS AS CAMPANHAS</span>
+                            </label>
+
+                            <div className="pt-0.5 space-y-0.5">
+                              {filteredCampaigns.length === 0 ? (
+                                <div className="px-3 py-3 text-center text-[11px] text-slate-400 font-medium">
+                                  {sortedReportCampaigns.length === 0 ? "Nenhuma campanha trabalhada no período." : "Nenhuma campanha trabalhada encontrada."}
+                                </div>
+                              ) : (
+                                filteredCampaigns.map((c) => {
+                                  const isChecked = reportSelectedCampaigns.includes(c.id);
+                                  return (
+                                    <label
+                                      key={c.id}
+                                      className={cn(
+                                        "flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer text-[11px] font-medium transition-colors select-none",
+                                        isChecked ? "bg-amber-50/40 text-amber-950 font-semibold" : "hover:bg-slate-50 text-slate-700"
+                                      )}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => handleToggleCampaign(c.id)}
+                                        className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer shrink-0"
+                                      />
+                                      <span className="truncate">{c.nome}</span>
+                                    </label>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Barra de atalhos e ações */}
@@ -2211,7 +2499,9 @@ export default function DistribuicaoCampanhaPage() {
                       const today = new Date().toISOString().split('T')[0];
                       setReportStartDate(today);
                       setReportEndDate(today);
-                      fetchChamadosReport(today, today);
+                      setReportSelectedUsers([]);
+                      setReportSelectedCampaigns([]);
+                      fetchChamadosReport(today, today, [], []);
                     }}
                     className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
                   >
@@ -2225,7 +2515,9 @@ export default function DistribuicaoCampanhaPage() {
                       const start = d.toISOString().split('T')[0];
                       setReportStartDate(start);
                       setReportEndDate(end);
-                      fetchChamadosReport(start, end);
+                      setReportSelectedUsers([]);
+                      setReportSelectedCampaigns([]);
+                      fetchChamadosReport(start, end, [], []);
                     }}
                     className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
                   >
@@ -2238,7 +2530,9 @@ export default function DistribuicaoCampanhaPage() {
                       const end = now.toISOString().split('T')[0];
                       setReportStartDate(start);
                       setReportEndDate(end);
-                      fetchChamadosReport(start, end);
+                      setReportSelectedUsers([]);
+                      setReportSelectedCampaigns([]);
+                      fetchChamadosReport(start, end, [], []);
                     }}
                     className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors"
                   >
@@ -2248,7 +2542,7 @@ export default function DistribuicaoCampanhaPage() {
 
                 <div className="flex items-center gap-2">
                   <Button
-                    onClick={() => fetchChamadosReport()}
+                    onClick={() => fetchChamadosReport(reportStartDate, reportEndDate, reportSelectedUsers, reportSelectedCampaigns)}
                     disabled={isLoadingReport}
                     className="h-8 px-4 text-[10.5px] font-bold uppercase tracking-wider bg-[#1C2643] hover:bg-[#1C2643]/90 text-white rounded-lg flex items-center gap-1.5"
                   >
