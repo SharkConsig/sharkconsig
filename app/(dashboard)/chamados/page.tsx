@@ -1477,6 +1477,7 @@ export default function TicketsPage() {
       // Status category filter
       let matchesStatus = true
       const ticketStatusUpper = (ticket.status_chamados?.nome || ticket.status || "").trim().toUpperCase()
+      const ticketOrigemUpper = (ticket.origem || "").trim().toUpperCase()
       
       if (selectedSecondaryStatus) {
         const u = selectedSecondaryStatus.toUpperCase()
@@ -1487,8 +1488,8 @@ export default function TicketsPage() {
           matchesStatus = ticketStatusUpper === u || ticketStatusUpper === ua
         }
       } else if (selectedStatus && selectedStatus !== "TODOS") {
-        if (selectedStatus === "SLA ESTOURADO") {
-          matchesStatus = isTicketInSLAFolder(ticket)
+        if (selectedStatus === "TESTES KANBAN") {
+          matchesStatus = ticketOrigemUpper === "KANBAN" || ticketStatusUpper.includes("KANBAN")
         } else if (selectedStatus === "APROVADOS") {
           matchesStatus = APROVADOS_LABELS.some(label => {
             const u = label.toUpperCase()
@@ -1521,7 +1522,7 @@ export default function TicketsPage() {
       
       return matchesStatus
     })
-  }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus, isTicketInSLAFolder])
+  }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus])
 
   // Summing values per status label
   const statusValues = useMemo(() => {
@@ -1538,32 +1539,37 @@ export default function TicketsPage() {
   const statusCards = useMemo(() => {
     const list = statusCardsList.map(c => ({ ...c }))
 
-    if (isGestaoOrSupervisor) {
-      const slaTickets = baseFilteredTickets.filter(isTicketInSLAFolder)
-      const slaCount = slaTickets.length
-      const slaTotalValor = slaTickets.reduce((acc, t) => {
+    // Adiciona pasta TESTES KANBAN ao lado direito de TODOS exclusivamente para Desenvolvedor e Administrador
+    if (isUserAdmin) {
+      const kanbanTickets = baseFilteredTickets.filter(t => {
+        const o = (t.origem || "").trim().toUpperCase()
+        const s = (t.status_chamados?.nome || t.status || "").trim().toUpperCase()
+        return o === "KANBAN" || s.includes("KANBAN")
+      })
+      const kanbanCount = kanbanTickets.length
+      const kanbanTotalValor = kanbanTickets.reduce((acc, t) => {
         const opData = getValorOperacaoDeAbertura(t)
         return acc + parseValorToNumber(opData.valor)
       }, 0)
 
-      const todosIdx = list.findIndex(c => c.label === "TODOS")
-      const slaCard = {
-        label: "SLA ESTOURADO",
-        count: slaCount,
-        totalValor: slaTotalValor,
-        color: "border-t-[#610000] bg-[#610000]/5",
-        textColor: "text-[#610000]"
+      const kanbanCard = {
+        label: "TESTES KANBAN",
+        count: kanbanCount,
+        totalValor: kanbanTotalValor,
+        color: "border-t-indigo-600 bg-indigo-50/20",
+        textColor: "text-indigo-600"
       }
 
+      const todosIdx = list.findIndex(c => c.label === "TODOS")
       if (todosIdx !== -1) {
-        list.splice(todosIdx, 0, slaCard)
+        list.splice(todosIdx + 1, 0, kanbanCard)
       } else {
-        list.push(slaCard)
+        list.push(kanbanCard)
       }
     }
 
     return list.map(card => {
-      if (card.label === "SLA ESTOURADO") {
+      if (card.label === "TESTES KANBAN") {
         return card
       }
       let count = counts[card.label] || 0
@@ -1618,7 +1624,7 @@ export default function TicketsPage() {
 
       return { ...card, count, totalValor }
     })
-  }, [counts, statusValues, baseFilteredTickets, isGestaoOrSupervisor, isTicketInSLAFolder])
+  }, [counts, statusValues, baseFilteredTickets, isUserAdmin])
 
   const handleParentClick = (status: string) => {
     setCurrentPage(1)
@@ -2196,21 +2202,21 @@ export default function TicketsPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total de Clientes Chamados</span>
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-800">Clientes Únicos Chamados</span>
                     <Badge variant="outline" className="text-[8.5px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border-amber-200">
                       Tabulação
                     </Badge>
                   </div>
-                  <div className="flex items-baseline gap-2.5 mt-0.5">
+                  <div className="flex flex-wrap items-baseline gap-2.5 mt-0.5">
                     <span className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">
-                      {isLoadingClientesChamados && totalClientesChamados === 0 ? (
+                      {isLoadingClientesChamados && totalClientesUnicos === 0 ? (
                         <Loader2 className="w-6 h-6 animate-spin text-amber-500 inline-block" />
                       ) : (
-                        totalClientesChamados.toLocaleString('pt-BR')
+                        totalClientesUnicos.toLocaleString('pt-BR')
                       )}
                     </span>
                     <span className="text-[11.5px] font-bold text-slate-500">
-                      ({totalClientesUnicos.toLocaleString('pt-BR')} clientes únicos)
+                      ({totalClientesChamados.toLocaleString('pt-BR')} foi o total de clientes chamados)
                     </span>
                   </div>
                   <p className="text-[10.5px] font-medium text-slate-400 mt-0.5">
@@ -2236,7 +2242,7 @@ export default function TicketsPage() {
         </Card>
 
         {/* Status Counts Grid */}
-        <div className={cn("grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4", isGestaoOrSupervisor ? "xl:grid-cols-7" : "xl:grid-cols-6")}>
+        <div className={cn("grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4", isUserAdmin ? "xl:grid-cols-7" : "xl:grid-cols-6")}>
           {statusCards.map((card) => (
             <button 
               key={card.label}
