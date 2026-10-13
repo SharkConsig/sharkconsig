@@ -509,6 +509,9 @@ export default function KanbanPage() {
     userRole === "Desenvolvedor"
   )
 
+  // Visão Ativa do Módulo Kanban: "MINHA_FILA" (padrão inicial) ou "KANBAN"
+  const [activeView, setActiveView] = useState<"MINHA_FILA" | "KANBAN">("MINHA_FILA")
+
   const [tickets, setTickets] = useState<TicketItem[]>([])
   const [usersList, setUsersList] = useState<UserSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -2601,6 +2604,524 @@ export default function KanbanPage() {
     }
   }
 
+  // Categorização da Minha Fila em AGORA, VENCIDAS e FUTURAS
+  const filaCategorias = useMemo(() => {
+    const now = new Date()
+    const vencidas: Array<{ ticket: TicketItem; atrasoTexto: string }> = []
+    const agora: TicketItem[] = []
+    const futuras: TicketItem[] = []
+
+    const leadsAtivos = filteredTickets.filter(t => t.status !== "FECHADO" && t.status !== "PERDIDO")
+
+    leadsAtivos.forEach(ticket => {
+      const meta = parseMetadata(ticket.descricao)
+      const dateStr = meta.vencimento_acao || meta.agendamento_data
+
+      let vencimentoDate: Date | null = null
+      if (dateStr) {
+        const parsed = new Date(dateStr)
+        if (!isNaN(parsed.getTime())) {
+          vencimentoDate = parsed
+        }
+      }
+
+      const isAtrasado = Boolean(meta.alerta_atrasado) || (vencimentoDate !== null && vencimentoDate.getTime() < now.getTime())
+      const isFuturo = !isAtrasado && vencimentoDate !== null && vencimentoDate.getTime() > now.getTime() + 10 * 60 * 1000
+
+      if (isAtrasado) {
+        let atrasoTexto = "Prazo expirado"
+        if (vencimentoDate) {
+          atrasoTexto = `${formatDistanceToNow(vencimentoDate, { locale: ptBR })} de atraso`
+        } else if (ticket.updated_at) {
+          atrasoTexto = `${formatDistanceToNow(new Date(ticket.updated_at), { locale: ptBR })} sem ação`
+        }
+        vencidas.push({ ticket, atrasoTexto })
+      } else if (isFuturo) {
+        futuras.push(ticket)
+      } else {
+        agora.push(ticket)
+      }
+    })
+
+    return { agora, vencidas, futuras }
+  }, [filteredTickets])
+
+  // Função reutilizável para renderizar exatamente o mesmo Cartão de Tarefa em ambas as visões
+  const renderTicketCard = (ticket: TicketItem, atrasoCustomTexto?: string, isDraggable: boolean = true) => {
+    const meta = parseMetadata(ticket.descricao)
+    const opData = getValorOperacaoDeAbertura(ticket)
+    const opValorNum = parseValorToNumber(opData.valor)
+    const valorTotal = opValorNum > 0 ? opValorNum : Number(ticket.valor_operacao || ticket.margem || 0)
+    const isCardRevealed = Boolean(revealedCpfs[ticket.id] || revealedPhones[ticket.id])
+
+    // Identificar se há alerta de alto valor (> 20k ou > 50k)
+    const isAltoValor = valorTotal >= 20000
+
+    // Próxima Ação e Vencimento
+    const rawProximaAcao = meta.proxima_acao || (
+      ticket.status === "EM ABORDAGEM" ? "Realizar Primeiro Contato Imediato" :
+      ticket.status === "EM RETOMADA" ? "Enviar Régua de Retomada 1 via WhatsApp" :
+      ticket.status === "EM NEGOCIAÇÃO" ? "Enviar simulação ajustada e esclarecer dúvidas" :
+      ticket.status === "EM REATIVAÇÃO" ? "Resgatar contato esfriado após 48h úteis" :
+      ticket.status === "SEM INTERESSE" ? "Programar cadência longa / nutrição" :
+      ticket.status === "FECHADO" ? "Proposta Digitada no Sistema" :
+      "Finalização registrada por inviabilidade"
+    )
+    const proximaAcaoTexto = rawProximaAcao.replace(/^\[[^\]]+\]\s*/, "")
+
+    const vencimentoLabel = meta.vencimento_acao 
+      ? format(new Date(meta.vencimento_acao), "dd/MM 'às' HH:mm")
+      : "Hoje às 14:30"
+
+    return (
+      <div
+        key={ticket.id}
+        draggable={isDraggable}
+        onDragStart={isDraggable ? (e) => {
+          e.dataTransfer.setData("text/plain", ticket.id)
+          e.dataTransfer.effectAllowed = "move"
+          setDraggedTicket(ticket)
+        } : undefined}
+        onDragEnd={isDraggable ? () => {
+          setDraggedTicket(null)
+          setDragOverColumnId(null)
+        } : undefined}
+        onClick={() => handleCardClick(ticket)}
+        className={cn(
+          "bg-white rounded-lg border border-slate-200 p-3 shadow-xs hover:shadow-xl hover:shadow-slate-900/15 hover:scale-[1.01] hover:-translate-y-0.5 hover:border-slate-300 transition-all duration-200 ease-out transform space-y-2.5 relative group hover:z-10",
+          isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+          draggedTicket?.id === ticket.id && "opacity-40 scale-95 border-dashed border-indigo-400"
+        )}
+      >
+        {/* Indicação destacada de tempo de atraso (quando na aba Vencidas) */}
+        {atrasoCustomTexto && (
+          <div className="bg-rose-50 border border-rose-200 text-rose-800 px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              <span>Atraso:</span>
+            </span>
+            <span className="font-extrabold text-rose-700">{atrasoCustomTexto}</span>
+          </div>
+        )}
+
+        {/* 1. Cabeçalho Visual: Tags de Alerta e Cronômetro/Prazo */}
+        <div className="flex items-start justify-between gap-1.5 text-[11px]">
+          <div className="flex flex-wrap gap-1">
+            {meta.alerta_atrasado && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-rose-100 text-rose-800 border border-rose-200 animate-pulse text-[12px]">
+                🔴 ATRASADO
+              </span>
+            )}
+            {(meta.acao_especial || isAltoValor) && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800 border border-amber-200 text-[12px]">
+                🟡 AÇÃO ESPECIAL
+              </span>
+            )}
+            {meta.conflito_titularidade && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-sky-100 text-sky-800 border border-sky-200 text-[12px]">
+                🔵 EM NEGOCIAÇÃO COM OUTRO
+              </span>
+            )}
+            {!isDraggable && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                {ticket.status}
+              </span>
+            )}
+          </div>
+
+          {/* Cronômetro / Tempo na Etapa */}
+          <span className="text-slate-700 font-medium whitespace-nowrap flex items-center gap-1 text-[12px]">
+            <Clock className="w-3 h-3 text-slate-600" />
+            {ticket.updated_at 
+              ? formatDistanceToNow(new Date(ticket.updated_at), { addSuffix: false, locale: ptBR })
+              : "recente"}
+          </span>
+        </div>
+
+        {/* 2. Dados Principais do Cliente */}
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-[13px] font-bold text-slate-900 tracking-tight line-clamp-1 group-hover:text-sky-600 transition-colors">
+              {ticket.cliente_nome || "Nome não informado"}
+            </h3>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleRevealCard(ticket.id)
+              }}
+              className="text-slate-700 hover:text-slate-900 p-0.5 cursor-pointer shrink-0 transition-colors"
+              title={isCardRevealed ? "Ocultar dados" : "Revelar dados"}
+            >
+              {isCardRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1 text-[12px] text-slate-500">
+            <span>CPF:</span>
+            <span
+              onClick={(e) => {
+                e.stopPropagation()
+                if (ticket.cliente_cpf) {
+                  handleCopy(ticket.cliente_cpf, "CPF")
+                }
+              }}
+              className={cn(
+                "font-mono font-medium text-slate-700 whitespace-nowrap transition-colors",
+                ticket.cliente_cpf && "cursor-pointer hover:text-blue-600"
+              )}
+              title={ticket.cliente_cpf ? "Clique para copiar CPF" : undefined}
+            >
+              {isCardRevealed ? (ticket.cliente_cpf || "---") : maskCpf(ticket.cliente_cpf)}
+            </span>
+          </div>
+
+          {/* TELEFONES DO LEAD */}
+          {(() => {
+            const allPhones = Array.from(new Set([
+              ticket.cliente_telefone,
+              ticket.cliente_telefone_2,
+              ticket.cliente_telefone_3,
+              ...(ticket.telefones || [])
+            ].filter(Boolean) as string[]))
+
+            const metaDesc = parseMetadata(ticket.descricao)
+            const selected = (ticket.telefones_selecionados && ticket.telefones_selecionados.length > 0)
+              ? ticket.telefones_selecionados
+              : (Array.isArray(metaDesc.telefones_selecionados) && metaDesc.telefones_selecionados.length > 0)
+                ? metaDesc.telefones_selecionados
+                : []
+
+            if (selected.length === 0) {
+              return null
+            }
+
+            const filtered = allPhones.filter(phone => {
+              const cleanPhone = phone.replace(/\D/g, "")
+              return selected.some(sp => {
+                const cleanSp = sp.replace(/\D/g, "")
+                return cleanSp === cleanPhone || (cleanPhone.length >= 8 && cleanSp.slice(-8) === cleanPhone.slice(-8))
+              })
+            })
+            const cardPhones = filtered.length > 0 ? filtered : selected
+
+            if (cardPhones.length === 0) {
+              return null
+            }
+
+            return (
+              <div className="flex flex-col gap-0.5 text-[12px] text-slate-500">
+                {cardPhones.map((phone, pIdx) => (
+                  <div key={pIdx} className="flex items-center gap-1">
+                    <span className="text-[11px] text-slate-400 font-semibold">
+                      {cardPhones.length > 1 ? `Tel ${pIdx + 1}:` : "Tel:"}
+                    </span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (phone) {
+                          handleCopy(phone, "Telefone")
+                        }
+                      }}
+                      className={cn(
+                        "font-mono font-medium text-slate-700 whitespace-nowrap transition-colors",
+                        phone && "cursor-pointer hover:text-blue-600"
+                      )}
+                      title={phone ? "Clique para copiar Telefone" : undefined}
+                    >
+                      {isCardRevealed ? (formatPhone(phone) || "---") : maskPhone(phone)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+        </div>
+
+        {/* 3. Informações Comerciais e de Titularidade */}
+        <div className="bg-slate-50/90 rounded-md p-2 border border-slate-100 text-[12px] space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500">Valor Operação:</span>
+            <div className="flex flex-col items-end">
+              <span className="font-bold text-slate-900 leading-tight">
+                {opData.valor}
+              </span>
+              <span className={cn("text-[8.5px] uppercase font-black tracking-tight mt-0.5", opData.color)}>
+                {opData.label}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-slate-500">Tipo:</span>
+            <span className="font-medium text-slate-700 truncate max-w-[120px]">
+              {meta.selected_operation_type || ticket.convenio || "Consignado"}
+            </span>
+          </div>
+          {isGestor && (
+            <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+              <span className="text-slate-500">Responsável:</span>
+              <span className="font-semibold text-sky-700 truncate max-w-[130px]">
+                {ticket.user_nome || meta.corretor_nome || "Não atribuído"}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* 4. Bloco da Próxima Ação */}
+        <div className="bg-amber-100/90 border border-amber-300 rounded-md p-2 text-[12px] space-y-0.5 shadow-2xs">
+          <div className="font-extrabold text-amber-950 flex items-center gap-1">
+            <span>📌 PRÓXIMA AÇÃO:</span>
+          </div>
+          <p className="text-[12px] text-amber-900 font-semibold line-clamp-2">
+            {proximaAcaoTexto}
+          </p>
+          <div className="text-[12px] text-amber-800 flex items-center gap-1 pt-0.5 font-semibold">
+            <Clock className="w-3.5 h-3.5 text-amber-700" />
+            <span>Vencimento: {vencimentoLabel}</span>
+          </div>
+        </div>
+
+        {/* 5. Barra de Ações Rápidas */}
+        <div 
+          className="flex items-center justify-between gap-1 pt-1 border-t border-slate-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleOpenWhatsApp(ticket)}
+            className="h-7 p-0 flex items-center justify-center text-emerald-600 bg-white hover:bg-emerald-500 hover:border-emerald-500 hover:text-white [&:hover>svg]:text-white flex-1 border border-emerald-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
+            title="WhatsApp"
+            aria-label="WhatsApp"
+          >
+            <MessageCircle className="w-3.5 h-3.5 transition-colors" />
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleOpenAgendar(ticket)}
+            className="h-7 p-0 flex items-center justify-center text-sky-600 bg-white hover:bg-sky-500 hover:border-sky-500 hover:text-white [&:hover>svg]:text-white flex-1 border border-sky-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
+            title="Agendar Retorno"
+            aria-label="Agendar"
+          >
+            <CalendarIcon className="w-3.5 h-3.5 transition-colors" />
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleOpenMoverEtapa(ticket)}
+            className="h-7 p-0 flex items-center justify-center text-indigo-600 bg-white hover:bg-indigo-600 hover:border-indigo-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-indigo-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
+            title="Mover para outra Etapa"
+            aria-label="Mover"
+          >
+            <ArrowRight className="w-3.5 h-3.5 transition-colors" />
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setHistoricoModalTicket(ticket)}
+            className="h-7 p-0 flex items-center justify-center text-purple-600 bg-white hover:bg-purple-600 hover:border-purple-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-purple-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
+            title="Histórico do Atendimento"
+            aria-label="Histórico do Atendimento"
+          >
+            <History className="w-3.5 h-3.5 transition-colors" />
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  const renderFiltersAndMetrics = () => (
+    <>
+      {/* Informações: Total de Clientes */}
+      <div className="flex flex-wrap items-center gap-6 px-1 shrink-0">
+        {/* Total de Clientes */}
+        <div className="text-left select-none">
+          <p className="text-base font-bold text-slate-800 tracking-tight">
+            Total de Clientes: <span className="text-slate-900 font-extrabold">{metrics.totalLeads}</span>
+          </p>
+          <p className="text-xs text-slate-400 font-medium">
+            {metrics.totalLeads} {metrics.totalLeads === 1 ? "lead em atendimento" : "leads em atendimento"}
+          </p>
+        </div>
+      </div>
+
+      {/* Barra de Filtros */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100 shadow-xs shrink-0">
+        {/* Busca por Nome, CPF ou Telefone */}
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <Input
+            type="text"
+            placeholder="Buscar por Nome, CPF ou Telefone..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="pl-9 text-xs h-9 bg-white border-slate-200 text-slate-900 placeholder:text-slate-400"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm("")}
+              className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Filtro por Responsável (Gestores) com campo de busca e ordenação A-Z de ativos */}
+        {isGestor && (
+          <div ref={responsavelDropdownRef} className="relative">
+            <div
+              onClick={() => {
+                setIsResponsavelDropdownOpen(prev => !prev)
+              }}
+              className={cn(
+                "w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md flex items-center justify-between font-medium text-slate-700 cursor-pointer hover:bg-slate-50 transition-colors shadow-2xs select-none",
+                isResponsavelDropdownOpen && "ring-1 ring-sky-500 border-sky-400"
+              )}
+            >
+              <div className="flex items-center gap-1.5 truncate">
+                {selectedResponsavel === "ALL" ? (
+                  <>
+                    <span className="text-slate-400">👥</span>
+                    <span className="truncate">Todos os Responsáveis</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sky-600 font-bold">👤</span>
+                    <span className="font-semibold text-slate-900 truncate">
+                      {selectedUserObj ? selectedUserObj.nome : "Responsável selecionado"}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1 shrink-0 ml-2">
+                {selectedResponsavel !== "ALL" && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedResponsavel("ALL")
+                    }}
+                    title="Limpar filtro de responsável"
+                    className="p-0.5 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-200/60"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 transition-transform", isResponsavelDropdownOpen && "rotate-180")} />
+              </div>
+            </div>
+
+            {isResponsavelDropdownOpen && (
+              <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden text-xs animate-in fade-in zoom-in-95 duration-100">
+                {/* Campo de Busca de Responsável */}
+                <div className="p-2 border-b border-slate-100 bg-slate-50/70">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                    <Input
+                      autoFocus
+                      type="text"
+                      placeholder="Buscar responsável..."
+                      value={responsavelSearchQuery}
+                      onChange={e => setResponsavelSearchQuery(e.target.value)}
+                      className="pl-8 pr-7 h-8 text-xs bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-sky-500"
+                    />
+                    {responsavelSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setResponsavelSearchQuery("")}
+                        className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Lista de Opções (Ativos em ordem A-Z) */}
+                <div className="max-h-56 overflow-y-auto p-1 divide-y divide-slate-50">
+                  {/* Opção Todos os Responsáveis */}
+                  {!responsavelSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedResponsavel("ALL")
+                        setIsResponsavelDropdownOpen(false)
+                        setResponsavelSearchQuery("")
+                      }}
+                      className={cn(
+                        "w-full text-left px-2.5 py-2 rounded flex items-center justify-between hover:bg-slate-100 transition-colors",
+                        selectedResponsavel === "ALL" ? "bg-sky-50 text-sky-800 font-bold" : "text-slate-700"
+                      )}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span>👥</span>
+                        <span>Todos os Responsáveis</span>
+                      </span>
+                      {selectedResponsavel === "ALL" && <Check className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
+                    </button>
+                  )}
+
+                  {filteredResponsaveis.length === 0 ? (
+                    <div className="py-4 text-center text-slate-400 text-xs">
+                      Nenhum responsável encontrado.
+                    </div>
+                  ) : (
+                    filteredResponsaveis.map(u => {
+                      const isSelected = selectedResponsavel === u.id
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedResponsavel(u.id)
+                            setIsResponsavelDropdownOpen(false)
+                            setResponsavelSearchQuery("")
+                          }}
+                          className={cn(
+                            "w-full text-left px-2.5 py-2 rounded flex items-center justify-between hover:bg-slate-100 transition-colors",
+                            isSelected ? "bg-sky-50 text-sky-800 font-bold" : "text-slate-700"
+                          )}
+                        >
+                          <div className="truncate pr-2">
+                            <span className="block truncate font-medium text-slate-800">{u.nome}</span>
+                            <span className="block text-[10px] text-slate-400 font-normal">
+                              {u.role || u.funcao || "Colaborador"}
+                            </span>
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Filtro por Alertas */}
+        <div>
+          <select
+            value={selectedAlertFilter}
+            onChange={e => setSelectedAlertFilter(e.target.value)}
+            className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-slate-300 font-medium text-slate-700"
+          >
+            <option value="ALL">🎯 Todos os Alertas / Status</option>
+            <option value="ATRASADO">🔴 Somente Atrasados</option>
+            <option value="ACAO_ESPECIAL">🟡 Somente Ação Especial</option>
+            <option value="CONFLITO">🔵 Somente Conflito de Titularidade</option>
+          </select>
+        </div>
+      </div>
+    </>
+  )
+
   return (
     <div className="flex flex-col h-screen min-h-screen bg-[#FDFDFD]">
       <Header hideQuickLinks>
@@ -2628,32 +3149,72 @@ export default function KanbanPage() {
       </Header>
       
       <main className="flex-1 p-4 lg:p-6 space-y-3.5 overflow-hidden flex flex-col bg-[#FDFDFD]">
-        {/* Linha Superior: Métricas Rápidas (Esquerda) e Gavetas de Triagem (Direita) */}
-        <div className="flex flex-wrap items-center justify-between gap-4 shrink-0">
-          {/* Métricas Rápidas alinhadas à esquerda */}
-          <div className="flex flex-wrap items-center gap-6 pl-1">
-            {/* Total de Clientes */}
-            <div className="text-left select-none">
-              <p className="text-base font-bold text-slate-800 tracking-tight">
-                Total de Clientes: <span className="text-slate-900 font-extrabold">{metrics.totalLeads}</span>
-              </p>
-              <p className="text-xs text-slate-400 font-medium">
-                {metrics.totalLeads} {metrics.totalLeads === 1 ? "lead em atendimento" : "leads em atendimento"}
-              </p>
+        {/* Linha Superior: Seletor de Visões (Minha Fila e Kanban à esquerda) e Gavetas de Triagem WhatsApp (à direita) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
+          {/* Lado Esquerdo: Cards de Visão (Minha Fila e Kanban) */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Card / Visão: Minha Fila */}
+            <div
+              onClick={() => setActiveView("MINHA_FILA")}
+              className={cn(
+                "bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 cursor-pointer group select-none",
+                activeView === "MINHA_FILA" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-sm"
+              )}
+              title="Visualizar Minha Fila (Tela inicial)"
+            >
+              <div className={cn(
+                "w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 transition-colors",
+                activeView === "MINHA_FILA"
+                  ? "bg-sky-500 text-white border-sky-600"
+                  : "bg-sky-50 border-sky-200/60 text-sky-600"
+              )}>
+                <UserCheck className="w-3.5 h-3.5" />
+              </div>
+              <div className="text-left">
+                <p className={cn(
+                  "text-xs font-bold tracking-tight transition-colors",
+                  activeView === "MINHA_FILA" ? "text-sky-950 font-black" : "text-slate-800 group-hover:text-slate-900"
+                )}>
+                  Minha Fila
+                </p>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  Atendimento individual
+                </p>
+              </div>
             </div>
 
-            {/* Pipeline */}
-            <div className="text-left select-none">
-              <p className="text-base font-bold text-slate-800 tracking-tight">
-                Pipeline: <span className="text-slate-900 font-extrabold">{metrics.totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-              </p>
-              <p className="text-xs text-slate-400 font-medium">
-                Valores em atendimento
-              </p>
+            {/* Card / Visão: Kanban */}
+            <div
+              onClick={() => setActiveView("KANBAN")}
+              className={cn(
+                "bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 cursor-pointer group select-none",
+                activeView === "KANBAN" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-sm"
+              )}
+              title="Visualizar Pipeline Kanban"
+            >
+              <div className={cn(
+                "w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 transition-colors",
+                activeView === "KANBAN"
+                  ? "bg-sky-500 text-white border-sky-600"
+                  : "bg-slate-100 border-slate-200 text-slate-600"
+              )}>
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+              </div>
+              <div className="text-left">
+                <p className={cn(
+                  "text-xs font-bold tracking-tight transition-colors",
+                  activeView === "KANBAN" ? "text-sky-950 font-black" : "text-slate-800 group-hover:text-slate-900"
+                )}>
+                  Kanban
+                </p>
+                <p className="text-[10px] text-slate-400 font-medium">
+                  Pipeline e 7 colunas
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Gavetas de Triagem WhatsApp */}
+          {/* Lado Direito: Gavetas de Triagem WhatsApp */}
           <div className="flex flex-wrap items-center gap-3">
             {/* Gaveta: Não Existe Whatsapp */}
             <div
@@ -2737,179 +3298,111 @@ export default function KanbanPage() {
           </div>
         </div>
 
-        {/* Card Principal do Kanban (Filtros e 7 Colunas) */}
-        <Card className="card-shadow bg-white border border-slate-200 rounded-2xl overflow-hidden flex-1 max-h-[95%] flex flex-col min-h-0">
-          <CardContent className="p-3 sm:p-5 flex-1 flex flex-col overflow-hidden min-h-0 space-y-4">
-            {/* Barra de Filtros */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100 shadow-xs shrink-0">
-              {/* Busca por Nome, CPF ou Telefone */}
-              <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <Input
-                  type="text"
-                  placeholder="Buscar por Nome, CPF ou Telefone..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="pl-9 text-xs h-9 bg-white border-slate-200 text-slate-900 placeholder:text-slate-400"
-                />
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm("")}
-                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-
-              {/* Filtro por Responsável (Gestores) com campo de busca e ordenação A-Z de ativos */}
-              {isGestor && (
-                <div ref={responsavelDropdownRef} className="relative">
-                  <div
-                    onClick={() => {
-                      setIsResponsavelDropdownOpen(prev => !prev)
-                    }}
-                    className={cn(
-                      "w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md flex items-center justify-between font-medium text-slate-700 cursor-pointer hover:bg-slate-50 transition-colors shadow-2xs select-none",
-                      isResponsavelDropdownOpen && "ring-1 ring-sky-500 border-sky-400"
-                    )}
-                  >
-                    <div className="flex items-center gap-1.5 truncate">
-                      {selectedResponsavel === "ALL" ? (
-                        <>
-                          <span className="text-slate-400">👥</span>
-                          <span className="truncate">Todos os Responsáveis</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="text-sky-600 font-bold">👤</span>
-                          <span className="font-semibold text-slate-900 truncate">
-                            {selectedUserObj ? selectedUserObj.nome : "Responsável selecionado"}
-                          </span>
-                        </>
-                      )}
+        {/* Visão 1: Minha Fila (3 Colunas Simultâneas: Agora, Vencidas e Futuras) */}
+        {activeView === "MINHA_FILA" && (
+          <Card className="card-shadow bg-white border border-slate-200 rounded-2xl overflow-hidden flex-1 max-h-[95%] flex flex-col min-h-0">
+            <CardContent className="p-3 sm:p-5 flex-1 flex flex-col overflow-hidden min-h-0 space-y-4">
+              {renderFiltersAndMetrics()}
+              <div className="flex-1 flex flex-col md:flex-row gap-4 h-full min-h-0 overflow-x-auto overflow-y-hidden">
+                {/* Coluna 1: AGORA */}
+                <div className="flex-1 max-w-[310px] min-w-[240px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-200/80 shadow-2xs overflow-hidden bg-emerald-50/70">
+                  {/* Cabeçalho da Coluna Agora */}
+                  <div className="p-3.5 border-b border-emerald-200/70 bg-emerald-50/70 border-t-4 border-t-emerald-600 rounded-t-xl shrink-0">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <h2 className="font-extrabold text-xs text-slate-900 tracking-tight flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>Agora</span>
+                      </h2>
+                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        {filaCategorias.agora.length}
+                      </span>
                     </div>
-
-                    <div className="flex items-center gap-1 shrink-0 ml-2">
-                      {selectedResponsavel !== "ALL" && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setSelectedResponsavel("ALL")
-                          }}
-                          title="Limpar filtro de responsável"
-                          className="p-0.5 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-200/60"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 transition-transform", isResponsavelDropdownOpen && "rotate-180")} />
-                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Ações exigíveis no momento
+                    </p>
                   </div>
 
-                  {isResponsavelDropdownOpen && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden text-xs animate-in fade-in zoom-in-95 duration-100">
-                      {/* Campo de Busca de Responsável */}
-                      <div className="p-2 border-b border-slate-100 bg-slate-50/70">
-                        <div className="relative">
-                          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                          <Input
-                            autoFocus
-                            type="text"
-                            placeholder="Buscar responsável..."
-                            value={responsavelSearchQuery}
-                            onChange={e => setResponsavelSearchQuery(e.target.value)}
-                            className="pl-8 pr-7 h-8 text-xs bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-sky-500"
-                          />
-                          {responsavelSearchQuery && (
-                            <button
-                              type="button"
-                              onClick={() => setResponsavelSearchQuery("")}
-                              className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
+                  {/* Lista de Cards da Coluna Agora */}
+                  <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-emerald-50/70">
+                    {filaCategorias.agora.length === 0 ? (
+                      <div className="py-12 text-center text-xs text-emerald-800/60 font-medium">
+                        Nenhum atendimento para agora
                       </div>
-
-                      {/* Lista de Opções (Ativos em ordem A-Z) */}
-                      <div className="max-h-56 overflow-y-auto p-1 divide-y divide-slate-50">
-                        {/* Opção Todos os Responsáveis */}
-                        {!responsavelSearchQuery && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedResponsavel("ALL")
-                              setIsResponsavelDropdownOpen(false)
-                              setResponsavelSearchQuery("")
-                            }}
-                            className={cn(
-                              "w-full text-left px-2.5 py-2 rounded flex items-center justify-between hover:bg-slate-100 transition-colors",
-                              selectedResponsavel === "ALL" ? "bg-sky-50 text-sky-800 font-bold" : "text-slate-700"
-                            )}
-                          >
-                            <span className="flex items-center gap-1.5">
-                              <span>👥</span>
-                              <span>Todos os Responsáveis</span>
-                            </span>
-                            {selectedResponsavel === "ALL" && <Check className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
-                          </button>
-                        )}
-
-                        {filteredResponsaveis.length === 0 ? (
-                          <div className="py-4 text-center text-slate-400 text-xs">
-                            Nenhum responsável encontrado.
-                          </div>
-                        ) : (
-                          filteredResponsaveis.map(u => {
-                            const isSelected = selectedResponsavel === u.id
-                            return (
-                              <button
-                                key={u.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedResponsavel(u.id)
-                                  setIsResponsavelDropdownOpen(false)
-                                  setResponsavelSearchQuery("")
-                                }}
-                                className={cn(
-                                  "w-full text-left px-2.5 py-2 rounded flex items-center justify-between hover:bg-slate-100 transition-colors",
-                                  isSelected ? "bg-sky-50 text-sky-800 font-bold" : "text-slate-700"
-                                )}
-                              >
-                                <div className="truncate pr-2">
-                                  <span className="block truncate font-medium text-slate-800">{u.nome}</span>
-                                  <span className="block text-[10px] text-slate-400 font-normal">
-                                    {u.role || u.funcao || "Colaborador"}
-                                  </span>
-                                </div>
-                                {isSelected && <Check className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
-                              </button>
-                            )
-                          })
-                        )}
-                      </div>
-                    </div>
-                  )}
+                    ) : (
+                      filaCategorias.agora.map(ticket => renderTicketCard(ticket, undefined, false))
+                    )}
+                  </div>
                 </div>
-              )}
 
-              {/* Filtro por Alertas */}
-              <div>
-                <select
-                  value={selectedAlertFilter}
-                  onChange={e => setSelectedAlertFilter(e.target.value)}
-                  className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-slate-300 font-medium text-slate-700"
-                >
-                  <option value="ALL">🎯 Todos os Alertas / Status</option>
-                  <option value="ATRASADO">🔴 Somente Atrasados</option>
-                  <option value="ACAO_ESPECIAL">🟡 Somente Ação Especial</option>
-                  <option value="CONFLITO">🔵 Somente Conflito de Titularidade</option>
-                </select>
+                {/* Coluna 2: VENCIDAS */}
+                <div className="flex-1 max-w-[310px] min-w-[240px] flex flex-col h-full min-h-0 rounded-xl border border-rose-200/80 shadow-2xs overflow-hidden bg-rose-50/70">
+                  {/* Cabeçalho da Coluna Vencidas */}
+                  <div className="p-3.5 border-b border-rose-200/70 bg-rose-50/70 border-t-4 border-t-rose-600 rounded-t-xl shrink-0">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <h2 className="font-extrabold text-xs text-slate-900 tracking-tight flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>Vencidas</span>
+                      </h2>
+                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300">
+                        {filaCategorias.vencidas.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Prazo de atendimento expirado
+                    </p>
+                  </div>
+
+                  {/* Lista de Cards da Coluna Vencidas */}
+                  <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-rose-50/70">
+                    {filaCategorias.vencidas.length === 0 ? (
+                      <div className="py-12 text-center text-xs text-rose-800/60 font-medium">
+                        Nenhum atendimento vencido
+                      </div>
+                    ) : (
+                      filaCategorias.vencidas.map(item => renderTicketCard(item.ticket, item.atrasoTexto, false))
+                    )}
+                  </div>
+                </div>
+
+                {/* Coluna 3: FUTURAS */}
+                <div className="flex-1 max-w-[310px] min-w-[240px] flex flex-col h-full min-h-0 rounded-xl border border-indigo-200/80 shadow-2xs overflow-hidden bg-indigo-50/70">
+                  {/* Cabeçalho da Coluna Futuras */}
+                  <div className="p-3.5 border-b border-indigo-200/70 bg-indigo-50/70 border-t-4 border-t-indigo-600 rounded-t-xl shrink-0">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <h2 className="font-extrabold text-xs text-slate-900 tracking-tight flex items-center gap-1.5">
+                        <CalendarIcon className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span>Futuras</span>
+                      </h2>
+                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-300">
+                        {filaCategorias.futuras.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Próximas ações do dia
+                    </p>
+                  </div>
+
+                  {/* Lista de Cards da Coluna Futuras */}
+                  <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-indigo-50/70">
+                    {filaCategorias.futuras.length === 0 ? (
+                      <div className="py-12 text-center text-xs text-indigo-800/60 font-medium">
+                        Nenhum agendamento futuro
+                      </div>
+                    ) : (
+                      filaCategorias.futuras.map(ticket => renderTicketCard(ticket, undefined, false))
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Visão 2: Card Principal do Kanban (Filtros e 7 Colunas) */}
+        {activeView === "KANBAN" && (
+          <Card className="card-shadow bg-white border border-slate-200 rounded-2xl overflow-hidden flex-1 max-h-[95%] flex flex-col min-h-0">
+          <CardContent className="p-3 sm:p-5 flex-1 flex flex-col overflow-hidden min-h-0 space-y-4">
+            {renderFiltersAndMetrics()}
 
             {/* Quadro das 7 Colunas do Kanban */}
             <div className="flex-1 overflow-x-auto pb-2 min-h-0">
@@ -2982,278 +3475,7 @@ export default function KanbanPage() {
                         Nenhum lead nesta etapa
                       </div>
                     ) : (
-                      colTickets.map(ticket => {
-                        const meta = parseMetadata(ticket.descricao)
-                        const opData = getValorOperacaoDeAbertura(ticket)
-                        const opValorNum = parseValorToNumber(opData.valor)
-                        const valorTotal = opValorNum > 0 ? opValorNum : Number(ticket.valor_operacao || ticket.margem || 0)
-                        const isCardRevealed = Boolean(revealedCpfs[ticket.id] || revealedPhones[ticket.id])
-                        const isCpfRevealed = isCardRevealed
-                        const isPhoneRevealed = isCardRevealed
-
-                        // Identificar se há alerta de alto valor (> 20k ou > 50k)
-                        const isAltoValor = valorTotal >= 20000
-
-                        // Próxima Ação e Vencimento (sem siglas como [A0], [RT1], etc.)
-                        const rawProximaAcao = meta.proxima_acao || (
-                          col.id === "EM ABORDAGEM" ? "Realizar Primeiro Contato Imediato" :
-                          col.id === "EM RETOMADA" ? "Enviar Régua de Retomada 1 via WhatsApp" :
-                          col.id === "EM NEGOCIAÇÃO" ? "Enviar simulação ajustada e esclarecer dúvidas" :
-                          col.id === "EM REATIVAÇÃO" ? "Resgatar contato esfriado após 48h úteis" :
-                          col.id === "SEM INTERESSE" ? "Programar cadência longa / nutrição" :
-                          col.id === "FECHADO" ? "Proposta Digitada no Sistema" :
-                          "Finalização registrada por inviabilidade"
-                        )
-                        const proximaAcaoTexto = rawProximaAcao.replace(/^\[[^\]]+\]\s*/, "")
-
-                        const vencimentoLabel = meta.vencimento_acao 
-                          ? format(new Date(meta.vencimento_acao), "dd/MM 'às' HH:mm")
-                          : "Hoje às 14:30"
-
-                        return (
-                          <div
-                            key={ticket.id}
-                            draggable
-                            onDragStart={(e) => {
-                              e.dataTransfer.setData("text/plain", ticket.id)
-                              e.dataTransfer.effectAllowed = "move"
-                              setDraggedTicket(ticket)
-                            }}
-                            onDragEnd={() => {
-                              setDraggedTicket(null)
-                              setDragOverColumnId(null)
-                            }}
-                            onClick={() => handleCardClick(ticket)}
-                            className={cn(
-                              "bg-white rounded-lg border border-slate-200 p-3 shadow-xs hover:shadow-xl hover:shadow-slate-900/15 hover:scale-[1.025] hover:-translate-y-0.5 hover:border-slate-300 transition-all duration-200 ease-out transform cursor-grab active:cursor-grabbing space-y-2.5 relative group hover:z-10",
-                              draggedTicket?.id === ticket.id && "opacity-40 scale-95 border-dashed border-indigo-400"
-                            )}
-                          >
-                            {/* 1. Cabeçalho Visual: Tags de Alerta e Cronômetro/Prazo */}
-                            <div className="flex items-start justify-between gap-1.5 text-[11px]">
-                              <div className="flex flex-wrap gap-1">
-                                {meta.alerta_atrasado && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-rose-100 text-rose-800 border border-rose-200 animate-pulse text-[12px]">
-                                    🔴 ATRASADO
-                                  </span>
-                                )}
-                                {(meta.acao_especial || isAltoValor) && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800 border border-amber-200 text-[12px]">
-                                    🟡 AÇÃO ESPECIAL
-                                  </span>
-                                )}
-                                {meta.conflito_titularidade && (
-                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-sky-100 text-sky-800 border border-sky-200 text-[12px]">
-                                    🔵 EM NEGOCIAÇÃO COM OUTRO
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Cronômetro / Tempo na Etapa */}
-                              <span className="text-slate-700 font-medium whitespace-nowrap flex items-center gap-1 text-[12px]">
-                                <Clock className="w-3 h-3 text-slate-600" />
-                                {ticket.updated_at 
-                                  ? formatDistanceToNow(new Date(ticket.updated_at), { addSuffix: false, locale: ptBR })
-                                  : "recente"}
-                              </span>
-                            </div>
-
-                            {/* 2. Dados Principais do Cliente */}
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-1.5">
-                                <h3 className="text-[13px] font-bold text-slate-900 tracking-tight line-clamp-1 group-hover:text-sky-600 transition-colors">
-                                  {ticket.cliente_nome || "Nome não informado"}
-                                </h3>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    toggleRevealCard(ticket.id)
-                                  }}
-                                  className="text-slate-700 hover:text-slate-900 p-0.5 cursor-pointer shrink-0 transition-colors"
-                                  title={isCardRevealed ? "Ocultar dados" : "Revelar dados"}
-                                >
-                                  {isCardRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                </button>
-                              </div>
-
-                              <div className="flex items-center gap-1 text-[12px] text-slate-500">
-                                <span>CPF:</span>
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    if (ticket.cliente_cpf) {
-                                      handleCopy(ticket.cliente_cpf, "CPF")
-                                    }
-                                  }}
-                                  className={cn(
-                                    "font-mono font-medium text-slate-700 whitespace-nowrap transition-colors",
-                                    ticket.cliente_cpf && "cursor-pointer hover:text-blue-600"
-                                  )}
-                                  title={ticket.cliente_cpf ? "Clique para copiar CPF" : undefined}
-                                >
-                                  {isCardRevealed ? (ticket.cliente_cpf || "---") : maskCpf(ticket.cliente_cpf)}
-                                </span>
-                              </div>
-
-                              {/* TELEFONES DO LEAD */}
-                              {(() => {
-                                const allPhones = Array.from(new Set([
-                                  ticket.cliente_telefone,
-                                  ticket.cliente_telefone_2,
-                                  ticket.cliente_telefone_3,
-                                  ...(ticket.telefones || [])
-                                ].filter(Boolean) as string[]))
-
-                                const meta = parseMetadata(ticket.descricao)
-                                const selected = (ticket.telefones_selecionados && ticket.telefones_selecionados.length > 0)
-                                  ? ticket.telefones_selecionados
-                                  : (Array.isArray(meta.telefones_selecionados) && meta.telefones_selecionados.length > 0)
-                                    ? meta.telefones_selecionados
-                                    : []
-
-                                // Somente os telefones selecionados devem ser mostrados. Se não for selecionado, não mostra.
-                                if (selected.length === 0) {
-                                  return null
-                                }
-
-                                const filtered = allPhones.filter(phone => {
-                                  const cleanPhone = phone.replace(/\D/g, "")
-                                  return selected.some(sp => {
-                                    const cleanSp = sp.replace(/\D/g, "")
-                                    return cleanSp === cleanPhone || (cleanPhone.length >= 8 && cleanSp.slice(-8) === cleanPhone.slice(-8))
-                                  })
-                                })
-                                const cardPhones = filtered.length > 0 ? filtered : selected
-
-                                if (cardPhones.length === 0) {
-                                  return null
-                                }
-
-                                return (
-                                  <div className="flex flex-col gap-0.5 text-[12px] text-slate-500">
-                                    {cardPhones.map((phone, pIdx) => (
-                                      <div key={pIdx} className="flex items-center gap-1">
-                                        <span className="text-[11px] text-slate-400 font-semibold">
-                                          {cardPhones.length > 1 ? `Tel ${pIdx + 1}:` : "Tel:"}
-                                        </span>
-                                        <span
-                                          onClick={(e) => {
-                                            e.stopPropagation()
-                                            if (phone) {
-                                              handleCopy(phone, "Telefone")
-                                            }
-                                          }}
-                                          className={cn(
-                                            "font-mono font-medium text-slate-700 whitespace-nowrap transition-colors",
-                                            phone && "cursor-pointer hover:text-blue-600"
-                                          )}
-                                          title={phone ? "Clique para copiar Telefone" : undefined}
-                                        >
-                                          {isCardRevealed ? (formatPhone(phone) || "---") : maskPhone(phone)}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )
-                              })()}
-                            </div>
-
-                            {/* 3. Informações Comerciais e de Titularidade */}
-                            <div className="bg-slate-50/90 rounded-md p-2 border border-slate-100 text-[12px] space-y-1">
-                              <div className="flex items-center justify-between">
-                                <span className="text-slate-500">Valor Operação:</span>
-                                <div className="flex flex-col items-end">
-                                  <span className="font-bold text-slate-900 leading-tight">
-                                    {opData.valor}
-                                  </span>
-                                  <span className={cn("text-[8.5px] uppercase font-black tracking-tight mt-0.5", opData.color)}>
-                                    {opData.label}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="flex items-center justify-between">
-                                <span className="text-slate-500">Tipo:</span>
-                                <span className="font-medium text-slate-700 truncate max-w-[120px]">
-                                  {meta.selected_operation_type || ticket.convenio || "Consignado"}
-                                </span>
-                              </div>
-                              {isGestor && (
-                                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-                                  <span className="text-slate-500">Responsável:</span>
-                                  <span className="font-semibold text-sky-700 truncate max-w-[130px]">
-                                    {ticket.user_nome || meta.corretor_nome || "Não atribuído"}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* 4. Bloco da Próxima Ação */}
-                            <div className="bg-amber-100/90 border border-amber-300 rounded-md p-2 text-[12px] space-y-0.5 shadow-2xs">
-                              <div className="font-extrabold text-amber-950 flex items-center gap-1">
-                                <span>📌 PRÓXIMA AÇÃO:</span>
-                              </div>
-                              <p className="text-[12px] text-amber-900 font-semibold line-clamp-2">
-                                {proximaAcaoTexto}
-                              </p>
-                              <div className="text-[12px] text-amber-800 flex items-center gap-1 pt-0.5 font-semibold">
-                                <Clock className="w-3.5 h-3.5 text-amber-700" />
-                                <span>Vencimento: {vencimentoLabel}</span>
-                              </div>
-                            </div>
-
-                            {/* 5. Barra de Ações Rápidas */}
-                            <div 
-                              className="flex items-center justify-between gap-1 pt-1 border-t border-slate-100"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleOpenWhatsApp(ticket)}
-                                className="h-7 p-0 flex items-center justify-center text-emerald-600 bg-white hover:bg-emerald-500 hover:border-emerald-500 hover:text-white [&:hover>svg]:text-white flex-1 border border-emerald-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
-                                title="WhatsApp"
-                                aria-label="WhatsApp"
-                              >
-                                <MessageCircle className="w-3.5 h-3.5 transition-colors" />
-                              </Button>
-
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleOpenAgendar(ticket)}
-                                className="h-7 p-0 flex items-center justify-center text-sky-600 bg-white hover:bg-sky-500 hover:border-sky-500 hover:text-white [&:hover>svg]:text-white flex-1 border border-sky-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
-                                title="Agendar Retorno"
-                                aria-label="Agendar"
-                              >
-                                <CalendarIcon className="w-3.5 h-3.5 transition-colors" />
-                              </Button>
-
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleOpenMoverEtapa(ticket)}
-                                className="h-7 p-0 flex items-center justify-center text-indigo-600 bg-white hover:bg-indigo-600 hover:border-indigo-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-indigo-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
-                                title="Mover para outra Etapa"
-                                aria-label="Mover"
-                              >
-                                <ArrowRight className="w-3.5 h-3.5 transition-colors" />
-                              </Button>
-
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setHistoricoModalTicket(ticket)}
-                                className="h-7 p-0 flex items-center justify-center text-purple-600 bg-white hover:bg-purple-600 hover:border-purple-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-purple-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
-                                title="Histórico do Atendimento"
-                                aria-label="Histórico do Atendimento"
-                              >
-                                <History className="w-3.5 h-3.5 transition-colors" />
-                              </Button>
-                            </div>
-                          </div>
-                        )
-                      })
+                      colTickets.map(ticket => renderTicketCard(ticket, undefined, true))
                     )}
                   </div>
                 </div>
@@ -3263,6 +3485,7 @@ export default function KanbanPage() {
         </div>
       </CardContent>
     </Card>
+    )}
   </main>
 
       {/* MODAL 1: ATENDIMENTO (Corretor / Estagiário) */}
