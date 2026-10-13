@@ -1,5 +1,5 @@
 "use client"
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useAuth } from "@/context/auth-context"
@@ -33,6 +33,7 @@ import {
   Calculator,
   MessageSquare,
   FileEdit,
+  ChevronDown,
   X 
 } from "lucide-react"
 import { cn, withRetry } from "@/lib/utils"
@@ -178,6 +179,8 @@ export interface LeadContactInfo {
   telefones: string[];
   telefones_selecionados?: string[];
   convenio?: string;
+  origem?: string;
+  telefone_empresa?: string;
 }
 
 interface ClientDetailsModalProps {
@@ -194,6 +197,7 @@ interface ClientDetailsModalProps {
   showTabulacoes?: boolean;
   hidePhoneSelectionBanner?: boolean;
   showPipelineActionButtons?: boolean;
+  isEmAbordagem?: boolean;
 }
 
 export function ClientDetailsModal({ 
@@ -206,14 +210,38 @@ export function ClientDetailsModal({
   title,
   showTabulacoes,
   hidePhoneSelectionBanner,
-  showPipelineActionButtons = false
+  showPipelineActionButtons = false,
+  isEmAbordagem = false
 }: ClientDetailsModalProps) {
-  const rawTitle = title || (onSelectTabulacao ? "Informações sobre o Lead" : "INFORMAÇÕES DO CLIENTE")
-  const modalTitle = (rawTitle.toUpperCase() === "INFORMAÇÕES DO LEAD" || rawTitle.toUpperCase() === "INFORMACOES DO LEAD") 
-    ? "Informações sobre o Lead" 
-    : rawTitle
+  const [clienteOrigem, setClienteOrigem] = useState<string>("")
+  const [selectedEmpresaPhone, setSelectedEmpresaPhone] = useState<string>("")
+  const [searchEmpresaPhone, setSearchEmpresaPhone] = useState<string>("")
+  const [isEmpresaPhoneOpen, setIsEmpresaPhoneOpen] = useState(false)
+  const [isOrigemOpen, setIsOrigemOpen] = useState(false)
+  const [isContractsCardExpanded, setIsContractsCardExpanded] = useState(false)
+  const empresaPhoneRef = useRef<HTMLDivElement>(null)
+  const origemRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (empresaPhoneRef.current && !empresaPhoneRef.current.contains(event.target as Node)) {
+        setIsEmpresaPhoneOpen(false)
+      }
+      if (origemRef.current && !origemRef.current.contains(event.target as Node)) {
+        setIsOrigemOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+  const rawTitle = title || (isEmAbordagem ? "EM ABORDAGEM" : (onSelectTabulacao ? "Informações sobre o Lead" : "INFORMAÇÕES DO CLIENTE"))
+  const modalTitle = isEmAbordagem 
+    ? "EM ABORDAGEM" 
+    : ((rawTitle.toUpperCase() === "INFORMAÇÕES DO LEAD" || rawTitle.toUpperCase() === "INFORMACOES DO LEAD") 
+      ? "Informações sobre o Lead" 
+      : rawTitle)
   const hasTabulacoes = showTabulacoes !== undefined ? showTabulacoes : Boolean(onSelectTabulacao)
-  const isKanbanLeadModal = Boolean(onSelectTabulacao) || hasTabulacoes || modalTitle.toLowerCase().includes("lead")
+  const isKanbanLeadModal = isEmAbordagem || Boolean(onSelectTabulacao) || hasTabulacoes || modalTitle.toLowerCase().includes("lead")
   const router = useRouter()
   const { perfil, isEstagio } = useAuth()
   const [isSimulationModalOpen, setIsSimulationModalOpen] = useState(false)
@@ -296,18 +324,25 @@ export function ClientDetailsModal({
       const existingKf = existingKfList?.[0]
 
       if (existingKf) {
-        const currentMeta = (existingKf.metadata && typeof existingKf.metadata === 'object') ? existingKf.metadata : {}
-        const updatedMeta = {
-          ...currentMeta,
-          telefones_selecionados: newSelected
-        }
-        const { error: updateErr } = await supabase
+        let { error: updateErr } = await supabase
           .from('kanban_fichas')
           .update({
-            metadata: updatedMeta,
+            telefones_contatados: newSelected,
             updated_at: new Date().toISOString()
           })
           .eq('id', existingKf.id)
+
+        if (updateErr && (updateErr.message?.includes('does not exist') || updateErr.code === 'PGRST204')) {
+          const currentMeta = (existingKf.metadata && typeof existingKf.metadata === 'object') ? existingKf.metadata : {}
+          const fallback = await supabase
+            .from('kanban_fichas')
+            .update({
+              metadata: { ...currentMeta, telefones_selecionados: newSelected },
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingKf.id)
+          updateErr = fallback.error
+        }
 
         if (updateErr) {
           console.error("Erro ao atualizar kanban_fichas:", updateErr)
@@ -1178,13 +1213,15 @@ export function ClientDetailsModal({
         try {
           const { data: kfRecords } = await supabase
             .from('kanban_fichas')
-            .select('metadata')
+            .select('metadata, telefones_contatados')
             .or(`cliente_cpf.eq.${paddedCpf},cliente_cpf.eq.${digits}`)
             .order('updated_at', { ascending: false })
             .limit(1)
 
-          const kfRecord = kfRecords?.[0]
-          if (kfRecord?.metadata && Array.isArray((kfRecord.metadata as any).telefones_selecionados)) {
+          const kfRecord = kfRecords?.[0] as any
+          if (Array.isArray(kfRecord?.telefones_contatados)) {
+            setSelectedPhones(kfRecord.telefones_contatados)
+          } else if (kfRecord?.metadata && Array.isArray((kfRecord.metadata as any).telefones_selecionados)) {
             setSelectedPhones((kfRecord.metadata as any).telefones_selecionados)
           } else {
             setSelectedPhones([])
@@ -1214,6 +1251,7 @@ export function ClientDetailsModal({
       setClient(null)
       setRegistrations([])
       setActiveRegIndex(0)
+      setIsContractsCardExpanded(false)
     }
   }, [isOpen, cpf, fetchClientData])
 
@@ -1431,6 +1469,11 @@ export function ClientDetailsModal({
             <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
             <div>
               <h2 className="text-[15px] font-bold text-slate-900 tracking-tight">{modalTitle}</h2>
+              {isEmAbordagem && (
+                <p className="text-[12px] font-medium text-slate-500 mt-0.5">
+                  Realize o primeiro contato com o lead
+                </p>
+              )}
             </div>
           </div>
           <Button
@@ -1528,7 +1571,10 @@ export function ClientDetailsModal({
           return (
             <>
               {/* Conteúdo rolável idêntico à Página do Cliente */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 space-y-6 bg-[#FBFBFB]">
+              <div className={cn(
+                "flex-1 overflow-y-auto space-y-6 bg-[#FBFBFB] px-4 sm:px-6 lg:px-8 pb-4 sm:pb-6 lg:pb-8",
+                isEmAbordagem ? "pt-2 sm:pt-3 lg:pt-4" : "pt-4 sm:pt-6 lg:pt-8"
+              )}>
                 {/* Convênios Vinculados */}
                 {profiles.length > 1 && (
                   <div className="flex flex-col gap-2.5 bg-[#FAF9F6]/50 border border-slate-200/60 p-4 rounded-xl shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05)]">
@@ -1649,6 +1695,72 @@ export function ClientDetailsModal({
                         </div>
                       </div>
 
+                      {/* Card de orientação: Diga a origem do cliente (exclusivo para EM ABORDAGEM) */}
+                      {isEmAbordagem && (
+                        <div className="col-span-full -mb-4 bg-amber-50/90 border border-amber-200/90 rounded-lg p-3 flex items-center gap-2.5 text-amber-900 shadow-xs">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <p className="text-xs font-semibold text-amber-900 leading-none">
+                            Diga a origem do cliente.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Campo Origem do Cliente (exclusivo para o modal EM ABORDAGEM ao buscar por CPF ou Telefone no Kanban) */}
+                      {isEmAbordagem && (
+                        <div ref={origemRef} className="col-span-full max-w-sm space-y-1.5 -mb-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            Origem do Cliente
+                          </p>
+
+                          {/* Caixa seletora com mesmo estilo do Telefone da Empresa Utilizado */}
+                          <div
+                            onClick={() => setIsOrigemOpen(prev => !prev)}
+                            className="w-full h-[36px] px-3 rounded-lg border border-slate-200 bg-[#E8E8E8] text-[12px] font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer flex items-center justify-between shadow-2xs select-none"
+                          >
+                            <span className={clienteOrigem ? "text-slate-800 font-semibold" : "text-slate-500 font-normal"}>
+                              {clienteOrigem || "Selecione"}
+                            </span>
+                            <ChevronDown className={cn("w-4 h-4 text-slate-500 transition-transform", isOrigemOpen && "rotate-180")} />
+                          </div>
+
+                          {/* Dropdown de opções de Origem */}
+                          {isOrigemOpen && (
+                            <div className="w-full mt-1.5 bg-white border border-slate-200 rounded-lg shadow-sm p-1.5 space-y-0.5 animate-in fade-in duration-100">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setClienteOrigem("")
+                                  setIsOrigemOpen(false)
+                                }}
+                                className={cn(
+                                  "w-full text-left px-2.5 py-1.5 text-[12px] rounded-md transition-colors flex items-center justify-between cursor-pointer",
+                                  !clienteOrigem ? "bg-slate-100 text-slate-900 font-bold" : "text-slate-600 hover:bg-slate-50"
+                                )}
+                              >
+                                <span>Selecione</span>
+                              </button>
+                              {["DISPARO", "TRÁFEGO", "INDICAÇÃO", "CLIENTE DA CASA", "3C - DISCADOR", "LISTA MANUAL"].map((origemOption) => (
+                                <button
+                                  key={origemOption}
+                                  type="button"
+                                  onClick={() => {
+                                    setClienteOrigem(origemOption)
+                                    setIsOrigemOpen(false)
+                                  }}
+                                  className={cn(
+                                    "w-full text-left px-2.5 py-1.5 text-[12px] rounded-md transition-colors flex items-center justify-between cursor-pointer",
+                                    clienteOrigem === origemOption ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-800 hover:bg-slate-50 font-semibold"
+                                  )}
+                                >
+                                  <span>{origemOption}</span>
+                                  {clienteOrigem === origemOption && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Card ambar de orientação para marcação dos telefones (exclusivo para o Kanban / Informações sobre o Lead) */}
                       {isKanbanLeadModal && !hidePhoneSelectionBanner && (
                         <div className="col-span-full -mb-4 bg-amber-50/90 border border-amber-200/90 rounded-lg p-3 flex items-center gap-2.5 text-amber-900 shadow-xs">
@@ -1737,6 +1849,104 @@ export function ClientDetailsModal({
                           )}
                         </div>
                       </div>
+
+                      {/* Card de orientação: Selecione o telefone da Acerto Fácil que você usou (exclusivo para EM ABORDAGEM) */}
+                      {isEmAbordagem && (
+                        <div className="col-span-full -mb-4 bg-amber-50/90 border border-amber-200/90 rounded-lg p-3 flex items-center gap-2.5 text-amber-900 shadow-xs">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                          <p className="text-xs font-semibold text-amber-900 leading-none">
+                            Selecione o telefone da Acerto Fácil que você usou
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Campo TELEFONE DA EMPRESA UTILIZADO (exclusivo para EM ABORDAGEM) */}
+                      {isEmAbordagem && (
+                        <div ref={empresaPhoneRef} className="col-span-full max-w-sm space-y-1.5 -mb-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            Telefone da Empresa Utilizado
+                          </p>
+
+                          {/* Caixa seletora igual à de Origem do Cliente */}
+                          <div
+                            onClick={() => setIsEmpresaPhoneOpen(prev => !prev)}
+                            className="w-full h-[36px] px-3 rounded-lg border border-slate-200 bg-[#E8E8E8] text-[12px] font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer flex items-center justify-between shadow-2xs select-none"
+                          >
+                            <span className={selectedEmpresaPhone ? "text-slate-800 font-semibold" : "text-slate-500 font-normal"}>
+                              {selectedEmpresaPhone || "Selecione"}
+                            </span>
+                            <ChevronDown className={cn("w-4 h-4 text-slate-500 transition-transform", isEmpresaPhoneOpen && "rotate-180")} />
+                          </div>
+
+                          {/* Dropdown com Campo de Busca e Opções visíveis com rolagem */}
+                          {isEmpresaPhoneOpen && (
+                            <div className="w-full mt-1.5 bg-white border border-slate-200 rounded-lg shadow-sm p-2 space-y-2 animate-in fade-in duration-100">
+                              {/* Campo de Busca por número pelos 4 últimos dígitos */}
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  value={searchEmpresaPhone}
+                                  onChange={(e) => setSearchEmpresaPhone(e.target.value)}
+                                  placeholder="Buscar pelos 4 últimos números (ex: 9901)..."
+                                  autoFocus
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-full h-8 px-2.5 text-[12px] font-medium rounded-md border border-slate-200 bg-slate-50 placeholder:text-slate-400 text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                                />
+                              </div>
+
+                              {/* Lista de Opções: mostra pelo menos 3 e barra de rolagem para os demais */}
+                              <div className="max-h-[120px] overflow-y-auto space-y-0.5 divide-y divide-slate-100 pr-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedEmpresaPhone("")
+                                    setIsEmpresaPhoneOpen(false)
+                                  }}
+                                  className={cn(
+                                    "w-full text-left px-2.5 py-1.5 text-[12px] rounded-md transition-colors flex items-center justify-between cursor-pointer",
+                                    !selectedEmpresaPhone ? "bg-slate-100 text-slate-900 font-bold" : "text-slate-600 hover:bg-slate-50"
+                                  )}
+                                >
+                                  <span>Selecione</span>
+                                </button>
+                                {["48 99999-9901", "48 99999-9902", "48 99999-9903", "48 99999-9904"].filter(phone => {
+                                  const cleanP = phone.replace(/\D/g, "")
+                                  const cleanS = searchEmpresaPhone.replace(/\D/g, "").trim()
+                                  if (!cleanS) return true
+                                  return cleanP.endsWith(cleanS) || cleanP.includes(cleanS) || phone.includes(searchEmpresaPhone)
+                                }).map(phone => {
+                                  const isSelected = selectedEmpresaPhone === phone
+                                  return (
+                                    <button
+                                      key={phone}
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedEmpresaPhone(phone)
+                                        setIsEmpresaPhoneOpen(false)
+                                      }}
+                                      className={cn(
+                                        "w-full text-left px-2.5 py-2 text-[12px] rounded-md transition-colors flex items-center justify-between cursor-pointer",
+                                        isSelected ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-800 hover:bg-slate-50 font-semibold"
+                                      )}
+                                    >
+                                      <span>{phone}</span>
+                                      {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                                    </button>
+                                  )
+                                })}
+                                {["48 99999-9901", "48 99999-9902", "48 99999-9903", "48 99999-9904"].filter(phone => {
+                                  const cleanP = phone.replace(/\D/g, "")
+                                  const cleanS = searchEmpresaPhone.replace(/\D/g, "").trim()
+                                  if (!cleanS) return true
+                                  return cleanP.endsWith(cleanS) || cleanP.includes(cleanS) || phone.includes(searchEmpresaPhone)
+                                }).length === 0 && (
+                                  <p className="text-[11px] text-slate-400 italic px-2.5 py-2 text-center">Nenhum telefone encontrado</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1770,8 +1980,37 @@ export function ClientDetailsModal({
                       {/* Active Content Card */}
                       {activeReg && (
                         <Card className={cn("card-shadow border border-slate-200 animate-in fade-in duration-300", allRegs.length > 1 && "rounded-tl-none")}>
-                          <CardContent className="p-4 sm:p-8 space-y-10 sm:space-y-12">
-                            {/* Informações da Matrícula */}
+                          {isEmAbordagem && (
+                            <div
+                              onClick={() => setIsContractsCardExpanded(!isContractsCardExpanded)}
+                              className="flex items-center justify-between p-4 sm:p-6 cursor-pointer hover:bg-slate-50/80 transition-colors select-none"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
+                                <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">
+                                  Informações da Matrícula, Contratos e Cartões
+                                </h3>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsContractsCardExpanded(!isContractsCardExpanded);
+                                }}
+                                aria-label={isContractsCardExpanded ? "Recolher informações" : "Expandir informações"}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                              >
+                                <ChevronDown className={cn("w-5 h-5 transition-transform duration-200", isContractsCardExpanded && "rotate-180")} />
+                              </button>
+                            </div>
+                          )}
+
+                          {(!isEmAbordagem || isContractsCardExpanded) && (
+                            <CardContent className={cn(
+                              "p-4 sm:p-8 space-y-10 sm:space-y-12",
+                              isEmAbordagem && "border-t border-slate-100 pt-6 sm:pt-8"
+                            )}>
+                              {/* Informações da Matrícula */}
                             <div className="space-y-8 sm:space-y-10">
                               <div className="flex items-center gap-3">
                                 <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
@@ -2107,7 +2346,8 @@ export function ClientDetailsModal({
                                 )}
                               </div>
                             )}
-                          </CardContent>
+                            </CardContent>
+                          )}
                         </Card>
                       )}
                     </div>
@@ -2131,9 +2371,19 @@ export function ClientDetailsModal({
                           onChange={async (e) => {
                             const checked = e.target.checked;
                             if (checked) {
-                              if (status === "CLIENTE CHAMADO" && (!selectedPhones || selectedPhones.length === 0)) {
-                                toast.error("É obrigatório marcar pelo menos 1 telefone para poder selecionar a tabulação 'CLIENTE CHAMADO'.");
-                                return;
+                              if (status === "CLIENTE CHAMADO") {
+                                if (isEmAbordagem && (!clienteOrigem || !clienteOrigem.trim())) {
+                                  toast.error("É obrigatório selecionar a 'ORIGEM DO CLIENTE' para tabular 'CLIENTE CHAMADO'.");
+                                  return;
+                                }
+                                if (!selectedPhones || selectedPhones.length === 0) {
+                                  toast.error("É obrigatório marcar pelo menos 1 telefone contatado do cliente para poder selecionar a tabulação 'CLIENTE CHAMADO'.");
+                                  return;
+                                }
+                                if (isEmAbordagem && (!selectedEmpresaPhone || !selectedEmpresaPhone.trim())) {
+                                  toast.error("É obrigatório selecionar o 'TELEFONE DA EMPRESA UTILIZADO' para tabular 'CLIENTE CHAMADO'.");
+                                  return;
+                                }
                               }
                               setSelectedStatuses({ [status]: true });
                               if (onSelectTabulacao) {
@@ -2165,7 +2415,9 @@ export function ClientDetailsModal({
                                   nome: client?.nome || "Cliente sem Nome",
                                   telefones: phones,
                                   telefones_selecionados: selectedPhones,
-                                  convenio: activeConvenio
+                                  convenio: activeConvenio,
+                                  origem: clienteOrigem || undefined,
+                                  telefone_empresa: selectedEmpresaPhone || undefined
                                 });
                               }
                               onClose();

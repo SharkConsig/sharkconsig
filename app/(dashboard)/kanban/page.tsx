@@ -78,18 +78,6 @@ interface KanbanColumnConfig {
 
 const KANBAN_COLUMNS: KanbanColumnConfig[] = [
   {
-    id: "EM ABORDAGEM",
-    title: "EM ABORDAGEM",
-    subtitle: "Entrada e Primeiro Contato",
-    code: "A0",
-    color: "sky",
-    headerBg: "bg-sky-200 border-sky-400 text-sky-950",
-    borderTop: "border-t-sky-600",
-    badgeClass: "bg-sky-100 text-sky-900 border-sky-400",
-    descriptionOperador: "Realizar o primeiro contato (A0) o mais rápido possível.",
-    descriptionGestor: "Velocidade de distribuição e tempo de reação da equipe."
-  },
-  {
     id: "EM RETOMADA",
     title: "EM RETOMADA",
     subtitle: "Réguas de Contato",
@@ -188,6 +176,7 @@ interface TicketMetadata {
   tabulacao_whatsapp?: "NAO_EXISTE_WHATSAPP" | "WHATSAPP_DIVERGENTE" | null
   tabulado_por?: string
   telefones_selecionados?: string[]
+  telefone_empresa?: string
   convenio?: string
   selected_operation_type?: string
   enviado_para_corretor?: boolean
@@ -214,6 +203,7 @@ interface TicketItem {
   cliente_telefone_3?: string
   telefones?: string[]
   telefones_selecionados?: string[]
+  telefone_empresa?: string
   margem?: number
   margem_liquida_5?: number
   margem_beneficio_5?: number
@@ -402,6 +392,7 @@ function isUserObservation(text?: string | null): boolean {
 
 function inferKanbanStage(ticket: TicketItem, meta: TicketMetadata): KanbanStage {
   if (meta.kanban_stage) {
+    if (meta.kanban_stage === "EM ABORDAGEM") return "EM RETOMADA"
     return meta.kanban_stage
   }
   const s = (ticket.status || "").toUpperCase()
@@ -410,8 +401,8 @@ function inferKanbanStage(ticket: TicketItem, meta: TicketMetadata): KanbanStage
   if (s.includes("SEM INTERESSE")) return "SEM INTERESSE"
   if (s.includes("AÇÃO SUPERVISOR") || s.includes("SUPORTE") || s.includes("REATIVA")) return "EM REATIVAÇÃO"
   if (s.includes("PROPOSTA") || s.includes("NEGOCIA") || s.includes("APROVAD") || s.includes("PENDENTE DOCUMENTAÇÃO") || s.includes("AGUARDANDO OPERACIONAL")) return "EM NEGOCIAÇÃO"
-  if (s.includes("RETOMADA") || s.includes("SEM INTERAÇÃO") || s.includes("REENVIO") || s.includes("FUTURO")) return "EM RETOMADA"
-  return "EM ABORDAGEM"
+  if (s.includes("RETOMADA") || s.includes("SEM INTERAÇÃO") || s.includes("REENVIO") || s.includes("FUTURO") || s.includes("ABORDAGEM")) return "EM RETOMADA"
+  return "EM RETOMADA"
 }
 
 // Formatação do CPF mascarado: ***.123.456-**
@@ -523,6 +514,7 @@ export default function KanbanPage() {
   const [isSearchingClient, setIsSearchingClient] = useState(false)
   const [clientSearchError, setClientSearchError] = useState<string | null>(null)
   const [isClientDetailsModalOpen, setIsClientDetailsModalOpen] = useState(false)
+  const [isKanbanSearchModal, setIsKanbanSearchModal] = useState(false)
   const [selectedClientCpf, setSelectedClientCpf] = useState<string>("")
   const [isViewingLeadInAttendance, setIsViewingLeadInAttendance] = useState(false)
 
@@ -688,7 +680,7 @@ export default function KanbanPage() {
             cliente_telefone: existingInPipeline.cliente_telefone || "",
             telefones: Array.from(new Set(rawPhones.map(p => p.trim()).filter(Boolean))),
             telefones_selecionados: Array.isArray(meta.telefones_selecionados) ? meta.telefones_selecionados : undefined,
-            etapa: existingInPipeline.etapa || "EM ABORDAGEM",
+            etapa: (existingInPipeline.etapa === "EM ABORDAGEM" ? "EM RETOMADA" : existingInPipeline.etapa) || "EM RETOMADA",
             operador_nome: existingInPipeline.operador_nome || "Corretor"
           }
         }
@@ -722,7 +714,7 @@ export default function KanbanPage() {
             cliente_telefone: localTicket.cliente_telefone || "",
             telefones: Array.from(new Set(rawPhones.map(p => p.trim()).filter(Boolean))),
             telefones_selecionados: localTicket.telefones_selecionados || (Array.isArray(tMeta.telefones_selecionados) ? tMeta.telefones_selecionados : undefined),
-            etapa: localTicket.status || "EM ABORDAGEM",
+            etapa: (localTicket.status === "EM ABORDAGEM" ? "EM RETOMADA" : localTicket.status) || "EM RETOMADA",
             operador_nome: localTicket.corretor_nome || localTicket.user_nome || "Corretor"
           }
         }
@@ -766,6 +758,7 @@ export default function KanbanPage() {
 
       // Abre o modal completo de detalhes do cliente sem criar cartão no Kanban
       setSelectedClientCpf(foundCpf)
+      setIsKanbanSearchModal(true)
       setIsClientDetailsModalOpen(true)
       setClientSearchQuery("")
     } catch (err) {
@@ -1148,8 +1141,9 @@ export default function KanbanPage() {
           ? "WHATSAPP DIVERGENTE"
           : "NÃO EXISTE WHATSAPP"
 
-        meta.kanban_stage = isDrawer ? drawerStatus : (f.etapa || meta.kanban_stage || "EM ABORDAGEM")
-        meta.proxima_acao = meta.proxima_acao || "Iniciar primeiro contato comercial"
+        const fEtapa = f.etapa === "EM ABORDAGEM" ? "EM RETOMADA" : f.etapa
+        meta.kanban_stage = isDrawer ? drawerStatus : (fEtapa || (meta.kanban_stage === "EM ABORDAGEM" ? "EM RETOMADA" : meta.kanban_stage) || "EM RETOMADA")
+        meta.proxima_acao = meta.proxima_acao || "Iniciar régua de retomada"
         meta.vencimento_acao = meta.vencimento_acao || new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
         meta.prioridade = meta.prioridade || "NORMAL"
 
@@ -1166,17 +1160,20 @@ export default function KanbanPage() {
 
         return {
           id: String(f.id),
-          status: isDrawer ? drawerStatus : (f.etapa || "EM ABORDAGEM"),
-          origem: "KANBAN",
+          status: isDrawer ? drawerStatus : (fEtapa || "EM RETOMADA"),
+          origem: f.origem || "KANBAN",
           cliente_nome: f.cliente_nome || "Cliente sem Nome",
           cliente_cpf: f.cliente_cpf || "",
           cliente_telefone: uniquePhones[0] || f.cliente_telefone || "",
           cliente_telefone_2: uniquePhones[1] || f.cliente_telefone_2 || undefined,
           cliente_telefone_3: uniquePhones[2] || f.cliente_telefone_3 || undefined,
           telefones: uniquePhones,
-          telefones_selecionados: Array.isArray(meta.telefones_selecionados) 
-            ? meta.telefones_selecionados 
-            : (Array.isArray(f.telefones_selecionados) ? f.telefones_selecionados : undefined),
+          telefones_selecionados: Array.isArray(f.telefones_contatados)
+            ? f.telefones_contatados
+            : (Array.isArray(f.telefones_selecionados) 
+                ? f.telefones_selecionados 
+                : (Array.isArray(meta.telefones_selecionados) ? meta.telefones_selecionados : undefined)),
+          telefone_empresa: f.telefone_empresa || meta.telefone_empresa || undefined,
           margem: (f.margem_disponivel !== null && f.margem_disponivel !== undefined) ? Number(f.margem_disponivel) : (meta.margem ? parseValorToNumber(meta.margem) : undefined),
           valor_operacao: (f.valor_solicitado !== null && f.valor_solicitado !== undefined) ? Number(f.valor_solicitado) : (meta.valor_operacao ? parseValorToNumber(meta.valor_operacao) : undefined),
           convenio: f.convenio || meta.convenio || undefined,
@@ -1242,7 +1239,7 @@ export default function KanbanPage() {
         t.status === "NÃO EXISTE WHATSAPP" ||
         t.status === "NAO_EXISTE_WHATSAPP" ||
         t.status === "WHATSAPP DIVERGENTE" ||
-        (Boolean(meta.tabulacao_whatsapp) && t.status !== "EM ABORDAGEM")
+        (Boolean(meta.tabulacao_whatsapp) && t.status !== "EM RETOMADA")
       ) {
         return false
       }
@@ -1293,11 +1290,12 @@ export default function KanbanPage() {
 
     filteredTickets.forEach(t => {
       const meta = parseMetadata(t.descricao)
-      const stage = inferKanbanStage(t, meta)
+      let stage = inferKanbanStage(t, meta)
+      if (stage === "EM ABORDAGEM") stage = "EM RETOMADA"
       if (map[stage]) {
         map[stage].push(t)
       } else {
-        map["EM ABORDAGEM"].push(t)
+        map["EM RETOMADA"].push(t)
       }
     })
 
@@ -1614,8 +1612,7 @@ export default function KanbanPage() {
 
       // Próxima ação padrão da nova etapa (sem siglas)
       let proximaAcaoPadrao = ""
-      if (destinoEtapa === "EM ABORDAGEM") proximaAcaoPadrao = "Realizar Primeiro Contato Imediato"
-      else if (destinoEtapa === "EM RETOMADA") proximaAcaoPadrao = "Enviar Régua de Retomada 1"
+      if (destinoEtapa === "EM RETOMADA" || destinoEtapa === "EM ABORDAGEM") proximaAcaoPadrao = "Enviar Régua de Retomada 1"
       else if (destinoEtapa === "EM NEGOCIAÇÃO") proximaAcaoPadrao = "Enviar simulação e recolher documentos"
       else if (destinoEtapa === "EM REATIVAÇÃO") proximaAcaoPadrao = "Resgatar oportunidade esfriada"
       else if (destinoEtapa === "SEM INTERESSE") proximaAcaoPadrao = "Cadência de Longo Prazo / Nutrição"
@@ -2370,7 +2367,7 @@ export default function KanbanPage() {
 
       if (ticket.source_table === "kanban_fichas") {
         await supabase.from("kanban_fichas").update({
-          etapa: "EM ABORDAGEM",
+          etapa: "EM RETOMADA",
           motivo_perda: null,
           metadata: meta,
           updated_at: new Date().toISOString()
@@ -2410,9 +2407,10 @@ export default function KanbanPage() {
       const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
       const validOperadorId = isUuid(user?.id) ? user?.id : null
 
-      // 1. Caso 'CLIENTE CHAMADO': fechar o modal e criar/mover ficha para 'EM ABORDAGEM'
+      // 1. Caso 'CLIENTE CHAMADO': fechar o modal e criar/mover ficha para 'EM RETOMADA'
       if (tabulacao === "CLIENTE CHAMADO") {
         setIsClientDetailsModalOpen(false)
+        setIsKanbanSearchModal(false)
         setSelectedClientCpf("")
 
         try {
@@ -2424,7 +2422,7 @@ export default function KanbanPage() {
             cliente_nome: clientInfo.nome,
             telefones_contatados: clientInfo.telefones_selecionados || clientInfo.telefones || [],
             tabulacao: "CLIENTE CHAMADO",
-            origem: "KANBAN",
+            origem: clientInfo.origem || "KANBAN",
             data_chamado: new Date().toISOString().split("T")[0]
           }).then(() => {})
         } catch {}
@@ -2438,26 +2436,50 @@ export default function KanbanPage() {
         if (existing) {
           const updatedMeta = {
             ...(existing.metadata || {}),
-            kanban_stage: "EM ABORDAGEM",
-            proxima_acao: "Realizar Primeiro Contato Imediato",
+            kanban_stage: "EM RETOMADA",
+            proxima_acao: "Enviar Régua de Retomada 1",
             telefones: clientInfo.telefones,
-            telefones_selecionados: clientInfo.telefones_selecionados || (existing.metadata as any)?.telefones_selecionados || [],
             convenio: clientInfo.convenio || (existing.metadata as any)?.convenio
           }
           delete (updatedMeta as any).tabulacao_whatsapp
+          delete (updatedMeta as any).telefones_selecionados
+          delete (updatedMeta as any).origem
+          delete (updatedMeta as any).telefone_empresa
 
-          const { error: updateErr } = await supabase
+          const updatePayload: Record<string, any> = {
+            etapa: "EM RETOMADA",
+            motivo_perda: null,
+            tabulacao: "CLIENTE CHAMADO",
+            origem: clientInfo.origem || (existing as any).origem || null,
+            telefones_contatados: clientInfo.telefones_selecionados || [],
+            telefone_empresa: clientInfo.telefone_empresa || (existing as any).telefone_empresa || null,
+            metadata: updatedMeta,
+            operador_id: validOperadorId,
+            operador_nome: perfil?.nome || "Corretor",
+            convenio: clientInfo.convenio || (existing as any).convenio,
+            updated_at: new Date().toISOString()
+          }
+
+          let { error: updateErr } = await supabase
             .from("kanban_fichas")
-            .update({
-              etapa: "EM ABORDAGEM",
-              motivo_perda: null,
-              metadata: updatedMeta,
-              operador_id: validOperadorId,
-              operador_nome: perfil?.nome || "Corretor",
-              convenio: clientInfo.convenio || existing.convenio,
-              updated_at: new Date().toISOString()
-            })
+            .update(updatePayload)
             .eq("id", existing.id)
+
+          if (updateErr && (updateErr.message?.includes("does not exist") || updateErr.code === "PGRST204")) {
+            const fallback = await supabase
+              .from("kanban_fichas")
+              .update({
+                etapa: "EM RETOMADA",
+                motivo_perda: null,
+                metadata: updatedMeta,
+                operador_id: validOperadorId,
+                operador_nome: perfil?.nome || "Corretor",
+                convenio: clientInfo.convenio || (existing as any).convenio,
+                updated_at: new Date().toISOString()
+              })
+              .eq("id", existing.id)
+            updateErr = fallback.error
+          }
 
           if (updateErr) {
             console.error("Erro ao atualizar kanban_fichas:", updateErr)
@@ -2466,30 +2488,54 @@ export default function KanbanPage() {
           }
         } else {
           const meta: TicketMetadata = {
-            kanban_stage: "EM ABORDAGEM",
-            proxima_acao: "Realizar Primeiro Contato Imediato",
+            kanban_stage: "EM RETOMADA",
+            proxima_acao: "Enviar Régua de Retomada 1",
             vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
             prioridade: "NORMAL",
             user_id: user?.id,
             user_nome: perfil?.nome || "Corretor",
             telefones: clientInfo.telefones,
-            telefones_selecionados: clientInfo.telefones_selecionados || [],
             convenio: clientInfo.convenio
           }
           delete (meta as any).tabulacao_whatsapp
+          delete (meta as any).telefones_selecionados
+          delete (meta as any).origem
+          delete (meta as any).telefone_empresa
 
-          const { error: insertErr } = await supabase.from("kanban_fichas").insert({
+          const insertPayload: Record<string, any> = {
             cliente_nome: clientInfo.nome || "Cliente sem Nome",
             cliente_cpf: cleanCpf,
             cliente_telefone: (clientInfo.telefones_selecionados && clientInfo.telefones_selecionados[0]) || clientInfo.telefones[0] || "",
             operador_id: validOperadorId,
             operador_nome: perfil?.nome || "Corretor",
-            etapa: "EM ABORDAGEM",
+            etapa: "EM RETOMADA",
             motivo_perda: null,
+            tabulacao: "CLIENTE CHAMADO",
+            origem: clientInfo.origem || null,
+            telefones_contatados: clientInfo.telefones_selecionados || [],
+            telefone_empresa: clientInfo.telefone_empresa || null,
             metadata: meta,
             convenio: clientInfo.convenio || undefined,
             observacoes: "Atendimento iniciado via modal (CLIENTE CHAMADO)"
-          })
+          }
+
+          let { error: insertErr } = await supabase.from("kanban_fichas").insert(insertPayload)
+
+          if (insertErr && (insertErr.message?.includes("does not exist") || insertErr.code === "PGRST204")) {
+            const fallback = await supabase.from("kanban_fichas").insert({
+              cliente_nome: clientInfo.nome || "Cliente sem Nome",
+              cliente_cpf: cleanCpf,
+              cliente_telefone: (clientInfo.telefones_selecionados && clientInfo.telefones_selecionados[0]) || clientInfo.telefones[0] || "",
+              operador_id: validOperadorId,
+              operador_nome: perfil?.nome || "Corretor",
+              etapa: "EM RETOMADA",
+              motivo_perda: null,
+              metadata: meta,
+              convenio: clientInfo.convenio || undefined,
+              observacoes: "Atendimento iniciado via modal (CLIENTE CHAMADO)"
+            })
+            insertErr = fallback.error
+          }
 
           if (insertErr) {
             console.error("Erro ao inserir em kanban_fichas:", insertErr)
@@ -2509,7 +2555,7 @@ export default function KanbanPage() {
               const chMeta = parseMetadata(ch.descricao)
               if (chMeta.tabulacao_whatsapp) {
                 delete chMeta.tabulacao_whatsapp
-                chMeta.kanban_stage = "EM ABORDAGEM"
+                chMeta.kanban_stage = "EM RETOMADA"
                 const newDesc = stringifyWithMetadata(ch.descricao, chMeta)
                 await supabase.from("chamados").update({
                   descricao: newDesc,
@@ -2522,13 +2568,14 @@ export default function KanbanPage() {
           console.warn("Aviso ao limpar chamados:", chErr)
         }
 
-        toast.success(`Cartão de atendimento criado em "EM ABORDAGEM"!`)
+        toast.success(`Cartão de atendimento criado em "EM RETOMADA"!`)
         await fetchChamados(true)
         return
       }
 
       // 2. Caso 'NÃO EXISTE WHATSAPP' ou 'WHATSAPP DIVERGENTE': fechar modal e registrar na tabela 'kanban_fichas'
       setIsClientDetailsModalOpen(false)
+      setIsKanbanSearchModal(false)
       setSelectedClientCpf("")
 
       const drawerType = tabulacao === "NÃO EXISTE WHATSAPP" ? "NAO_EXISTE_WHATSAPP" : "WHATSAPP_DIVERGENTE"
@@ -2545,22 +2592,46 @@ export default function KanbanPage() {
           ...(existing.metadata || {}),
           tabulacao_whatsapp: drawerType,
           telefones: clientInfo.telefones,
-          telefones_selecionados: clientInfo.telefones_selecionados || (existing.metadata as any)?.telefones_selecionados || [],
           tabulado_por: perfil?.nome || user?.email || "Corretor",
           user_id: validOperadorId || user?.id,
           user_nome: perfil?.nome || "Corretor"
         }
-        const { error: updateErr } = await supabase
+        delete (updatedMeta as any).telefones_selecionados
+        delete (updatedMeta as any).origem
+        delete (updatedMeta as any).telefone_empresa
+
+        const updateDrawerPayload: Record<string, any> = {
+          etapa: "PERDIDO",
+          motivo_perda: drawerLabel,
+          tabulacao: tabulacao,
+          origem: clientInfo.origem || (existing as any).origem || null,
+          telefones_contatados: clientInfo.telefones_selecionados || [],
+          telefone_empresa: clientInfo.telefone_empresa || (existing as any).telefone_empresa || null,
+          operador_id: validOperadorId,
+          operador_nome: perfil?.nome || "Corretor",
+          metadata: updatedMeta,
+          updated_at: new Date().toISOString()
+        }
+
+        let { error: updateErr } = await supabase
           .from("kanban_fichas")
-          .update({
-            etapa: "PERDIDO",
-            motivo_perda: drawerLabel,
-            operador_id: validOperadorId,
-            operador_nome: perfil?.nome || "Corretor",
-            metadata: updatedMeta,
-            updated_at: new Date().toISOString()
-          })
+          .update(updateDrawerPayload)
           .eq("id", existing.id)
+
+        if (updateErr && (updateErr.message?.includes("does not exist") || updateErr.code === "PGRST204")) {
+          const fallback = await supabase
+            .from("kanban_fichas")
+            .update({
+              etapa: "PERDIDO",
+              motivo_perda: drawerLabel,
+              operador_id: validOperadorId,
+              operador_nome: perfil?.nome || "Corretor",
+              metadata: updatedMeta,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", existing.id)
+          updateErr = fallback.error
+        }
 
         if (updateErr) {
           console.error("Erro ao atualizar gaveta em kanban_fichas:", updateErr)
@@ -2572,12 +2643,15 @@ export default function KanbanPage() {
           kanban_stage: drawerLabel === "Não Existe Whatsapp" ? "NÃO EXISTE WHATSAPP" : "WHATSAPP DIVERGENTE",
           tabulacao_whatsapp: drawerType,
           telefones: clientInfo.telefones,
-          telefones_selecionados: clientInfo.telefones_selecionados || [],
           tabulado_por: perfil?.nome || user?.email || "Corretor",
           user_id: user?.id,
           user_nome: perfil?.nome || "Corretor"
         }
-        const { error: insertErr } = await supabase.from("kanban_fichas").insert({
+        delete (meta as any).telefones_selecionados
+        delete (meta as any).origem
+        delete (meta as any).telefone_empresa
+
+        const insertDrawerPayload: Record<string, any> = {
           cliente_nome: clientInfo.nome || "Cliente sem Nome",
           cliente_cpf: cleanCpf,
           cliente_telefone: clientInfo.telefones[0] || "",
@@ -2585,9 +2659,30 @@ export default function KanbanPage() {
           operador_nome: perfil?.nome || "Corretor",
           etapa: "PERDIDO",
           motivo_perda: drawerLabel,
+          tabulacao: tabulacao,
+          origem: clientInfo.origem || null,
+          telefones_contatados: clientInfo.telefones_selecionados || [],
+          telefone_empresa: clientInfo.telefone_empresa || null,
           metadata: meta,
           observacoes: `Lead arquivado na gaveta "${drawerLabel}"`
-        })
+        }
+
+        let { error: insertErr } = await supabase.from("kanban_fichas").insert(insertDrawerPayload)
+
+        if (insertErr && (insertErr.message?.includes("does not exist") || insertErr.code === "PGRST204")) {
+          const fallback = await supabase.from("kanban_fichas").insert({
+            cliente_nome: clientInfo.nome || "Cliente sem Nome",
+            cliente_cpf: cleanCpf,
+            cliente_telefone: clientInfo.telefones[0] || "",
+            operador_id: validOperadorId,
+            operador_nome: perfil?.nome || "Corretor",
+            etapa: "PERDIDO",
+            motivo_perda: drawerLabel,
+            metadata: meta,
+            observacoes: `Lead arquivado na gaveta "${drawerLabel}"`
+          })
+          insertErr = fallback.error
+        }
 
         if (insertErr) {
           console.error("Erro ao inserir gaveta em kanban_fichas:", insertErr)
@@ -2842,14 +2937,9 @@ export default function KanbanPage() {
         <div className="bg-slate-50/90 rounded-md p-2 border border-slate-100 text-[12px] space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-slate-500">Valor Operação:</span>
-            <div className="flex flex-col items-end">
-              <span className="font-bold text-slate-900 leading-tight">
-                {opData.valor}
-              </span>
-              <span className={cn("text-[8.5px] uppercase font-black tracking-tight mt-0.5", opData.color)}>
-                {opData.label}
-              </span>
-            </div>
+            <span className="font-bold text-slate-900 leading-tight">
+              {opData.valor}
+            </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-slate-500">Tipo:</span>
@@ -2865,6 +2955,12 @@ export default function KanbanPage() {
               </span>
             </div>
           )}
+          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+            <span className="text-slate-500">Tel da Empresa:</span>
+            <span className="font-semibold text-slate-700 truncate max-w-[130px]">
+              {ticket.telefone_empresa || meta.telefone_empresa || "Não informado"}
+            </span>
+          </div>
         </div>
 
         {/* 4. Bloco da Próxima Ação */}
@@ -5210,10 +5306,12 @@ export default function KanbanPage() {
             isOpen={isClientDetailsModalOpen}
             onClose={() => {
               setIsClientDetailsModalOpen(false)
+              setIsKanbanSearchModal(false)
               setSelectedClientCpf("")
               setIsViewingLeadInAttendance(false)
             }}
-            title="Informações sobre o Lead"
+            title={isKanbanSearchModal ? "EM ABORDAGEM" : "Informações sobre o Lead"}
+            isEmAbordagem={isKanbanSearchModal}
             onSelectTabulacao={isClientInAnyKanbanStage ? undefined : handleTabulacaoFromModal}
             showTabulacoes={!isClientInAnyKanbanStage}
             hidePhoneSelectionBanner={isClientInAnyKanbanStage}
