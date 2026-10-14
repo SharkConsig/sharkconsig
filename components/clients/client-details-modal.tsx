@@ -235,11 +235,15 @@ export function ClientDetailsModal({
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
   const rawTitle = title || (isEmAbordagem ? "EM ABORDAGEM" : (onSelectTabulacao ? "Informações sobre o Lead" : "INFORMAÇÕES DO CLIENTE"))
-  const modalTitle = isEmAbordagem 
-    ? "EM ABORDAGEM" 
-    : ((rawTitle.toUpperCase() === "INFORMAÇÕES DO LEAD" || rawTitle.toUpperCase() === "INFORMACOES DO LEAD") 
+  const modalTitle = title 
+    ? ((title.toUpperCase() === "INFORMAÇÕES DO LEAD" || title.toUpperCase() === "INFORMACOES DO LEAD") 
       ? "Informações sobre o Lead" 
-      : rawTitle)
+      : title)
+    : (isEmAbordagem 
+      ? "EM ABORDAGEM" 
+      : ((rawTitle.toUpperCase() === "INFORMAÇÕES DO LEAD" || rawTitle.toUpperCase() === "INFORMACOES DO LEAD") 
+        ? "Informações sobre o Lead" 
+        : rawTitle))
   const hasTabulacoes = showTabulacoes !== undefined ? showTabulacoes : Boolean(onSelectTabulacao)
   const isKanbanLeadModal = isEmAbordagem || Boolean(onSelectTabulacao) || hasTabulacoes || modalTitle.toLowerCase().includes("lead")
   const router = useRouter()
@@ -1213,7 +1217,7 @@ export function ClientDetailsModal({
         try {
           const { data: kfRecords } = await supabase
             .from('kanban_fichas')
-            .select('metadata, telefones_contatados')
+            .select('metadata, telefones_contatados, origem, telefone_empresa')
             .or(`cliente_cpf.eq.${paddedCpf},cliente_cpf.eq.${digits}`)
             .order('updated_at', { ascending: false })
             .limit(1)
@@ -1226,8 +1230,19 @@ export function ClientDetailsModal({
           } else {
             setSelectedPhones([])
           }
+
+          if (kfRecord?.origem) {
+            setClienteOrigem(kfRecord.origem)
+          } else if (kfRecord?.metadata?.origem) {
+            setClienteOrigem(kfRecord.metadata.origem)
+          }
+          if (kfRecord?.telefone_empresa) {
+            setSelectedEmpresaPhone(kfRecord.telefone_empresa)
+          } else if (kfRecord?.metadata?.telefone_empresa) {
+            setSelectedEmpresaPhone(kfRecord.metadata.telefone_empresa)
+          }
         } catch (err) {
-          console.error("Erro ao carregar telefones selecionados de kanban_fichas:", err)
+          console.error("Erro ao carregar dados de kanban_fichas:", err)
         }
 
         setIsLoading(false)
@@ -1252,6 +1267,11 @@ export function ClientDetailsModal({
       setRegistrations([])
       setActiveRegIndex(0)
       setIsContractsCardExpanded(false)
+      setClienteOrigem("")
+      setSelectedEmpresaPhone("")
+      setSearchEmpresaPhone("")
+      setIsEmpresaPhoneOpen(false)
+      setIsOrigemOpen(false)
     }
   }, [isOpen, cpf, fetchClientData])
 
@@ -1469,7 +1489,7 @@ export function ClientDetailsModal({
             <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
             <div>
               <h2 className="text-[15px] font-bold text-slate-900 tracking-tight">{modalTitle}</h2>
-              {isEmAbordagem && (
+              {isEmAbordagem && modalTitle === "EM ABORDAGEM" && (
                 <p className="text-[12px] font-medium text-slate-500 mt-0.5">
                   Realize o primeiro contato com o lead
                 </p>

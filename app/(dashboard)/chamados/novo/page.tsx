@@ -18,7 +18,8 @@ import {
   Loader2,
   Check,
   MessageSquare,
-  X
+  X,
+  ChevronDown
 } from "lucide-react"
 import Image from "next/image"
 import { supabase } from "@/lib/supabase"
@@ -139,7 +140,18 @@ export function NewTicketForm({
 
   const [formData, setFormData] = useState({
     origem: (getParam("origem") && getParam("origem") !== "KANBAN") ? getParam("origem") : "",
-    equipe: (perfil?.role === 'Supervisor' ? perfil?.nome : perfil?.supervisor_nome) || "",
+    equipe: (() => {
+      const pNome = (perfil?.nome || "").trim()
+      const pEmail = (perfil?.email || "").trim().toLowerCase()
+      const isEndrio = pNome.toLowerCase().includes("endrio") || pEmail.includes("endrio")
+      if (isEndrio) return "Nenhum"
+      const role = (perfil?.role || "").toLowerCase()
+      if (role.includes("supervisor") || role.includes("admin")) return pNome
+      if (perfil?.supervisor_nome && perfil.supervisor_nome !== "Nenhum" && !perfil.supervisor_nome.toLowerCase().includes("endrio")) {
+        return perfil.supervisor_nome.trim()
+      }
+      return ""
+    })(),
     nome: getParam("nome") || "",
     cpf: getParam("cpf") || "",
     tel1: getParam("tel1") || "",
@@ -167,6 +179,7 @@ export function NewTicketForm({
   // Pasted images from clipboard
   const [pastedImages, setPastedImages] = useState<File[]>([])
   const [dbConvenios, setDbConvenios] = useState<string[]>([])
+  const [equipesList, setEquipesList] = useState<{ id: string; nome: string; role?: string }[]>([])
 
   // Ticket number state (using a timestamp-based ID or fetching last)
   const [ticketNumber, setTicketNumber] = useState<string>("...")
@@ -203,39 +216,136 @@ export function NewTicketForm({
     fetchConvenios()
   }, [])
 
-  // Auto-fill supervisor info for Corretores or for Supervisors themselves
+  // Carrega Supervisores e Administradores para o seletor de Equipe Comercial (excluindo Endrio Novo)
   useEffect(() => {
-    const fillSupervisor = async () => {
-      // Se o usuário logado é um SUPERVISOR, ele é a própria equipe comercial
-      if (perfil?.role === 'Supervisor' && !formData.equipe) {
-        setFormData(prev => ({ ...prev, equipe: perfil.nome || "" }));
-        return;
-      }
+    const fetchSupervisoresEAdmins = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('perfis')
+          .select('id, nome, email, role, funcao, status')
+          .order('nome')
 
-      // Se já temos o nome no perfil e o campo está vazio, preenchemos
-      if (perfil?.supervisor_nome && !formData.equipe) {
-        setFormData(prev => ({ ...prev, equipe: perfil.supervisor_nome }));
-        return;
-      }
-
-      // Se temos o ID mas não o nome no perfil, buscamos via API otimizada
-      if (perfil?.supervisor_id && !formData.equipe) {
-        try {
-          const res = await withRetry(() => fetch(`/api/usuarios?id=${perfil.supervisor_id}`));
+        let rawList: any[] = []
+        if (!error && data && data.length > 0) {
+          rawList = data
+        } else {
+          const res = await withRetry(() => fetch('/api/usuarios'))
           if (res.ok) {
-            const supervisorData = await res.json();
-            if (supervisorData.nome) {
-              setFormData(prev => ({ ...prev, equipe: supervisorData.nome }));
+            rawList = await res.json()
+          }
+        }
+
+        const filtered = rawList.filter((u: any) => {
+          const name = (u.nome || '').trim().toLowerCase()
+          const email = (u.email || '').trim().toLowerCase()
+          // Remova expressamente o Endrio Novo dessa lista
+          if (name.includes('endrio') || email.includes('endrio')) return false
+
+          const r = (u.role || '').toLowerCase()
+          const f = (u.funcao || '').toLowerCase()
+          return (
+            r.includes('supervisor') ||
+            f.includes('supervisor') ||
+            r.includes('admin') ||
+            f.includes('admin')
+          )
+        })
+
+        const uniqueMap = new Map<string, { id: string; nome: string; role?: string }>()
+        filtered.forEach((u: any) => {
+          const nome = (u.nome || '').trim()
+          if (nome && !uniqueMap.has(nome.toUpperCase())) {
+            uniqueMap.set(nome.toUpperCase(), {
+              id: u.id,
+              nome: nome,
+              role: u.role || u.funcao
+            })
+          }
+        })
+
+        const sorted = Array.from(uniqueMap.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+        setEquipesList(sorted)
+      } catch (err) {
+        console.error("Erro ao carregar supervisores e administradores:", err)
+      }
+    }
+
+    fetchSupervisoresEAdmins()
+  }, [])
+
+  // Pré-preenche a equipe (supervisor/administrador) do usuário que está logado
+  useEffect(() => {
+    const autoFillEquipe = async () => {
+      if (!user) return
+
+      try {
+        let userPerfil = perfil
+        if (!userPerfil?.supervisor_nome || !userPerfil?.role) {
+          const { data: dbPerfil } = await supabase
+            .from('perfis')
+            .select('id, nome, email, role, funcao, supervisor_id, supervisor_nome')
+            .eq('id', user.id)
+            .maybeSingle()
+          if (dbPerfil) {
+            userPerfil = {
+              ...userPerfil,
+              ...dbPerfil,
+              role: dbPerfil.funcao || dbPerfil.role
+            } as any
+          }
+        }
+
+        const userNome = (userPerfil?.nome || "").trim()
+        const userEmail = (userPerfil?.email || user.email || "").trim().toLowerCase()
+        const isEndrio = userNome.toLowerCase().includes("endrio") || userEmail.includes("endrio")
+
+        let targetEquipe = ""
+
+        if (isEndrio) {
+          targetEquipe = "Nenhum"
+        } else {
+          const role = (userPerfil?.role || (userPerfil as any)?.funcao || "").toLowerCase()
+          const isSupervisorOrAdmin = role.includes("supervisor") || role.includes("admin")
+
+          if (isSupervisorOrAdmin && userNome) {
+            targetEquipe = userNome
+          } else {
+            let supNome = (userPerfil?.supervisor_nome || "").trim()
+
+            if ((!supNome || supNome === "Nenhum") && userPerfil?.supervisor_id) {
+              const { data: supRow } = await supabase
+                .from('perfis')
+                .select('nome')
+                .eq('id', userPerfil.supervisor_id)
+                .maybeSingle()
+              if (supRow?.nome) {
+                supNome = supRow.nome.trim()
+              }
+            }
+
+            if (supNome && !supNome.toLowerCase().includes("endrio") && supNome !== "Nenhum") {
+              targetEquipe = supNome
+            } else {
+              targetEquipe = "Nenhum"
             }
           }
-        } catch (err) {
-          console.error("Erro ao buscar supervisor:", err);
         }
-      }
-    };
 
-    fillSupervisor();
-  }, [perfil, formData.equipe])
+        if (targetEquipe) {
+          setFormData(prev => {
+            if (prev.equipe && !prev.equipe.toLowerCase().includes("endrio")) {
+              return prev
+            }
+            return { ...prev, equipe: targetEquipe }
+          })
+        }
+      } catch (err) {
+        console.error("Erro ao pré-preencher equipe comercial:", err)
+      }
+    }
+
+    autoFillEquipe()
+  }, [user, perfil])
   
   const fileRefs = {
     frente: useRef<HTMLInputElement>(null),
@@ -518,6 +628,10 @@ export function NewTicketForm({
       setValidationError("POR FAVOR, SELECIONE A ORIGEM DO CLIENTE");
       return;
     }
+    if (!formData.equipe) {
+      setValidationError("POR FAVOR, SELECIONE A EQUIPE COMERCIAL");
+      return;
+    }
     if (!formData.convenio) {
       setValidationError("POR FAVOR, SELECIONE O CONVÊNIO");
       return;
@@ -772,12 +886,28 @@ export function NewTicketForm({
                     <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                       EQUIPE COMERCIAL <span className="text-red-500">*</span>
                     </label>
-                    <Input 
-                      value={formData.equipe}
-                      onChange={(e) => handleInputChange("equipe", e.target.value)}
-                      placeholder="" 
-                      className="h-[34px] border-slate-100 bg-[#E8E8E8] text-[12px]"
-                    />
+                    <div className="relative">
+                      <select 
+                        value={formData.equipe}
+                        onChange={(e) => handleInputChange("equipe", e.target.value)}
+                        className="w-full h-[34px] px-3 pr-8 rounded-lg border border-slate-100 bg-[#E8E8E8] text-[12px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="">Selecione</option>
+                        <option value="Nenhum">Nenhum</option>
+                        {formData.equipe && 
+                          formData.equipe !== "Nenhum" && 
+                          !formData.equipe.toLowerCase().includes("endrio") &&
+                          !equipesList.some(eq => eq.nome.trim().toUpperCase() === formData.equipe.trim().toUpperCase()) && (
+                          <option value={formData.equipe}>{formData.equipe}</option>
+                        )}
+                        {equipesList.map((item) => (
+                          <option key={item.id || item.nome} value={item.nome}>
+                            {item.nome}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                    </div>
                   </div>
                 </div>
 

@@ -515,6 +515,7 @@ export default function KanbanPage() {
   const [clientSearchError, setClientSearchError] = useState<string | null>(null)
   const [isClientDetailsModalOpen, setIsClientDetailsModalOpen] = useState(false)
   const [isKanbanSearchModal, setIsKanbanSearchModal] = useState(false)
+  const [isDrawerLeadModal, setIsDrawerLeadModal] = useState(false)
   const [selectedClientCpf, setSelectedClientCpf] = useState<string>("")
   const [isViewingLeadInAttendance, setIsViewingLeadInAttendance] = useState(false)
 
@@ -2411,6 +2412,7 @@ export default function KanbanPage() {
       if (tabulacao === "CLIENTE CHAMADO") {
         setIsClientDetailsModalOpen(false)
         setIsKanbanSearchModal(false)
+        setIsDrawerLeadModal(false)
         setSelectedClientCpf("")
 
         try {
@@ -2576,6 +2578,7 @@ export default function KanbanPage() {
       // 2. Caso 'NÃO EXISTE WHATSAPP' ou 'WHATSAPP DIVERGENTE': fechar modal e registrar na tabela 'kanban_fichas'
       setIsClientDetailsModalOpen(false)
       setIsKanbanSearchModal(false)
+      setIsDrawerLeadModal(false)
       setSelectedClientCpf("")
 
       const drawerType = tabulacao === "NÃO EXISTE WHATSAPP" ? "NAO_EXISTE_WHATSAPP" : "WHATSAPP_DIVERGENTE"
@@ -5250,6 +5253,7 @@ export default function KanbanPage() {
                                   size="sm"
                                   onClick={() => {
                                     setSelectedClientCpf(cleanCpf || "")
+                                    setIsDrawerLeadModal(true)
                                     setIsClientDetailsModalOpen(true)
                                   }}
                                   className="h-7 text-[11px] font-bold border-slate-200 hover:bg-slate-50 cursor-pointer"
@@ -5307,11 +5311,12 @@ export default function KanbanPage() {
             onClose={() => {
               setIsClientDetailsModalOpen(false)
               setIsKanbanSearchModal(false)
+              setIsDrawerLeadModal(false)
               setSelectedClientCpf("")
               setIsViewingLeadInAttendance(false)
             }}
-            title={isKanbanSearchModal ? "EM ABORDAGEM" : "Informações sobre o Lead"}
-            isEmAbordagem={isKanbanSearchModal}
+            title={isDrawerLeadModal ? "Informações sobre o Lead" : (isKanbanSearchModal ? "EM ABORDAGEM" : "Informações sobre o Lead")}
+            isEmAbordagem={isKanbanSearchModal || isDrawerLeadModal}
             onSelectTabulacao={isClientInAnyKanbanStage ? undefined : handleTabulacaoFromModal}
             showTabulacoes={!isClientInAnyKanbanStage}
             hidePhoneSelectionBanner={isClientInAnyKanbanStage}
