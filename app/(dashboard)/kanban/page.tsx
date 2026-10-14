@@ -497,7 +497,9 @@ export default function KanbanPage() {
     userRole === "Supervisor" || 
     userRole === "Operacional" || 
     userRole === "Monitoramento" ||
-    userRole === "Desenvolvedor"
+    userRole === "Desenvolvedor" ||
+    userRole === "Recursos Humanos" ||
+    userRole === "RH"
   )
 
   // Visão Ativa do Módulo Kanban: "MINHA_FILA" (padrão inicial) ou "KANBAN"
