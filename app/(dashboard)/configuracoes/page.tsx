@@ -51,6 +51,11 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { cn, withRetry } from "@/lib/utils"
 import { SLAConfigManager } from "@/components/sla/sla-config-manager"
+import { 
+  TelefoneEmpresa, 
+  fetchTelefonesEmpresa, 
+  persistTelefonesEmpresa 
+} from "@/lib/telefones-empresa"
 
 interface GenericConfig {
   id: string
@@ -211,6 +216,13 @@ export default function SettingsPage() {
   const [isMetasPremiosExpanded, setIsMetasPremiosExpanded] = useState(false)
   const [isBannersExpanded, setIsBannersExpanded] = useState(false)
   const [isHorariosExpanded, setIsHorariosExpanded] = useState(false)
+  const [isTelefonesExpanded, setIsTelefonesExpanded] = useState(false)
+  const [telefonesEmpresa, setTelefonesEmpresa] = useState<TelefoneEmpresa[]>([])
+  const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false)
+  const [editingPhoneId, setEditingPhoneId] = useState<string | null>(null)
+  const [phoneNumero, setPhoneNumero] = useState("")
+  const [phoneDescricao, setPhoneDescricao] = useState("")
+  const [phoneAtivo, setPhoneAtivo] = useState(true)
 
   // Controle de Horários do Sistema State
   const [systemUsers, setSystemUsers] = useState<UsuarioAPI[]>([])
@@ -646,6 +658,8 @@ export default function SettingsPage() {
       
       setMetas(metasData || [])
       
+      const phones = await fetchTelefonesEmpresa(supabase)
+      setTelefonesEmpresa(phones)
     } catch (error: unknown) {
       console.error("Erro ao carregar configurações:", error)
       toast.error("Erro ao carregar lista de configurações")
@@ -766,6 +780,86 @@ export default function SettingsPage() {
     } catch (error) {
       console.error("Erro ao alternar status:", error)
       toast.error("Erro ao alternar status")
+    }
+  }
+
+  const handleOpenPhoneModal = (item?: TelefoneEmpresa) => {
+    if (item) {
+      setEditingPhoneId(item.id)
+      setPhoneNumero(item.numero)
+      setPhoneDescricao(item.descricao || "")
+      setPhoneAtivo(item.ativo !== false)
+    } else {
+      setEditingPhoneId(null)
+      setPhoneNumero("")
+      setPhoneDescricao("")
+      setPhoneAtivo(true)
+    }
+    setIsPhoneModalOpen(true)
+  }
+
+  const handlePhoneSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!phoneNumero.trim()) {
+      toast.error("O número do telefone é obrigatório")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      let updated: TelefoneEmpresa[]
+      if (editingPhoneId) {
+        updated = telefonesEmpresa.map((p) =>
+          p.id === editingPhoneId
+            ? { ...p, numero: phoneNumero.trim(), descricao: phoneDescricao.trim() || undefined, ativo: phoneAtivo }
+            : p
+        )
+        toast.success("Telefone atualizado com sucesso")
+      } else {
+        const newPhone: TelefoneEmpresa = {
+          id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+          numero: phoneNumero.trim(),
+          descricao: phoneDescricao.trim() || undefined,
+          ativo: phoneAtivo,
+          created_at: new Date().toISOString()
+        }
+        updated = [...telefonesEmpresa, newPhone]
+        toast.success("Telefone cadastrado com sucesso")
+      }
+      setTelefonesEmpresa(updated)
+      await persistTelefonesEmpresa(supabase, updated)
+      setIsPhoneModalOpen(false)
+    } catch (err: unknown) {
+      console.error("Erro ao salvar telefone da empresa:", err)
+      toast.error("Erro ao salvar telefone da empresa")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const togglePhoneAtivo = async (id: string) => {
+    try {
+      const updated = telefonesEmpresa.map((p) =>
+        p.id === id ? { ...p, ativo: p.ativo === false ? true : false } : p
+      )
+      setTelefonesEmpresa(updated)
+      await persistTelefonesEmpresa(supabase, updated)
+      toast.success("Status do telefone atualizado")
+    } catch (err) {
+      console.error("Erro ao alternar status do telefone:", err)
+      toast.error("Erro ao alternar status do telefone")
+    }
+  }
+
+  const handlePhoneDelete = async (id: string) => {
+    try {
+      const updated = telefonesEmpresa.filter((p) => p.id !== id)
+      setTelefonesEmpresa(updated)
+      await persistTelefonesEmpresa(supabase, updated)
+      toast.success("Telefone removido com sucesso")
+    } catch (err) {
+      console.error("Erro ao remover telefone:", err)
+      toast.error("Erro ao remover telefone")
     }
   }
 
@@ -1987,6 +2081,88 @@ export default function SettingsPage() {
             )}
           </AnimatePresence>
         </section>
+
+        {/* Seção Telefones da Empresa */}
+        <section className="space-y-6">
+          <div 
+            className="flex items-center justify-between cursor-pointer group select-none"
+            onClick={() => setIsTelefonesExpanded(!isTelefonesExpanded)}
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
+                <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                  TELEFONES DA EMPRESA (UTILIZADOS NO ATENDIMENTO)
+                  {isTelefonesExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
+                </h2>
+              </div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">
+                Gerenciamento dos números de telefone exibidos para seleção no campo &quot;Telefone da Empresa Utilizado&quot;
+              </p>
+            </div>
+            
+            <Button 
+              onClick={(e) => {
+                e.stopPropagation()
+                handleOpenPhoneModal()
+              }} 
+              className="bg-[#171717] hover:bg-[#171717]/90 text-white gap-2 shadow-lg h-9 w-[170px] rounded-lg relative z-10"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="text-[10.5px] font-bold uppercase tracking-widest">Novo Telefone</span>
+            </Button>
+          </div>
+
+          <AnimatePresence>
+            {isTelefonesExpanded && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden space-y-6">
+                <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
+                  <Table>
+                    <TableHeader className="bg-slate-50/50">
+                      <TableRow className="border-slate-100">
+                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Número do Telefone</TableHead>
+                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Identificação / Setor</TableHead>
+                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
+                        <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {telefonesEmpresa.length === 0 ? (
+                        <TableRow><TableCell colSpan={4} className="h-24 text-center text-slate-400 text-[11px] uppercase font-bold tracking-widest">Nenhum telefone cadastrado</TableCell></TableRow>
+                      ) : (
+                        telefonesEmpresa.map((item) => (
+                          <TableRow key={item.id} className="group border-slate-100">
+                            <TableCell className="py-4 pl-8 font-bold text-[12px] text-slate-700">{item.numero}</TableCell>
+                            <TableCell className="py-4 text-[11px] font-bold text-slate-500 uppercase tracking-tight">
+                              {item.descricao || "—"}
+                            </TableCell>
+                            <TableCell className="py-4 text-center">
+                              <button 
+                                onClick={() => togglePhoneAtivo(item.id)}
+                                className={cn(
+                                  "px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all cursor-pointer",
+                                  item.ativo !== false ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-rose-50 text-rose-600 border border-rose-100"
+                                )}
+                              >
+                                {item.ativo !== false ? "ATIVO" : "INATIVO"}
+                              </button>
+                            </TableCell>
+                            <TableCell className="py-4 text-right pr-8">
+                              <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-primary" onClick={() => handleOpenPhoneModal(item)}><Pencil className="w-4 h-4" /></Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-500" onClick={() => handlePhoneDelete(item.id)}><Trash2 className="w-4 h-4" /></Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
           </>
         )}
 
@@ -2538,6 +2714,72 @@ export default function SettingsPage() {
               <Button type="button" variant="outline" onClick={() => setIsGenericModalOpen(false)} className="px-6 h-[34px] border-slate-200 bg-white text-slate-600 font-bold text-[9px] rounded-lg uppercase tracking-widest">Cancelar</Button>
               <Button type="submit" disabled={isSubmitting} className="px-6 h-[34px] bg-[#171717] hover:bg-[#171717]/90 text-white font-bold text-[9px] rounded-lg gap-2 min-w-[120px] uppercase tracking-widest shadow-lg shadow-slate-200">
                 {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : genericId ? 'Atualizar' : 'Criar'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Telefone da Empresa */}
+      <Dialog open={isPhoneModalOpen} onOpenChange={setIsPhoneModalOpen}>
+        <DialogContent className="sm:max-w-[425px] border-none rounded-3xl shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-extrabold text-slate-800 tracking-widest uppercase">
+              {editingPhoneId ? 'Editar Telefone' : 'Novo Telefone da Empresa'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <form onSubmit={handlePhoneSubmit} className="space-y-6 pt-4">
+            <div className="space-y-2">
+              <Label htmlFor="phoneNumero" className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Número de Telefone</Label>
+              <Input 
+                id="phoneNumero" 
+                placeholder="(48) 99999-9901" 
+                value={phoneNumero}
+                onChange={(e) => setPhoneNumero(e.target.value)}
+                className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 focus-visible:ring-primary/20 transition-all"
+                autoFocus
+              />
+              <p className="text-[9px] text-slate-400 pl-1 font-medium">Informe o número real (celular com DDD, fixo ou 0800)</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="phoneDescricao" className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Identificação / Setor (Opcional)</Label>
+              <Input 
+                id="phoneDescricao" 
+                placeholder="Ex: Comercial 01, Suporte WhatsApp, etc." 
+                value={phoneDescricao}
+                onChange={(e) => setPhoneDescricao(e.target.value)}
+                className="h-10 bg-slate-50 border-slate-100 rounded-lg font-bold text-[12px] text-slate-700 focus-visible:ring-primary/20 transition-all uppercase"
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-slate-50/50 rounded-xl border border-slate-100">
+              <div className="space-y-0.5">
+                <Label className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">Disponível para Seleção</Label>
+                <p className="text-[9px] text-slate-400 font-medium uppercase">Exibir na lista de atendimento</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPhoneAtivo(!phoneAtivo)}
+                className={cn(
+                  "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                  phoneAtivo ? "bg-primary" : "bg-slate-200"
+                )}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                    phoneAtivo ? "translate-x-4" : "translate-x-0"
+                  )}
+                />
+              </button>
+            </div>
+            
+            <DialogFooter className="pt-4 gap-3">
+              <Button type="button" variant="outline" onClick={() => setIsPhoneModalOpen(false)} className="px-6 h-[34px] border-slate-200 bg-white text-slate-600 font-bold text-[9px] rounded-lg uppercase tracking-widest">Cancelar</Button>
+              <Button type="submit" disabled={isSubmitting} className="px-6 h-[34px] bg-[#171717] hover:bg-[#171717]/90 text-white font-bold text-[9px] rounded-lg gap-2 min-w-[120px] uppercase tracking-widest shadow-lg shadow-slate-200">
+                {isSubmitting ? <Loader2 className="w-3 h-3 animate-spin" /> : editingPhoneId ? 'Atualizar' : 'Salvar'}
               </Button>
             </DialogFooter>
           </form>
