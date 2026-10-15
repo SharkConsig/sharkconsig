@@ -40,12 +40,7 @@ import { cn, withRetry } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
 import { translateOrgao } from "@/lib/orgaos-mapping"
 import { getContractTypeInfo } from "@/lib/contratos-mapping"
-import { 
-  getLocalTelefonesEmpresa, 
-  EVENT_TELEFONES_UPDATED, 
-  fetchTelefonesEmpresa, 
-  TelefoneEmpresa 
-} from "@/lib/telefones-empresa"
+import { TelefoneEmpresa, getLocalTelefonesEmpresa, fetchTelefonesEmpresa, EVENT_TELEFONES_UPDATED } from "@/lib/telefones-empresa"
 
 interface LoanData {
   banco: string;
@@ -222,26 +217,24 @@ export function ClientDetailsModal({
   const [clienteOrigem, setClienteOrigem] = useState<string>("")
   const [selectedEmpresaPhone, setSelectedEmpresaPhone] = useState<string>("")
   const [searchEmpresaPhone, setSearchEmpresaPhone] = useState<string>("")
+  const [empresaPhonesList, setEmpresaPhonesList] = useState<TelefoneEmpresa[]>(() => getLocalTelefonesEmpresa())
   const [isEmpresaPhoneOpen, setIsEmpresaPhoneOpen] = useState(false)
   const [isOrigemOpen, setIsOrigemOpen] = useState(false)
-  const [empresaPhonesList, setEmpresaPhonesList] = useState<TelefoneEmpresa[]>(() => getLocalTelefonesEmpresa())
   const [isContractsCardExpanded, setIsContractsCardExpanded] = useState(false)
   const empresaPhoneRef = useRef<HTMLDivElement>(null)
   const origemRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    fetchTelefonesEmpresa(supabase).then((phones) => {
-      if (phones && phones.length > 0) setEmpresaPhonesList(phones)
-    })
     const handlePhonesUpdated = () => {
       setEmpresaPhonesList(getLocalTelefonesEmpresa())
     }
     window.addEventListener(EVENT_TELEFONES_UPDATED, handlePhonesUpdated)
-    window.addEventListener("storage", handlePhonesUpdated)
-    return () => {
-      window.removeEventListener(EVENT_TELEFONES_UPDATED, handlePhonesUpdated)
-      window.removeEventListener("storage", handlePhonesUpdated)
-    }
+    fetchTelefonesEmpresa(supabase).then(phones => {
+      if (phones && phones.length > 0) {
+        setEmpresaPhonesList(phones)
+      }
+    })
+    return () => window.removeEventListener(EVENT_TELEFONES_UPDATED, handlePhonesUpdated)
   }, [])
 
   useEffect(() => {
@@ -1929,7 +1922,7 @@ export function ClientDetailsModal({
                                   type="text"
                                   value={searchEmpresaPhone}
                                   onChange={(e) => setSearchEmpresaPhone(e.target.value)}
-                                  placeholder="Buscar pelos 4 últimos números (ex: 9901)..."
+                                  placeholder="Buscar por 4 dígitos, número ou setor..."
                                   autoFocus
                                   onClick={(e) => e.stopPropagation()}
                                   className="w-full h-8 px-2.5 text-[12px] font-medium rounded-md border border-slate-200 bg-slate-50 placeholder:text-slate-400 text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20"
@@ -1951,48 +1944,56 @@ export function ClientDetailsModal({
                                 >
                                   <span>Selecione</span>
                                 </button>
-                                {empresaPhonesList.filter(p => p.ativo !== false).filter(phone => {
-                                  const cleanP = phone.numero.replace(/\D/g, "")
-                                  const cleanS = searchEmpresaPhone.replace(/\D/g, "").trim()
-                                  const cleanDesc = (phone.descricao || "").toLowerCase()
-                                  const searchLower = searchEmpresaPhone.toLowerCase().trim()
-                                  if (!cleanS && !searchLower) return true
-                                  return cleanP.endsWith(cleanS) || cleanP.includes(cleanS) || phone.numero.includes(searchEmpresaPhone) || cleanDesc.includes(searchLower)
-                                }).map(phone => {
-                                  const isSelected = selectedEmpresaPhone === phone.numero
-                                  return (
-                                    <button
-                                      key={phone.id || phone.numero}
-                                      type="button"
-                                      onClick={() => {
-                                        setSelectedEmpresaPhone(phone.numero)
-                                        setIsEmpresaPhoneOpen(false)
-                                      }}
-                                      className={cn(
-                                        "w-full text-left px-2.5 py-2 text-[12px] rounded-md transition-colors flex items-center justify-between cursor-pointer",
-                                        isSelected ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-800 hover:bg-slate-50 font-semibold"
-                                      )}
-                                    >
-                                      <div className="flex flex-col">
-                                        <span>{phone.numero}</span>
-                                        {phone.descricao && (
-                                          <span className="text-[10px] text-slate-400 font-normal leading-tight">{phone.descricao}</span>
+                                {(() => {
+                                  const term = searchEmpresaPhone.trim().toLowerCase()
+                                  const cleanSearch = searchEmpresaPhone.replace(/\D/g, "")
+                                  const activePhones = empresaPhonesList.filter(t => t.ativo !== false)
+                                  const filteredList = activePhones.filter(tel => {
+                                    if (!term) return true
+                                    const cleanPhone = tel.numero.replace(/\D/g, "")
+                                    const matchDigits = cleanSearch.length > 0 && (
+                                      cleanPhone.endsWith(cleanSearch) || 
+                                      cleanPhone.includes(cleanSearch)
+                                    )
+                                    const matchText = tel.numero.toLowerCase().includes(term) ||
+                                      Boolean(tel.descricao && tel.descricao.toLowerCase().includes(term))
+                                    return matchDigits || matchText
+                                  })
+
+                                  if (filteredList.length === 0) {
+                                    return (
+                                      <p className="text-[11px] text-slate-400 italic px-2.5 py-2 text-center">Nenhum telefone encontrado</p>
+                                    )
+                                  }
+
+                                  return filteredList.map(tel => {
+                                    const isSelected = selectedEmpresaPhone === tel.numero
+                                    return (
+                                      <button
+                                        key={tel.id}
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedEmpresaPhone(tel.numero)
+                                          setIsEmpresaPhoneOpen(false)
+                                        }}
+                                        className={cn(
+                                          "w-full text-left px-2.5 py-2 text-[12px] rounded-md transition-colors flex items-center justify-between cursor-pointer",
+                                          isSelected ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-800 hover:bg-slate-50 font-semibold"
                                         )}
-                                      </div>
-                                      {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
-                                    </button>
-                                  )
-                                })}
-                                {empresaPhonesList.filter(p => p.ativo !== false).filter(phone => {
-                                  const cleanP = phone.numero.replace(/\D/g, "")
-                                  const cleanS = searchEmpresaPhone.replace(/\D/g, "").trim()
-                                  const cleanDesc = (phone.descricao || "").toLowerCase()
-                                  const searchLower = searchEmpresaPhone.toLowerCase().trim()
-                                  if (!cleanS && !searchLower) return true
-                                  return cleanP.endsWith(cleanS) || cleanP.includes(cleanS) || phone.numero.includes(searchEmpresaPhone) || cleanDesc.includes(searchLower)
-                                }).length === 0 && (
-                                  <p className="text-[11px] text-slate-400 italic px-2.5 py-2 text-center">Nenhum telefone encontrado</p>
-                                )}
+                                      >
+                                        <div className="flex items-center gap-2 truncate">
+                                          <span>{tel.numero}</span>
+                                          {tel.descricao && (
+                                            <span className="text-[10px] text-slate-400 font-normal truncate">
+                                              • {tel.descricao}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                                      </button>
+                                    )
+                                  })
+                                })()}
                               </div>
                             </div>
                           )}

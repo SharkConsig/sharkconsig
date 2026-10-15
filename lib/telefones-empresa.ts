@@ -53,7 +53,7 @@ export async function fetchTelefonesEmpresa(
     const { data, error } = await supabase
       .from(TABLE_TELEFONES_EMPRESA)
       .select("*")
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
 
     if (!error && Array.isArray(data)) {
       saveLocalTelefonesEmpresa(data)
@@ -96,13 +96,13 @@ export async function createTelefoneEmpresa(
       created_at: new Date().toISOString(),
     }
     const current = getLocalTelefonesEmpresa()
-    const updated = [...current, fallbackItem]
+    const updated = [fallbackItem, ...current]
     saveLocalTelefonesEmpresa(updated)
     return fallbackItem
   }
 
   const current = getLocalTelefonesEmpresa().filter(t => t.id !== data.id)
-  const updated = [...current, data]
+  const updated = [data, ...current]
   saveLocalTelefonesEmpresa(updated)
   return data
 }

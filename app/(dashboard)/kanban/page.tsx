@@ -72,6 +72,9 @@ interface KanbanColumnConfig {
   headerBg: string
   borderTop: string
   badgeClass: string
+  bgColumn: string
+  borderColumn: string
+  cardBorder: string
   descriptionOperador: string
   descriptionGestor: string
 }
@@ -79,73 +82,91 @@ interface KanbanColumnConfig {
 const KANBAN_COLUMNS: KanbanColumnConfig[] = [
   {
     id: "EM RETOMADA",
-    title: "EM RETOMADA",
+    title: "Em retomada",
     subtitle: "Réguas de Contato",
     code: "RT1 - RT6",
     color: "amber",
-    headerBg: "bg-amber-200 border-amber-400 text-amber-950",
+    headerBg: "bg-amber-100 border-amber-300 text-slate-900",
     borderTop: "border-t-amber-500",
-    badgeClass: "bg-amber-100 text-amber-900 border-amber-400",
+    badgeClass: "bg-amber-200 text-amber-900 border-amber-400",
+    bgColumn: "bg-amber-100",
+    borderColumn: "border-amber-300",
+    cardBorder: "border border-slate-200 hover:border-slate-300",
     descriptionOperador: "Executar tentativas planejadas (RT1 a RT6) para quem não respondeu.",
     descriptionGestor: "Disciplina de execução e cumprimento da sequência planejada."
   },
   {
     id: "EM NEGOCIAÇÃO",
-    title: "EM NEGOCIAÇÃO",
+    title: "Em negociação",
     subtitle: "Foco em Fechamento",
     code: "NEG",
     color: "indigo",
-    headerBg: "bg-indigo-200 border-indigo-400 text-indigo-950",
+    headerBg: "bg-indigo-100 border-indigo-300 text-slate-900",
     borderTop: "border-t-indigo-600",
-    badgeClass: "bg-indigo-100 text-indigo-900 border-indigo-400",
+    badgeClass: "bg-indigo-200 text-indigo-900 border-indigo-400",
+    bgColumn: "bg-indigo-100",
+    borderColumn: "border-indigo-300",
+    cardBorder: "border border-slate-200 hover:border-slate-300",
     descriptionOperador: "Trabalhar propostas ativas, simulações, dúvidas e documentos.",
     descriptionGestor: "Pipeline quente, volume potencial e apoio em negócios complexos."
   },
   {
     id: "EM REATIVAÇÃO",
-    title: "EM REATIVAÇÃO",
+    title: "Em reativação",
     subtitle: "Atenção ao Cliente Esfriado",
     code: "RE1 - RE3",
     color: "purple",
-    headerBg: "bg-purple-200 border-purple-400 text-purple-950",
+    headerBg: "bg-purple-100 border-purple-300 text-slate-900",
     borderTop: "border-t-purple-600",
-    badgeClass: "bg-purple-100 text-purple-900 border-purple-400",
+    badgeClass: "bg-purple-200 text-purple-900 border-purple-400",
+    bgColumn: "bg-purple-100",
+    borderColumn: "border-purple-300",
+    cardBorder: "border border-slate-200 hover:border-slate-300",
     descriptionOperador: "Clientes há 48h úteis sem resposta: resgate imediato da oportunidade.",
     descriptionGestor: "Monitoramento de gargalos e oportunidades quentes em risco de perda."
   },
   {
     id: "SEM INTERESSE",
-    title: "SEM INTERESSE",
+    title: "Sem interesse",
     subtitle: "Nutrição e Longo Prazo",
     code: "DDD / SI",
     color: "slate",
-    headerBg: "bg-slate-200 border-slate-400 text-slate-900",
+    headerBg: "bg-slate-200 border-slate-300 text-slate-900",
     borderTop: "border-t-slate-600",
-    badgeClass: "bg-slate-300 text-slate-900 border-slate-400",
+    badgeClass: "bg-slate-200 text-slate-800 border-slate-400",
+    bgColumn: "bg-slate-100",
+    borderColumn: "border-slate-300",
+    cardBorder: "border border-slate-200 hover:border-slate-300",
     descriptionOperador: "Registrar motivo da recusa e programar abordagem futura permitida.",
     descriptionGestor: "Preservação da base para futuro retrabalho no momento certo."
   },
   {
     id: "FECHADO",
-    title: "FECHADO",
+    title: "Fechado",
     subtitle: "Venda Concluída",
     code: "GOL",
     color: "emerald",
-    headerBg: "bg-emerald-200 border-emerald-400 text-emerald-950",
+    headerBg: "bg-emerald-100 border-emerald-300 text-slate-900",
     borderTop: "border-t-emerald-600",
-    badgeClass: "bg-emerald-100 text-emerald-900 border-emerald-400",
+    badgeClass: "bg-emerald-200 text-emerald-900 border-emerald-400",
+    bgColumn: "bg-emerald-100",
+    borderColumn: "border-emerald-300",
+    cardBorder: "border border-slate-200 hover:border-slate-300",
     descriptionOperador: "Documentação anexada e proposta digitada no sistema.",
     descriptionGestor: "Resultado final e faturamento consolidado vs metas da equipe."
   },
   {
     id: "PERDIDO",
-    title: "PERDIDO",
+    title: "Perdido",
     subtitle: "Finalização por Inviabilidade",
     code: "FIM",
     color: "rose",
-    headerBg: "bg-rose-200 border-rose-400 text-rose-950",
+    headerBg: "bg-rose-100 border-rose-300 text-slate-900",
     borderTop: "border-t-rose-600",
-    badgeClass: "bg-rose-100 text-rose-900 border-rose-400",
+    badgeClass: "bg-rose-200 text-rose-900 border-rose-400",
+    bgColumn: "bg-rose-100",
+    borderColumn: "border-rose-300",
+    cardBorder: "border border-slate-200 hover:border-slate-300",
     descriptionOperador: "Encerramento por tentativas esgotadas ou inviabilidade do crédito.",
     descriptionGestor: "Taxa de perda, motivos de descarte e qualidade da listagem."
   }
@@ -1164,7 +1185,7 @@ export default function KanbanPage() {
         return {
           id: String(f.id),
           status: isDrawer ? drawerStatus : (fEtapa || "EM RETOMADA"),
-          origem: f.origem || "KANBAN",
+          origem: f.origem || (meta as any).origem || "Não informada",
           cliente_nome: f.cliente_nome || "Cliente sem Nome",
           cliente_cpf: f.cliente_cpf || "",
           cliente_telefone: uniquePhones[0] || f.cliente_telefone || "",
@@ -2443,12 +2464,12 @@ export default function KanbanPage() {
             kanban_stage: "EM RETOMADA",
             proxima_acao: "Enviar Régua de Retomada 1",
             telefones: clientInfo.telefones,
-            convenio: clientInfo.convenio || (existing.metadata as any)?.convenio
+            convenio: clientInfo.convenio || (existing.metadata as any)?.convenio,
+            origem: clientInfo.origem || (existing as any).origem || (existing.metadata as any)?.origem,
+            telefone_empresa: clientInfo.telefone_empresa || (existing as any).telefone_empresa || (existing.metadata as any)?.telefone_empresa
           }
           delete (updatedMeta as any).tabulacao_whatsapp
           delete (updatedMeta as any).telefones_selecionados
-          delete (updatedMeta as any).origem
-          delete (updatedMeta as any).telefone_empresa
 
           const updatePayload: Record<string, any> = {
             etapa: "EM RETOMADA",
@@ -2499,12 +2520,12 @@ export default function KanbanPage() {
             user_id: user?.id,
             user_nome: perfil?.nome || "Corretor",
             telefones: clientInfo.telefones,
-            convenio: clientInfo.convenio
+            convenio: clientInfo.convenio,
+            origem: clientInfo.origem,
+            telefone_empresa: clientInfo.telefone_empresa
           }
           delete (meta as any).tabulacao_whatsapp
           delete (meta as any).telefones_selecionados
-          delete (meta as any).origem
-          delete (meta as any).telefone_empresa
 
           const insertPayload: Record<string, any> = {
             cliente_nome: clientInfo.nome || "Cliente sem Nome",
@@ -2743,11 +2764,21 @@ export default function KanbanPage() {
       }
     })
 
-    return { agora, vencidas, futuras }
+    const calcValor = (list: TicketItem[]) => list.reduce((acc, t) => {
+      const opData = getValorOperacaoDeAbertura(t)
+      const opNum = parseValorToNumber(opData.valor)
+      return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+    }, 0)
+
+    const valorAgora = calcValor(agora)
+    const valorVencidas = calcValor(vencidas.map(i => i.ticket))
+    const valorFuturas = calcValor(futuras)
+
+    return { agora, vencidas, futuras, valorAgora, valorVencidas, valorFuturas }
   }, [filteredTickets])
 
   // Função reutilizável para renderizar exatamente o mesmo Cartão de Tarefa em ambas as visões
-  const renderTicketCard = (ticket: TicketItem, atrasoCustomTexto?: string, isDraggable: boolean = true) => {
+  const renderTicketCard = (ticket: TicketItem, atrasoCustomTexto?: string, isDraggable: boolean = true, customBorderClass?: string) => {
     const meta = parseMetadata(ticket.descricao)
     const opData = getValorOperacaoDeAbertura(ticket)
     const opValorNum = parseValorToNumber(opData.valor)
@@ -2788,7 +2819,8 @@ export default function KanbanPage() {
         } : undefined}
         onClick={() => handleCardClick(ticket)}
         className={cn(
-          "bg-white rounded-lg border border-slate-200 p-3 shadow-xs hover:shadow-xl hover:shadow-slate-900/15 hover:scale-[1.01] hover:-translate-y-0.5 hover:border-slate-300 transition-all duration-200 ease-out transform space-y-2.5 relative group hover:z-10",
+          "bg-white rounded-lg p-3 shadow-xs hover:shadow-xl hover:shadow-slate-900/15 hover:scale-[1.01] hover:-translate-y-0.5 transition-all duration-200 ease-out transform space-y-2.5 relative group hover:z-10",
+          customBorderClass ? customBorderClass : "border border-slate-200 hover:border-slate-300",
           isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
           draggedTicket?.id === ticket.id && "opacity-40 scale-95 border-dashed border-indigo-400"
         )}
@@ -2858,7 +2890,7 @@ export default function KanbanPage() {
           </div>
 
           <div className="flex items-center gap-1 text-[12px] text-slate-500">
-            <span>CPF:</span>
+            <span className="text-[11px] text-slate-400 font-semibold">CPF:</span>
             <span
               onClick={(e) => {
                 e.stopPropagation()
@@ -2936,37 +2968,74 @@ export default function KanbanPage() {
               </div>
             )
           })()}
+
+          {/* CONVÊNIO (antigo Tipo, posicionado abaixo do telefone do cliente) */}
+          {(() => {
+            const rawConvenio = formatConvenioOrigem(ticket.convenio || (meta as any).convenio) !== "Não informado"
+              ? formatConvenioOrigem(ticket.convenio || (meta as any).convenio)
+              : (ticket.convenio || (meta as any).convenio || meta.selected_operation_type || "Consignado")
+
+            return (
+              <div className="flex items-center gap-1 text-[12px] text-slate-500">
+                <span className="text-[11px] text-slate-400 font-semibold">Convênio:</span>
+                <span className="font-medium text-slate-700 truncate max-w-[200px]" title={rawConvenio}>
+                  {rawConvenio}
+                </span>
+              </div>
+            )
+          })()}
         </div>
 
         {/* 3. Informações Comerciais e de Titularidade */}
-        <div className="bg-slate-50/90 rounded-md p-2 border border-slate-100 text-[12px] space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-500">Valor Operação:</span>
-            <span className="font-bold text-slate-900 leading-tight">
-              {opData.valor}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-slate-500">Tipo:</span>
-            <span className="font-medium text-slate-700 truncate max-w-[120px]">
-              {meta.selected_operation_type || ticket.convenio || "Consignado"}
-            </span>
-          </div>
-          {isGestor && (
-            <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-              <span className="text-slate-500">Responsável:</span>
-              <span className="font-semibold text-sky-700 truncate max-w-[130px]">
-                {ticket.user_nome || meta.corretor_nome || "Não atribuído"}
-              </span>
+        {(() => {
+          const rawOrigem = (
+            ((meta as any).origem && (meta as any).origem !== "KANBAN" && (meta as any).origem !== "SISTEMA" ? (meta as any).origem : "") ||
+            ((meta as any).cliente_origem ? (meta as any).cliente_origem : "") ||
+            (ticket.origem && ticket.origem !== "KANBAN" && ticket.origem !== "SISTEMA" ? ticket.origem : "") ||
+            (ticket.origem && ticket.origem !== "KANBAN" ? ticket.origem : "") ||
+            (meta as any).origem ||
+            "Não informada"
+          )
+          const rawEmpresaPhone = ticket.telefone_empresa || meta.telefone_empresa || ""
+          const empresaPhoneFormatted = rawEmpresaPhone ? (formatPhone(rawEmpresaPhone) || rawEmpresaPhone) : "Não informado"
+
+          return (
+            <div className="bg-slate-50/90 rounded-md p-2 border border-slate-100 text-[12px] space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Origem do Cliente:</span>
+                <span className="font-semibold text-slate-700 truncate max-w-[130px]" title={rawOrigem}>
+                  {rawOrigem}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+                <span className="text-slate-500">Produto/Modalidade:</span>
+                <span className="font-semibold text-slate-700 truncate max-w-[130px]">
+                  {meta.produto_modalidade || meta.modalidade || "---"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+                <span className="text-slate-500">Valor Operação:</span>
+                <span className="font-bold text-slate-900 leading-tight">
+                  {opData.valor}
+                </span>
+              </div>
+              {isGestor && (
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+                  <span className="text-slate-500">Responsável:</span>
+                  <span className="font-semibold text-sky-700 truncate max-w-[130px]">
+                    {ticket.user_nome || meta.corretor_nome || "Não atribuído"}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+                <span className="text-slate-500">Número Utilizado:</span>
+                <span className="font-semibold text-slate-700 truncate max-w-[130px]" title={empresaPhoneFormatted}>
+                  {empresaPhoneFormatted}
+                </span>
+              </div>
             </div>
-          )}
-          <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-            <span className="text-slate-500">Tel da Empresa:</span>
-            <span className="font-semibold text-slate-700 truncate max-w-[130px]">
-              {ticket.telefone_empresa || meta.telefone_empresa || "Não informado"}
-            </span>
-          </div>
-        </div>
+          )
+        })()}
 
         {/* 4. Bloco da Próxima Ação */}
         <div className="bg-amber-100/90 border border-amber-300 rounded-md p-2 text-[12px] space-y-0.5 shadow-2xs">
@@ -3037,15 +3106,28 @@ export default function KanbanPage() {
 
   const renderFiltersAndMetrics = () => (
     <>
-      {/* Informações: Total de Clientes */}
+      {/* Informações: Total de Clientes e Total em Valores */}
       <div className="flex flex-wrap items-center gap-6 px-1 shrink-0">
         {/* Total de Clientes */}
         <div className="text-left select-none">
-          <p className="text-base font-bold text-slate-800 tracking-tight">
+          <p className="text-base font-bold text-slate-800 tracking-tight leading-snug">
             Total de Clientes: <span className="text-slate-900 font-extrabold">{metrics.totalLeads}</span>
           </p>
-          <p className="text-xs text-slate-400 font-medium">
+          <p className="text-xs text-slate-400 font-medium leading-normal">
             {metrics.totalLeads} {metrics.totalLeads === 1 ? "lead em atendimento" : "leads em atendimento"}
+          </p>
+        </div>
+
+        {/* Divisor vertical */}
+        <div className="hidden sm:block h-8 w-px bg-slate-200 self-center" />
+
+        {/* Total em Valores */}
+        <div className="text-left select-none">
+          <p className="text-base font-bold text-slate-800 tracking-tight leading-snug">
+            Total em Valores: <span className="text-slate-900 font-extrabold">R$ {metrics.totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </p>
+          <p className="text-xs text-slate-400 font-medium leading-normal">
+            Soma de todas as colunas
           </p>
         </div>
       </div>
@@ -3406,11 +3488,11 @@ export default function KanbanPage() {
               {renderFiltersAndMetrics()}
               <div className="flex-1 flex flex-col md:flex-row gap-4 h-full min-h-0 overflow-x-auto overflow-y-hidden">
                 {/* Coluna 1: AGORA */}
-                <div className="flex-1 max-w-[310px] min-w-[240px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-200/80 shadow-2xs overflow-hidden bg-emerald-50/70">
+                <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-200/80 shadow-2xs overflow-hidden bg-emerald-50/70">
                   {/* Cabeçalho da Coluna Agora */}
                   <div className="p-3.5 border-b border-emerald-200/70 bg-emerald-50/70 border-t-4 border-t-emerald-600 rounded-t-xl shrink-0">
                     <div className="flex items-center justify-between mb-0.5">
-                      <h2 className="font-extrabold text-xs text-slate-900 tracking-tight flex items-center gap-1.5">
+                      <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                         <span>Agora</span>
                       </h2>
@@ -3418,9 +3500,19 @@ export default function KanbanPage() {
                         {filaCategorias.agora.length}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500 font-medium">
+                    <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
                       Ações exigíveis no momento
                     </p>
+
+                    {/* Totais Acumulados para Gestão e Operação */}
+                    <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
+                      <span className="font-semibold text-slate-800">
+                        {filaCategorias.agora.length} {filaCategorias.agora.length === 1 ? "lead" : "leads"}
+                      </span>
+                      <span className="font-extrabold text-slate-950">
+                        {filaCategorias.valorAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Lista de Cards da Coluna Agora */}
@@ -3436,11 +3528,11 @@ export default function KanbanPage() {
                 </div>
 
                 {/* Coluna 2: VENCIDAS */}
-                <div className="flex-1 max-w-[310px] min-w-[240px] flex flex-col h-full min-h-0 rounded-xl border border-rose-200/80 shadow-2xs overflow-hidden bg-rose-50/70">
+                <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-rose-200/80 shadow-2xs overflow-hidden bg-rose-50/70">
                   {/* Cabeçalho da Coluna Vencidas */}
                   <div className="p-3.5 border-b border-rose-200/70 bg-rose-50/70 border-t-4 border-t-rose-600 rounded-t-xl shrink-0">
                     <div className="flex items-center justify-between mb-0.5">
-                      <h2 className="font-extrabold text-xs text-slate-900 tracking-tight flex items-center gap-1.5">
+                      <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
                         <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                         <span>Vencidas</span>
                       </h2>
@@ -3448,9 +3540,19 @@ export default function KanbanPage() {
                         {filaCategorias.vencidas.length}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500 font-medium">
+                    <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
                       Prazo de atendimento expirado
                     </p>
+
+                    {/* Totais Acumulados para Gestão e Operação */}
+                    <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
+                      <span className="font-semibold text-slate-800">
+                        {filaCategorias.vencidas.length} {filaCategorias.vencidas.length === 1 ? "lead" : "leads"}
+                      </span>
+                      <span className="font-extrabold text-slate-950">
+                        {filaCategorias.valorVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Lista de Cards da Coluna Vencidas */}
@@ -3466,11 +3568,11 @@ export default function KanbanPage() {
                 </div>
 
                 {/* Coluna 3: FUTURAS */}
-                <div className="flex-1 max-w-[310px] min-w-[240px] flex flex-col h-full min-h-0 rounded-xl border border-indigo-200/80 shadow-2xs overflow-hidden bg-indigo-50/70">
+                <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-indigo-200/80 shadow-2xs overflow-hidden bg-indigo-50/70">
                   {/* Cabeçalho da Coluna Futuras */}
                   <div className="p-3.5 border-b border-indigo-200/70 bg-indigo-50/70 border-t-4 border-t-indigo-600 rounded-t-xl shrink-0">
                     <div className="flex items-center justify-between mb-0.5">
-                      <h2 className="font-extrabold text-xs text-slate-900 tracking-tight flex items-center gap-1.5">
+                      <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
                         <CalendarIcon className="w-4 h-4 text-indigo-600 shrink-0" />
                         <span>Futuras</span>
                       </h2>
@@ -3478,9 +3580,19 @@ export default function KanbanPage() {
                         {filaCategorias.futuras.length}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500 font-medium">
+                    <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
                       Próximas ações do dia
                     </p>
+
+                    {/* Totais Acumulados para Gestão e Operação */}
+                    <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
+                      <span className="font-semibold text-slate-800">
+                        {filaCategorias.futuras.length} {filaCategorias.futuras.length === 1 ? "lead" : "leads"}
+                      </span>
+                      <span className="font-extrabold text-slate-950">
+                        {filaCategorias.valorFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Lista de Cards da Coluna Futuras */}
@@ -3507,7 +3619,7 @@ export default function KanbanPage() {
 
             {/* Quadro das 7 Colunas do Kanban */}
             <div className="flex-1 overflow-x-auto pb-2 min-h-0">
-              <div className="flex items-start gap-4 min-w-[1850px] h-full">
+              <div className="flex items-stretch gap-4 w-full min-w-max h-full">
                 {KANBAN_COLUMNS.map(col => {
                   const colTickets = groupedColumns[col.id] || []
                   const totalColValor = colTickets.reduce((acc, t) => {
@@ -3542,16 +3654,21 @@ export default function KanbanPage() {
                         setDraggedTicket(null)
                       }}
                       className={cn(
-                        "flex-1 min-w-[250px] max-w-[270px] bg-[#28365E] border border-white/10 rounded-xl flex flex-col max-h-[calc(100vh-340px)] shadow-xs transition-colors",
-                        dragOverColumnId === col.id && "ring-2 ring-indigo-500 bg-[#324475]"
+                        "flex-1 min-w-[260px] rounded-xl flex flex-col h-full min-h-0 shadow-xs transition-colors border",
+                        col.bgColumn,
+                        col.borderColumn,
+                        dragOverColumnId === col.id && "ring-2 ring-indigo-500 brightness-95"
                       )}
                     >
                   {/* Cabeçalho da Coluna */}
                   <div className={cn("p-3.5 border-b rounded-t-xl border-t-4 shadow-xs", col.borderTop, col.headerBg)}>
-                    <div className="flex items-center justify-between mb-1">
-                      <h2 className="font-extrabold text-xs text-slate-950 tracking-tight flex items-center gap-1.5">
-                        {col.title}
+                    <div className="flex items-center justify-between mb-0.5">
+                      <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                        <span>{col.title ? col.title.charAt(0).toUpperCase() + col.title.slice(1).toLowerCase() : col.title}</span>
                       </h2>
+                      <span className={cn("text-[11px] font-black px-2 py-0.5 rounded-full border", col.badgeClass)}>
+                        {colTickets.length}
+                      </span>
                     </div>
 
                     <p className="text-[11px] text-slate-700 font-medium line-clamp-1 mb-2">
@@ -3570,13 +3687,13 @@ export default function KanbanPage() {
                   </div>
 
                   {/* Lista de Cartões (Scroll Vertical) */}
-                  <div className="p-2 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-[#28365E] rounded-b-xl">
+                  <div className={cn("p-2 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar rounded-b-xl", col.bgColumn)}>
                     {colTickets.length === 0 ? (
-                      <div className="py-8 text-center text-xs text-slate-300 font-semibold">
+                      <div className="py-8 text-center text-xs text-slate-600 font-semibold">
                         Nenhum lead nesta etapa
                       </div>
                     ) : (
-                      colTickets.map(ticket => renderTicketCard(ticket, undefined, true))
+                      colTickets.map(ticket => renderTicketCard(ticket, undefined, true, col.cardBorder))
                     )}
                   </div>
                 </div>
@@ -4370,17 +4487,6 @@ export default function KanbanPage() {
                 <span className="inline-flex items-center font-bold text-sky-700 bg-sky-50 border border-sky-200/80 px-2.5 py-1 rounded-md text-xs">
                   {inferKanbanStage(atendimentoModalTicket, parseMetadata(atendimentoModalTicket.descricao))}
                 </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setHistoricoModalTicket(atendimentoModalTicket)}
-                  className="h-7 px-2.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 hover:text-purple-800 border border-purple-200 flex items-center gap-1.5 rounded-md cursor-pointer shadow-2xs transition-colors"
-                  title="Histórico do Atendimento"
-                >
-                  <History className="w-3.5 h-3.5 text-purple-600" />
-                  <span>Histórico do Atendimento</span>
-                </Button>
               </div>
 
               <Button
@@ -4638,6 +4744,17 @@ export default function KanbanPage() {
                 <span className="inline-flex items-center font-bold text-sky-700 bg-sky-50 border border-sky-200/80 px-2.5 py-1 rounded-md text-xs">
                   {inferKanbanStage(supervisaoModalTicket, parseMetadata(supervisaoModalTicket.descricao))}
                 </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setHistoricoModalTicket(supervisaoModalTicket)}
+                  className="h-7 px-2.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 hover:text-purple-800 border border-purple-200 flex items-center gap-1.5 rounded-md cursor-pointer shadow-2xs transition-colors"
+                  title="Histórico do Atendimento"
+                >
+                  <History className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Histórico do Atendimento</span>
+                </Button>
               </div>
 
               <Button

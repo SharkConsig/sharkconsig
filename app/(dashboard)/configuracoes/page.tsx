@@ -2092,7 +2092,7 @@ export default function SettingsPage() {
         )}
 
         {/* GERENCIAR BANNERS DO DASHBOARD */}
-        <section className="space-y-6 pb-20">
+        <section className="space-y-6">
           <div 
             className="flex items-center justify-between cursor-pointer group select-none"
             onClick={() => setIsBannersExpanded(!isBannersExpanded)}
@@ -2199,7 +2199,7 @@ export default function SettingsPage() {
 
         {/* TELEFONES DA EMPRESA (UTILIZADOS NO ATENDIMENTO) */}
         {!isApenasRH && (
-          <section className="space-y-6">
+          <section className="space-y-6 pb-20">
             <div 
               className="flex items-center justify-between cursor-pointer group select-none"
               onClick={() => setIsTelefonesExpanded(!isTelefonesExpanded)}
