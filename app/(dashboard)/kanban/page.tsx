@@ -18,6 +18,7 @@ import {
   ArrowRight, 
   Clock, 
   AlertCircle, 
+  Zap,
   ShieldAlert, 
   User, 
   DollarSign, 
@@ -182,6 +183,7 @@ interface TicketMetadata {
   acao_especial?: boolean
   acao_especial_motivo?: string
   acao_especial_status?: "pendente" | "aprovado" | "concluido"
+  acao_especial_destinatario?: string
   conflito_titularidade?: boolean
   conflito_responsavel_nome?: string
   prioridade?: "NORMAL" | "ALTA" | "URGENTE"
@@ -239,6 +241,13 @@ interface TicketItem {
   updated_at: string
   status_id?: string
   source_table?: "kanban_fichas" | "chamados"
+  historico_movimentacoes?: Array<{
+    data: string
+    etapa_anterior?: string
+    etapa_nova?: string
+    autor?: string
+    motivo?: string
+  }>
 }
 
 interface UserSummary {
@@ -882,6 +891,12 @@ export default function KanbanPage() {
   const [opcaoSelecionada, setOpcaoSelecionada] = useState<"Sem interação" | "Sem interesse" | "">("")
   const [isSavingOpcao, setIsSavingOpcao] = useState(false)
 
+  // Estados da Modal de Solicitação de Ação Especial
+  const [isAcaoEspecialModalOpen, setIsAcaoEspecialModalOpen] = useState(false)
+  const [acaoEspecialDestinatario, setAcaoEspecialDestinatario] = useState<"Supervisor" | "Operacional" | "Administrador" | "Monitoramento">("Supervisor")
+  const [acaoEspecialTexto, setAcaoEspecialTexto] = useState("")
+  const [isSubmittingAcaoEspecial, setIsSubmittingAcaoEspecial] = useState(false)
+
   // Histórico de Atendimentos e Propostas do Cliente (Modal Atendimento)
   const [clientTicketsHistory, setClientTicketsHistory] = useState<Record<string, unknown>[]>([])
   const [isLoadingClientTicketsHistory, setIsLoadingClientTicketsHistory] = useState(false)
@@ -1052,6 +1067,8 @@ export default function KanbanPage() {
             setResolvedConvenio(t.label)
             if (atendimentoModalTicket.source_table === "kanban_fichas") {
               const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+              delete (currentMeta as any).historico_kanban
+              delete (currentMeta as any).historico_movimentacoes
               currentMeta.convenio = t.label
               atendimentoModalTicket.convenio = t.label
               supabase.from("kanban_fichas").update({
@@ -1182,6 +1199,21 @@ export default function KanbanPage() {
         ].filter(Boolean) as string[]
         const uniquePhones = Array.from(new Set(rawPhones.map(p => p.trim()).filter(Boolean)))
 
+        const rawMov = f.historico_movimentacoes
+        const historicoMov: Array<{
+          data: string
+          etapa_anterior?: string
+          etapa_nova?: string
+          autor?: string
+          motivo?: string
+        }> = Array.isArray(rawMov)
+          ? rawMov
+          : (typeof rawMov === "string" ? (() => { try { const p = JSON.parse(rawMov); return Array.isArray(p) ? p : [] } catch { return [] } })() : (Array.isArray(meta.historico_kanban) ? meta.historico_kanban : []))
+
+        if (!meta.historico_kanban && historicoMov.length > 0) {
+          meta.historico_kanban = historicoMov
+        }
+
         return {
           id: String(f.id),
           status: isDrawer ? drawerStatus : (fEtapa || "EM RETOMADA"),
@@ -1208,7 +1240,8 @@ export default function KanbanPage() {
           user_avatar: meta.user_avatar || undefined,
           created_at: f.created_at || new Date().toISOString(),
           updated_at: f.updated_at || new Date().toISOString(),
-          source_table: "kanban_fichas"
+          source_table: "kanban_fichas",
+          historico_movimentacoes: historicoMov
         }
       })
 
@@ -1565,11 +1598,14 @@ export default function KanbanPage() {
 
       const newDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
       if (agendarModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(agendarModalTicket.id)) {
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
         const { error } = await supabase
           .from("kanban_fichas")
           .update({
             observacoes: observacoesAcumuladas,
-            metadata: updatedMeta,
+            metadata: metaParaSalvar,
             updated_at: nowIso
           })
           .eq("id", agendarModalTicket.id)
@@ -1650,31 +1686,41 @@ export default function KanbanPage() {
       const deveLimparSemInteresse = isSaindoDeSemInteresse && cleanObs === "Sem interesse"
       const novaObservacao = deveLimparSemInteresse ? "" : cleanObs
 
-      const historicoAtual = meta.historico_kanban || []
+      const historicoAtual = Array.isArray(ticket.historico_movimentacoes)
+        ? ticket.historico_movimentacoes
+        : (Array.isArray(meta.historico_kanban) ? meta.historico_kanban : [])
+
+      const novaMovimentacao = {
+        data: new Date().toISOString(),
+        etapa_anterior: etapaAtual,
+        etapa_nova: destinoEtapa,
+        autor: perfil?.nome || "Usuário",
+        motivo: motivo || undefined
+      }
+
+      const novoHistorico = [...historicoAtual, novaMovimentacao]
+
       const updatedMeta: TicketMetadata = {
         ...meta,
         kanban_stage: destinoEtapa,
         proxima_acao: proximaAcaoPadrao,
         vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
         alerta_atrasado: false,
-        historico_kanban: [
-          ...historicoAtual,
-          {
-            data: new Date().toISOString(),
-            etapa_anterior: etapaAtual,
-            etapa_nova: destinoEtapa,
-            autor: perfil?.nome || "Usuário",
-            motivo: motivo || undefined
-          }
-        ]
+        historico_kanban: novoHistorico
       }
 
       const newDesc = stringifyWithMetadata(novaObservacao, updatedMeta)
       
       if (ticket.source_table === "kanban_fichas") {
+        // Gravar na coluna historico_movimentacoes e NÃO na coluna metadata
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
+
         const updatePayload: any = {
           etapa: destinoEtapa,
-          metadata: updatedMeta,
+          historico_movimentacoes: novoHistorico,
+          metadata: metaParaSalvar,
           updated_at: new Date().toISOString()
         }
         if (deveLimparSemInteresse) {
@@ -1687,6 +1733,7 @@ export default function KanbanPage() {
           .eq("id", ticket.id)
 
         if (error) throw error
+        ticket.historico_movimentacoes = novoHistorico
       } else {
         const { error } = await supabase
           .from("chamados")
@@ -1716,7 +1763,8 @@ export default function KanbanPage() {
         setAtendimentoModalTicket(prev => prev ? {
           ...prev,
           status: destinoEtapa,
-          descricao: newDesc
+          descricao: newDesc,
+          historico_movimentacoes: novoHistorico
         } : null)
       }
 
@@ -1907,11 +1955,15 @@ export default function KanbanPage() {
         observacao_data: nowIso
       }
 
+      const metaParaSalvar = { ...updatedMeta }
+      delete (metaParaSalvar as any).historico_kanban
+      delete (metaParaSalvar as any).historico_movimentacoes
+
       await supabase
         .from("kanban_fichas")
         .update({
           observacoes: observacoesAcumuladas,
-          metadata: updatedMeta,
+          metadata: metaParaSalvar,
           updated_at: nowIso
         })
         .eq("id", atendimentoModalTicket.id)
@@ -1934,6 +1986,159 @@ export default function KanbanPage() {
     }
   }
 
+  // Solicitação de Ação Especial na Modal de Atendimento
+  const handleSolicitarAcaoEspecial = async () => {
+    if (!atendimentoModalTicket || !user) return
+    const textoAcao = acaoEspecialTexto.trim()
+    if (!textoAcao) {
+      toast.warning("Descreva a ação necessária para a solicitação.")
+      return
+    }
+
+    setIsSubmittingAcaoEspecial(true)
+    const nowIso = new Date().toISOString()
+    const registroTexto = `⚡ SOLICITAÇÃO DE AÇÃO ESPECIAL [${acaoEspecialDestinatario}]: ${textoAcao}`
+
+    try {
+      const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+
+      // 1. Manter histórico de observações acumuladas na ficha sem duplicações
+      const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
+      const seenTexts = new Set<string>()
+
+      if (Array.isArray(currentMeta.observacoes_historico)) {
+        currentMeta.observacoes_historico.forEach((item: any) => {
+          if (item && isUserObservation(item.texto)) {
+            const partes = String(item.texto).trim().split(/\n\s*\n/)
+            partes.forEach(p => {
+              const trimmed = p.trim()
+              const key = trimmed.toLowerCase().replace(/\s+/g, " ")
+              if (trimmed && isUserObservation(trimmed) && !seenTexts.has(key)) {
+                seenTexts.add(key)
+                historicoExistente.push({
+                  texto: trimmed,
+                  data: item.data || nowIso,
+                  autor: item.autor
+                })
+              }
+            })
+          }
+        })
+      }
+
+      const cleanObsAnterior = (atendimentoModalTicket.descricao || "")
+        .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
+        .trim()
+      if (isUserObservation(cleanObsAnterior)) {
+        const blocos = cleanObsAnterior.split(/\n\s*\n/)
+        blocos.forEach(b => {
+          const trimmed = b.trim()
+          const key = trimmed.toLowerCase().replace(/\s+/g, " ")
+          if (trimmed && isUserObservation(trimmed) && !seenTexts.has(key)) {
+            seenTexts.add(key)
+            historicoExistente.push({
+              texto: trimmed,
+              data: currentMeta.observacao_data || atendimentoModalTicket.updated_at || nowIso
+            })
+          }
+        })
+      }
+
+      const novaObsItem = {
+        texto: registroTexto,
+        data: nowIso,
+        autor: perfil?.nome || user?.email || "Colaborador"
+      }
+      const updatedHistoricoObs = [...historicoExistente, novaObsItem]
+
+      const observacoesAcumuladas = updatedHistoricoObs
+        .slice()
+        .reverse()
+        .map(item => item.texto.trim())
+        .filter(Boolean)
+        .join("\n\n")
+
+      const updatedMeta: TicketMetadata = {
+        ...currentMeta,
+        acao_especial: true,
+        acao_especial_status: "pendente",
+        acao_especial_motivo: textoAcao,
+        acao_especial_destinatario: acaoEspecialDestinatario,
+        observacoes_historico: updatedHistoricoObs,
+        observacao_data: nowIso
+      }
+
+      if (atendimentoModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(atendimentoModalTicket.id)) {
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
+
+        const { error } = await supabase
+          .from("kanban_fichas")
+          .update({
+            observacoes: observacoesAcumuladas,
+            metadata: metaParaSalvar,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+
+        if (error) throw error
+      } else {
+        const newDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+        const { error } = await supabase
+          .from("chamados")
+          .update({
+            descricao: newDesc,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+
+        if (error) throw error
+
+        const numId = parseInt(atendimentoModalTicket.id, 10)
+        if (!isNaN(numId)) {
+          await supabase.from("mensagens_chamado").insert({
+            chamado_id: numId,
+            user_id: user.id,
+            user_nome: perfil?.nome || "Colaborador",
+            user_role: perfil?.role || "Corretor",
+            user_avatar: perfil?.avatar_url || null,
+            content: `⚡ Ação Especial solicitada para [${acaoEspecialDestinatario}]: ${textoAcao}`,
+            action: "acao_especial_solicitada"
+          })
+        }
+      }
+
+      const novaDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+      atendimentoModalTicket.descricao = novaDesc
+
+      setAtendimentoModalTicket(prev => prev ? {
+        ...prev,
+        descricao: novaDesc
+      } : null)
+
+      setTickets(prev => prev.map(t => {
+        if (t.id === atendimentoModalTicket.id) {
+          return {
+            ...t,
+            descricao: novaDesc
+          }
+        }
+        return t
+      }))
+
+      toast.success(`Ação Especial solicitada com sucesso para ${acaoEspecialDestinatario}!`)
+      setIsAcaoEspecialModalOpen(false)
+      setAcaoEspecialTexto("")
+      fetchChamados(true)
+    } catch (err: any) {
+      console.error("Erro ao solicitar ação especial:", err?.message || err)
+      toast.error("Erro ao solicitar ação especial.")
+    } finally {
+      setIsSubmittingAcaoEspecial(false)
+    }
+  }
+
   // Alternar opções rápidas (Sem interação / Sem interesse) com gravação direta em kanban_fichas
   const handleToggleOpcaoAtendimento = async (opcao: "Sem interação" | "Sem interesse") => {
     if (!atendimentoModalTicket) return
@@ -1946,6 +2151,21 @@ export default function KanbanPage() {
       const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
       const etapaAtual = inferKanbanStage(atendimentoModalTicket, currentMeta)
 
+      const historicoAtual = Array.isArray(atendimentoModalTicket.historico_movimentacoes)
+        ? atendimentoModalTicket.historico_movimentacoes
+        : (Array.isArray(currentMeta.historico_kanban) ? currentMeta.historico_kanban : [])
+
+      const novoHistoricoMov = isSemInteresse ? [
+        ...historicoAtual,
+        {
+          data: new Date().toISOString(),
+          etapa_anterior: etapaAtual,
+          etapa_nova: "SEM INTERESSE",
+          autor: perfil?.nome || "Usuário",
+          motivo: "Opção rápida 'Sem interesse' selecionada"
+        }
+      ] : historicoAtual
+
       const updatedMeta: TicketMetadata = {
         ...currentMeta,
         ...(isSemInteresse ? {
@@ -1953,16 +2173,7 @@ export default function KanbanPage() {
           proxima_acao: "Cadência de Longo Prazo / Nutrição",
           vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
           alerta_atrasado: false,
-          historico_kanban: [
-            ...(currentMeta.historico_kanban || []),
-            {
-              data: new Date().toISOString(),
-              etapa_anterior: etapaAtual,
-              etapa_nova: "SEM INTERESSE",
-              autor: perfil?.nome || "Usuário",
-              motivo: "Opção rápida 'Sem interesse' selecionada"
-            }
-          ]
+          historico_kanban: novoHistoricoMov
         } : {})
       }
 
@@ -1973,7 +2184,11 @@ export default function KanbanPage() {
 
       if (isSemInteresse) {
         updateData.etapa = "SEM INTERESSE"
-        updateData.metadata = updatedMeta
+        updateData.historico_movimentacoes = novoHistoricoMov
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
+        updateData.metadata = metaParaSalvar
       }
 
       // 1. Grava na tabela kanban_fichas na coluna observacoes e etapa se 'Sem interesse'
@@ -1993,12 +2208,14 @@ export default function KanbanPage() {
       atendimentoModalTicket.descricao = novaDescricao
       if (isSemInteresse) {
         atendimentoModalTicket.status = "SEM INTERESSE"
+        atendimentoModalTicket.historico_movimentacoes = novoHistoricoMov
       }
 
       setAtendimentoModalTicket(prev => prev ? {
         ...prev,
         status: isSemInteresse ? "SEM INTERESSE" : prev.status,
-        descricao: novaDescricao
+        descricao: novaDescricao,
+        historico_movimentacoes: isSemInteresse ? novoHistoricoMov : prev.historico_movimentacoes
       } : null)
 
       setTickets(prev => prev.map(t => {
@@ -2006,7 +2223,8 @@ export default function KanbanPage() {
           return {
             ...t,
             status: isSemInteresse ? "SEM INTERESSE" : t.status,
-            descricao: novaDescricao
+            descricao: novaDescricao,
+            historico_movimentacoes: isSemInteresse ? novoHistoricoMov : t.historico_movimentacoes
           }
         }
         return t
@@ -2177,11 +2395,15 @@ export default function KanbanPage() {
           supervisaoNovaPrioridade === "ALTA" ? "ALTA" :
           supervisaoNovaPrioridade === "URGENTE" ? "URGENTE" : "MÉDIA"
 
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
+
         const updatePayload: any = {
           operador_id: isUuid(supervisaoNovoResponsavel) ? supervisaoNovoResponsavel : null,
           operador_nome: targetName,
           prioridade: dbPrioridade,
-          metadata: updatedMeta,
+          metadata: metaParaSalvar,
           updated_at: nowIso
         }
         if (textoJustificativa) {
@@ -2254,9 +2476,12 @@ export default function KanbanPage() {
       const newDesc = stringifyWithMetadata(supervisaoModalTicket.descricao, updatedMeta)
 
       if (supervisaoModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(supervisaoModalTicket.id)) {
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
         await supabase
           .from("kanban_fichas")
-          .update({ metadata: updatedMeta, updated_at: new Date().toISOString() })
+          .update({ metadata: metaParaSalvar, updated_at: new Date().toISOString() })
           .eq("id", supervisaoModalTicket.id)
       } else {
         await supabase
@@ -2350,19 +2575,39 @@ export default function KanbanPage() {
       const newDesc = stringifyWithMetadata(novaObservacao, updatedMeta)
 
       if (ticket.source_table === "kanban_fichas") {
+        const historicoAtual = Array.isArray(ticket.historico_movimentacoes)
+          ? ticket.historico_movimentacoes
+          : (Array.isArray(updatedMeta.historico_kanban) ? updatedMeta.historico_kanban : [])
+        const novoHistorico = [
+          ...historicoAtual,
+          {
+            data: new Date().toISOString(),
+            etapa_anterior: inferKanbanStage(ticket, updatedMeta),
+            etapa_nova: "PERDIDO",
+            autor: perfil?.nome || "Usuário",
+            motivo: `Lead arquivado na gaveta "${label}"`
+          }
+        ]
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
+
         await supabase.from("kanban_fichas").update({
           etapa: "PERDIDO",
           motivo_perda: label,
           operador_nome: perfil?.nome || ticket.user_nome || "Corretor",
           observacoes: novaObservacao,
-          metadata: updatedMeta,
+          historico_movimentacoes: novoHistorico,
+          metadata: metaParaSalvar,
           updated_at: new Date().toISOString()
         }).eq("id", ticket.id)
+        ticket.historico_movimentacoes = novoHistorico
       } else {
         await supabase.from("chamados").update({
           descricao: newDesc,
           updated_at: new Date().toISOString()
-        }).eq("id", ticket.id)
+        })
+        .eq("id", ticket.id)
 
         await supabase.from("mensagens_chamado").insert({
           chamado_id: parseInt(ticket.id, 10),
@@ -2390,12 +2635,31 @@ export default function KanbanPage() {
       const newDesc = stringifyWithMetadata(ticket.descricao, meta)
 
       if (ticket.source_table === "kanban_fichas") {
+        const historicoAtual = Array.isArray(ticket.historico_movimentacoes)
+          ? ticket.historico_movimentacoes
+          : (Array.isArray(meta.historico_kanban) ? meta.historico_kanban : [])
+        const novoHistorico = [
+          ...historicoAtual,
+          {
+            data: new Date().toISOString(),
+            etapa_anterior: "PERDIDO",
+            etapa_nova: "EM RETOMADA",
+            autor: perfil?.nome || "Usuário",
+            motivo: "Lead restaurado da gaveta para o fluxo do Kanban"
+          }
+        ]
+        const metaParaSalvar = { ...meta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
+
         await supabase.from("kanban_fichas").update({
           etapa: "EM RETOMADA",
           motivo_perda: null,
-          metadata: meta,
+          historico_movimentacoes: novoHistorico,
+          metadata: metaParaSalvar,
           updated_at: new Date().toISOString()
         }).eq("id", ticket.id)
+        ticket.historico_movimentacoes = novoHistorico
       } else {
         await supabase.from("chamados").update({
           descricao: newDesc,
@@ -2470,6 +2734,7 @@ export default function KanbanPage() {
           }
           delete (updatedMeta as any).tabulacao_whatsapp
           delete (updatedMeta as any).telefones_selecionados
+          delete (updatedMeta as any).historico_kanban
 
           const updatePayload: Record<string, any> = {
             etapa: "EM RETOMADA",
@@ -2478,6 +2743,15 @@ export default function KanbanPage() {
             origem: clientInfo.origem || (existing as any).origem || null,
             telefones_contatados: clientInfo.telefones_selecionados || [],
             telefone_empresa: clientInfo.telefone_empresa || (existing as any).telefone_empresa || null,
+            historico_movimentacoes: [
+              ...((existing as any).historico_movimentacoes || []),
+              {
+                data: new Date().toISOString(),
+                etapa_nova: "EM RETOMADA",
+                autor: perfil?.nome || "Corretor",
+                motivo: "Atendimento iniciado no Kanban"
+              }
+            ],
             metadata: updatedMeta,
             operador_id: validOperadorId,
             operador_nome: perfil?.nome || "Corretor",
@@ -2526,6 +2800,7 @@ export default function KanbanPage() {
           }
           delete (meta as any).tabulacao_whatsapp
           delete (meta as any).telefones_selecionados
+          delete (meta as any).historico_kanban
 
           const insertPayload: Record<string, any> = {
             cliente_nome: clientInfo.nome || "Cliente sem Nome",
@@ -2539,6 +2814,12 @@ export default function KanbanPage() {
             origem: clientInfo.origem || null,
             telefones_contatados: clientInfo.telefones_selecionados || [],
             telefone_empresa: clientInfo.telefone_empresa || null,
+            historico_movimentacoes: [{
+              data: new Date().toISOString(),
+              etapa_nova: "EM RETOMADA",
+              autor: perfil?.nome || "Corretor",
+              motivo: "Atendimento iniciado no Kanban"
+            }],
             metadata: meta,
             convenio: clientInfo.convenio || undefined,
             observacoes: "Atendimento iniciado via modal (CLIENTE CHAMADO)"
@@ -2725,17 +3006,19 @@ export default function KanbanPage() {
     }
   }
 
-  // Categorização da Minha Fila em AGORA, VENCIDAS e FUTURAS
+  // Categorização da Minha Fila em AGORA, VENCIDAS, FUTURAS e AÇÃO ESPECIAL
   const filaCategorias = useMemo(() => {
     const now = new Date()
     const vencidas: Array<{ ticket: TicketItem; atrasoTexto: string }> = []
     const agora: TicketItem[] = []
     const futuras: TicketItem[] = []
+    const acaoEspecial: TicketItem[] = []
 
     const leadsAtivos = filteredTickets.filter(t => t.status !== "FECHADO" && t.status !== "PERDIDO")
 
     leadsAtivos.forEach(ticket => {
       const meta = parseMetadata(ticket.descricao)
+      const isAcaoEspecial = Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"
       const dateStr = meta.vencimento_acao || meta.agendamento_data
 
       let vencimentoDate: Date | null = null
@@ -2749,7 +3032,9 @@ export default function KanbanPage() {
       const isAtrasado = Boolean(meta.alerta_atrasado) || (vencimentoDate !== null && vencimentoDate.getTime() < now.getTime())
       const isFuturo = !isAtrasado && vencimentoDate !== null && vencimentoDate.getTime() > now.getTime() + 10 * 60 * 1000
 
-      if (isAtrasado) {
+      if (isAcaoEspecial) {
+        acaoEspecial.push(ticket)
+      } else if (isAtrasado) {
         let atrasoTexto = "Prazo expirado"
         if (vencimentoDate) {
           atrasoTexto = `${formatDistanceToNow(vencimentoDate, { locale: ptBR })} de atraso`
@@ -2773,8 +3058,9 @@ export default function KanbanPage() {
     const valorAgora = calcValor(agora)
     const valorVencidas = calcValor(vencidas.map(i => i.ticket))
     const valorFuturas = calcValor(futuras)
+    const valorAcaoEspecial = calcValor(acaoEspecial)
 
-    return { agora, vencidas, futuras, valorAgora, valorVencidas, valorFuturas }
+    return { agora, vencidas, futuras, acaoEspecial, valorAgora, valorVencidas, valorFuturas, valorAcaoEspecial }
   }, [filteredTickets])
 
   // Função reutilizável para renderizar exatamente o mesmo Cartão de Tarefa em ambas as visões
@@ -2820,7 +3106,9 @@ export default function KanbanPage() {
         onClick={() => handleCardClick(ticket)}
         className={cn(
           "bg-white rounded-lg p-3 shadow-xs hover:shadow-xl hover:shadow-slate-900/15 hover:scale-[1.01] hover:-translate-y-0.5 transition-all duration-200 ease-out transform space-y-2.5 relative group hover:z-10",
-          customBorderClass ? customBorderClass : "border border-slate-200 hover:border-slate-300",
+          (Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente")
+            ? "border-2 border-amber-500 hover:border-amber-600 ring-2 ring-amber-400/30 shadow-xs"
+            : (customBorderClass ? customBorderClass : "border border-slate-200 hover:border-slate-300"),
           isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
           draggedTicket?.id === ticket.id && "opacity-40 scale-95 border-dashed border-indigo-400"
         )}
@@ -3481,7 +3769,7 @@ export default function KanbanPage() {
           </div>
         </div>
 
-        {/* Visão 1: Minha Fila (3 Colunas Simultâneas: Agora, Vencidas e Futuras) */}
+        {/* Visão 1: Minha Fila (4 Colunas Simultâneas: Agora, Vencidas, Futuras e Ação Especial) */}
         {activeView === "MINHA_FILA" && (
           <Card className="card-shadow bg-white border border-slate-200 rounded-2xl overflow-hidden flex-1 max-h-[95%] flex flex-col min-h-0">
             <CardContent className="p-3 sm:p-5 flex-1 flex flex-col overflow-hidden min-h-0 space-y-4">
@@ -3603,6 +3891,46 @@ export default function KanbanPage() {
                       </div>
                     ) : (
                       filaCategorias.futuras.map(ticket => renderTicketCard(ticket, undefined, false))
+                    )}
+                  </div>
+                </div>
+
+                {/* Coluna 4: AÇÃO ESPECIAL */}
+                <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-amber-300/80 shadow-2xs overflow-hidden bg-amber-50/70">
+                  {/* Cabeçalho da Coluna Ação Especial */}
+                  <div className="p-3.5 border-b border-amber-200/70 bg-amber-50/70 border-t-4 border-t-amber-500 rounded-t-xl shrink-0">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                        <Zap className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Ação Especial</span>
+                      </h2>
+                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                        {filaCategorias.acaoEspecial.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
+                      Intervenções e casos especiais
+                    </p>
+
+                    {/* Totais Acumulados para Gestão e Operação */}
+                    <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
+                      <span className="font-semibold text-slate-800">
+                        {filaCategorias.acaoEspecial.length} {filaCategorias.acaoEspecial.length === 1 ? "lead" : "leads"}
+                      </span>
+                      <span className="font-extrabold text-slate-950">
+                        {filaCategorias.valorAcaoEspecial.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Lista de Cards da Coluna Ação Especial */}
+                  <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-amber-50/70">
+                    {filaCategorias.acaoEspecial.length === 0 ? (
+                      <div className="py-12 text-center text-xs text-amber-900/60 font-medium">
+                        Nenhuma ação especial pendente
+                      </div>
+                    ) : (
+                      filaCategorias.acaoEspecial.map(ticket => renderTicketCard(ticket, undefined, false))
                     )}
                   </div>
                 </div>
@@ -3979,17 +4307,30 @@ export default function KanbanPage() {
                       </label>
                     </div>
 
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleIniciarAbordagem}
-                      className="text-xs h-7.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer"
-                    >
-                      <UserCheck className="w-3.5 h-3.5" />
-                      {modalStage === "EM ABORDAGEM" || modalStage === "EM RETOMADA"
-                        ? "INICIAR ABORDAGEM"
-                        : "INFORMAÇÕES DO CLIENTE"}
-                    </Button>
+                    <div className="flex flex-col items-end gap-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleIniciarAbordagem}
+                        className="text-xs h-7.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer w-full sm:w-auto justify-center"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        {modalStage === "EM ABORDAGEM" || modalStage === "EM RETOMADA"
+                          ? "INICIAR ABORDAGEM"
+                          : "INFORMAÇÕES DO CLIENTE"}
+                      </Button>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => setIsAcaoEspecialModalOpen(true)}
+                        className="text-xs h-7.5 bg-amber-500 hover:bg-amber-600 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer w-full sm:w-auto justify-center border border-amber-600/30"
+                        title="Solicitar Ação Especial"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        AÇÃO ESPECIAL
+                      </Button>
+                    </div>
                   </div>
 
                   {/* Card da Seção de Observações */}
@@ -4770,6 +5111,104 @@ export default function KanbanPage() {
         </div>
       )}
 
+      {/* MODAL: SOLICITAR AÇÃO ESPECIAL */}
+      {isAcaoEspecialModalOpen && atendimentoModalTicket && (
+        <div className="fixed inset-0 z-[400] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-amber-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="p-4 bg-amber-50/80 border-b border-amber-200/80 border-t-4 border-t-amber-500 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-100 border border-amber-300 flex items-center justify-center shrink-0">
+                  <Zap className="w-4 h-4 text-amber-700" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                    Solicitar Ação Especial
+                  </h3>
+                  <p className="text-[11px] text-slate-600 font-medium truncate max-w-[240px]">
+                    {atendimentoModalTicket.cliente_nome || "Cliente sem Nome"}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
+                onClick={() => {
+                  setIsAcaoEspecialModalOpen(false)
+                  setAcaoEspecialTexto("")
+                }}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            {/* Conteúdo */}
+            <div className="p-4 space-y-3.5 text-xs">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Destinatário da Ação Especial
+                </label>
+                <select
+                  value={acaoEspecialDestinatario}
+                  onChange={e => setAcaoEspecialDestinatario(e.target.value as any)}
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 text-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-semibold"
+                >
+                  <option value="Supervisor">Supervisor</option>
+                  <option value="Operacional">Operacional</option>
+                  <option value="Administrador">Administrador</option>
+                  <option value="Monitoramento">Monitoramento</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Ação Necessária
+                </label>
+                <textarea
+                  value={acaoEspecialTexto}
+                  onChange={e => setAcaoEspecialTexto(e.target.value)}
+                  placeholder="Escreva detalhadamente qual ação necessária deve ser realizada..."
+                  rows={4}
+                  className="w-full text-xs p-3 bg-slate-50 border border-slate-200 text-slate-800 placeholder:text-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none font-normal"
+                />
+              </div>
+            </div>
+
+            {/* Rodapé com Botões Cancelar e Solicitar */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setIsAcaoEspecialModalOpen(false)
+                  setAcaoEspecialTexto("")
+                }}
+                disabled={isSubmittingAcaoEspecial}
+                className="text-xs h-8 px-4 font-semibold text-slate-600 hover:text-slate-900 border-slate-300 cursor-pointer"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSolicitarAcaoEspecial}
+                disabled={isSubmittingAcaoEspecial || !acaoEspecialTexto.trim()}
+                className="text-xs h-8 px-4 font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs cursor-pointer border border-amber-600/30 gap-1.5"
+              >
+                {isSubmittingAcaoEspecial ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5" />
+                )}
+                Solicitar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL 3: AGENDAMENTO RÁPIDO */}
       {agendarModalTicket && (
         <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
@@ -4927,7 +5366,9 @@ export default function KanbanPage() {
       {/* MODAL: HISTÓRICO DO ATENDIMENTO (LOG DE ETAPAS KANBAN) */}
       {historicoModalTicket && (() => {
         const meta = parseMetadata(historicoModalTicket.descricao)
-        const rawLog = Array.isArray(meta.historico_kanban) ? meta.historico_kanban : []
+        const rawLog = Array.isArray(historicoModalTicket.historico_movimentacoes) && historicoModalTicket.historico_movimentacoes.length > 0
+          ? historicoModalTicket.historico_movimentacoes
+          : (Array.isArray(meta.historico_kanban) ? meta.historico_kanban : [])
         const totalMovimentacoes = rawLog.length
         // Numeração sequencial: 1 para a mais antiga até N para a atual
         // Ordenação exibida: mais recente no topo até a mais antiga lá embaixo
