@@ -1058,9 +1058,9 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
       cardsHtml += `
         <div style="border: 2px solid #0F172A; border-radius: 16px; overflow: hidden; background: #FFFFFF; display: flex; flex-direction: column; justify-content: space-between;">
           <div>
-            <div style="background-color: #0F172A; color: #FFFFFF; padding: 16px; text-align: center;">
+            <div style="background-color: #0F172A; color: #FFFFFF; padding: 16px; text-align: center; min-height: 72px; display: flex; flex-direction: column; justify-content: center;">
               <div style="font-size: 24px; font-weight: 900; color: #00D492; letter-spacing: -0.5px;">${plan.term} Meses</div>
-              <div style="font-size: 10px; font-weight: 500; color: #94A3B8; letter-spacing: 0.5px; margin-top: 2px;">Plano de Amortização</div>
+              ${Number(plan.term) !== Number(prazo) ? `<div style="font-size: 10px; font-weight: 500; color: #94A3B8; letter-spacing: 0.5px; margin-top: 2px;">Plano de Amortização</div>` : ""}
             </div>
             <div style="padding: 16px; font-size: 12px;">
               <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #F1F5F9;">
@@ -4065,13 +4065,15 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
                       >
                         <div>
                           {/* Plan Header */}
-                          <div className="bg-slate-900 text-white p-4 text-center space-y-0.5">
+                          <div className="bg-slate-900 text-white p-4 text-center space-y-0.5 min-h-[72px] flex flex-col justify-center">
                             <span className="text-2xl font-black text-[#00D492] tracking-tight block">
                               {plan.term} Meses
                             </span>
-                            <span className="text-[10px] font-medium text-slate-400 tracking-wider block">
-                              Plano de Amortização
-                            </span>
+                            {Number(plan.term) !== Number(prazo) && (
+                              <span className="text-[10px] font-medium text-slate-400 tracking-wider block">
+                                Plano de Amortização
+                              </span>
+                            )}
                           </div>
 
                           {/* Metrics List */}

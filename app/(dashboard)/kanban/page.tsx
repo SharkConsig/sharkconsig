@@ -828,6 +828,28 @@ export default function KanbanPage() {
       .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }))
   }, [usersList])
 
+  // Usuários que ocupam as funções de Supervisor, Operacional, Administrador e Monitoramento em ordem alfabética (excluindo Desenvolvedor e Endrio Novo)
+  const destinatariosAcaoEspecial = useMemo(() => {
+    return activeUsersList.filter(u => {
+      const name = (u.nome || "").toLowerCase()
+      if (name.includes("endrio")) return false
+
+      const r = (u.role || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      const f = (u.funcao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+
+      if (r.includes("desenvolvedor") || f.includes("desenvolvedor") || r === "dev" || f === "dev") {
+        return false
+      }
+
+      return (
+        r.includes("supervisor") || f.includes("supervisor") ||
+        r.includes("operacion") || f.includes("operacion") ||
+        r.includes("admin") || f.includes("admin") ||
+        r.includes("monitor") || f.includes("monitor")
+      )
+    })
+  }, [activeUsersList])
+
   // Fechar dropdown de responsável ao clicar fora
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -893,8 +915,17 @@ export default function KanbanPage() {
 
   // Estados da Modal de Solicitação de Ação Especial
   const [isAcaoEspecialModalOpen, setIsAcaoEspecialModalOpen] = useState(false)
-  const [acaoEspecialDestinatario, setAcaoEspecialDestinatario] = useState<"Supervisor" | "Operacional" | "Administrador" | "Monitoramento">("Supervisor")
+  const [acaoEspecialDestinatario, setAcaoEspecialDestinatario] = useState<string>("")
   const [acaoEspecialTexto, setAcaoEspecialTexto] = useState("")
+
+  // Sincroniza o destinatário selecionado com o primeiro usuário da lista ordenada
+  useEffect(() => {
+    if (destinatariosAcaoEspecial.length > 0) {
+      if (!acaoEspecialDestinatario || !destinatariosAcaoEspecial.some(u => u.nome === acaoEspecialDestinatario)) {
+        setAcaoEspecialDestinatario(destinatariosAcaoEspecial[0].nome)
+      }
+    }
+  }, [destinatariosAcaoEspecial, acaoEspecialDestinatario])
   const [isSubmittingAcaoEspecial, setIsSubmittingAcaoEspecial] = useState(false)
 
   // Histórico de Atendimentos e Propostas do Cliente (Modal Atendimento)
@@ -1997,7 +2028,8 @@ export default function KanbanPage() {
 
     setIsSubmittingAcaoEspecial(true)
     const nowIso = new Date().toISOString()
-    const registroTexto = `⚡ SOLICITAÇÃO DE AÇÃO ESPECIAL [${acaoEspecialDestinatario}]: ${textoAcao}`
+    const destinatarioFinal = acaoEspecialDestinatario || (destinatariosAcaoEspecial.length > 0 ? destinatariosAcaoEspecial[0].nome : "Equipe Responsável")
+    const registroTexto = `⚡ SOLICITAÇÃO DE AÇÃO ESPECIAL [${destinatarioFinal}]: ${textoAcao}`
 
     try {
       const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
@@ -2063,7 +2095,7 @@ export default function KanbanPage() {
         acao_especial: true,
         acao_especial_status: "pendente",
         acao_especial_motivo: textoAcao,
-        acao_especial_destinatario: acaoEspecialDestinatario,
+        acao_especial_destinatario: destinatarioFinal,
         observacoes_historico: updatedHistoricoObs,
         observacao_data: nowIso
       }
@@ -2103,7 +2135,7 @@ export default function KanbanPage() {
             user_nome: perfil?.nome || "Colaborador",
             user_role: perfil?.role || "Corretor",
             user_avatar: perfil?.avatar_url || null,
-            content: `⚡ Ação Especial solicitada para [${acaoEspecialDestinatario}]: ${textoAcao}`,
+            content: `⚡ Ação Especial solicitada para [${destinatarioFinal}]: ${textoAcao}`,
             action: "acao_especial_solicitada"
           })
         }
@@ -2127,7 +2159,7 @@ export default function KanbanPage() {
         return t
       }))
 
-      toast.success(`Ação Especial solicitada com sucesso para ${acaoEspecialDestinatario}!`)
+      toast.success(`Ação Especial solicitada com sucesso para ${destinatarioFinal}!`)
       setIsAcaoEspecialModalOpen(false)
       setAcaoEspecialTexto("")
       fetchChamados(true)
@@ -3064,7 +3096,13 @@ export default function KanbanPage() {
   }, [filteredTickets])
 
   // Função reutilizável para renderizar exatamente o mesmo Cartão de Tarefa em ambas as visões
-  const renderTicketCard = (ticket: TicketItem, atrasoCustomTexto?: string, isDraggable: boolean = true, customBorderClass?: string) => {
+  const renderTicketCard = (
+    ticket: TicketItem, 
+    atrasoCustomTexto?: string, 
+    isDraggable: boolean = true, 
+    customBorderClass?: string,
+    isMinhaFilaAcaoEspecial: boolean = false
+  ) => {
     const meta = parseMetadata(ticket.descricao)
     const opData = getValorOperacaoDeAbertura(ticket)
     const opValorNum = parseValorToNumber(opData.valor)
@@ -3106,7 +3144,7 @@ export default function KanbanPage() {
         onClick={() => handleCardClick(ticket)}
         className={cn(
           "bg-white rounded-lg p-3 shadow-xs hover:shadow-xl hover:shadow-slate-900/15 hover:scale-[1.01] hover:-translate-y-0.5 transition-all duration-200 ease-out transform space-y-2.5 relative group hover:z-10",
-          (Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente")
+          (!isMinhaFilaAcaoEspecial && (Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"))
             ? "border-2 border-amber-500 hover:border-amber-600 ring-2 ring-amber-400/30 shadow-xs"
             : (customBorderClass ? customBorderClass : "border border-slate-200 hover:border-slate-300"),
           isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
@@ -3132,8 +3170,8 @@ export default function KanbanPage() {
                 🔴 ATRASADO
               </span>
             )}
-            {(meta.acao_especial || isAltoValor) && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800 border border-amber-200 text-[12px]">
+            {!isMinhaFilaAcaoEspecial && (meta.acao_especial || isAltoValor) && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800 border border-amber-200 text-[10px] whitespace-nowrap">
                 🟡 AÇÃO ESPECIAL
               </span>
             )}
@@ -3392,211 +3430,10 @@ export default function KanbanPage() {
     )
   }
 
-  const renderFiltersAndMetrics = () => (
-    <>
-      {/* Informações: Total de Clientes e Total em Valores */}
-      <div className="flex flex-wrap items-center gap-6 px-1 shrink-0">
-        {/* Total de Clientes */}
-        <div className="text-left select-none">
-          <p className="text-base font-bold text-slate-800 tracking-tight leading-snug">
-            Total de Clientes: <span className="text-slate-900 font-extrabold">{metrics.totalLeads}</span>
-          </p>
-          <p className="text-xs text-slate-400 font-medium leading-normal">
-            {metrics.totalLeads} {metrics.totalLeads === 1 ? "lead em atendimento" : "leads em atendimento"}
-          </p>
-        </div>
-
-        {/* Divisor vertical */}
-        <div className="hidden sm:block h-8 w-px bg-slate-200 self-center" />
-
-        {/* Total em Valores */}
-        <div className="text-left select-none">
-          <p className="text-base font-bold text-slate-800 tracking-tight leading-snug">
-            Total em Valores: <span className="text-slate-900 font-extrabold">R$ {metrics.totalValor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-          </p>
-          <p className="text-xs text-slate-400 font-medium leading-normal">
-            Soma de todas as colunas
-          </p>
-        </div>
-      </div>
-
-      {/* Barra de Filtros */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100 shadow-xs shrink-0">
-        {/* Busca por Nome, CPF ou Telefone */}
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <Input
-            type="text"
-            placeholder="Buscar por Nome, CPF ou Telefone..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="pl-9 text-xs h-9 bg-white border-slate-200 text-slate-900 placeholder:text-slate-400"
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm("")}
-              className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-
-        {/* Filtro por Responsável (Gestores) com campo de busca e ordenação A-Z de ativos */}
-        {isGestor && (
-          <div ref={responsavelDropdownRef} className="relative">
-            <div
-              onClick={() => {
-                setIsResponsavelDropdownOpen(prev => !prev)
-              }}
-              className={cn(
-                "w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md flex items-center justify-between font-medium text-slate-700 cursor-pointer hover:bg-slate-50 transition-colors shadow-2xs select-none",
-                isResponsavelDropdownOpen && "ring-1 ring-sky-500 border-sky-400"
-              )}
-            >
-              <div className="flex items-center gap-1.5 truncate">
-                {selectedResponsavel === "ALL" ? (
-                  <>
-                    <span className="text-slate-400">👥</span>
-                    <span className="truncate">Todos os Responsáveis</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-sky-600 font-bold">👤</span>
-                    <span className="font-semibold text-slate-900 truncate">
-                      {selectedUserObj ? selectedUserObj.nome : "Responsável selecionado"}
-                    </span>
-                  </>
-                )}
-              </div>
-
-              <div className="flex items-center gap-1 shrink-0 ml-2">
-                {selectedResponsavel !== "ALL" && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setSelectedResponsavel("ALL")
-                    }}
-                    title="Limpar filtro de responsável"
-                    className="p-0.5 text-slate-400 hover:text-slate-600 rounded hover:bg-slate-200/60"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 transition-transform", isResponsavelDropdownOpen && "rotate-180")} />
-              </div>
-            </div>
-
-            {isResponsavelDropdownOpen && (
-              <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden text-xs animate-in fade-in zoom-in-95 duration-100">
-                {/* Campo de Busca de Responsável */}
-                <div className="p-2 border-b border-slate-100 bg-slate-50/70">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                    <Input
-                      autoFocus
-                      type="text"
-                      placeholder="Buscar responsável..."
-                      value={responsavelSearchQuery}
-                      onChange={e => setResponsavelSearchQuery(e.target.value)}
-                      className="pl-8 pr-7 h-8 text-xs bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus-visible:ring-1 focus-visible:ring-sky-500"
-                    />
-                    {responsavelSearchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setResponsavelSearchQuery("")}
-                        className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Lista de Opções (Ativos em ordem A-Z) */}
-                <div className="max-h-56 overflow-y-auto p-1 divide-y divide-slate-50">
-                  {/* Opção Todos os Responsáveis */}
-                  {!responsavelSearchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedResponsavel("ALL")
-                        setIsResponsavelDropdownOpen(false)
-                        setResponsavelSearchQuery("")
-                      }}
-                      className={cn(
-                        "w-full text-left px-2.5 py-2 rounded flex items-center justify-between hover:bg-slate-100 transition-colors",
-                        selectedResponsavel === "ALL" ? "bg-sky-50 text-sky-800 font-bold" : "text-slate-700"
-                      )}
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <span>👥</span>
-                        <span>Todos os Responsáveis</span>
-                      </span>
-                      {selectedResponsavel === "ALL" && <Check className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
-                    </button>
-                  )}
-
-                  {filteredResponsaveis.length === 0 ? (
-                    <div className="py-4 text-center text-slate-400 text-xs">
-                      Nenhum responsável encontrado.
-                    </div>
-                  ) : (
-                    filteredResponsaveis.map(u => {
-                      const isSelected = selectedResponsavel === u.id
-                      return (
-                        <button
-                          key={u.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedResponsavel(u.id)
-                            setIsResponsavelDropdownOpen(false)
-                            setResponsavelSearchQuery("")
-                          }}
-                          className={cn(
-                            "w-full text-left px-2.5 py-2 rounded flex items-center justify-between hover:bg-slate-100 transition-colors",
-                            isSelected ? "bg-sky-50 text-sky-800 font-bold" : "text-slate-700"
-                          )}
-                        >
-                          <div className="truncate pr-2">
-                            <span className="block truncate font-medium text-slate-800">{u.nome}</span>
-                            <span className="block text-[10px] text-slate-400 font-normal">
-                              {u.role || u.funcao || "Colaborador"}
-                            </span>
-                          </div>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-sky-600 shrink-0" />}
-                        </button>
-                      )
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Filtro por Alertas */}
-        <div>
-          <select
-            value={selectedAlertFilter}
-            onChange={e => setSelectedAlertFilter(e.target.value)}
-            className="w-full h-9 px-3 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-slate-300 font-medium text-slate-700"
-          >
-            <option value="ALL">🎯 Todos os Alertas / Status</option>
-            <option value="ATRASADO">🔴 Somente Atrasados</option>
-            <option value="ACAO_ESPECIAL">🟡 Somente Ação Especial</option>
-            <option value="CONFLITO">🔵 Somente Conflito de Titularidade</option>
-          </select>
-        </div>
-      </div>
-    </>
-  )
-
   return (
     <div className="flex flex-col h-screen min-h-screen bg-[#FDFDFD]">
       <Header hideQuickLinks>
-        <div className="relative w-full max-w-[510px] sm:max-w-[630px] md:max-w-[720px]">
+        <div className="relative w-full max-w-[420px] sm:max-w-[520px] md:max-w-[600px]">
           <Input 
             placeholder="Buscar Cliente por CPF ou Telefone" 
             value={clientSearchQuery}
@@ -3619,162 +3456,153 @@ export default function KanbanPage() {
         </div>
       </Header>
       
-      <main className="flex-1 p-4 lg:p-6 space-y-3.5 overflow-hidden flex flex-col bg-[#FDFDFD]">
-        {/* Linha Superior: Seletor de Visões (Minha Fila e Kanban à esquerda) e Gavetas de Triagem WhatsApp (à direita) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
-          {/* Lado Esquerdo: Cards de Visão (Minha Fila e Kanban) */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Card / Visão: Minha Fila */}
-            <div
-              onClick={() => setActiveView("MINHA_FILA")}
-              className={cn(
-                "bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 cursor-pointer group select-none",
-                activeView === "MINHA_FILA" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-sm"
-              )}
-              title="Visualizar Minha Fila (Tela inicial)"
-            >
-              <div className={cn(
-                "w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 transition-colors",
-                activeView === "MINHA_FILA"
-                  ? "bg-sky-500 text-white border-sky-600"
-                  : "bg-sky-50 border-sky-200/60 text-sky-600"
-              )}>
-                <UserCheck className="w-3.5 h-3.5" />
-              </div>
-              <div className="text-left">
-                <p className={cn(
-                  "text-xs font-bold tracking-tight transition-colors",
-                  activeView === "MINHA_FILA" ? "text-sky-950 font-black" : "text-slate-800 group-hover:text-slate-900"
-                )}>
-                  Minha Fila
-                </p>
-                <p className="text-[10px] text-slate-400 font-medium">
-                  Atendimento individual
-                </p>
-              </div>
+      <main className="flex-1 pt-2 px-3 sm:px-4 pb-2 sm:pb-3 space-y-2.5 overflow-hidden flex flex-col bg-[#FDFDFD] min-h-0">
+        {/* Barra de Seletores e Gavetas na área de trabalho acima das colunas (alinhada à direita e com largura da gaveta) */}
+        <div className="flex items-center justify-end gap-2.5 shrink-0 overflow-x-auto pb-0.5 no-scrollbar">
+          {/* Card / Visão: Minha Fila */}
+          <div
+            onClick={() => setActiveView("MINHA_FILA")}
+            className={cn(
+              "w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-xs hover:shadow-sm transition-all flex items-center gap-2.5 cursor-pointer group select-none",
+              activeView === "MINHA_FILA" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-sm"
+            )}
+            title="Visualizar Minha Fila (Tela inicial)"
+          >
+            <div className={cn(
+              "w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 transition-colors",
+              activeView === "MINHA_FILA"
+                ? "bg-sky-500 text-white border-sky-600"
+                : "bg-sky-50 border-sky-200/60 text-sky-600"
+            )}>
+              <UserCheck className="w-3.5 h-3.5" />
             </div>
-
-            {/* Card / Visão: Kanban */}
-            <div
-              onClick={() => setActiveView("KANBAN")}
-              className={cn(
-                "bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 cursor-pointer group select-none",
-                activeView === "KANBAN" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-sm"
-              )}
-              title="Visualizar Pipeline Kanban"
-            >
-              <div className={cn(
-                "w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 transition-colors",
-                activeView === "KANBAN"
-                  ? "bg-sky-500 text-white border-sky-600"
-                  : "bg-slate-100 border-slate-200 text-slate-600"
+            <div className="text-left flex-1 min-w-0">
+              <p className={cn(
+                "text-xs font-bold tracking-tight transition-colors leading-tight truncate",
+                activeView === "MINHA_FILA" ? "text-sky-950 font-black" : "text-slate-800 group-hover:text-slate-900"
               )}>
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-              </div>
-              <div className="text-left">
-                <p className={cn(
-                  "text-xs font-bold tracking-tight transition-colors",
-                  activeView === "KANBAN" ? "text-sky-950 font-black" : "text-slate-800 group-hover:text-slate-900"
-                )}>
-                  Kanban
-                </p>
-                <p className="text-[10px] text-slate-400 font-medium">
-                  Pipeline e 7 colunas
-                </p>
-              </div>
+                Minha Fila
+              </p>
+              <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
+                Atendimento individual
+              </p>
             </div>
           </div>
 
-          {/* Lado Direito: Gavetas de Triagem WhatsApp */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Gaveta: Não Existe Whatsapp */}
-            <div
-              onDragOver={(e) => {
-                e.preventDefault()
-                e.dataTransfer.dropEffect = "move"
-                if (dragOverDrawer !== "NAO_EXISTE") setDragOverDrawer("NAO_EXISTE")
-              }}
-              onDragLeave={() => setDragOverDrawer(null)}
-              onDrop={(e) => {
-                e.preventDefault()
-                setDragOverDrawer(null)
-                const ticketId = e.dataTransfer.getData("text/plain")
-                const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
-                if (ticketToMove) {
-                  handleDropInDrawer(ticketToMove, "NAO_EXISTE")
-                }
-              }}
-              onClick={() => setSelectedDrawer("NAO_EXISTE")}
-              className={cn(
-                "bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 cursor-pointer group select-none",
-                dragOverDrawer === "NAO_EXISTE" && "ring-2 ring-rose-500 bg-rose-50/50 border-rose-300"
-              )}
-              title="Gaveta: Não Existe Whatsapp (Clique para abrir ou arraste leads para cá)"
-            >
-              <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600 shrink-0">
-                <PhoneOff className="w-3.5 h-3.5" />
-              </div>
-              <div className="text-left">
-                <p className="text-xs font-bold text-slate-800 tracking-tight group-hover:text-slate-900">
-                  Não Existe Whatsapp
-                </p>
-                <p className="text-[10px] text-slate-400 font-medium">
-                  {naoExisteWhatsappTickets.length} {naoExisteWhatsappTickets.length === 1 ? "lead arquivado" : "leads arquivados"}
-                </p>
-              </div>
-              <span className="ml-1 text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                {naoExisteWhatsappTickets.length}
-              </span>
+          {/* Card / Visão: Kanban */}
+          <div
+            onClick={() => setActiveView("KANBAN")}
+            className={cn(
+              "w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-xs hover:shadow-sm transition-all flex items-center gap-2.5 cursor-pointer group select-none",
+              activeView === "KANBAN" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-sm"
+            )}
+            title="Visualizar Pipeline Kanban"
+          >
+            <div className={cn(
+              "w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 transition-colors",
+              activeView === "KANBAN"
+                ? "bg-sky-500 text-white border-sky-600"
+                : "bg-slate-100 border-slate-200 text-slate-600"
+            )}>
+              <SlidersHorizontal className="w-3.5 h-3.5" />
             </div>
+            <div className="text-left flex-1 min-w-0">
+              <p className={cn(
+                "text-xs font-bold tracking-tight transition-colors leading-tight truncate",
+                activeView === "KANBAN" ? "text-sky-950 font-black" : "text-slate-800 group-hover:text-slate-900"
+              )}>
+                Kanban
+              </p>
+              <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
+                Pipeline e 7 colunas
+              </p>
+            </div>
+          </div>
 
-            {/* Gaveta: Whatsapp Divergente */}
-            <div
-              onDragOver={(e) => {
-                e.preventDefault()
-                e.dataTransfer.dropEffect = "move"
-                if (dragOverDrawer !== "DIVERGENTE") setDragOverDrawer("DIVERGENTE")
-              }}
-              onDragLeave={() => setDragOverDrawer(null)}
-              onDrop={(e) => {
-                e.preventDefault()
-                setDragOverDrawer(null)
-                const ticketId = e.dataTransfer.getData("text/plain")
-                const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
-                if (ticketToMove) {
-                  handleDropInDrawer(ticketToMove, "DIVERGENTE")
-                }
-              }}
-              onClick={() => setSelectedDrawer("DIVERGENTE")}
-              className={cn(
-                "bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3.5 py-2 shadow-xs hover:shadow-sm transition-all flex items-center gap-3 cursor-pointer group select-none",
-                dragOverDrawer === "DIVERGENTE" && "ring-2 ring-amber-500 bg-amber-50/50 border-amber-300"
-              )}
-              title="Gaveta: Whatsapp Divergente (Clique para abrir ou arraste leads para cá)"
-            >
-              <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600 shrink-0">
-                <MessageSquareOff className="w-3.5 h-3.5" />
-              </div>
-              <div className="text-left">
-                <p className="text-xs font-bold text-slate-800 tracking-tight group-hover:text-slate-900">
-                  Whatsapp Divergente
-                </p>
-                <p className="text-[10px] text-slate-400 font-medium">
-                  {whatsappDivergenteTickets.length} {whatsappDivergenteTickets.length === 1 ? "lead arquivado" : "leads arquivados"}
-                </p>
-              </div>
-              <span className="ml-1 text-[11px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                {whatsappDivergenteTickets.length}
-              </span>
+          {/* Gaveta: Não Existe Whatsapp */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = "move"
+              if (dragOverDrawer !== "NAO_EXISTE") setDragOverDrawer("NAO_EXISTE")
+            }}
+            onDragLeave={() => setDragOverDrawer(null)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragOverDrawer(null)
+              const ticketId = e.dataTransfer.getData("text/plain")
+              const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
+              if (ticketToMove) {
+                handleDropInDrawer(ticketToMove, "NAO_EXISTE")
+              }
+            }}
+            onClick={() => setSelectedDrawer("NAO_EXISTE")}
+            className={cn(
+              "w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-xs hover:shadow-sm transition-all flex items-center gap-2.5 cursor-pointer group select-none",
+              dragOverDrawer === "NAO_EXISTE" && "ring-2 ring-rose-500 bg-rose-50/50 border-rose-300"
+            )}
+            title="Gaveta: Não Existe Whatsapp (Clique para abrir ou arraste leads para cá)"
+          >
+            <div className="w-6 h-6 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600 shrink-0">
+              <PhoneOff className="w-3.5 h-3.5" />
             </div>
+            <div className="text-left flex-1 min-w-0">
+              <p className="text-xs font-bold text-slate-800 tracking-tight group-hover:text-slate-900 leading-tight truncate">
+                Não Existe Whatsapp
+              </p>
+              <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
+                {naoExisteWhatsappTickets.length} {naoExisteWhatsappTickets.length === 1 ? "lead arquivado" : "leads arquivados"}
+              </p>
+            </div>
+            <span className="ml-1 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+              {naoExisteWhatsappTickets.length}
+            </span>
+          </div>
+
+          {/* Gaveta: Whatsapp Divergente */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = "move"
+              if (dragOverDrawer !== "DIVERGENTE") setDragOverDrawer("DIVERGENTE")
+            }}
+            onDragLeave={() => setDragOverDrawer(null)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragOverDrawer(null)
+              const ticketId = e.dataTransfer.getData("text/plain")
+              const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
+              if (ticketToMove) {
+                handleDropInDrawer(ticketToMove, "DIVERGENTE")
+              }
+            }}
+            onClick={() => setSelectedDrawer("DIVERGENTE")}
+            className={cn(
+              "w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-xs hover:shadow-sm transition-all flex items-center gap-2.5 cursor-pointer group select-none",
+              dragOverDrawer === "DIVERGENTE" && "ring-2 ring-amber-500 bg-amber-50/50 border-amber-300"
+            )}
+            title="Gaveta: Whatsapp Divergente (Clique para abrir ou arraste leads para cá)"
+          >
+            <div className="w-6 h-6 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600 shrink-0">
+              <MessageSquareOff className="w-3.5 h-3.5" />
+            </div>
+            <div className="text-left flex-1 min-w-0">
+              <p className="text-xs font-bold text-slate-800 tracking-tight group-hover:text-slate-900 leading-tight truncate">
+                Whatsapp Divergente
+              </p>
+              <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
+                {whatsappDivergenteTickets.length} {whatsappDivergenteTickets.length === 1 ? "lead arquivado" : "leads arquivados"}
+              </p>
+            </div>
+            <span className="ml-1 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+              {whatsappDivergenteTickets.length}
+            </span>
           </div>
         </div>
 
         {/* Visão 1: Minha Fila (4 Colunas Simultâneas: Agora, Vencidas, Futuras e Ação Especial) */}
         {activeView === "MINHA_FILA" && (
-          <Card className="card-shadow bg-white border border-slate-200 rounded-2xl overflow-hidden flex-1 max-h-[95%] flex flex-col min-h-0">
-            <CardContent className="p-3 sm:p-5 flex-1 flex flex-col overflow-hidden min-h-0 space-y-4">
-              {renderFiltersAndMetrics()}
-              <div className="flex-1 flex flex-col md:flex-row gap-4 h-full min-h-0 overflow-x-auto overflow-y-hidden">
+          <div className="flex-1 flex flex-col md:flex-row gap-3.5 sm:gap-4 h-full min-h-0 overflow-x-auto overflow-y-hidden">
                 {/* Coluna 1: AGORA */}
                 <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-200/80 shadow-2xs overflow-hidden bg-emerald-50/70">
                   {/* Cabeçalho da Coluna Agora */}
@@ -3930,24 +3758,17 @@ export default function KanbanPage() {
                         Nenhuma ação especial pendente
                       </div>
                     ) : (
-                      filaCategorias.acaoEspecial.map(ticket => renderTicketCard(ticket, undefined, false))
+                      filaCategorias.acaoEspecial.map(ticket => renderTicketCard(ticket, undefined, false, undefined, true))
                     )}
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
         )}
 
-        {/* Visão 2: Card Principal do Kanban (Filtros e 7 Colunas) */}
+        {/* Visão 2: Quadro das 7 Colunas do Kanban */}
         {activeView === "KANBAN" && (
-          <Card className="card-shadow bg-white border border-slate-200 rounded-2xl overflow-hidden flex-1 max-h-[95%] flex flex-col min-h-0">
-          <CardContent className="p-3 sm:p-5 flex-1 flex flex-col overflow-hidden min-h-0 space-y-4">
-            {renderFiltersAndMetrics()}
-
-            {/* Quadro das 7 Colunas do Kanban */}
-            <div className="flex-1 overflow-x-auto pb-2 min-h-0">
-              <div className="flex items-stretch gap-4 w-full min-w-max h-full">
+          <div className="flex-1 overflow-x-auto pb-1 min-h-0 h-full">
+            <div className="flex items-stretch gap-3.5 sm:gap-4 w-full min-w-max h-full">
                 {KANBAN_COLUMNS.map(col => {
                   const colTickets = groupedColumns[col.id] || []
                   const totalColValor = colTickets.reduce((acc, t) => {
@@ -4029,9 +3850,7 @@ export default function KanbanPage() {
             })}
           </div>
         </div>
-      </CardContent>
-    </Card>
-    )}
+        )}
   </main>
 
       {/* MODAL 1: ATENDIMENTO (Corretor / Estagiário) */}
@@ -4328,7 +4147,7 @@ export default function KanbanPage() {
                         title="Solicitar Ação Especial"
                       >
                         <Zap className="w-3.5 h-3.5" />
-                        AÇÃO ESPECIAL
+                        SOLICITAR AÇÃO ESPECIAL
                       </Button>
                     </div>
                   </div>
@@ -5151,13 +4970,28 @@ export default function KanbanPage() {
                 </label>
                 <select
                   value={acaoEspecialDestinatario}
-                  onChange={e => setAcaoEspecialDestinatario(e.target.value as any)}
+                  onChange={e => setAcaoEspecialDestinatario(e.target.value)}
                   className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 text-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-semibold"
                 >
-                  <option value="Supervisor">Supervisor</option>
-                  <option value="Operacional">Operacional</option>
-                  <option value="Administrador">Administrador</option>
-                  <option value="Monitoramento">Monitoramento</option>
+                  {destinatariosAcaoEspecial.length === 0 ? (
+                    <option value="">Carregando usuários...</option>
+                  ) : (
+                    destinatariosAcaoEspecial.map(u => {
+                      const funcaoNome = (() => {
+                        const r = (u.role || u.funcao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                        if (r.includes("supervisor")) return "Supervisor"
+                        if (r.includes("operacion")) return "Operacional"
+                        if (r.includes("admin")) return "Administrador"
+                        if (r.includes("monitor")) return "Monitoramento"
+                        return u.funcao || u.role || "Colaborador"
+                      })()
+                      return (
+                        <option key={u.id} value={u.nome}>
+                          {u.nome} - {funcaoNome}
+                        </option>
+                      )
+                    })
+                  )}
                 </select>
               </div>
 

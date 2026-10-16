@@ -483,22 +483,6 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
           </button>
         )}
 
-        {isKanban && (
-          <button
-            type="button"
-            onClick={() => setPreviewTheme((prev) => (prev === "light" ? "dark" : "light"))}
-            title={previewTheme === "light" ? "Modo Claro" : "Modo Escuro"}
-            aria-label="Alternar tema de cores"
-            className="h-9 w-9 rounded-xl flex items-center justify-center border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-xs transition-colors cursor-pointer mr-1 sm:mr-2"
-          >
-            {previewTheme === "light" ? (
-              <Sun className="w-4 h-4 text-amber-500" />
-            ) : (
-              <Moon className="w-4 h-4 text-indigo-500" />
-            )}
-          </button>
-        )}
-
         <div className="relative" ref={dropdownRef}>
           <button 
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
