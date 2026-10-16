@@ -29,7 +29,8 @@ import {
   Calculator,
   Table,
   UserCheck,
-  Kanban
+  Kanban,
+  Target
 } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 
@@ -167,6 +168,12 @@ const allMenuItems = [
   {
     title: "RECURSOS HUMANOS",
     items: [
+      { 
+        name: "PDI", 
+        href: "/pdi", 
+        icon: Target, 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      },
       { 
         name: "ENTREVISTAS", 
         href: "/entrevistas", 
