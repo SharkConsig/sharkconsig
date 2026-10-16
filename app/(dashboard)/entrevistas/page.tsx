@@ -21,6 +21,25 @@ import {
   X
 } from "lucide-react"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
+import { 
+  ColumnVisibilityDropdown, 
+  RhTh, 
+  RhTd, 
+  useColumnVisibility, 
+  ColumnConfig 
+} from "@/components/rh/column-visibility"
+
+const ENTREVISTAS_COLUMNS: ColumnConfig[] = [
+  { id: "candidato", label: "Candidato", widthClass: "w-[180px]" },
+  { id: "contato", label: "Contato", widthClass: "w-[140px]" },
+  { id: "data", label: "Data", widthClass: "w-[130px]" },
+  { id: "horario", label: "Horário", widthClass: "w-[110px]" },
+  { id: "fase", label: "Fase", widthClass: "w-[170px]", align: "center" },
+  { id: "plataforma", label: "Plataforma", widthClass: "w-[170px]", align: "center" },
+  { id: "area", label: "Área", widthClass: "w-[170px]", align: "center" },
+  { id: "observacoes", label: "Observações", widthClass: "w-[280px]" },
+  { id: "acoes", label: "Ações", widthClass: "w-[100px]", align: "center" },
+]
 
 // Our main spreadsheet interview record interface
 interface Interview {
@@ -57,6 +76,16 @@ export default function EntrevistasPage() {
   const [plataformaFilter, setPlataformaFilter] = useState("Todas")
   const [areaFilter, setAreaFilter] = useState("Todas")
   const [dateFilter, setDateFilter] = useState("")
+
+  const {
+    columns: visibleColumns,
+    isVisible,
+    toggleColumn,
+    showAllColumns,
+    resetToDefault,
+    visibleCount,
+    totalCount
+  } = useColumnVisibility("rh_cols_entrevistas", ENTREVISTAS_COLUMNS)
   const [interviews, setInterviews] = useState<Interview[]>([])
   const [loadingTable, setLoadingTable] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -962,6 +991,16 @@ export default function EntrevistasPage() {
                     <option value="Home office">Home office</option>
                   </select>
                 </div>
+
+                <ColumnVisibilityDropdown 
+                  columns={visibleColumns}
+                  isVisible={isVisible}
+                  onToggle={toggleColumn}
+                  onShowAll={showAllColumns}
+                  onReset={resetToDefault}
+                  visibleCount={visibleCount}
+                  totalCount={totalCount}
+                />
               </div>
             </div>
 
@@ -970,21 +1009,21 @@ export default function EntrevistasPage() {
               <table className="w-full text-left border-collapse table-fixed min-w-[1450px]">
                 <thead>
                   <tr className="bg-[#171717] text-white">
-                    <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Candidato</th>
-                    <th className="w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Contato</th>
-                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data</th>
-                    <th className="w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Horário</th>
-                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Fase</th>
-                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Plataforma</th>
-                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Área</th>
-                    <th className="w-[280px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Observações</th>
-                    <th className="w-[100px] px-4 pr-6 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">Ações</th>
+                    <RhTh columnId="candidato" label="Candidato" isVisible={isVisible("candidato")} onToggle={toggleColumn} widthClass="w-[180px]" roundedLeft />
+                    <RhTh columnId="contato" label="Contato" isVisible={isVisible("contato")} onToggle={toggleColumn} widthClass="w-[140px]" />
+                    <RhTh columnId="data" label="Data" isVisible={isVisible("data")} onToggle={toggleColumn} widthClass="w-[130px]" />
+                    <RhTh columnId="horario" label="Horário" isVisible={isVisible("horario")} onToggle={toggleColumn} widthClass="w-[110px]" />
+                    <RhTh columnId="fase" label="Fase" isVisible={isVisible("fase")} onToggle={toggleColumn} widthClass="w-[170px]" align="center" />
+                    <RhTh columnId="plataforma" label="Plataforma" isVisible={isVisible("plataforma")} onToggle={toggleColumn} widthClass="w-[170px]" align="center" />
+                    <RhTh columnId="area" label="Área" isVisible={isVisible("area")} onToggle={toggleColumn} widthClass="w-[170px]" align="center" />
+                    <RhTh columnId="observacoes" label="Observações" isVisible={isVisible("observacoes")} onToggle={toggleColumn} widthClass="w-[280px]" />
+                    <RhTh columnId="acoes" label="Ações" isVisible={isVisible("acoes")} onToggle={toggleColumn} widthClass="w-[100px]" align="center" roundedRight />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {loadingTable ? (
                     <tr>
-                      <td colSpan={9} className="text-center py-20 bg-slate-50/10">
+                      <td colSpan={visibleCount || 1} className="text-center py-20 bg-slate-50/10">
                         <div className="flex flex-col items-center justify-center space-y-3 animate-pulse">
                           <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" strokeWidth={3} />
                           <p className="text-slate-500 text-xs font-black uppercase tracking-widest leading-none">Sincronizando com Banco de Dados em tempo real...</p>
@@ -993,7 +1032,7 @@ export default function EntrevistasPage() {
                     </tr>
                   ) : filteredInterviews.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="text-center py-20 bg-slate-50/10 border-none">
+                      <td colSpan={visibleCount || 1} className="text-center py-20 bg-slate-50/10 border-none">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <FileSpreadsheet className="w-10 h-10 text-slate-350 animate-bounce" />
                           <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Planilha vazia ou filtros sem correspondência</p>
@@ -1005,7 +1044,7 @@ export default function EntrevistasPage() {
                     paginatedInterviews.map((item) => (
                       <tr key={item.id} className="hover:bg-slate-50/20 transition-all font-semibold align-middle whitespace-nowrap">
                         {/* CANDIDATO CELL */}
-                        <td className="px-4 py-3.5">
+                        <RhTd columnId="candidato" label="Candidato" isVisible={isVisible("candidato")} onToggle={toggleColumn} className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
                             <input 
                               type="text" 
@@ -1015,10 +1054,10 @@ export default function EntrevistasPage() {
                               className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1.5 text-xs font-black text-slate-705 uppercase outline-none transition-all"
                             />
                           </div>
-                        </td>
+                        </RhTd>
 
                         {/* CONTATO CELL */}
-                        <td className="px-4 py-3.5">
+                        <RhTd columnId="contato" label="Contato" isVisible={isVisible("contato")} onToggle={toggleColumn} className="px-4 py-3.5">
                           <input 
                             type="text" 
                             value={item.phone} 
@@ -1026,61 +1065,61 @@ export default function EntrevistasPage() {
                             placeholder="Inserir fone"
                             className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-500 outline-none transition-all"
                           />
-                        </td>
+                        </RhTd>
 
                         {/* DATA CELL */}
-                        <td className="px-4 py-3.5">
+                        <RhTd columnId="data" label="Data" isVisible={isVisible("data")} onToggle={toggleColumn} className="px-4 py-3.5">
                           <DateCell 
                             value={item.date} 
                             onChange={(val) => updateCell(item.id, "date", val)} 
                           />
-                        </td>
+                        </RhTd>
 
                         {/* HORÁRIO CELL */}
-                        <td className="px-4 py-3.5">
+                        <RhTd columnId="horario" label="Horário" isVisible={isVisible("horario")} onToggle={toggleColumn} className="px-4 py-3.5">
                           <TimeCell 
                             value={item.time} 
                             onChange={(val) => updateCell(item.id, "time", val)} 
                           />
-                        </td>
+                        </RhTd>
 
                         {/* FASE PILL DROPDOWN */}
-                        <td className="px-4 py-3.5 text-center">
+                        <RhTd columnId="fase" label="Fase" isVisible={isVisible("fase")} onToggle={toggleColumn} className="px-4 py-3.5 text-center">
                           <PillDropdown 
                             value={item.fase} 
                             onChange={(val) => updateCell(item.id, "fase", val)} 
                             options={faseOptions} 
                           />
-                        </td>
+                        </RhTd>
 
                         {/* PLATAFORMA PILL DROPDOWN */}
-                        <td className="px-4 py-3.5 text-center">
+                        <RhTd columnId="plataforma" label="Plataforma" isVisible={isVisible("plataforma")} onToggle={toggleColumn} className="px-4 py-3.5 text-center">
                           <PillDropdown 
                             value={item.plataforma} 
                             onChange={(val) => updateCell(item.id, "plataforma", val)} 
                             options={plataformaOptions} 
                           />
-                        </td>
+                        </RhTd>
 
                         {/* ÁREA PILL DROPDOWN */}
-                        <td className="px-4 py-3.5 text-center">
+                        <RhTd columnId="area" label="Área" isVisible={isVisible("area")} onToggle={toggleColumn} className="px-4 py-3.5 text-center">
                           <PillDropdown 
                             value={item.area} 
                             onChange={(val) => updateCell(item.id, "area", val)} 
                             options={areaOptions} 
                           />
-                        </td>
+                        </RhTd>
 
                         {/* OBSERVAÇÕES CELL */}
-                        <td className="px-4 py-3.5">
+                        <RhTd columnId="observacoes" label="Observações" isVisible={isVisible("observacoes")} onToggle={toggleColumn} className="px-4 py-3.5">
                           <NotesCell 
                             value={item.notes} 
                             onChange={(val) => updateCell(item.id, "notes", val)} 
                           />
-                        </td>
+                        </RhTd>
 
                         {/* EXCLUIR ROW BUTTON */}
-                        <td className="px-2 py-3.5 text-center">
+                        <RhTd columnId="acoes" label="Ações" isVisible={isVisible("acoes")} onToggle={toggleColumn} className="px-2 py-3.5 text-center">
                           {deletingId === item.id ? (
                             <div className="flex items-center gap-1.5 justify-center">
                               <Button
@@ -1114,7 +1153,7 @@ export default function EntrevistasPage() {
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           )}
-                        </td>
+                        </RhTd>
                       </tr>
                     ))
                   )}

@@ -18,6 +18,25 @@ import {
   Loader2
 } from "lucide-react"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
+import { 
+  ColumnVisibilityDropdown, 
+  RhTh, 
+  RhTd, 
+  useColumnVisibility, 
+  ColumnConfig 
+} from "@/components/rh/column-visibility"
+
+const ADVERTENCIAS_COLUMNS: ColumnConfig[] = [
+  { id: "colaborador", label: "Colaborador", widthClass: "w-[220px]" },
+  { id: "verbal", label: "Verbal", widthClass: "w-[170px]", align: "center" },
+  { id: "data_verbal", label: "Data Verbal", widthClass: "w-[130px]", align: "center" },
+  { id: "escrita", label: "Escrita", widthClass: "w-[170px]", align: "center" },
+  { id: "data_escrita", label: "Data Escrita", widthClass: "w-[130px]", align: "center" },
+  { id: "suspensao", label: "Suspensão", widthClass: "w-[170px]", align: "center" },
+  { id: "data_suspensao", label: "Data Suspensão", widthClass: "w-[200px]", align: "center" },
+  { id: "qtd_dias", label: "Quantidade de Dias", widthClass: "w-[120px]", align: "center" },
+  { id: "acoes", label: "Ações", widthClass: "w-[110px]", align: "center" },
+]
 
 interface WarningRecord {
   id: string
@@ -339,6 +358,16 @@ export default function AdvertenciasPage() {
   const [records, setRecords] = useState<WarningRecord[]>([])
 
   const [searchQuery, setSearchQuery] = useState("")
+
+  const {
+    columns: visibleColumns,
+    isVisible,
+    toggleColumn,
+    showAllColumns,
+    resetToDefault,
+    visibleCount,
+    totalCount
+  } = useColumnVisibility("rh_cols_advertencias", ADVERTENCIAS_COLUMNS)
   const [newColabName, setNewColabName] = useState("")
   const [newVerbal, setNewVerbal] = useState(false)
   const [newEscrita, setNewEscrita] = useState(false)
@@ -998,6 +1027,16 @@ export default function AdvertenciasPage() {
                   </button>
                 )}
               </div>
+
+              <ColumnVisibilityDropdown 
+                columns={visibleColumns}
+                isVisible={isVisible}
+                onToggle={toggleColumn}
+                onShowAll={showAllColumns}
+                onReset={resetToDefault}
+                visibleCount={visibleCount}
+                totalCount={totalCount}
+              />
             </div>
 
             {/* Main Interactive Grid Table in Spreadsheet Style */}
@@ -1005,39 +1044,21 @@ export default function AdvertenciasPage() {
               <table className="w-full text-left border-collapse table-fixed min-w-[1100px]">
                 <thead>
                   <tr className="bg-[#171717] text-white">
-                    <th className="w-[220px] px-5 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">
-                      Colaborador
-                    </th>
-                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
-                      Verbal
-                    </th>
-                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
-                      Data Verbal
-                    </th>
-                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
-                      Escrita
-                    </th>
-                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
-                      Data Escrita
-                    </th>
-                    <th className="w-[170px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
-                      Suspensão
-                    </th>
-                    <th className="w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
-                      Data Suspensão
-                    </th>
-                    <th className="w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">
-                      Quantidade de Dias
-                    </th>
-                    <th className="w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">
-                      Ações
-                    </th>
+                    <RhTh columnId="colaborador" label="Colaborador" isVisible={isVisible("colaborador")} onToggle={toggleColumn} widthClass="w-[220px]" roundedLeft />
+                    <RhTh columnId="verbal" label="Verbal" isVisible={isVisible("verbal")} onToggle={toggleColumn} widthClass="w-[170px]" align="center" />
+                    <RhTh columnId="data_verbal" label="Data Verbal" isVisible={isVisible("data_verbal")} onToggle={toggleColumn} widthClass="w-[130px]" align="center" />
+                    <RhTh columnId="escrita" label="Escrita" isVisible={isVisible("escrita")} onToggle={toggleColumn} widthClass="w-[170px]" align="center" />
+                    <RhTh columnId="data_escrita" label="Data Escrita" isVisible={isVisible("data_escrita")} onToggle={toggleColumn} widthClass="w-[130px]" align="center" />
+                    <RhTh columnId="suspensao" label="Suspensão" isVisible={isVisible("suspensao")} onToggle={toggleColumn} widthClass="w-[170px]" align="center" />
+                    <RhTh columnId="data_suspensao" label="Data Suspensão" isVisible={isVisible("data_suspensao")} onToggle={toggleColumn} widthClass="w-[200px]" align="center" />
+                    <RhTh columnId="qtd_dias" label="Quantidade de Dias" isVisible={isVisible("qtd_dias")} onToggle={toggleColumn} widthClass="w-[120px]" align="center" />
+                    <RhTh columnId="acoes" label="Ações" isVisible={isVisible("acoes")} onToggle={toggleColumn} widthClass="w-[110px]" align="center" roundedRight />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {loadingTable ? (
                     <tr>
-                      <td colSpan={9} className="text-center py-20 bg-slate-50/10 border-none">
+                      <td colSpan={visibleCount || 1} className="text-center py-20 bg-slate-50/10 border-none">
                         <div className="flex flex-col items-center justify-center space-y-3">
                           <div className="w-8 h-8 border-4 border-[#171717] border-t-transparent rounded-full animate-spin" />
                           <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Carregando dados das advertências...</p>
@@ -1078,7 +1099,7 @@ export default function AdvertenciasPage() {
                               className="bg-slate-50 hover:bg-slate-100/80 transition-all font-semibold align-middle whitespace-nowrap cursor-pointer border-b border-slate-200"
                             >
                               {/* Colaborador Column */}
-                              <td className="px-4 py-3.5">
+                              <RhTd columnId="colaborador" label="Colaborador" isVisible={isVisible("colaborador")} onToggle={toggleColumn} className="px-4 py-3.5">
                                 <div className="flex items-center gap-2 select-none pl-1">
                                   <ChevronDown 
                                     className={cn(
@@ -1093,57 +1114,53 @@ export default function AdvertenciasPage() {
                                     {groupRecords.length}
                                   </span>
                                 </div>
-                              </td>
+                              </RhTd>
 
                               {/* Verbal Summary */}
-                              <td className="px-4 py-3.5 text-center">
+                              <RhTd columnId="verbal" label="Verbal" isVisible={isVisible("verbal")} onToggle={toggleColumn} className="px-4 py-3.5 text-center">
                                 {groupVerbalCount > 0 && (
                                   <span className="inline-flex items-center gap-1 bg-[#ddf7e2] text-[#1b7337] px-2.5 py-1 rounded-full text-[10px] font-black uppercase">
                                     {groupVerbalCount} Verbal
                                   </span>
                                 )}
-                              </td>
+                              </RhTd>
 
                               {/* Verbal Date Summary */}
-                              <td className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold">
-                              </td>
+                              <RhTd columnId="data_verbal" label="Data Verbal" isVisible={isVisible("data_verbal")} onToggle={toggleColumn} className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold" />
 
                               {/* Escrita Summary */}
-                              <td className="px-4 py-3.5 text-center">
+                              <RhTd columnId="escrita" label="Escrita" isVisible={isVisible("escrita")} onToggle={toggleColumn} className="px-4 py-3.5 text-center">
                                 {groupEscritaCount > 0 && (
                                   <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-600 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border border-amber-100/30">
                                     {groupEscritaCount} Escrita
                                   </span>
                                 )}
-                              </td>
+                              </RhTd>
 
                               {/* Escrita Date Summary */}
-                              <td className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold">
-                              </td>
+                              <RhTd columnId="data_escrita" label="Data Escrita" isVisible={isVisible("data_escrita")} onToggle={toggleColumn} className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold" />
 
                               {/* Suspensão Summary */}
-                              <td className="px-4 py-3.5 text-center">
+                              <RhTd columnId="suspensao" label="Suspensão" isVisible={isVisible("suspensao")} onToggle={toggleColumn} className="px-4 py-3.5 text-center">
                                 {groupRecords.filter(r => r.suspensao === "Sim").length > 0 && (
                                   <span className="inline-flex items-center gap-1 bg-red-50 text-red-600 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border border-red-100/30">
                                     {groupRecords.filter(r => r.suspensao === "Sim").length} Susp.
                                   </span>
                                 )}
-                              </td>
+                              </RhTd>
 
                               {/* Data Suspensão Summary */}
-                              <td className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold">
-                              </td>
+                              <RhTd columnId="data_suspensao" label="Data Suspensão" isVisible={isVisible("data_suspensao")} onToggle={toggleColumn} className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold" />
 
                               {/* Quantidade de Dias Summary */}
-                              <td className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold">
-                              </td>
+                              <RhTd columnId="qtd_dias" label="Quantidade de Dias" isVisible={isVisible("qtd_dias")} onToggle={toggleColumn} className="px-4 py-3.5 text-center text-xs text-slate-500 font-bold" />
 
                               {/* Action Hint */}
-                              <td className="px-4 py-3.5 text-center">
+                              <RhTd columnId="acoes" label="Ações" isVisible={isVisible("acoes")} onToggle={toggleColumn} className="px-4 py-3.5 text-center">
                                 <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider select-none">
                                   {isExpanded ? "Recolher" : "Expandir"}
                                 </span>
-                              </td>
+                              </RhTd>
                             </tr>
 
                             {/* Expanded Child Rows */}
@@ -1153,7 +1170,7 @@ export default function AdvertenciasPage() {
                                 className="bg-white hover:bg-slate-50/40 transition-all font-semibold align-middle whitespace-nowrap border-b border-slate-100"
                               >
                                 {/* Colaborador Column */}
-                                <td className="px-4 py-3">
+                                <RhTd columnId="colaborador" label="Colaborador" isVisible={isVisible("colaborador")} onToggle={toggleColumn} className="px-4 py-3">
                                   <div className="flex items-center gap-2 pl-6">
                                     <span className="text-slate-350 select-none font-bold text-xs">↳</span>
                                     <input 
@@ -1164,57 +1181,57 @@ export default function AdvertenciasPage() {
                                       className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 uppercase outline-none transition-all"
                                     />
                                   </div>
-                                </td>
+                                </RhTd>
 
                                 {/* Verbal Selection Cell */}
-                                <td className="px-4 py-3 text-center">
+                                <RhTd columnId="verbal" label="Verbal" isVisible={isVisible("verbal")} onToggle={toggleColumn} className="px-4 py-3 text-center">
                                   <PillDropdown 
                                     value={rec.verbal} 
                                     onChange={(val) => handleSelectOption(rec.id, "verbal", val)} 
                                     options={verbalOptions} 
                                   />
-                                </td>
+                                </RhTd>
 
                                 {/* Verbal Date Cell */}
-                                <td className="px-4 py-3 text-center">
+                                <RhTd columnId="data_verbal" label="Data Verbal" isVisible={isVisible("data_verbal")} onToggle={toggleColumn} className="px-4 py-3 text-center">
                                   <input
                                     type="date"
                                     value={toYMD(rec.verbalDate)}
                                     onChange={(e) => handleUpdateField(rec.id, "verbalDate", toDMY(e.target.value))}
                                     className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none transition-all text-center"
                                   />
-                                </td>
+                                </RhTd>
 
                                 {/* Escrita Selection Cell */}
-                                <td className="px-4 py-3 text-center">
+                                <RhTd columnId="escrita" label="Escrita" isVisible={isVisible("escrita")} onToggle={toggleColumn} className="px-4 py-3 text-center">
                                   <PillDropdown 
                                     value={rec.escrita} 
                                     onChange={(val) => handleSelectOption(rec.id, "escrita", val)} 
                                     options={escritaOptions} 
                                   />
-                                </td>
+                                </RhTd>
 
                                 {/* Escrita Date Cell */}
-                                <td className="px-4 py-3 text-center">
+                                <RhTd columnId="data_escrita" label="Data Escrita" isVisible={isVisible("data_escrita")} onToggle={toggleColumn} className="px-4 py-3 text-center">
                                   <input
                                     type="date"
                                     value={toYMD(rec.escritaDate)}
                                     onChange={(e) => handleUpdateField(rec.id, "escritaDate", toDMY(e.target.value))}
                                     className="w-full bg-transparent border-none hover:bg-slate-100/60 focus:bg-white focus:ring-1 focus:ring-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none transition-all text-center"
                                   />
-                                </td>
+                                </RhTd>
 
                                 {/* Suspensão Selection Cell */}
-                                <td className="px-4 py-3 text-center">
+                                <RhTd columnId="suspensao" label="Suspensão" isVisible={isVisible("suspensao")} onToggle={toggleColumn} className="px-4 py-3 text-center">
                                   <PillDropdown 
                                     value={rec.suspensao} 
                                     onChange={(val) => handleSelectOption(rec.id, "suspensao", val)} 
                                     options={suspensaoOptions} 
                                   />
-                                </td>
+                                </RhTd>
 
                                 {/* Data Suspensão Cell */}
-                                <td className="px-4 py-3 text-center">
+                                <RhTd columnId="data_suspensao" label="Data Suspensão" isVisible={isVisible("data_suspensao")} onToggle={toggleColumn} className="px-4 py-3 text-center">
                                   {rec.suspensao === "Sim" ? (
                                     <input
                                       type="date"
@@ -1225,10 +1242,10 @@ export default function AdvertenciasPage() {
                                   ) : (
                                     <span className="text-slate-300 text-xs font-semibold">-</span>
                                   )}
-                                </td>
+                                </RhTd>
 
                                 {/* Quantidade de Dias Cell */}
-                                <td className="px-4 py-3 text-center relative group">
+                                <RhTd columnId="qtd_dias" label="Quantidade de Dias" isVisible={isVisible("qtd_dias")} onToggle={toggleColumn} className="px-4 py-3 text-center relative group">
                                   {rec.suspensao === "Sim" ? (
                                     <div className="relative inline-block">
                                       <input
@@ -1287,10 +1304,10 @@ export default function AdvertenciasPage() {
                                   ) : (
                                     <span className="text-slate-300 text-xs font-semibold">-</span>
                                   )}
-                                </td>
+                                </RhTd>
 
                                 {/* Actions Column */}
-                                <td className="px-4 py-3 text-center">
+                                <RhTd columnId="acoes" label="Ações" isVisible={isVisible("acoes")} onToggle={toggleColumn} className="px-4 py-3 text-center">
                                   <div className="flex items-center gap-2 justify-center">
                                     {deletingId === rec.id ? (
                                       <div className="flex items-center gap-1.5">
@@ -1334,7 +1351,7 @@ export default function AdvertenciasPage() {
                                       </>
                                     )}
                                   </div>
-                                </td>
+                                </RhTd>
                               </tr>
                             ))}
                           </React.Fragment>

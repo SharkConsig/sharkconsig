@@ -24,6 +24,22 @@ import {
 import { supabase } from "@/lib/supabase"
 import confetti from "canvas-confetti"
 import { RHMessagingModal } from "@/components/rh/rh-messaging-modal"
+import { 
+  ColumnVisibilityDropdown, 
+  RhTh, 
+  RhTd, 
+  useColumnVisibility, 
+  ColumnConfig 
+} from "@/components/rh/column-visibility"
+
+const TEMPO_EMPRESA_COLUMNS: ColumnConfig[] = [
+  { id: "colaborador", label: "Colaborador", widthClass: "w-[280px]" },
+  { id: "admissao", label: "Admissão", widthClass: "w-[130px]" },
+  { id: "tempo_servico", label: "Tempo de Serviço", widthClass: "w-[180px]" },
+  { id: "proxima_meta", label: "Próxima Meta (Aniversário)", widthClass: "w-[240px]" },
+  { id: "kit_embalado", label: "Kit Aniversário Embalado?", widthClass: "w-[240px]" },
+  { id: "festejar", label: "Festejar", widthClass: "w-[130px]", align: "center" },
+]
 
 interface EmployeeTenure {
   id: string
@@ -88,6 +104,16 @@ export default function TempoEmpresaPage() {
   const [collaborators, setCollaborators] = useState<DBCollaborator[]>([])
   const [giftAwardedIds, setGiftAwardedIds] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
+
+  const {
+    columns: visibleColumns,
+    isVisible,
+    toggleColumn,
+    showAllColumns,
+    resetToDefault,
+    visibleCount,
+    totalCount
+  } = useColumnVisibility("rh_cols_tempo_empresa", TEMPO_EMPRESA_COLUMNS)
 
   // Modal State for Central de Reconhecimento RH
   const [isRHMessagingOpen, setIsRHMessagingOpen] = useState(false)
@@ -394,7 +420,7 @@ export default function TempoEmpresaPage() {
         {/* List Card */}
         <Card className="border border-slate-200 overflow-hidden bg-white rounded-2xl shadow-sm">
           <CardContent className="p-0">
-            <div className="p-6 border-b border-slate-100">
+            <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 w-full md:max-w-md">
                 <Search className="w-4 h-4 text-slate-400 shrink-0" />
                 <input 
@@ -405,6 +431,16 @@ export default function TempoEmpresaPage() {
                   className="bg-transparent border-none outline-none text-xs font-semibold text-slate-700 w-full"
                 />
               </div>
+
+              <ColumnVisibilityDropdown 
+                columns={visibleColumns}
+                isVisible={isVisible}
+                onToggle={toggleColumn}
+                onShowAll={showAllColumns}
+                onReset={resetToDefault}
+                visibleCount={visibleCount}
+                totalCount={totalCount}
+              />
             </div>
 
             {/* List Table */}
@@ -412,30 +448,18 @@ export default function TempoEmpresaPage() {
               <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
                 <thead>
                   <tr className="bg-[#171717] text-white">
-                    <th className="w-[280px] px-5 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">
-                      Colaborador
-                    </th>
-                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
-                      Admissão
-                    </th>
-                    <th className="w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
-                      Tempo de Serviço
-                    </th>
-                    <th className="w-[240px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
-                      Próxima Meta (Aniversário)
-                    </th>
-                    <th className="w-[240px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">
-                      Kit Aniversário Embalado?
-                    </th>
-                    <th className="w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">
-                      Festejar
-                    </th>
+                    <RhTh columnId="colaborador" label="Colaborador" isVisible={isVisible("colaborador")} onToggle={toggleColumn} widthClass="w-[280px]" roundedLeft />
+                    <RhTh columnId="admissao" label="Admissão" isVisible={isVisible("admissao")} onToggle={toggleColumn} widthClass="w-[130px]" />
+                    <RhTh columnId="tempo_servico" label="Tempo de Serviço" isVisible={isVisible("tempo_servico")} onToggle={toggleColumn} widthClass="w-[180px]" />
+                    <RhTh columnId="proxima_meta" label="Próxima Meta (Aniversário)" isVisible={isVisible("proxima_meta")} onToggle={toggleColumn} widthClass="w-[240px]" />
+                    <RhTh columnId="kit_embalado" label="Kit Aniversário Embalado?" isVisible={isVisible("kit_embalado")} onToggle={toggleColumn} widthClass="w-[240px]" />
+                    <RhTh columnId="festejar" label="Festejar" isVisible={isVisible("festejar")} onToggle={toggleColumn} widthClass="w-[130px]" align="center" roundedRight />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-20 bg-slate-50/10 border-none">
+                      <td colSpan={visibleCount || 1} className="text-center py-20 bg-slate-50/10 border-none">
                         <div className="flex flex-col items-center justify-center space-y-3">
                           <div className="w-8 h-8 border-4 border-[#171717] border-t-transparent rounded-full animate-spin" />
                           <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Carregando dados de tempo de casa...</p>
@@ -444,7 +468,7 @@ export default function TempoEmpresaPage() {
                     </tr>
                   ) : filteredTenures.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-20 bg-slate-50/10 border-none">
+                      <td colSpan={visibleCount || 1} className="text-center py-20 bg-slate-50/10 border-none">
                         <div className="flex flex-col items-center justify-center space-y-2">
                           <p className="text-slate-400 text-xs font-black uppercase tracking-widest">Nenhum colaborador ativo encontrado</p>
                           <p className="text-slate-400 text-[9px] font-semibold">Tabela vazia ou sem correspondências.</p>
@@ -454,25 +478,25 @@ export default function TempoEmpresaPage() {
                   ) : (
                     filteredTenures.map((ten) => (
                       <tr key={ten.id} className="hover:bg-slate-50/20 transition-all font-semibold align-middle whitespace-nowrap text-xs">
-                        <td className="px-5 py-3.5">
+                        <RhTd columnId="colaborador" label="Colaborador" isVisible={isVisible("colaborador")} onToggle={toggleColumn} className="px-5 py-3.5">
                           <div className="flex flex-col">
                             <p className="text-[11px] font-extrabold text-slate-800 uppercase leading-snug">{ten.name}</p>
                             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">{ten.role}</p>
                           </div>
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-600 font-bold text-[11px]">
+                        </RhTd>
+                        <RhTd columnId="admissao" label="Admissão" isVisible={isVisible("admissao")} onToggle={toggleColumn} className="px-4 py-3.5 text-slate-600 font-bold text-[11px]">
                           {ten.joinDate || "Não informada"}
-                        </td>
-                        <td className="px-4 py-3.5">
+                        </RhTd>
+                        <RhTd columnId="tempo_servico" label="Tempo de Serviço" isVisible={isVisible("tempo_servico")} onToggle={toggleColumn} className="px-4 py-3.5">
                           <Badge className="bg-slate-50 border border-slate-200 text-slate-650 text-[9px] font-black uppercase rounded-lg px-2.5 py-0.5">
                             {ten.tenureYears > 0 ? `${ten.tenureYears} ano(s) ` : ""}
                             {ten.tenureMonths > 0 ? `${ten.tenureMonths} mes(es)` : (ten.tenureYears === 0 ? "Recém Chegado(a)" : "")}
                           </Badge>
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-700 font-bold text-[11px]">
+                        </RhTd>
+                        <RhTd columnId="proxima_meta" label="Próxima Meta (Aniversário)" isVisible={isVisible("proxima_meta")} onToggle={toggleColumn} className="px-4 py-3.5 text-slate-700 font-bold text-[11px]">
                           {ten.nextMilestone}
-                        </td>
-                        <td className="px-4 py-3.5">
+                        </RhTd>
+                        <RhTd columnId="kit_embalado" label="Kit Aniversário Embalado?" isVisible={isVisible("kit_embalado")} onToggle={toggleColumn} className="px-4 py-3.5">
                           <button 
                             onClick={() => handleToggleGift(ten.id, ten.giftAwarded)}
                             className="flex items-center gap-1 bg-transparent hover:opacity-80 outline-none text-left cursor-pointer"
@@ -487,8 +511,8 @@ export default function TempoEmpresaPage() {
                               </Badge>
                             )}
                           </button>
-                        </td>
-                        <td className="px-4 py-3.5 text-center">
+                        </RhTd>
+                        <RhTd columnId="festejar" label="Festejar" isVisible={isVisible("festejar")} onToggle={toggleColumn} className="px-4 py-3.5 text-center">
                           <Button 
                             onClick={() => handleOpenCelebrateModal(ten)}
                             className="bg-red-50 hover:bg-red-100 text-red-600 rounded-lg px-3 py-1.5 h-8 font-bold text-[9px] uppercase tracking-widest gap-1.5 shadow-none border border-red-100 flex items-center justify-center mx-auto cursor-pointer transition-all active:scale-95"
@@ -496,7 +520,7 @@ export default function TempoEmpresaPage() {
                             <Heart className="w-3.5 h-3.5 fill-red-600 animate-pulse" />
                             Parabenizar
                           </Button>
-                        </td>
+                        </RhTd>
                       </tr>
                     ))
                   )}

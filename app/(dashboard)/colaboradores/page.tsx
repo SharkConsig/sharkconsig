@@ -30,6 +30,84 @@ import {
   MessageSquare
 } from "lucide-react"
 import { RHMessagingModal } from "@/components/rh/rh-messaging-modal"
+import { 
+  ColumnVisibilityDropdown, 
+  RhTh, 
+  RhTd, 
+  useColumnVisibility, 
+  ColumnConfig 
+} from "@/components/rh/column-visibility"
+
+const PRESENCIAIS_COLUMNS: ColumnConfig[] = [
+  { id: "nome", label: "Nome Completo", widthClass: "w-[220px]" },
+  { id: "usuario_id", label: "ID do USUÁRIO", widthClass: "w-[200px]" },
+  { id: "funcao", label: "Função", widthClass: "w-[180px]", align: "center" },
+  { id: "regime", label: "Regime", widthClass: "w-[150px]", align: "center" },
+  { id: "cpf", label: "CPF", widthClass: "w-[140px]" },
+  { id: "cnpj", label: "CNPJ", widthClass: "w-[160px]" },
+  { id: "admissao", label: "Admissão", widthClass: "w-[144px]" },
+  { id: "banco", label: "Banco", widthClass: "w-[130px]" },
+  { id: "agencia", label: "Agência", widthClass: "w-[100px]" },
+  { id: "conta", label: "Conta-Bancária", widthClass: "w-[140px]" },
+  { id: "pix", label: "Chave Pix", widthClass: "w-[160px]" },
+  { id: "nascimento", label: "Data de Nasc.", widthClass: "w-[140px]" },
+  { id: "estado_civil", label: "Estado Civil", widthClass: "w-[120px]" },
+  { id: "endereco", label: "Endereço Completo", widthClass: "w-[320px]" },
+  { id: "telefone", label: "Telefone", widthClass: "w-[140px]" },
+  { id: "email", label: "E-mail", widthClass: "w-[220px]" },
+  { id: "emergencia", label: "Telefone de Emergência", widthClass: "w-[220px]" },
+  { id: "calcado", label: "Nº Calçado", widthClass: "w-[100px]" },
+  { id: "filhos", label: "Filhos", widthClass: "w-[110px]" },
+  { id: "faculdade", label: "Instituição de Ensino", widthClass: "w-[200px]" },
+  { id: "email_faculdade", label: "E-mail da Instituição", widthClass: "w-[200px]" },
+  { id: "tamanho_roupa", label: "Tamanho da Roupa", widthClass: "w-[140px]" },
+  { id: "chocolate", label: "Chocolate Preferido", widthClass: "w-[200px]" },
+  { id: "bebida", label: "Bebida Preferida", widthClass: "w-[200px]" },
+  { id: "comida", label: "Comida Preferida", widthClass: "w-[200px]" },
+  { id: "sugestao_campanhas", label: "Sugestão de Campanhas", widthClass: "w-[250px]" },
+  { id: "incentivos", label: "Preferência de Incentivos", widthClass: "w-[220px]" },
+  { id: "situacao", label: "SITUAÇÃO", widthClass: "w-[120px]", align: "center" },
+  { id: "documentos", label: "DOCUMENTOS", widthClass: "w-[180px]", align: "center" },
+  { id: "acoes", label: "AÇÕES", widthClass: "w-[80px]", align: "center" },
+]
+
+const HOME_OFFICE_COLUMNS: ColumnConfig[] = [
+  { id: "nome", label: "Nome Completo", widthClass: "w-[220px]" },
+  { id: "usuario_id", label: "ID do USUÁRIO", widthClass: "w-[200px]" },
+  { id: "cpf", label: "CPF", widthClass: "w-[140px]" },
+  { id: "nascimento", label: "Data de Nasc.", widthClass: "w-[140px]" },
+  { id: "funcao", label: "Função", widthClass: "w-[180px]", align: "center" },
+  { id: "regime", label: "Regime", widthClass: "w-[150px]", align: "center" },
+  { id: "admissao", label: "Admissão", widthClass: "w-[144px]" },
+  { id: "endereco", label: "Endereço Completo", widthClass: "w-[320px]" },
+  { id: "cnpj", label: "CNPJ", widthClass: "w-[160px]" },
+  { id: "endereco_empresarial", label: "Endereço Empresarial", widthClass: "w-[320px]" },
+  { id: "banco", label: "Banco", widthClass: "w-[130px]" },
+  { id: "agencia", label: "Agência", widthClass: "w-[100px]" },
+  { id: "conta", label: "Conta-Bancária", widthClass: "w-[140px]" },
+  { id: "pix", label: "Chave Pix", widthClass: "w-[160px]" },
+  { id: "telefone", label: "Telefone", widthClass: "w-[140px]" },
+  { id: "email", label: "E-mail", widthClass: "w-[220px]" },
+  { id: "situacao", label: "SITUAÇÃO", widthClass: "w-[120px]", align: "center" },
+  { id: "documentos", label: "DOCUMENTOS", widthClass: "w-[180px]", align: "center" },
+  { id: "acoes", label: "AÇÕES", widthClass: "w-[80px]", align: "center" },
+]
+
+const EX_COLABORADORES_COLUMNS: ColumnConfig[] = [
+  { id: "nome", label: "Nome Completo", widthClass: "w-[220px]" },
+  { id: "funcao", label: "Função", widthClass: "w-[180px]", align: "center" },
+  { id: "cpf", label: "CPF", widthClass: "w-[140px]" },
+  { id: "nascimento", label: "Data de Nasc.", widthClass: "w-[110px]" },
+  { id: "estado_civil", label: "Estado Civil", widthClass: "w-[120px]" },
+  { id: "endereco", label: "Endereço Completo", widthClass: "w-[320px]" },
+  { id: "telefone", label: "Telefone", widthClass: "w-[140px]" },
+  { id: "email", label: "E-mail", widthClass: "w-[220px]" },
+  { id: "emergencia", label: "Telefone de Emergência", widthClass: "w-[180px]" },
+  { id: "admissao", label: "DATA DE ADMISSÃO", widthClass: "w-[160px]", align: "center" },
+  { id: "demissao", label: "DATA DA DEMISSÃO", widthClass: "w-[160px]", align: "center" },
+  { id: "situacao", label: "SITUAÇÃO", widthClass: "w-[120px]", align: "center" },
+  { id: "documentos", label: "DOCUMENTOS", widthClass: "w-[180px]", align: "center" },
+]
 
 const DOCUMENT_TYPES = [
   {
@@ -385,6 +463,11 @@ export default function ColaboradoresPage() {
   const [isRHMessagingOpen, setIsRHMessagingOpen] = useState(false)
   const [collaborators, setCollaborators] = useState<Collaborator[]>([])
   const [activeTab, setActiveTab] = useState<"presenciais" | "home_office" | "aniversarios" | "ex_colaboradores" | "ex_home_office">("presenciais")
+
+  // Visibilidade de colunas salva no localStorage
+  const presencialCols = useColumnVisibility("rh_cols_colaboradores_presenciais", PRESENCIAIS_COLUMNS)
+  const homeOfficeCols = useColumnVisibility("rh_cols_colaboradores_home_office", HOME_OFFICE_COLUMNS)
+  const exCols = useColumnVisibility("rh_cols_colaboradores_ex", EX_COLABORADORES_COLUMNS)
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1594,8 +1677,8 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                 </form>
               </div>
 
-              {/* Campo de Pesquisa */}
-              <div className="p-6 flex items-center justify-between gap-4 border-b border-slate-100 bg-white">
+              {/* Campo de Pesquisa e Visibilidade de Colunas */}
+              <div className="p-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-slate-100 bg-white">
                 <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 w-full md:max-w-md">
                   <Search className="w-4 h-4 text-slate-400 shrink-0" />
                   <input 
@@ -1604,6 +1687,17 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="bg-transparent border-none outline-none text-xs font-semibold text-slate-700 w-full"
+                  />
+                </div>
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <ColumnVisibilityDropdown
+                    columns={activeTab === "home_office" ? homeOfficeCols.columns : presencialCols.columns}
+                    isVisible={activeTab === "home_office" ? homeOfficeCols.isVisible : presencialCols.isVisible}
+                    onToggle={activeTab === "home_office" ? homeOfficeCols.toggleColumn : presencialCols.toggleColumn}
+                    onShowAll={activeTab === "home_office" ? homeOfficeCols.showAllColumns : presencialCols.showAllColumns}
+                    onReset={activeTab === "home_office" ? homeOfficeCols.resetToDefault : presencialCols.resetToDefault}
+                    visibleCount={activeTab === "home_office" ? homeOfficeCols.visibleCount : presencialCols.visibleCount}
+                    totalCount={activeTab === "home_office" ? homeOfficeCols.totalCount : presencialCols.totalCount}
                   />
                 </div>
               </div>
@@ -1621,25 +1715,25 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                 <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2830px]">
                   <thead>
                     <tr className="bg-[#171717] text-white">
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">ID do USUÁRIO</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[150px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Regime</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[144px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Admissão</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CNPJ</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Empresarial</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Banco</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Agência</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Conta-Bancária</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chave Pix</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">DOCUMENTOS</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[80px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">AÇÕES</th>
+                      <RhTh columnId="nome" label="Nome Completo" isVisible={homeOfficeCols.isVisible("nome")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[220px]" roundedLeft isSticky>Nome Completo</RhTh>
+                      <RhTh columnId="usuario_id" label="ID do USUÁRIO" isVisible={homeOfficeCols.isVisible("usuario_id")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[200px]" isSticky>ID do USUÁRIO</RhTh>
+                      <RhTh columnId="cpf" label="CPF" isVisible={homeOfficeCols.isVisible("cpf")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[140px]" isSticky>CPF</RhTh>
+                      <RhTh columnId="nascimento" label="Data de Nasc." isVisible={homeOfficeCols.isVisible("nascimento")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[140px]" isSticky>Data de Nasc.</RhTh>
+                      <RhTh columnId="funcao" label="Função" isVisible={homeOfficeCols.isVisible("funcao")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[180px]" align="center" isSticky>Função</RhTh>
+                      <RhTh columnId="regime" label="Regime" isVisible={homeOfficeCols.isVisible("regime")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[150px]" align="center" isSticky>Regime</RhTh>
+                      <RhTh columnId="admissao" label="Admissão" isVisible={homeOfficeCols.isVisible("admissao")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[144px]" isSticky>Admissão</RhTh>
+                      <RhTh columnId="endereco" label="Endereço Completo" isVisible={homeOfficeCols.isVisible("endereco")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[320px]" isSticky>Endereço Completo</RhTh>
+                      <RhTh columnId="cnpj" label="CNPJ" isVisible={homeOfficeCols.isVisible("cnpj")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[160px]" isSticky>CNPJ</RhTh>
+                      <RhTh columnId="endereco_empresarial" label="Endereço Empresarial" isVisible={homeOfficeCols.isVisible("endereco_empresarial")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[320px]" isSticky>Endereço Empresarial</RhTh>
+                      <RhTh columnId="banco" label="Banco" isVisible={homeOfficeCols.isVisible("banco")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[130px]" isSticky>Banco</RhTh>
+                      <RhTh columnId="agencia" label="Agência" isVisible={homeOfficeCols.isVisible("agencia")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[100px]" isSticky>Agência</RhTh>
+                      <RhTh columnId="conta" label="Conta-Bancária" isVisible={homeOfficeCols.isVisible("conta")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[140px]" isSticky>Conta-Bancária</RhTh>
+                      <RhTh columnId="pix" label="Chave Pix" isVisible={homeOfficeCols.isVisible("pix")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[160px]" isSticky>Chave Pix</RhTh>
+                      <RhTh columnId="telefone" label="Telefone" isVisible={homeOfficeCols.isVisible("telefone")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[140px]" isSticky>Telefone</RhTh>
+                      <RhTh columnId="email" label="E-mail" isVisible={homeOfficeCols.isVisible("email")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[220px]" isSticky>E-mail</RhTh>
+                      <RhTh columnId="situacao" label="SITUAÇÃO" isVisible={homeOfficeCols.isVisible("situacao")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[120px]" align="center" isSticky>SITUAÇÃO</RhTh>
+                      <RhTh columnId="documentos" label="DOCUMENTOS" isVisible={homeOfficeCols.isVisible("documentos")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[180px]" align="center" isSticky>DOCUMENTOS</RhTh>
+                      <RhTh columnId="acoes" label="AÇÕES" isVisible={homeOfficeCols.isVisible("acoes")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[80px]" align="center" roundedRight isSticky>AÇÕES</RhTh>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1664,164 +1758,164 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                       filteredHomeOffice.map((colab, idx) => (
                         <tr key={colab.id} className={cn("transition-all font-semibold align-middle whitespace-nowrap hover:bg-slate-200/50", idx % 2 === 0 ? "bg-white" : "bg-slate-100")}>
                           {/* 1. NOME COMPLETO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="nome" label="Nome Completo" isVisible={homeOfficeCols.isVisible("nome")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.name} 
                               onChange={(val) => updateCell(colab.id, "name", val)}
                               placeholder="Adicionar Nome..."
                               fontClass="font-bold text-slate-800 uppercase text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* ID DO USUÁRIO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="usuario_id" label="ID do USUÁRIO" isVisible={homeOfficeCols.isVisible("usuario_id")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <UserSelectCell 
                               value={colab.usuarioId || ""} 
                               onChange={(val) => updateCell(colab.id, "usuarioId", val)}
                               users={systemUsers}
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 2. CPF */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="cpf" label="CPF" isVisible={homeOfficeCols.isVisible("cpf")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.cpf} 
                               onChange={(val) => updateCell(colab.id, "cpf", val)}
                               placeholder="---.---.------"
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 3. DATA DE NASC. */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="nascimento" label="Data de Nasc." isVisible={homeOfficeCols.isVisible("nascimento")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.birthDate} 
                               onChange={(val) => updateCell(colab.id, "birthDate", val)}
                               placeholder="DD/MM/AAAA"
                               fontClass="font-mono text-slate-500 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 4. FUNÇÃO */}
-                          <td className="px-4 py-3.5 text-center">
+                          <RhTd columnId="funcao" label="Função" isVisible={homeOfficeCols.isVisible("funcao")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5 text-center">
                             <PillDropdown 
                               value={colab.role} 
                               onChange={(val) => updateCell(colab.id, "role", val)}
                               options={roleOptions}
                             />
-                          </td>
+                          </RhTd>
 
                           {/* REGIME DE CONTRATAÇÃO */}
-                          <td className="px-4 py-3.5 text-center">
+                          <RhTd columnId="regime" label="Regime" isVisible={homeOfficeCols.isVisible("regime")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5 text-center">
                             <PillDropdown 
                               value={colab.employmentType || "CLT"} 
                               onChange={(val) => updateCell(colab.id, "employmentType", val)}
                               options={employmentTypeOptions}
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 5. ADMISSÃO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="admissao" label="Admissão" isVisible={homeOfficeCols.isVisible("admissao")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.joinDate} 
                               onChange={(val) => updateCell(colab.id, "joinDate", val)}
                               placeholder="Admissão..."
                               fontClass="font-mono text-slate-605 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 6. ENDEREÇO COMPLETO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="endereco" label="Endereço Completo" isVisible={homeOfficeCols.isVisible("endereco")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.address} 
                               onChange={(val) => updateCell(colab.id, "address", val)}
                               placeholder="Endereço eletrônico..."
                               fontClass="text-slate-600 text-[11px] font-medium"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 7. CNPJ */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="cnpj" label="CNPJ" isVisible={homeOfficeCols.isVisible("cnpj")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.cnpj || ""} 
                               onChange={(val) => updateCell(colab.id, "cnpj", val)}
                               placeholder="00.000.000/0000-00"
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 8. ENDEREÇO EMPRESARIAL */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="endereco_empresarial" label="Endereço Empresarial" isVisible={homeOfficeCols.isVisible("endereco_empresarial")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.businessAddress || ""} 
                               onChange={(val) => updateCell(colab.id, "businessAddress", val)}
                               placeholder="Endereço Empresarial..."
                               fontClass="text-slate-600 text-[11px] font-medium"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 9. BANCO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="banco" label="Banco" isVisible={homeOfficeCols.isVisible("banco")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.bank} 
                               onChange={(val) => updateCell(colab.id, "bank", val)}
                               placeholder="Banco..."
                               fontClass="text-slate-605 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* AGÊNCIA */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="agencia" label="Agência" isVisible={homeOfficeCols.isVisible("agencia")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.bankAgency} 
                               onChange={(val) => updateCell(colab.id, "bankAgency", val)}
                               placeholder="Agência..."
                               fontClass="font-mono text-slate-605 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* CONTA-BANCÁRIA */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="conta" label="Conta-Bancária" isVisible={homeOfficeCols.isVisible("conta")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.bankAccount} 
                               onChange={(val) => updateCell(colab.id, "bankAccount", val)}
                               placeholder="Conta..."
                               fontClass="font-mono text-slate-605 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* CHAVE PIX */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="pix" label="Chave Pix" isVisible={homeOfficeCols.isVisible("pix")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.pixKey} 
                               onChange={(val) => updateCell(colab.id, "pixKey", val)}
                               placeholder="Chave Pix..."
                               fontClass="text-slate-605 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 10. TELEFONE */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="telefone" label="Telefone" isVisible={homeOfficeCols.isVisible("telefone")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.phone} 
                               onChange={(val) => updateCell(colab.id, "phone", val)}
                               placeholder="(--) -----_----"
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 11. E-MAIL */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="email" label="E-mail" isVisible={homeOfficeCols.isVisible("email")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.email} 
                               onChange={(val) => updateCell(colab.id, "email", val)}
                               placeholder="nome@email.com"
                               fontClass="text-[#0369a1] text-[11px] font-medium underline lowercase cursor-pointer"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* SITUAÇÃO */}
-                          <td className="px-2 py-3.5 text-center">
+                          <RhTd columnId="situacao" label="SITUAÇÃO" isVisible={homeOfficeCols.isVisible("situacao")} onToggle={homeOfficeCols.toggleColumn} className="px-2 py-3.5 text-center">
                             <button
                               type="button"
                               onClick={() => updateCell(colab.id, "status", "Inativo")}
@@ -1831,10 +1925,10 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                               <span className="group-hover:hidden">Ativo</span>
                               <span className="group-hover:inline hidden">Desativar</span>
                             </button>
-                          </td>
+                          </RhTd>
 
                           {/* DOCUMENTOS */}
-                          <td className="px-4 py-3.5 text-center">
+                          <RhTd columnId="documentos" label="DOCUMENTOS" isVisible={homeOfficeCols.isVisible("documentos")} onToggle={homeOfficeCols.toggleColumn} className="px-4 py-3.5 text-center">
                             <button
                               type="button"
                               onClick={() => setActiveModalColab(colab)}
@@ -1843,10 +1937,10 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                               <Paperclip className="w-3.5 h-3.5 shrink-0" />
                               DOCUMENTOS ({colabDocs[colab.id]?.length || 0})
                             </button>
-                          </td>
+                          </RhTd>
 
                           {/* EXCLUIR */}
-                          <td className="px-2 py-3.5 text-center">
+                          <RhTd columnId="acoes" label="AÇÕES" isVisible={homeOfficeCols.isVisible("acoes")} onToggle={homeOfficeCols.toggleColumn} className="px-2 py-3.5 text-center">
                             <button
                               type="button"
                               onClick={() => handleDelete(colab.id)}
@@ -1855,7 +1949,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
-                          </td>
+                          </RhTd>
                         </tr>
                       ))
                     )}
@@ -1865,36 +1959,36 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                 <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4530px]">
                   <thead>
                     <tr className="bg-[#171717] text-white">
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest rounded-l-xl">Nome Completo</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">ID do USUÁRIO</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Função</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[150px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">Regime</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CPF</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">CNPJ</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[144px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Admissão</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[130px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Banco</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Agência</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Conta-Bancária</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chave Pix</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Data de Nasc.</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Estado Civil</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[100px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Nº Calçado</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Filhos</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Instituição de Ensino</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail da Instituição</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Tamanho da Roupa</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Chocolate Preferido</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Bebida Preferida</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[200px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Comida Preferida</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[250px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Sugestão de Campanhas</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Preferência de Incentivos</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center">DOCUMENTOS</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[80px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">AÇÕES</th>
+                      <RhTh columnId="nome" label="Nome Completo" isVisible={presencialCols.isVisible("nome")} onToggle={presencialCols.toggleColumn} widthClass="w-[220px]" roundedLeft isSticky>Nome Completo</RhTh>
+                      <RhTh columnId="usuario_id" label="ID do USUÁRIO" isVisible={presencialCols.isVisible("usuario_id")} onToggle={presencialCols.toggleColumn} widthClass="w-[200px]" isSticky>ID do USUÁRIO</RhTh>
+                      <RhTh columnId="funcao" label="Função" isVisible={presencialCols.isVisible("funcao")} onToggle={presencialCols.toggleColumn} widthClass="w-[180px]" align="center" isSticky>Função</RhTh>
+                      <RhTh columnId="regime" label="Regime" isVisible={presencialCols.isVisible("regime")} onToggle={presencialCols.toggleColumn} widthClass="w-[150px]" align="center" isSticky>Regime</RhTh>
+                      <RhTh columnId="cpf" label="CPF" isVisible={presencialCols.isVisible("cpf")} onToggle={presencialCols.toggleColumn} widthClass="w-[140px]" isSticky>CPF</RhTh>
+                      <RhTh columnId="cnpj" label="CNPJ" isVisible={presencialCols.isVisible("cnpj")} onToggle={presencialCols.toggleColumn} widthClass="w-[160px]" isSticky>CNPJ</RhTh>
+                      <RhTh columnId="admissao" label="Admissão" isVisible={presencialCols.isVisible("admissao")} onToggle={presencialCols.toggleColumn} widthClass="w-[144px]" isSticky>Admissão</RhTh>
+                      <RhTh columnId="banco" label="Banco" isVisible={presencialCols.isVisible("banco")} onToggle={presencialCols.toggleColumn} widthClass="w-[130px]" isSticky>Banco</RhTh>
+                      <RhTh columnId="agencia" label="Agência" isVisible={presencialCols.isVisible("agencia")} onToggle={presencialCols.toggleColumn} widthClass="w-[100px]" isSticky>Agência</RhTh>
+                      <RhTh columnId="conta" label="Conta-Bancária" isVisible={presencialCols.isVisible("conta")} onToggle={presencialCols.toggleColumn} widthClass="w-[140px]" isSticky>Conta-Bancária</RhTh>
+                      <RhTh columnId="pix" label="Chave Pix" isVisible={presencialCols.isVisible("pix")} onToggle={presencialCols.toggleColumn} widthClass="w-[160px]" isSticky>Chave Pix</RhTh>
+                      <RhTh columnId="nascimento" label="Data de Nasc." isVisible={presencialCols.isVisible("nascimento")} onToggle={presencialCols.toggleColumn} widthClass="w-[140px]" isSticky>Data de Nasc.</RhTh>
+                      <RhTh columnId="estado_civil" label="Estado Civil" isVisible={presencialCols.isVisible("estado_civil")} onToggle={presencialCols.toggleColumn} widthClass="w-[120px]" isSticky>Estado Civil</RhTh>
+                      <RhTh columnId="endereco" label="Endereço Completo" isVisible={presencialCols.isVisible("endereco")} onToggle={presencialCols.toggleColumn} widthClass="w-[320px]" isSticky>Endereço Completo</RhTh>
+                      <RhTh columnId="telefone" label="Telefone" isVisible={presencialCols.isVisible("telefone")} onToggle={presencialCols.toggleColumn} widthClass="w-[140px]" isSticky>Telefone</RhTh>
+                      <RhTh columnId="email" label="E-mail" isVisible={presencialCols.isVisible("email")} onToggle={presencialCols.toggleColumn} widthClass="w-[220px]" isSticky>E-mail</RhTh>
+                      <RhTh columnId="emergencia" label="Telefone de Emergência" isVisible={presencialCols.isVisible("emergencia")} onToggle={presencialCols.toggleColumn} widthClass="w-[220px]" isSticky>Telefone de Emergência</RhTh>
+                      <RhTh columnId="calcado" label="Nº Calçado" isVisible={presencialCols.isVisible("calcado")} onToggle={presencialCols.toggleColumn} widthClass="w-[100px]" isSticky>Nº Calçado</RhTh>
+                      <RhTh columnId="filhos" label="Filhos" isVisible={presencialCols.isVisible("filhos")} onToggle={presencialCols.toggleColumn} widthClass="w-[110px]" isSticky>Filhos</RhTh>
+                      <RhTh columnId="faculdade" label="Instituição de Ensino" isVisible={presencialCols.isVisible("faculdade")} onToggle={presencialCols.toggleColumn} widthClass="w-[200px]" isSticky>Instituição de Ensino</RhTh>
+                      <RhTh columnId="email_faculdade" label="E-mail da Instituição" isVisible={presencialCols.isVisible("email_faculdade")} onToggle={presencialCols.toggleColumn} widthClass="w-[200px]" isSticky>E-mail da Instituição</RhTh>
+                      <RhTh columnId="tamanho_roupa" label="Tamanho da Roupa" isVisible={presencialCols.isVisible("tamanho_roupa")} onToggle={presencialCols.toggleColumn} widthClass="w-[140px]" isSticky>Tamanho da Roupa</RhTh>
+                      <RhTh columnId="chocolate" label="Chocolate Preferido" isVisible={presencialCols.isVisible("chocolate")} onToggle={presencialCols.toggleColumn} widthClass="w-[200px]" isSticky>Chocolate Preferido</RhTh>
+                      <RhTh columnId="bebida" label="Bebida Preferida" isVisible={presencialCols.isVisible("bebida")} onToggle={presencialCols.toggleColumn} widthClass="w-[200px]" isSticky>Bebida Preferida</RhTh>
+                      <RhTh columnId="comida" label="Comida Preferida" isVisible={presencialCols.isVisible("comida")} onToggle={presencialCols.toggleColumn} widthClass="w-[200px]" isSticky>Comida Preferida</RhTh>
+                      <RhTh columnId="sugestao_campanhas" label="Sugestão de Campanhas" isVisible={presencialCols.isVisible("sugestao_campanhas")} onToggle={presencialCols.toggleColumn} widthClass="w-[250px]" isSticky>Sugestão de Campanhas</RhTh>
+                      <RhTh columnId="incentivos" label="Preferência de Incentivos" isVisible={presencialCols.isVisible("incentivos")} onToggle={presencialCols.toggleColumn} widthClass="w-[220px]" isSticky>Preferência de Incentivos</RhTh>
+                      <RhTh columnId="situacao" label="SITUAÇÃO" isVisible={presencialCols.isVisible("situacao")} onToggle={presencialCols.toggleColumn} widthClass="w-[120px]" align="center" isSticky>SITUAÇÃO</RhTh>
+                      <RhTh columnId="documentos" label="DOCUMENTOS" isVisible={presencialCols.isVisible("documentos")} onToggle={presencialCols.toggleColumn} widthClass="w-[180px]" align="center" isSticky>DOCUMENTOS</RhTh>
+                      <RhTh columnId="acoes" label="AÇÕES" isVisible={presencialCols.isVisible("acoes")} onToggle={presencialCols.toggleColumn} widthClass="w-[80px]" align="center" roundedRight isSticky>AÇÕES</RhTh>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1919,274 +2013,274 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                       filteredPresenciais.map((colab, idx) => (
                         <tr key={colab.id} className={cn("transition-all font-semibold align-middle whitespace-nowrap hover:bg-slate-200/50", idx % 2 === 0 ? "bg-white" : "bg-slate-100")}>
                           {/* 1. NOME COMPLETO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="nome" label="Nome Completo" isVisible={presencialCols.isVisible("nome")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.name} 
                               onChange={(val) => updateCell(colab.id, "name", val)}
                               placeholder="Adicionar Nome..."
                               fontClass="font-bold text-slate-800 uppercase text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* ID DO USUÁRIO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="usuario_id" label="ID do USUÁRIO" isVisible={presencialCols.isVisible("usuario_id")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <UserSelectCell 
                               value={colab.usuarioId || ""} 
                               onChange={(val) => updateCell(colab.id, "usuarioId", val)}
                               users={systemUsers}
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 2. FUNÇÃO (Pill select dropdown) */}
-                          <td className="px-4 py-3.5 text-center">
+                          <RhTd columnId="funcao" label="Função" isVisible={presencialCols.isVisible("funcao")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5 text-center">
                             <PillDropdown 
                               value={colab.role} 
                               onChange={(val) => updateCell(colab.id, "role", val)}
                               options={roleOptions}
                             />
-                          </td>
+                          </RhTd>
 
                           {/* REGIME DE CONTRATAÇÃO */}
-                          <td className="px-4 py-3.5 text-center">
+                          <RhTd columnId="regime" label="Regime" isVisible={presencialCols.isVisible("regime")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5 text-center">
                             <PillDropdown 
                               value={colab.employmentType || "CLT"} 
                               onChange={(val) => updateCell(colab.id, "employmentType", val)}
                               options={employmentTypeOptions}
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 3. CPF */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="cpf" label="CPF" isVisible={presencialCols.isVisible("cpf")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.cpf} 
                               onChange={(val) => updateCell(colab.id, "cpf", val)}
                               placeholder="---.---.------"
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 3.1. CNPJ */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="cnpj" label="CNPJ" isVisible={presencialCols.isVisible("cnpj")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.cnpj || ""} 
                               onChange={(val) => updateCell(colab.id, "cnpj", val)}
                               placeholder="00.000.000/0000-00"
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* ADMISSÃO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="admissao" label="Admissão" isVisible={presencialCols.isVisible("admissao")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.joinDate} 
                               onChange={(val) => updateCell(colab.id, "joinDate", val)}
                               placeholder="Admissão..."
                               fontClass="font-mono text-slate-605 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* BANCO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="banco" label="Banco" isVisible={presencialCols.isVisible("banco")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.bank} 
                               onChange={(val) => updateCell(colab.id, "bank", val)}
                               placeholder="Banco..."
                               fontClass="text-slate-605 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* AGÊNCIA */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="agencia" label="Agência" isVisible={presencialCols.isVisible("agencia")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.bankAgency} 
                               onChange={(val) => updateCell(colab.id, "bankAgency", val)}
                               placeholder="Agência..."
                               fontClass="font-mono text-slate-605 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* CONTA-BANCÁRIA */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="conta" label="Conta-Bancária" isVisible={presencialCols.isVisible("conta")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.bankAccount} 
                               onChange={(val) => updateCell(colab.id, "bankAccount", val)}
                               placeholder="Conta..."
                               fontClass="font-mono text-slate-605 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* CHAVE PIX */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="pix" label="Chave Pix" isVisible={presencialCols.isVisible("pix")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.pixKey} 
                               onChange={(val) => updateCell(colab.id, "pixKey", val)}
                               placeholder="Chave Pix..."
                               fontClass="text-slate-605 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 4. DATA DE NASC. */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="nascimento" label="Data de Nasc." isVisible={presencialCols.isVisible("nascimento")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.birthDate} 
                               onChange={(val) => updateCell(colab.id, "birthDate", val)}
                               placeholder="DD/MM/AAAA"
                               fontClass="font-mono text-slate-500 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 5. ESTADO CIVIL */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="estado_civil" label="Estado Civil" isVisible={presencialCols.isVisible("estado_civil")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.civilStatus} 
                               onChange={(val) => updateCell(colab.id, "civilStatus", val)}
                               placeholder="Solteiro/Casado"
                               fontClass="text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 6. ENDEREÇO COMPLETO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="endereco" label="Endereço Completo" isVisible={presencialCols.isVisible("endereco")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.address} 
                               onChange={(val) => updateCell(colab.id, "address", val)}
                               placeholder="Endereço eletrônico..."
                               fontClass="text-slate-600 text-[11px] font-medium"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 7. TELEFONE */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="telefone" label="Telefone" isVisible={presencialCols.isVisible("telefone")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.phone} 
                               onChange={(val) => updateCell(colab.id, "phone", val)}
                               placeholder="(--) -----_----"
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 8. E-MAIL */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="email" label="E-mail" isVisible={presencialCols.isVisible("email")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.email} 
                               onChange={(val) => updateCell(colab.id, "email", val)}
                               placeholder="nome@email.com"
                               fontClass="text-[#0369a1] text-[11px] font-medium underline lowercase cursor-pointer"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 9. TELEFONE DE EMERGÊNCIA */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="emergencia" label="Telefone de Emergência" isVisible={presencialCols.isVisible("emergencia")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.emergencyPhone} 
                               onChange={(val) => updateCell(colab.id, "emergencyPhone", val)}
                               placeholder="Contato emergência..."
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 10. Nº CALÇADO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="calcado" label="Nº Calçado" isVisible={presencialCols.isVisible("calcado")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.shoeSize} 
                               onChange={(val) => updateCell(colab.id, "shoeSize", val)}
                               placeholder="Nº"
                               fontClass="text-slate-600 text-[11px] text-center"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 11. FILHOS */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="filhos" label="Filhos" isVisible={presencialCols.isVisible("filhos")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.children} 
                               onChange={(val) => updateCell(colab.id, "children", val)}
                               placeholder="Não / Qtd..."
                               fontClass="text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* INSTITUIÇÃO DE ENSINO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="faculdade" label="Instituição de Ensino" isVisible={presencialCols.isVisible("faculdade")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.collegeName || ""} 
                               onChange={(val) => updateCell(colab.id, "collegeName", val)}
                               placeholder="Adicionar Faculdade..."
                               fontClass="text-slate-600 text-[11px] font-medium"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* E-MAIL DA INSTITUIÇÃO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="email_faculdade" label="E-mail da Instituição" isVisible={presencialCols.isVisible("email_faculdade")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.collegeEmail || ""} 
                               onChange={(val) => updateCell(colab.id, "collegeEmail", val)}
                               placeholder="Adicionar E-mail..."
                               fontClass="text-[#0369a1] text-[11px] font-medium underline lowercase cursor-pointer"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 12. TAMANHO DA ROUPA */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="tamanho_roupa" label="Tamanho da Roupa" isVisible={presencialCols.isVisible("tamanho_roupa")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.clothingSize} 
                               onChange={(val) => updateCell(colab.id, "clothingSize", val)}
                               placeholder="PP, P, M, G, GG..."
                               fontClass="text-slate-600 text-[11px] font-extrabold text-center"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 13. CHOCOLATE PREFERIDO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="chocolate" label="Chocolate Preferido" isVisible={presencialCols.isVisible("chocolate")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.favChocolate} 
                               onChange={(val) => updateCell(colab.id, "favChocolate", val)}
                               placeholder="Ex: Milka Oreo"
                               fontClass="text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 14. BEBIDA PREFERIDA */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="bebida" label="Bebida Preferida" isVisible={presencialCols.isVisible("bebida")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.favDrink} 
                               onChange={(val) => updateCell(colab.id, "favDrink", val)}
                               placeholder="Ex: Aperol Spritz"
                               fontClass="text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 15. COMIDA PREFERIDA */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="comida" label="Comida Preferida" isVisible={presencialCols.isVisible("comida")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.favFood} 
                               onChange={(val) => updateCell(colab.id, "favFood", val)}
                               placeholder="Ex: Frutos do mar"
                               fontClass="text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 16. SUGESTÃO DE CAMPANHAS */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="sugestao_campanhas" label="Sugestão de Campanhas" isVisible={presencialCols.isVisible("sugestao_campanhas")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.campaignSuggestion} 
                               onChange={(val) => updateCell(colab.id, "campaignSuggestion", val)}
                               placeholder="Ideias e melhorias..."
                               fontClass="text-slate-650 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* 17. PREFERÊNCIA DE INCENTIVOS */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="incentivos" label="Preferência de Incentivos" isVisible={presencialCols.isVisible("incentivos")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.incentivesPreference} 
                               onChange={(val) => updateCell(colab.id, "incentivesPreference", val)}
                               placeholder="Vale cultura, dinheiro..."
                               fontClass="text-slate-650 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* SITUAÇÃO (ATIVO/DESATIVAR) ROW BUTTON */}
-                          <td className="px-2 py-3.5 text-center">
+                          <RhTd columnId="situacao" label="SITUAÇÃO" isVisible={presencialCols.isVisible("situacao")} onToggle={presencialCols.toggleColumn} className="px-2 py-3.5 text-center">
                             <button
                               type="button"
                               onClick={() => updateCell(colab.id, "status", "Inativo")}
@@ -2196,10 +2290,10 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                               <span className="group-hover:hidden">Ativo</span>
                               <span className="group-hover:inline hidden">Desativar</span>
                             </button>
-                          </td>
+                          </RhTd>
 
                           {/* DOCUMENTO ROW LINK/MODAL CONTROL */}
-                          <td className="px-4 py-3.5 text-center">
+                          <RhTd columnId="documentos" label="DOCUMENTOS" isVisible={presencialCols.isVisible("documentos")} onToggle={presencialCols.toggleColumn} className="px-4 py-3.5 text-center">
                             <button
                               type="button"
                               onClick={() => setActiveModalColab(colab)}
@@ -2208,10 +2302,10 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                               <Paperclip className="w-3.5 h-3.5 shrink-0" />
                               DOCUMENTOS ({colabDocs[colab.id]?.length || 0})
                             </button>
-                          </td>
+                          </RhTd>
 
                           {/* EXCLUIR */}
-                          <td className="px-2 py-3.5 text-center">
+                          <RhTd columnId="acoes" label="AÇÕES" isVisible={presencialCols.isVisible("acoes")} onToggle={presencialCols.toggleColumn} className="px-2 py-3.5 text-center">
                             <button
                               type="button"
                               onClick={() => handleDelete(colab.id)}
@@ -2220,7 +2314,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
-                          </td>
+                          </RhTd>
                         </tr>
                       ))
                     )}
@@ -2305,7 +2399,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
         ) : (
           <Card className="border border-slate-200 overflow-hidden bg-white rounded-2xl rounded-tl-none shadow-sm animate-in fade-in duration-300">
             <CardContent className="p-0">
-              <div className="p-6 flex items-center justify-between gap-4 border-b border-slate-100">
+              <div className="p-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-slate-100">
                 <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 w-full md:max-w-md">
                   <Search className="w-4 h-4 text-slate-400 shrink-0" />
                   <input 
@@ -2316,6 +2410,17 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                     className="bg-transparent border-none outline-none text-xs font-semibold text-slate-700 w-full"
                   />
                 </div>
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <ColumnVisibilityDropdown
+                    columns={exCols.columns}
+                    isVisible={exCols.isVisible}
+                    onToggle={exCols.toggleColumn}
+                    onShowAll={exCols.showAllColumns}
+                    onReset={exCols.resetToDefault}
+                    visibleCount={exCols.visibleCount}
+                    totalCount={exCols.totalCount}
+                  />
+                </div>
               </div>
 
               {/* List Table */}
@@ -2323,19 +2428,19 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                 <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2060px]">
                   <thead>
                     <tr className="bg-[#171717] text-white">
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none rounded-l-xl">Nome Completo</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">Função</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none">CPF</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[110px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest animate-none">Data de Nasc.</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Estado Civil</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[320px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Endereço Completo</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[140px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[220px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">E-mail</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest">Telefone de Emergência</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">DATA DE ADMISSÃO</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[160px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">DATA DA DEMISSÃO</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[120px] px-2 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center animate-none">SITUAÇÃO</th>
-                      <th className="sticky top-0 bg-[#171717] z-30 w-[180px] px-4 py-4 text-[10px] font-extrabold text-white/90 uppercase tracking-widest text-center rounded-r-xl">DOCUMENTOS</th>
+                      <RhTh columnId="nome" label="Nome Completo" isVisible={exCols.isVisible("nome")} onToggle={exCols.toggleColumn} widthClass="w-[220px]" roundedLeft isSticky>Nome Completo</RhTh>
+                      <RhTh columnId="funcao" label="Função" isVisible={exCols.isVisible("funcao")} onToggle={exCols.toggleColumn} widthClass="w-[180px]" align="center" isSticky>Função</RhTh>
+                      <RhTh columnId="cpf" label="CPF" isVisible={exCols.isVisible("cpf")} onToggle={exCols.toggleColumn} widthClass="w-[140px]" isSticky>CPF</RhTh>
+                      <RhTh columnId="nascimento" label="Data de Nasc." isVisible={exCols.isVisible("nascimento")} onToggle={exCols.toggleColumn} widthClass="w-[110px]" isSticky>Data de Nasc.</RhTh>
+                      <RhTh columnId="estado_civil" label="Estado Civil" isVisible={exCols.isVisible("estado_civil")} onToggle={exCols.toggleColumn} widthClass="w-[120px]" isSticky>Estado Civil</RhTh>
+                      <RhTh columnId="endereco" label="Endereço Completo" isVisible={exCols.isVisible("endereco")} onToggle={exCols.toggleColumn} widthClass="w-[320px]" isSticky>Endereço Completo</RhTh>
+                      <RhTh columnId="telefone" label="Telefone" isVisible={exCols.isVisible("telefone")} onToggle={exCols.toggleColumn} widthClass="w-[140px]" isSticky>Telefone</RhTh>
+                      <RhTh columnId="email" label="E-mail" isVisible={exCols.isVisible("email")} onToggle={exCols.toggleColumn} widthClass="w-[220px]" isSticky>E-mail</RhTh>
+                      <RhTh columnId="emergencia" label="Telefone de Emergência" isVisible={exCols.isVisible("emergencia")} onToggle={exCols.toggleColumn} widthClass="w-[180px]" isSticky>Telefone de Emergência</RhTh>
+                      <RhTh columnId="admissao" label="DATA DE ADMISSÃO" isVisible={exCols.isVisible("admissao")} onToggle={exCols.toggleColumn} widthClass="w-[160px]" align="center" isSticky>DATA DE ADMISSÃO</RhTh>
+                      <RhTh columnId="demissao" label="DATA DA DEMISSÃO" isVisible={exCols.isVisible("demissao")} onToggle={exCols.toggleColumn} widthClass="w-[160px]" align="center" isSticky>DATA DA DEMISSÃO</RhTh>
+                      <RhTh columnId="situacao" label="SITUAÇÃO" isVisible={exCols.isVisible("situacao")} onToggle={exCols.toggleColumn} widthClass="w-[120px]" align="center" isSticky>SITUAÇÃO</RhTh>
+                      <RhTh columnId="documentos" label="DOCUMENTOS" isVisible={exCols.isVisible("documentos")} onToggle={exCols.toggleColumn} widthClass="w-[180px]" align="center" roundedRight isSticky>DOCUMENTOS</RhTh>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -2365,116 +2470,116 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                       (activeTab === "ex_home_office" ? filteredExHomeOffice : filteredExCollaborators).map((colab, idx) => (
                         <tr key={colab.id} className={cn("transition-all font-semibold align-middle whitespace-nowrap hover:bg-slate-200/50", idx % 2 === 0 ? "bg-white" : "bg-slate-100")}>
                           {/* Nome Completo */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="nome" label="Nome Completo" isVisible={exCols.isVisible("nome")} onToggle={exCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.name} 
                               onChange={(val) => updateCell(colab.id, "name", val)}
                               placeholder=""
                               fontClass="font-bold text-slate-800 uppercase text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* Funcao */}
-                          <td className="px-4 py-3.5 text-center">
+                          <RhTd columnId="funcao" label="Função" isVisible={exCols.isVisible("funcao")} onToggle={exCols.toggleColumn} className="px-4 py-3.5 text-center">
                             <PillDropdown 
                               value={colab.role} 
                               options={roleOptions} 
                               onChange={(val) => updateCell(colab.id, "role", val)} 
                             />
-                          </td>
+                          </RhTd>
 
                           {/* CPF */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="cpf" label="CPF" isVisible={exCols.isVisible("cpf")} onToggle={exCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.cpf} 
                               onChange={(val) => updateCell(colab.id, "cpf", val)}
                               placeholder=""
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* Data de Nasc. */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="nascimento" label="Data de Nasc." isVisible={exCols.isVisible("nascimento")} onToggle={exCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.birthDate} 
                               onChange={(val) => updateCell(colab.id, "birthDate", val)}
                               placeholder=""
                               fontClass="font-mono text-slate-500 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* Estado Civil */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="estado_civil" label="Estado Civil" isVisible={exCols.isVisible("estado_civil")} onToggle={exCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.civilStatus} 
                               onChange={(val) => updateCell(colab.id, "civilStatus", val)}
                               placeholder=""
                               fontClass="text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* Endereco */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="endereco" label="Endereço Completo" isVisible={exCols.isVisible("endereco")} onToggle={exCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.address} 
                               onChange={(val) => updateCell(colab.id, "address", val)}
                               placeholder=""
                               fontClass="text-slate-600 text-[11px] font-medium"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* Telefone */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="telefone" label="Telefone" isVisible={exCols.isVisible("telefone")} onToggle={exCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.phone} 
                               onChange={(val) => updateCell(colab.id, "phone", val)}
                               placeholder=""
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* Email */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="email" label="E-mail" isVisible={exCols.isVisible("email")} onToggle={exCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.email} 
                               onChange={(val) => updateCell(colab.id, "email", val)}
                               placeholder=""
                               fontClass="text-[#0369a1] text-[11px] font-medium underline lowercase cursor-pointer"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* Telefone de Emergencia */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="emergencia" label="Telefone de Emergência" isVisible={exCols.isVisible("emergencia")} onToggle={exCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.emergencyPhone} 
                               onChange={(val) => updateCell(colab.id, "emergencyPhone", val)}
                               placeholder=""
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* DATA DE ADMISSÃO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="admissao" label="DATA DE ADMISSÃO" isVisible={exCols.isVisible("admissao")} onToggle={exCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.joinDate || ""} 
                               onChange={(val) => updateCell(colab.id, "joinDate", val)}
                               placeholder=""
                               fontClass="font-mono text-slate-600 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* DATA DA DEMISSÃO */}
-                          <td className="px-4 py-3.5">
+                          <RhTd columnId="demissao" label="DATA DA DEMISSÃO" isVisible={exCols.isVisible("demissao")} onToggle={exCols.toggleColumn} className="px-4 py-3.5">
                             <TextInputCell 
                               value={colab.exitDate || ""} 
                               onChange={(val) => updateCell(colab.id, "exitDate", val)}
                               placeholder=""
                               fontClass="font-mono text-slate-605 text-[11px]"
                             />
-                          </td>
+                          </RhTd>
 
                           {/* SITUAÇÃO (INATIVO/ATIVAR) ROW BUTTON */}
-                          <td className="px-2 py-3.5 text-center">
+                          <RhTd columnId="situacao" label="SITUAÇÃO" isVisible={exCols.isVisible("situacao")} onToggle={exCols.toggleColumn} className="px-2 py-3.5 text-center">
                             <button
                               type="button"
                               onClick={() => updateCell(colab.id, "status", "Ativo")}
@@ -2484,10 +2589,10 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                               <span className="group-hover:hidden">Inativo</span>
                               <span className="group-hover:inline hidden">Ativar</span>
                             </button>
-                          </td>
+                          </RhTd>
 
                           {/* DOCUMENTO ROW LINK/MODAL CONTROL */}
-                          <td className="px-4 py-3.5 text-center">
+                          <RhTd columnId="documentos" label="DOCUMENTOS" isVisible={exCols.isVisible("documentos")} onToggle={exCols.toggleColumn} className="px-4 py-3.5 text-center">
                             <button
                               type="button"
                               onClick={() => setActiveModalColab(colab)}
@@ -2496,7 +2601,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                               <Paperclip className="w-3.5 h-3.5 shrink-0" />
                               DOCUMENTOS ({colabDocs[colab.id]?.length || 0})
                             </button>
-                          </td>
+                          </RhTd>
                         </tr>
                       ))
                     )}
