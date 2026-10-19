@@ -423,6 +423,11 @@ export default function CampanhaAtendimentoPage() {
       const TABLE_MAP: Record<string, string> = {
         'siape': 'base_consulta_siape',
         'governo_sp': 'base_consulta_governo_sp',
+        'gov_sp': 'base_consulta_governo_sp',
+        'govsp': 'base_consulta_governo_sp',
+        'governo-sp': 'base_consulta_governo_sp',
+        'spprev': 'base_consulta_governo_sp',
+        'sp': 'base_consulta_governo_sp',
         'prefeitura_sp': 'base_consulta_prefeitura_sp',
         'governo_pi': 'base_consulta_governo_pi',
         'governo_ma': 'base_consulta_governo_ma',
@@ -443,7 +448,18 @@ export default function CampanhaAtendimentoPage() {
 
       if (convenioKey && TABLE_MAP[convenioKey || '']) {
         table = TABLE_MAP[convenioKey || '']
-      } else if (campaignName.includes("GOVERNO SP")) {
+      } else if (
+        campaignName.includes("GOVERNO SP") || 
+        campaignName.includes("GOV SP") || 
+        campaignName.includes("GOV. SP") || 
+        campaignName.includes("GOV-SP") || 
+        campaignName.includes("SPPREV") || 
+        campaignName.includes("EDUCAÇÃO") || 
+        campaignName.includes("EDUCACAO") || 
+        campaignName.includes("SEDUC") || 
+        campaignName.includes("SÃO PAULO") || 
+        campaignName.includes("SAO PAULO")
+      ) {
         table = 'base_consulta_governo_sp'
       } else if (campaignName.includes("PREFEITURA SP")) {
         table = 'base_consulta_prefeitura_sp'
@@ -692,7 +708,9 @@ export default function CampanhaAtendimentoPage() {
             const splitTables = [
               { name: 'base_consulta_siape', convenio: 'siape' },
               { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
+              { name: 'governo_sp_clientes', convenio: 'governo_sp' },
               { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
+              { name: 'clientes', convenio: 'siape' },
               { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
               { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
               { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
@@ -716,6 +734,8 @@ export default function CampanhaAtendimentoPage() {
               tempTable = TABLE_MAP[tempResolvedConvenio || '']
             } else if (campaignHasValidConvenio) {
               tempTable = TABLE_MAP[convenioKey || '']
+            } else if (table && table !== 'base_consulta_siape') {
+              tempTable = table
             }
 
             // 2. Buscar o lead completo na tabela preferencial
@@ -823,16 +843,79 @@ export default function CampanhaAtendimentoPage() {
       }
 
       if (data) {
+        // Obter telefones e data de nascimento com fallback em todas as variações de colunas
+        const rawBirth = data.data_nascimento || data.data_de_nascimento || data.dt_nascimento || data.nascimento || data.data_nasc || null
+        const tel1 = data.telefone_1 || data.telefone || data.celular || data.celular_1 || data.tel_1 || data.fone || null
+        const tel2 = data.telefone_2 || data.telefone_recado || data.celular_2 || data.tel_2 || data.recado || null
+        const tel3 = data.telefone_3 || data.celular_3 || data.tel_3 || null
+
         // Transform base data to ClientData and Fetch registrations
         const client: ClientData = {
           ...data,
           id: data.id || data.cpf,
           nome: data.nome,
           cpf: data.cpf,
-          data_nascimento: data.data_nascimento,
-          telefone_1: data.telefone_1,
-          telefone_2: data.telefone_2 || data.telefone_recado,
-          telefone_3: data.telefone_3
+          data_nascimento: rawBirth,
+          telefone_1: tel1,
+          telefone_2: tel2,
+          telefone_3: tel3
+        }
+
+        // Enriquecimento automático de Telefones e Data de Nascimento:
+        // Se faltar telefone principal ou data de nascimento, consulta governo_sp_clientes e base geral
+        const cleanCpfDigits = (client.cpf || "").replace(/\D/g, "")
+        const paddedCpfStr = cleanCpfDigits.padStart(11, '0')
+        if ((!client.telefone_1 || !client.data_nascimento) && cleanCpfDigits) {
+          try {
+            const { data: govClient } = await supabase
+              .from('governo_sp_clientes')
+              .select('*')
+              .or(`cpf.eq.${paddedCpfStr},cpf.eq.${cleanCpfDigits}`)
+              .maybeSingle()
+
+            if (govClient) {
+              if (!client.data_nascimento) {
+                client.data_nascimento = govClient.data_nascimento || govClient.data_de_nascimento || govClient.dt_nascimento || govClient.nascimento || null
+              }
+              if (!client.telefone_1) {
+                client.telefone_1 = govClient.telefone_1 || govClient.telefone || govClient.celular || null
+              }
+              if (!client.telefone_2) {
+                client.telefone_2 = govClient.telefone_2 || govClient.telefone_recado || govClient.celular_2 || null
+              }
+              if (!client.telefone_3) {
+                client.telefone_3 = govClient.telefone_3 || govClient.celular_3 || null
+              }
+              if (!client.nome || client.nome === 'NÃO INFORMADO') {
+                client.nome = govClient.nome || client.nome
+              }
+            }
+
+            if (!client.telefone_1 || !client.data_nascimento) {
+              const { data: genClient } = await supabase
+                .from('clientes')
+                .select('*')
+                .or(`cpf.eq.${paddedCpfStr},cpf.eq.${cleanCpfDigits}`)
+                .maybeSingle()
+
+              if (genClient) {
+                if (!client.data_nascimento) {
+                  client.data_nascimento = genClient.data_nascimento || genClient.data_de_nascimento || genClient.dt_nascimento || genClient.nascimento || null
+                }
+                if (!client.telefone_1) {
+                  client.telefone_1 = genClient.telefone_1 || genClient.telefone || genClient.celular || null
+                }
+                if (!client.telefone_2) {
+                  client.telefone_2 = genClient.telefone_2 || genClient.telefone_recado || genClient.celular_2 || null
+                }
+                if (!client.telefone_3) {
+                  client.telefone_3 = genClient.telefone_3 || genClient.celular_3 || null
+                }
+              }
+            }
+          } catch (enrichErr) {
+            console.warn("Aviso ao enriquecer dados cadastrais do lead:", enrichErr)
+          }
         }
         
         setCurrentLead(client)
@@ -970,6 +1053,38 @@ export default function CampanhaAtendimentoPage() {
                 .maybeSingle()
             )
             if (searchData) govSpData = searchData
+          }
+
+          if (govSpData) {
+            let leadUpdated = false
+            const gBirth = govSpData.data_nascimento || govSpData.data_de_nascimento || govSpData.dt_nascimento || govSpData.nascimento
+            const gTel1 = govSpData.telefone_1 || govSpData.telefone || govSpData.celular
+            const gTel2 = govSpData.telefone_2 || govSpData.telefone_recado || govSpData.celular_2
+            const gTel3 = govSpData.telefone_3 || govSpData.celular_3
+
+            if (!client.data_nascimento && gBirth) {
+              client.data_nascimento = gBirth
+              leadUpdated = true
+            }
+            if (!client.telefone_1 && gTel1) {
+              client.telefone_1 = gTel1
+              leadUpdated = true
+            }
+            if (!client.telefone_2 && gTel2) {
+              client.telefone_2 = gTel2
+              leadUpdated = true
+            }
+            if (!client.telefone_3 && gTel3) {
+              client.telefone_3 = gTel3
+              leadUpdated = true
+            }
+            if ((!client.nome || client.nome === 'NÃO INFORMADO') && govSpData.nome) {
+              client.nome = govSpData.nome
+              leadUpdated = true
+            }
+            if (leadUpdated) {
+              setCurrentLead({ ...client })
+            }
           }
 
           const targetClientId = govSpData?.id || (typeof data?.id === 'number' || (typeof data?.id === 'string' && !isNaN(Number(data?.id))) ? data?.id : null);
@@ -1514,26 +1629,78 @@ export default function CampanhaAtendimentoPage() {
     return cpf.replace(/(\d{3})\d{6}(\d{2})/, "$1.***.***-$2")
   }
 
-  const maskPhone = (phone: string | null) => {
-    if (!phone || phone === '0') return "NÃO INFORMADO"
+  const maskPhone = (phone: string | null | undefined) => {
+    if (!phone) return "NÃO INFORMADO"
+    const cleaned = String(phone).replace(/\D/g, "")
+    if (!cleaned || cleaned.length < 8 || /^0+$/.test(cleaned)) return "NÃO INFORMADO"
+
+    const localDigits = (cleaned.startsWith("55") && cleaned.length >= 12) ? cleaned.slice(2) : cleaned
+
     if (showSensitiveData) {
-      const cleaned = phone.replace(/\D/g, "")
-      if (cleaned.length === 11) {
-        return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3")
+      if (localDigits.length === 11) {
+        return localDigits.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3")
       }
-      return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
+      if (localDigits.length === 10) {
+        return localDigits.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
+      }
+      return phone
+    }
+
+    if (localDigits.length === 11) {
+      return localDigits.replace(/(\d{2})\d{5}(\d{4})/, "($1) *****-$2")
+    }
+    if (localDigits.length === 10) {
+      return localDigits.replace(/(\d{2})\d{4}(\d{4})/, "($1) ****-$2")
     }
     return phone.replace(/\d{4}$/, "****")
   }
 
-  const calculateAge = (birthDate: string | null) => {
-    if (!birthDate) return null
-    const birth = new Date(birthDate)
+  const parseBirthDate = (val: string | null | undefined): Date | null => {
+    if (!val) return null
+    const str = String(val).trim()
+    if (!str || str === '0' || str.toLowerCase() === 'null') return null
+
+    // Se vier no formato brasileiro DD/MM/YYYY ou DD-MM-YYYY
+    const brMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/)
+    if (brMatch) {
+      const day = parseInt(brMatch[1], 10)
+      const month = parseInt(brMatch[2], 10) - 1
+      const year = parseInt(brMatch[3], 10)
+      const d = new Date(year, month, day)
+      return isNaN(d.getTime()) ? null : d
+    }
+
+    // Se vier no formato ISO YYYY-MM-DD
+    const isoMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/)
+    if (isoMatch) {
+      const year = parseInt(isoMatch[1], 10)
+      const month = parseInt(isoMatch[2], 10) - 1
+      const day = parseInt(isoMatch[3], 10)
+      const d = new Date(year, month, day)
+      return isNaN(d.getTime()) ? null : d
+    }
+
+    const d = new Date(str)
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  const formatBirthDate = (val: string | null | undefined): string => {
+    const d = parseBirthDate(val)
+    if (!d) return "NÃO INFORMADO"
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+    return `${day}/${month}/${year}`
+  }
+
+  const calculateAge = (birthDate: string | null | undefined): number | null => {
+    const birth = parseBirthDate(birthDate)
+    if (!birth) return null
     const today = new Date()
     let age = today.getFullYear() - birth.getFullYear()
     const m = today.getMonth() - birth.getMonth()
     if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
-    return age
+    return isNaN(age) || age < 0 || age > 130 ? null : age
   }
 
   const getUtilizadaStatus = (bruta: number | null | undefined, liquida: number | null | undefined) => {
@@ -1667,9 +1834,9 @@ export default function CampanhaAtendimentoPage() {
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Data de Nascimento</p>
                     <div className="flex flex-col">
                       <p className="text-[13px] font-bold text-slate-900">
-                        {currentLead.data_nascimento ? new Date(currentLead.data_nascimento).toLocaleDateString('pt-BR') : "NÃO INFORMADO"}
+                        {formatBirthDate(currentLead.data_nascimento)}
                       </p>
-                      {currentLead.data_nascimento && (
+                      {currentLead.data_nascimento && calculateAge(currentLead.data_nascimento) !== null && (
                         <p className="text-[10px] font-bold text-slate-400 uppercase">{calculateAge(currentLead.data_nascimento)} Anos</p>
                       )}
                     </div>
