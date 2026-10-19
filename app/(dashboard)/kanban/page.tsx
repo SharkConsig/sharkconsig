@@ -1015,121 +1015,65 @@ export default function KanbanPage() {
 
       const cleanCpf = foundCpf.replace(/\D/g, "")
 
-      // Verificar se o lead já está no pipeline (em alguma das colunas do Kanban e não em gavetas)
-      const { data: existingInPipeline } = await supabase
+      // Buscar fichas existentes no pipeline para o CPF
+      const { data: allFichas } = await supabase
         .from("kanban_fichas")
-        .select("cliente_nome, cliente_cpf, cliente_telefone, etapa, operador_nome, motivo_perda, metadata")
+        .select("id, cliente_nome, cliente_cpf, cliente_telefone, etapa, operador_id, operador_nome, motivo_perda, metadata")
         .eq("cliente_cpf", cleanCpf)
-        .maybeSingle()
 
-      let pipelineLead: { 
-        cliente_nome: string
-        cliente_cpf: string
-        cliente_telefone?: string
-        telefones?: string[]
-        etapa: string
-        operador_nome: string 
-      } | null = null
-
-      if (existingInPipeline) {
-        const meta = (existingInPipeline.metadata && typeof existingInPipeline.metadata === "object") ? existingInPipeline.metadata : {}
-        const isDrawer = (existingInPipeline.etapa === "PERDIDO" || !existingInPipeline.etapa) && (
+      // Filtrar fichas que estão ativas no pipeline (não gavetas e não perdidas)
+      const fichasAtivas = (allFichas || []).filter(f => {
+        const meta = (f.metadata && typeof f.metadata === "object") ? f.metadata : {}
+        const isDrawer = (f.etapa === "PERDIDO" || !f.etapa) && (
           Boolean(meta.tabulacao_whatsapp) || 
-          existingInPipeline.motivo_perda === "Não Existe Whatsapp" || 
-          existingInPipeline.motivo_perda === "Whatsapp Divergente"
+          f.motivo_perda === "Não Existe Whatsapp" || 
+          f.motivo_perda === "Whatsapp Divergente"
         )
-        if (!isDrawer) {
-          const rawPhones = [
-            existingInPipeline.cliente_telefone,
-            meta.cliente_telefone,
-            meta.cliente_telefone_2,
-            meta.cliente_telefone_3,
-            ...(Array.isArray(meta.telefones) ? meta.telefones.map((t: any) => typeof t === "string" ? t : t?.numero) : [])
-          ].filter(Boolean) as string[]
+        return !isDrawer && f.etapa !== "PERDIDO"
+      })
 
-          pipelineLead = {
-            cliente_nome: existingInPipeline.cliente_nome || "Cliente sem Nome",
-            cliente_cpf: cleanCpf,
-            cliente_telefone: existingInPipeline.cliente_telefone || "",
-            telefones: Array.from(new Set(rawPhones.map(p => p.trim()).filter(Boolean))),
-            telefones_selecionados: Array.isArray(meta.telefones_selecionados) ? meta.telefones_selecionados : undefined,
-            etapa: (existingInPipeline.etapa === "EM ABORDAGEM" ? "EM RETOMADA" : existingInPipeline.etapa) || "EM RETOMADA",
-            operador_nome: existingInPipeline.operador_nome || "Corretor"
-          }
-        }
-      }
+      // 1. REGRA COMERCIAL: O mesmo corretor NÃO pode iniciar um segundo atendimento de um lead que ele mesmo já está atendendo
+      const currentUserId = user?.id
+      const currentUserName = perfil?.nome || ""
+      const minhaFichaAtiva = fichasAtivas.find(f => {
+        if (currentUserId && f.operador_id && f.operador_id === currentUserId) return true
+        if (currentUserName && f.operador_nome && f.operador_nome.trim().toLowerCase() === currentUserName.trim().toLowerCase()) return true
+        return false
+      })
 
-      if (!pipelineLead) {
-        const localTicket = tickets.find(t => {
-          const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")
-          if (tCpf !== cleanCpf) return false
-          const tMeta = parseMetadata(t.descricao)
-          const inDrawer = (
-            t.status === "NÃO EXISTE WHATSAPP" ||
-            t.status === "NAO_EXISTE_WHATSAPP" ||
-            t.status === "WHATSAPP DIVERGENTE" ||
-            Boolean(tMeta.tabulacao_whatsapp)
-          )
-          return !inDrawer
+      // Outros operadores que já estão atendendo o mesmo lead
+      const outrasFichas = fichasAtivas.filter(f => f.id !== minhaFichaAtiva?.id)
+      const outrosNomes = Array.from(new Set(outrasFichas.map(f => `${f.operador_nome || "Outro Usuário"} (${f.etapa || "EM RETOMADA"})`)))
+
+      // Se o próprio corretor já atende este lead: bloqueia duplicidade e exibe notificação explicativa
+      if (minhaFichaAtiva) {
+        const meta = (minhaFichaAtiva.metadata && typeof minhaFichaAtiva.metadata === "object") ? minhaFichaAtiva.metadata : {}
+        const rawPhones = [
+          minhaFichaAtiva.cliente_telefone,
+          meta.cliente_telefone,
+          meta.cliente_telefone_2,
+          meta.cliente_telefone_3,
+          ...(Array.isArray(meta.telefones) ? meta.telefones.map((t: any) => typeof t === "string" ? t : t?.numero) : [])
+        ].filter(Boolean) as string[]
+
+        setLeadEmAtendimentoInfo({
+          cliente_nome: minhaFichaAtiva.cliente_nome || "Cliente sem Nome",
+          cliente_cpf: cleanCpf,
+          cliente_telefone: minhaFichaAtiva.cliente_telefone || "",
+          telefones: Array.from(new Set(rawPhones.map(p => p.trim()).filter(Boolean))),
+          telefones_selecionados: Array.isArray(meta.telefones_selecionados) ? meta.telefones_selecionados : undefined,
+          etapa: minhaFichaAtiva.etapa || "EM RETOMADA",
+          operador_nome: minhaFichaAtiva.operador_nome || currentUserName || "Você",
+          isMeuAtendimento: true,
+          outros_operadores: outrasFichas.map(o => ({ operador_nome: o.operador_nome || "Outro", etapa: o.etapa || "EM RETOMADA" }))
         })
-        if (localTicket) {
-          const rawPhones = [
-            localTicket.cliente_telefone,
-            localTicket.cliente_telefone_2,
-            localTicket.cliente_telefone_3,
-            ...(localTicket.telefones || [])
-          ].filter(Boolean) as string[]
-
-          const tMeta = parseMetadata(localTicket.descricao)
-          pipelineLead = {
-            cliente_nome: localTicket.cliente_nome || "Cliente sem Nome",
-            cliente_cpf: cleanCpf,
-            cliente_telefone: localTicket.cliente_telefone || "",
-            telefones: Array.from(new Set(rawPhones.map(p => p.trim()).filter(Boolean))),
-            telefones_selecionados: localTicket.telefones_selecionados || (Array.isArray(tMeta.telefones_selecionados) ? tMeta.telefones_selecionados : undefined),
-            etapa: (localTicket.status === "EM ABORDAGEM" ? "EM RETOMADA" : localTicket.status) || "EM RETOMADA",
-            operador_nome: localTicket.corretor_nome || localTicket.user_nome || "Corretor"
-          }
-        }
-      }
-
-      // Complementar telefones se estiver vazio ou buscar de chamados
-      if (pipelineLead) {
-        const localT = tickets.find(t => (t.cliente_cpf || "").replace(/\D/g, "") === cleanCpf)
-        if (localT) {
-          const morePhones = [
-            localT.cliente_telefone, 
-            localT.cliente_telefone_2, 
-            localT.cliente_telefone_3,
-            ...(localT.telefones || [])
-          ].filter(Boolean) as string[]
-          pipelineLead.telefones = Array.from(new Set([...(pipelineLead.telefones || []), ...morePhones]))
-          if (!pipelineLead.telefones_selecionados && localT.telefones_selecionados) {
-            pipelineLead.telefones_selecionados = localT.telefones_selecionados
-          }
-        }
-        if (!pipelineLead.telefones || pipelineLead.telefones.length === 0) {
-          const { data: ch } = await supabase
-            .from("chamados")
-            .select("cliente_telefone, cliente_telefone_2, cliente_telefone_3")
-            .eq("cliente_cpf", cleanCpf)
-            .limit(1)
-          if (ch && ch[0]) {
-            const list = [ch[0].cliente_telefone, ch[0].cliente_telefone_2, ch[0].cliente_telefone_3].filter(Boolean) as string[]
-            pipelineLead.telefones = Array.from(new Set(list))
-            pipelineLead.cliente_telefone = list[0] || ""
-          }
-        }
-      }
-
-      // Se já estiver em atendimento no pipeline (e não nas gavetas), abre o modal notificando
-      if (pipelineLead) {
-        setLeadEmAtendimentoInfo(pipelineLead)
         setClientSearchQuery("")
         return
       }
 
-      // Abre o modal completo de detalhes do cliente sem criar cartão no Kanban
+      // 2. REGRA COMERCIAL: Usuários diferentes PODEM iniciar atendimento de forma independente (sem notificação obstrutiva)
+
+      // Abre o modal completo de detalhes do cliente para iniciar o atendimento de forma independente
       setSelectedClientCpf(foundCpf)
       setIsKanbanSearchModal(true)
       setIsClientDetailsModalOpen(true)
@@ -1151,7 +1095,12 @@ export default function KanbanPage() {
     telefones_selecionados?: string[]
     etapa: string
     operador_nome: string
+    isMeuAtendimento?: boolean
+    outros_operadores?: Array<{ operador_nome: string; etapa: string }>
   } | null>(null)
+
+  // Mapa de operadores em atendimento por CPF para exibição na etiqueta dos cartões do pipeline
+  const [concorrenciaPorCpf, setConcorrenciaPorCpf] = useState<Record<string, string[]>>({})
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState("")
@@ -1625,6 +1574,34 @@ export default function KanbanPage() {
       })
 
       setTickets(formatted)
+
+      // Identificar operadores em atendimento simultâneo para os CPFs presentes no pipeline
+      const cpfs = Array.from(new Set(formatted.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)))
+      if (cpfs.length > 0) {
+        try {
+          const { data: fichasExistentes } = await supabase
+            .from("kanban_fichas")
+            .select("cliente_cpf, operador_nome, etapa")
+            .in("cliente_cpf", cpfs)
+            .neq("etapa", "PERDIDO")
+
+          if (fichasExistentes) {
+            const map: Record<string, string[]> = {}
+            fichasExistentes.forEach(f => {
+              const cCpf = (f.cliente_cpf || "").replace(/\D/g, "")
+              if (!cCpf) return
+              if (!map[cCpf]) map[cCpf] = []
+              const nome = (f.operador_nome || "").trim()
+              if (nome && !map[cCpf].includes(nome)) {
+                map[cCpf].push(nome)
+              }
+            })
+            setConcorrenciaPorCpf(map)
+          }
+        } catch (err) {
+          console.error("Erro ao verificar operadores em concorrência:", err)
+        }
+      }
     } catch (err) {
       console.error("Erro ao carregar fichas para o Kanban:", err)
       toast.error("Não foi possível carregar as fichas do Kanban.")
@@ -3308,11 +3285,39 @@ export default function KanbanPage() {
           }).then(() => {})
         } catch {}
 
-        const { data: existing } = await supabase
+        // Buscar se o OPERADOR ATUAL já possui uma ficha para este cliente
+        let existing: any = null
+        if (validOperadorId) {
+          const { data: porId } = await supabase
+            .from("kanban_fichas")
+            .select("id, metadata, etapa, operador_id, operador_nome")
+            .eq("cliente_cpf", cleanCpf)
+            .eq("operador_id", validOperadorId)
+            .maybeSingle()
+          existing = porId
+        }
+        if (!existing && perfil?.nome) {
+          const { data: porNome } = await supabase
+            .from("kanban_fichas")
+            .select("id, metadata, etapa, operador_id, operador_nome")
+            .eq("cliente_cpf", cleanCpf)
+            .ilike("operador_nome", perfil.nome)
+            .maybeSingle()
+          existing = porNome
+        }
+
+        // Detectar outros operadores atendendo para gravar flag de concorrência comercial
+        const { data: outrasFichasExistentes } = await supabase
           .from("kanban_fichas")
-          .select("id, metadata, etapa")
+          .select("operador_nome, etapa")
           .eq("cliente_cpf", cleanCpf)
-          .maybeSingle()
+
+        const outrosOperadoresNomes = Array.from(new Set(
+          (outrasFichasExistentes || [])
+            .filter(f => f.operador_nome && f.operador_nome.trim().toLowerCase() !== (perfil?.nome || "").trim().toLowerCase())
+            .map(o => o.operador_nome)
+            .filter(Boolean)
+        ))
 
         if (existing) {
           const updatedMeta = {
@@ -3388,7 +3393,9 @@ export default function KanbanPage() {
             telefones: clientInfo.telefones,
             convenio: clientInfo.convenio,
             origem: clientInfo.origem,
-            telefone_empresa: clientInfo.telefone_empresa
+            telefone_empresa: clientInfo.telefone_empresa,
+            conflito_titularidade: outrosOperadoresNomes.length > 0,
+            concorrencia_outros_operadores: outrosOperadoresNomes
           }
           delete (meta as any).tabulacao_whatsapp
           delete (meta as any).telefones_selecionados
@@ -3480,11 +3487,26 @@ export default function KanbanPage() {
       const drawerType = tabulacao === "NÃO EXISTE WHATSAPP" ? "NAO_EXISTE_WHATSAPP" : "WHATSAPP_DIVERGENTE"
       const drawerLabel = tabulacao === "NÃO EXISTE WHATSAPP" ? "Não Existe Whatsapp" : "Whatsapp Divergente"
 
-      const { data: existing } = await supabase
-        .from("kanban_fichas")
-        .select("id, metadata")
-        .eq("cliente_cpf", cleanCpf)
-        .maybeSingle()
+      // Buscar se o OPERADOR ATUAL já possui uma ficha para este cliente
+      let existing: any = null
+      if (validOperadorId) {
+        const { data: porId } = await supabase
+          .from("kanban_fichas")
+          .select("id, metadata")
+          .eq("cliente_cpf", cleanCpf)
+          .eq("operador_id", validOperadorId)
+          .maybeSingle()
+        existing = porId
+      }
+      if (!existing && perfil?.nome) {
+        const { data: porNome } = await supabase
+          .from("kanban_fichas")
+          .select("id, metadata")
+          .eq("cliente_cpf", cleanCpf)
+          .ilike("operador_nome", perfil.nome)
+          .maybeSingle()
+        existing = porNome
+      }
 
       if (existing) {
         const updatedMeta = {
@@ -3703,7 +3725,7 @@ export default function KanbanPage() {
         } : undefined}
         onClick={() => handleCardClick(ticket)}
         className={cn(
-          "bg-white rounded-lg p-3 shadow-xs hover:shadow-xl hover:shadow-slate-900/15 hover:scale-[1.01] hover:-translate-y-0.5 transition-all duration-200 ease-out transform space-y-2.5 relative group hover:z-10",
+          "bg-white rounded-lg p-3 shadow-xs hover:shadow-xl hover:shadow-slate-900/15 hover:scale-[1.01] hover:-translate-y-0.5 transition-all duration-200 ease-out transform space-y-2.5 relative group hover:z-50 has-[.group\\/concorrencia:hover]:z-[100]",
           (!isMinhaFilaAcaoEspecial && (Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"))
             ? "border-2 border-amber-500 hover:border-amber-600 ring-2 ring-amber-400/30 shadow-xs"
             : (customBorderClass ? customBorderClass : "border border-slate-200 hover:border-slate-300"),
@@ -3735,11 +3757,114 @@ export default function KanbanPage() {
                 🟡 AÇÃO ESPECIAL
               </span>
             )}
-            {meta.conflito_titularidade && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-sky-100 text-sky-800 border border-sky-200 text-[12px]">
-                🔵 EM NEGOCIAÇÃO COM OUTRO
-              </span>
-            )}
+            {/* ETIQUETA VISUAL NO CARTÃO DO PIPELINE: ATENDIDO POR 1 OU MAIS USUÁRIOS */}
+            {(() => {
+              const cleanCpf = (ticket.cliente_cpf || "").replace(/\D/g, "")
+              const currentUserName = (perfil?.nome || user?.user_metadata?.nome || user?.email || "").trim()
+              const currentUserNameLower = currentUserName.toLowerCase()
+              const donoDesteCard = (ticket.responsavel_nome || ticket.corretor_nome || ticket.user_nome || "").trim()
+
+              // Papéis com visualização de todos os usuários atendendo o lead:
+              // Administrador, Monitoramento, Desenvolvedor, Operacional, Supervisor, Recursos Humanos
+              const roleNorm = (perfil?.role || perfil?.funcao || userRole || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+              const isVisualizadorTodos = Boolean(
+                isAdmin ||
+                isDeveloper ||
+                isGestor ||
+                roleNorm.includes("admin") ||
+                roleNorm.includes("monitor") ||
+                roleNorm.includes("desenv") ||
+                roleNorm.includes("operacion") ||
+                roleNorm.includes("supervisor") ||
+                roleNorm.includes("recursos humanos") ||
+                roleNorm === "rh"
+              )
+
+              // 1. Operadores obtidos do mapa global concorrenciaPorCpf
+              const listaDoMapa = (concorrenciaPorCpf[cleanCpf] || []).map(n => n.trim()).filter(Boolean)
+
+              // 2. Operadores obtidos em memória na lista tickets com mesmo CPF
+              const outrosAtendendo = tickets.filter(t => {
+                if (t.id === ticket.id) return false
+                const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+                if (!cleanCpf || tCpf !== cleanCpf) return false
+                const tMeta = parseMetadata(t.descricao)
+                const isDrawer = (
+                  t.status === "NÃO EXISTE WHATSAPP" ||
+                  t.status === "NAO_EXISTE_WHATSAPP" ||
+                  t.status === "WHATSAPP DIVERGENTE" ||
+                  Boolean(tMeta.tabulacao_whatsapp)
+                )
+                return !isDrawer && t.status !== "PERDIDO"
+              })
+              const outrosNomesMemoria = outrosAtendendo.map(t => (t.responsavel_nome || t.corretor_nome || t.user_nome || "").trim()).filter(Boolean)
+
+              // 3. Metadados salvos
+              const metaOutros = (Array.isArray(meta.concorrencia_outros_operadores) ? meta.concorrencia_outros_operadores : []).map((n: string) => typeof n === "string" ? n.trim() : "").filter(Boolean)
+
+              // Unificar todos os operadores envolvidos no atendimento deste lead
+              const todosAtendendo = Array.from(new Set([
+                donoDesteCard,
+                ...outrosNomesMemoria,
+                ...listaDoMapa,
+                ...metaOutros
+              ])).filter(Boolean)
+
+              // Para Corretor e Estágio/Estagiários: listar SOMENTE o outro usuário que está em atendimento
+              const outrosUsuarios = todosAtendendo.filter(nome => {
+                const nLower = nome.toLowerCase()
+                if (currentUserNameLower && nLower === currentUserNameLower) return false
+                return true
+              })
+
+              // Verificar se há concorrência simultânea ativa neste lead
+              const temConcorrencia = todosAtendendo.length > 1 || listaDoMapa.length > 1 || outrosAtendendo.length > 0 || Boolean(meta.conflito_titularidade)
+
+              if (!temConcorrencia && outrosUsuarios.length === 0) return null
+
+              // Selecionar lista conforme a regra de papéis solicitada
+              const nomesExibir = isVisualizadorTodos ? todosAtendendo : outrosUsuarios
+
+              if (nomesExibir.length === 0) return null
+
+              const totalCount = nomesExibir.length
+              const labelTexto = isVisualizadorTodos
+                ? `Atendido por ${totalCount} ${totalCount === 1 ? "usuário" : "usuários"}`
+                : `Atendido por ${totalCount} ${totalCount === 1 ? "outro usuário" : "outros usuários"}`
+              const tituloBalao = isVisualizadorTodos
+                ? `Usuários em atendimento (${totalCount}):`
+                : (totalCount === 1 ? "Outro usuário em atendimento:" : `Outros usuários em atendimento (${totalCount}):`)
+
+              return (
+                <div 
+                  className="relative group/concorrencia inline-block z-40 hover:z-[110]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span 
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full font-bold text-[10px] tracking-tight whitespace-nowrap bg-amber-500 hover:bg-amber-600 text-white shadow-xs border border-amber-600 ring-2 ring-amber-300/60 cursor-pointer select-none transition-all duration-150"
+                  >
+                    <Users className="w-3 h-3 text-white shrink-0" />
+                    <span>{labelTexto}</span>
+                  </span>
+
+                  {/* Tooltip/Balão suspenso à frente de todos os elementos (z-[9999] e abertura abaixo da etiqueta) */}
+                  <div className="hidden group-hover/concorrencia:flex flex-col absolute left-0 top-full mt-1.5 z-[9999] bg-slate-900/95 backdrop-blur-xs text-white text-xs rounded-lg p-2.5 shadow-2xl border border-slate-700/80 w-max max-w-xs pointer-events-none transition-all duration-150 animate-in fade-in zoom-in-95 ring-1 ring-black/20">
+                    <div className="flex items-center gap-1.5 pb-1.5 mb-1.5 border-b border-slate-700/70 text-[11px] font-bold text-amber-300">
+                      <Users className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>{tituloBalao}</span>
+                    </div>
+                    <ul className="space-y-1 text-[11px]">
+                      {nomesExibir.map((nome, idx) => (
+                        <li key={idx} className="flex items-center gap-1.5 text-slate-100 font-medium">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                          <span className="truncate">{nome}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )
+            })()}
             {!isDraggable && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
                 {ticket.status}
@@ -5226,6 +5351,48 @@ export default function KanbanPage() {
 
               return (
                 <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#FAFAFA] text-slate-800">
+                  {/* SINALIZAÇÃO DE CONCORRÊNCIA COMERCIAL ATIVA NO MODAL DE ATENDIMENTO */}
+                  {(() => {
+                    const cleanCpf = (atendimentoModalTicket.cliente_cpf || "").replace(/\D/g, "")
+                    const outrosAtendendo = tickets.filter(t => {
+                      if (t.id === atendimentoModalTicket.id) return false
+                      const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+                      if (!cleanCpf || tCpf !== cleanCpf) return false
+                      const tMeta = parseMetadata(t.descricao)
+                      const isDrawer = (
+                        t.status === "NÃO EXISTE WHATSAPP" ||
+                        t.status === "NAO_EXISTE_WHATSAPP" ||
+                        t.status === "WHATSAPP DIVERGENTE" ||
+                        Boolean(tMeta.tabulacao_whatsapp)
+                      )
+                      return !isDrawer && t.status !== "PERDIDO"
+                    })
+                    const outrosNomes = Array.from(new Set(outrosAtendendo.map(t => `${t.responsavel_nome || t.corretor_nome || "Outro Usuário"} (${t.status || "EM RETOMADA"})`))).filter(Boolean)
+                    const metaOutros = modalMeta.concorrencia_outros_operadores || []
+                    const listaExibir = outrosNomes.length > 0 ? outrosNomes : metaOutros
+
+                    if (listaExibir.length === 0 && !modalMeta.conflito_titularidade) return null
+
+                    return (
+                      <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border-2 border-amber-400 text-amber-950 flex items-start gap-2.5 shadow-xs">
+                        <div className="p-1 rounded-lg bg-amber-500 text-white shrink-0 mt-0.5">
+                          <Zap className="w-3.5 h-3.5 fill-white" />
+                        </div>
+                        <div className="flex-1 text-xs">
+                          <p className="font-black text-[11px] uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                            <span>⚡ Concorrência Comercial: Lead em Atendimento Simultâneo</span>
+                          </p>
+                          <p className="text-[11.5px] text-amber-900 font-medium mt-0.5 leading-snug">
+                            Este cliente também está sendo atendido por: <strong className="font-bold underline decoration-amber-400">{listaExibir.join(", ") || "outro promotor"}</strong>.
+                          </p>
+                          <p className="text-[10.5px] text-amber-800/90 mt-1">
+                            Seu histórico de observações e mensagens abaixo é <strong>100% individual</strong>.
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                   {/* Informações Resumidas do Cliente */}
                   {!isEtapaPersonalizada && (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
@@ -6974,6 +7141,8 @@ export default function KanbanPage() {
             const cleanT = (t.cliente_cpf || "").replace(/\D/g, "")
             const cleanS = selectedClientCpf.replace(/\D/g, "")
             if (!cleanT || cleanT !== cleanS) return false
+            const isMeuTicket = (t.user_id && t.user_id === user?.id) || (perfil?.nome && t.responsavel_nome?.trim().toLowerCase() === perfil?.nome?.trim().toLowerCase())
+            if (!isMeuTicket) return false
             const meta = parseMetadata(t.descricao)
             const isDrawer = (
               t.status === "NÃO EXISTE WHATSAPP" ||
@@ -6986,61 +7155,70 @@ export default function KanbanPage() {
         )
 
         return (
-          <ClientDetailsModal
-            cpf={selectedClientCpf}
-            isOpen={isClientDetailsModalOpen}
-            onClose={() => {
-              setIsClientDetailsModalOpen(false)
-              setIsKanbanSearchModal(false)
-              setIsDrawerLeadModal(false)
-              setSelectedClientCpf("")
-              setIsViewingLeadInAttendance(false)
-            }}
-            title={isDrawerLeadModal ? "Informações sobre o Lead" : (isKanbanSearchModal ? "EM ABORDAGEM" : "Informações sobre o Lead")}
-            isEmAbordagem={isKanbanSearchModal || isDrawerLeadModal}
-            onSelectTabulacao={isClientInAnyKanbanStage ? undefined : handleTabulacaoFromModal}
-            showTabulacoes={!isClientInAnyKanbanStage}
-            hidePhoneSelectionBanner={isClientInAnyKanbanStage}
-            showPipelineActionButtons={isClientInAnyKanbanStage}
-            onTelefonesSelecionadosChange={(cpf, selected) => {
-              const cleanCpf = cpf.replace(/\D/g, "")
-              setTickets(prev => prev.map(t => {
-                const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")
-                if (tCpf === cleanCpf || (cleanCpf.length === 11 && tCpf.padStart(11, '0') === cleanCpf)) {
-                  return {
-                    ...t,
-                    telefones_selecionados: selected
+          <>
+            <ClientDetailsModal
+              isOpen={isClientDetailsModalOpen}
+              cpf={selectedClientCpf}
+              onClose={() => {
+                setIsClientDetailsModalOpen(false)
+                setIsKanbanSearchModal(false)
+                setIsDrawerLeadModal(false)
+                setSelectedClientCpf("")
+                setIsViewingLeadInAttendance(false)
+              }}
+              title={isDrawerLeadModal ? "Informações sobre o Lead" : (isKanbanSearchModal ? "EM ABORDAGEM" : "Informações sobre o Lead")}
+              isEmAbordagem={isKanbanSearchModal || isDrawerLeadModal}
+              onSelectTabulacao={isClientInAnyKanbanStage ? undefined : handleTabulacaoFromModal}
+              showTabulacoes={!isClientInAnyKanbanStage}
+              hidePhoneSelectionBanner={isClientInAnyKanbanStage}
+              showPipelineActionButtons={isClientInAnyKanbanStage}
+              onTelefonesSelecionadosChange={(cpf, selected) => {
+                const cleanCpf = cpf.replace(/\D/g, "")
+                setTickets(prev => prev.map(t => {
+                  const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+                  if (tCpf === cleanCpf || (cleanCpf.length === 11 && tCpf.padStart(11, '0') === cleanCpf)) {
+                    return {
+                      ...t,
+                      telefones_selecionados: selected
+                    }
                   }
-                }
-                return t
-              }))
-            }}
-          />
+                  return t
+                }))
+              }}
+            />
+          </>
         )
       })()}
 
       {/* Modal de Notificação: Lead Já em Atendimento / Fechado / Perdido */}
       {leadEmAtendimentoInfo && (() => {
+        const isMeuAtendimento = Boolean(leadEmAtendimentoInfo.isMeuAtendimento)
         const isFechado = leadEmAtendimentoInfo.etapa === "FECHADO"
         const isPerdido = leadEmAtendimentoInfo.etapa === "PERDIDO"
 
-        const modalTitle = isFechado 
-          ? "Lead com Atendimento Fechado" 
-          : isPerdido 
-            ? "Lead Perdido" 
-            : "Lead Já em Atendimento"
+        const modalTitle = isMeuAtendimento
+          ? "Você Já Está Atendendo Este Lead"
+          : isFechado 
+            ? "Lead com Atendimento Fechado" 
+            : isPerdido 
+              ? "Lead Perdido" 
+              : "Lead Já em Atendimento"
 
-        const modalSubtitle = isFechado
-          ? "Cliente com negociação concluída"
-          : isPerdido
-            ? "Cliente finalizado como perdido"
-            : "Cliente com cartão ativo no pipeline"
+        const modalSubtitle = isMeuAtendimento
+          ? ""
+          : isFechado
+            ? "Cliente com negociação concluída"
+            : isPerdido
+              ? "Cliente finalizado como perdido"
+              : "Cliente com cartão ativo no pipeline"
 
-        const alertMessage = isFechado
-          ? "Este lead foi finalizado como negócio fechado pelo operador informado acima."
-          : isPerdido
-            ? "Este lead foi classificado como perdido pelo operador informado acima."
-            : "Este lead já se encontra no funil de atendimento sob os cuidados do operador informado acima."
+        const alertMessage = isMeuAtendimento
+          ? `Você já possui este lead ativo no seu pipeline na etapa "${leadEmAtendimentoInfo.etapa}".`
+          : isFechado
+            ? "Este lead foi finalizado como negócio fechado pelo operador informado acima."
+            : isPerdido
+              ? "Este lead foi classificado como perdido pelo operador informado acima."
+              : "Este lead já se encontra no funil de atendimento sob os cuidados do operador informado acima."
 
         return (
           <Dialog open={!!leadEmAtendimentoInfo} onOpenChange={(open) => !open && setLeadEmAtendimentoInfo(null)}>
@@ -7052,11 +7230,14 @@ export default function KanbanPage() {
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     "w-8 h-8 rounded-xl border flex items-center justify-center shrink-0",
-                    isFechado && "bg-emerald-50 border-emerald-200/80 text-emerald-600",
-                    isPerdido && "bg-rose-50 border-rose-200/80 text-rose-600",
-                    !isFechado && !isPerdido && "bg-amber-50 border-amber-200/80 text-amber-600"
+                    isMeuAtendimento && "bg-amber-500/15 border-amber-300 text-amber-700",
+                    !isMeuAtendimento && isFechado && "bg-emerald-50 border-emerald-200/80 text-emerald-600",
+                    !isMeuAtendimento && isPerdido && "bg-rose-50 border-rose-200/80 text-rose-600",
+                    !isMeuAtendimento && !isFechado && !isPerdido && "bg-amber-50 border-amber-200/80 text-amber-600"
                   )}>
-                    {isFechado ? (
+                    {isMeuAtendimento ? (
+                      <Zap className="w-4 h-4 text-amber-600 fill-amber-600" />
+                    ) : isFechado ? (
                       <CheckCircle2 className="w-4 h-4" />
                     ) : isPerdido ? (
                       <XCircle className="w-4 h-4" />
@@ -7068,9 +7249,11 @@ export default function KanbanPage() {
                     <h3 className="text-sm font-black text-slate-900 tracking-tight uppercase">
                       {modalTitle}
                     </h3>
-                    <p className="text-[11px] text-slate-500 font-medium">
-                      {modalSubtitle}
-                    </p>
+                    {modalSubtitle ? (
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        {modalSubtitle}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <Button
@@ -7178,15 +7361,34 @@ export default function KanbanPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Outros operadores atendendo simultaneamente */}
+                  {leadEmAtendimentoInfo.outros_operadores && leadEmAtendimentoInfo.outros_operadores.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-slate-200/60">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 block mb-1">
+                        ⚡ Concorrência: Também atendido por
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {leadEmAtendimentoInfo.outros_operadores.map((op, idx) => (
+                          <span key={idx} className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
+                            {op.operador_nome} ({op.etapa})
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className={cn(
                   "p-3 rounded-xl flex items-start gap-2.5 text-xs border",
-                  isFechado && "bg-emerald-50/70 border-emerald-200/70 text-emerald-900",
-                  isPerdido && "bg-rose-50/70 border-rose-200/70 text-rose-900",
-                  !isFechado && !isPerdido && "bg-amber-50/70 border-amber-200/70 text-amber-900"
+                  isMeuAtendimento && "bg-amber-500/10 border-amber-400 text-amber-950 font-medium",
+                  !isMeuAtendimento && isFechado && "bg-emerald-50/70 border-emerald-200/70 text-emerald-900",
+                  !isMeuAtendimento && isPerdido && "bg-rose-50/70 border-rose-200/70 text-rose-900",
+                  !isMeuAtendimento && !isFechado && !isPerdido && "bg-amber-50 border-amber-200/80 text-amber-900"
                 )}>
-                  {isFechado ? (
+                  {isMeuAtendimento ? (
+                    <Zap className="w-4 h-4 text-amber-600 fill-amber-600 shrink-0 mt-0.5" />
+                  ) : isFechado ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                   ) : isPerdido ? (
                     <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -7201,19 +7403,46 @@ export default function KanbanPage() {
 
               {/* Rodapé com Ações */}
               <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-2.5">
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    const cpf = leadEmAtendimentoInfo.cliente_cpf
-                    setLeadEmAtendimentoInfo(null)
-                    setSelectedClientCpf(cpf)
-                    setIsViewingLeadInAttendance(true)
-                    setIsClientDetailsModalOpen(true)
-                  }}
-                  className="h-8 text-xs font-bold px-4 bg-[#171717] hover:bg-[#171717]/90 text-white cursor-pointer"
-                >
-                  Informações sobre o Lead
-                </Button>
+                {isMeuAtendimento ? (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const cleanCpf = leadEmAtendimentoInfo.cliente_cpf.replace(/\D/g, "")
+                      const myTicket = tickets.find(t => {
+                        const cleanT = (t.cliente_cpf || "").replace(/\D/g, "")
+                        return cleanT === cleanCpf
+                      })
+                      setLeadEmAtendimentoInfo(null)
+                      if (myTicket) {
+                        setAtendimentoModalTicket(myTicket)
+                        setAtendimentoMensagem("")
+                        setHistoricoMensagens([])
+                      } else {
+                        setSelectedClientCpf(leadEmAtendimentoInfo.cliente_cpf)
+                        setIsViewingLeadInAttendance(true)
+                        setIsClientDetailsModalOpen(true)
+                      }
+                    }}
+                    className="h-8 text-xs font-bold px-4 bg-amber-600 hover:bg-amber-700 text-white cursor-pointer shadow-xs flex items-center gap-1.5"
+                  >
+                    <Zap className="w-3.5 h-3.5 fill-white" />
+                    Abrir Meu Cartão
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const cpf = leadEmAtendimentoInfo.cliente_cpf
+                      setLeadEmAtendimentoInfo(null)
+                      setSelectedClientCpf(cpf)
+                      setIsViewingLeadInAttendance(true)
+                      setIsClientDetailsModalOpen(true)
+                    }}
+                    className="h-8 text-xs font-bold px-4 bg-[#171717] hover:bg-[#171717]/90 text-white cursor-pointer"
+                  >
+                    Informações sobre o Lead
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"

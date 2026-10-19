@@ -262,7 +262,7 @@ export function ClientDetailsModal({
   const hasTabulacoes = showTabulacoes !== undefined ? showTabulacoes : Boolean(onSelectTabulacao)
   const isKanbanLeadModal = isEmAbordagem || Boolean(onSelectTabulacao) || hasTabulacoes || modalTitle.toLowerCase().includes("lead")
   const router = useRouter()
-  const { perfil, isEstagio } = useAuth()
+  const { perfil, isEstagio, user } = useAuth()
   const [isSimulationModalOpen, setIsSimulationModalOpen] = useState(false)
   const [isNovoChamadoModalOpen, setIsNovoChamadoModalOpen] = useState(false)
   const [chamadoModalData, setChamadoModalData] = useState<any>(null)
@@ -333,12 +333,23 @@ export function ClientDetailsModal({
     try {
       const digits = (client?.cpf || cpf).replace(/\D/g, "")
       const paddedCpf = digits.padStart(11, '0')
-      const { data: existingKfList } = await supabase
+      let queryKf = supabase
         .from('kanban_fichas')
         .select('id, metadata')
         .or(`cliente_cpf.eq.${paddedCpf},cliente_cpf.eq.${digits}`)
         .order('updated_at', { ascending: false })
-        .limit(1)
+
+      const currentUserId = user?.id
+      const currentUserName = perfil?.nome?.trim()
+      if (currentUserId && currentUserName) {
+        queryKf = queryKf.or(`operador_id.eq.${currentUserId},operador_nome.ilike.%${currentUserName}%`)
+      } else if (currentUserId) {
+        queryKf = queryKf.eq('operador_id', currentUserId)
+      } else if (currentUserName) {
+        queryKf = queryKf.ilike('operador_nome', `%${currentUserName}%`)
+      }
+
+      const { data: existingKfList } = await queryKf.limit(1)
 
       const existingKf = existingKfList?.[0]
 
@@ -402,6 +413,9 @@ export function ClientDetailsModal({
     setProfiles([])
     setActiveRegIndex(0)
     setSelectedStatuses({})
+    setSelectedPhones([])
+    setClienteOrigem("")
+    setSelectedEmpresaPhone("")
 
     try {
       const digits = cpf.replace(/\D/g, "")
@@ -1229,35 +1243,53 @@ export function ClientDetailsModal({
         setRegistrations(selectedProfile.registrations)
 
         // Buscar telefones já selecionados/conversados na tabela kanban_fichas
-        try {
-          const { data: kfRecords } = await supabase
-            .from('kanban_fichas')
-            .select('metadata, telefones_contatados, origem, telefone_empresa')
-            .or(`cliente_cpf.eq.${paddedCpf},cliente_cpf.eq.${digits}`)
-            .order('updated_at', { ascending: false })
-            .limit(1)
+        // Se estiver no modal EM ABORDAGEM, não pré-preenche para iniciar abordagem limpa e independente
+        if (!isEmAbordagem) {
+          try {
+            let queryKf = supabase
+              .from('kanban_fichas')
+              .select('metadata, telefones_contatados, origem, telefone_empresa, operador_id, operador_nome')
+              .or(`cliente_cpf.eq.${paddedCpf},cliente_cpf.eq.${digits}`)
+              .order('updated_at', { ascending: false })
 
-          const kfRecord = kfRecords?.[0] as any
-          if (Array.isArray(kfRecord?.telefones_contatados)) {
-            setSelectedPhones(kfRecord.telefones_contatados)
-          } else if (kfRecord?.metadata && Array.isArray((kfRecord.metadata as any).telefones_selecionados)) {
-            setSelectedPhones((kfRecord.metadata as any).telefones_selecionados)
-          } else {
-            setSelectedPhones([])
-          }
+            const currentUserId = user?.id
+            const currentUserName = perfil?.nome?.trim()
+            if (currentUserId && currentUserName) {
+              queryKf = queryKf.or(`operador_id.eq.${currentUserId},operador_nome.ilike.%${currentUserName}%`)
+            } else if (currentUserId) {
+              queryKf = queryKf.eq('operador_id', currentUserId)
+            } else if (currentUserName) {
+              queryKf = queryKf.ilike('operador_nome', `%${currentUserName}%`)
+            }
 
-          if (kfRecord?.origem) {
-            setClienteOrigem(kfRecord.origem)
-          } else if (kfRecord?.metadata?.origem) {
-            setClienteOrigem(kfRecord.metadata.origem)
+            const { data: kfRecords } = await queryKf.limit(1)
+
+            const kfRecord = kfRecords?.[0] as any
+            if (Array.isArray(kfRecord?.telefones_contatados)) {
+              setSelectedPhones(kfRecord.telefones_contatados)
+            } else if (kfRecord?.metadata && Array.isArray((kfRecord.metadata as any).telefones_selecionados)) {
+              setSelectedPhones((kfRecord.metadata as any).telefones_selecionados)
+            } else {
+              setSelectedPhones([])
+            }
+
+            if (kfRecord?.origem) {
+              setClienteOrigem(kfRecord.origem)
+            } else if (kfRecord?.metadata?.origem) {
+              setClienteOrigem(kfRecord.metadata.origem)
+            }
+            if (kfRecord?.telefone_empresa) {
+              setSelectedEmpresaPhone(kfRecord.telefone_empresa)
+            } else if (kfRecord?.metadata?.telefone_empresa) {
+              setSelectedEmpresaPhone(kfRecord.metadata.telefone_empresa)
+            }
+          } catch (err) {
+            console.error("Erro ao carregar dados de kanban_fichas:", err)
           }
-          if (kfRecord?.telefone_empresa) {
-            setSelectedEmpresaPhone(kfRecord.telefone_empresa)
-          } else if (kfRecord?.metadata?.telefone_empresa) {
-            setSelectedEmpresaPhone(kfRecord.metadata.telefone_empresa)
-          }
-        } catch (err) {
-          console.error("Erro ao carregar dados de kanban_fichas:", err)
+        } else {
+          setSelectedPhones([])
+          setClienteOrigem("")
+          setSelectedEmpresaPhone("")
         }
 
         setIsLoading(false)
@@ -1271,7 +1303,7 @@ export function ClientDetailsModal({
     } finally {
       setIsLoading(false)
     }
-  }, [cpf, initialMatricula])
+  }, [cpf, initialMatricula, isEmAbordagem, user?.id, perfil?.nome])
 
   useEffect(() => {
     if (isOpen && cpf) {
@@ -1282,6 +1314,7 @@ export function ClientDetailsModal({
       setRegistrations([])
       setActiveRegIndex(0)
       setIsContractsCardExpanded(false)
+      setSelectedPhones([])
       setClienteOrigem("")
       setSelectedEmpresaPhone("")
       setSearchEmpresaPhone("")
