@@ -45,7 +45,10 @@ import {
   Trash2,
   Loader2,
   History,
-  Download
+  Download,
+  LayoutGrid,
+  List,
+  ArrowUpDown
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
@@ -545,7 +548,7 @@ function checkIsDevEnvironment(): boolean {
 }
 
 export default function KanbanPage() {
-  const { user, perfil, isAdmin } = useAuth()
+  const { user, perfil, isAdmin, isDeveloper } = useAuth()
 
   // Verificação de ambiente (Desenvolvimento no AI Studio vs Produção)
   const [isDevEnv, setIsDevEnv] = useState<boolean>(true)
@@ -569,8 +572,34 @@ export default function KanbanPage() {
     userRole === "RH"
   )
 
+  // Acesso ao Kanban em produção: liberado com acesso total SOMENTE para Administrador e Desenvolvedor.
+  // Em ambiente de desenvolvimento: liberado para todos para testes e ajustes.
+  const isDevOrAdminUser = Boolean(
+    isAdmin || 
+    isDeveloper || 
+    userRole === "Administrador" || 
+    userRole === "Desenvolvedor" || 
+    perfil?.role === "Administrador" || 
+    perfil?.role === "Desenvolvedor"
+  )
+  const canAccessKanban = isDevEnv || isDevOrAdminUser
+
   // Visão Ativa do Módulo Kanban: "MINHA_FILA" (padrão inicial) ou "KANBAN"
   const [activeView, setActiveView] = useState<"MINHA_FILA" | "KANBAN">("MINHA_FILA")
+
+  // Modo de Exibição das Etapas: "QUADRO" (colunas de cartões) ou "LISTA" (linhas sequenciais)
+  const [displayMode, setDisplayMode] = useState<"QUADRO" | "LISTA">("QUADRO")
+  const [listSortBy, setListSortBy] = useState<"vencimento" | "valor" | "nome">("vencimento")
+  const [listFilterStage, setListFilterStage] = useState<string>("ALL")
+  const [listSearch, setListSearch] = useState<string>("")
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
+
+  const toggleSectionCollapse = (sectionId: string) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [sectionId]: !prev[sectionId]
+    }))
+  }
 
   const [tickets, setTickets] = useState<TicketItem[]>([])
   const [usersList, setUsersList] = useState<UserSummary[]>([])
@@ -1326,12 +1355,12 @@ export default function KanbanPage() {
 
   useEffect(() => {
     if (!hasCheckedEnv) return
-    if (!isDevEnv) {
+    if (!canAccessKanban) {
       setIsLoading(false)
       return
     }
     fetchChamados()
-  }, [fetchChamados, hasCheckedEnv, isDevEnv])
+  }, [fetchChamados, hasCheckedEnv, canAccessKanban])
 
   // Filtragem dos chamados
   const naoExisteWhatsappTickets = useMemo(() => {
@@ -3472,8 +3501,408 @@ export default function KanbanPage() {
     )
   }
 
-  // Em ambiente de produção: exibe mensagem e tela informando que o módulo está em desenvolvimento
-  if (hasCheckedEnv && !isDevEnv) {
+  // Ordenação de tickets na Lista
+  const sortTickets = useCallback((list: TicketItem[]) => {
+    return [...list].sort((a, b) => {
+      if (listSortBy === "valor") {
+        const aData = getValorOperacaoDeAbertura(a)
+        const aVal = parseValorToNumber(aData.valor) || Number(a.valor_operacao || a.margem || 0)
+        const bData = getValorOperacaoDeAbertura(b)
+        const bVal = parseValorToNumber(bData.valor) || Number(b.valor_operacao || b.margem || 0)
+        return bVal - aVal
+      }
+      if (listSortBy === "nome") {
+        const aNome = (a.cliente_nome || "").toLowerCase()
+        const bNome = (b.cliente_nome || "").toLowerCase()
+        return aNome.localeCompare(bNome)
+      }
+      const aMeta = parseMetadata(a.descricao)
+      const bMeta = parseMetadata(b.descricao)
+      const aTime = aMeta.vencimento_acao ? new Date(aMeta.vencimento_acao).getTime() : Infinity
+      const bTime = bMeta.vencimento_acao ? new Date(bMeta.vencimento_acao).getTime() : Infinity
+      return aTime - bTime
+    })
+  }, [listSortBy])
+
+  // Filtro de tickets na Lista por termo de busca
+  const filterTicketsBySearch = useCallback((list: TicketItem[]) => {
+    const q = listSearch.trim().toLowerCase()
+    if (!q) return list
+    const qDigits = q.replace(/\D/g, "")
+    return list.filter(t => {
+      const nome = (t.cliente_nome || "").toLowerCase()
+      const cpf = (t.cliente_cpf || "").replace(/\D/g, "")
+      const tel = (t.cliente_telefone || "").replace(/\D/g, "")
+      const meta = parseMetadata(t.descricao)
+      const metaTel = (meta.cliente_telefone || "").replace(/\D/g, "")
+      return (
+        nome.includes(q) ||
+        (qDigits && (cpf.includes(qDigits) || tel.includes(qDigits) || metaTel.includes(qDigits)))
+      )
+    })
+  }, [listSearch])
+
+  // Seções sequenciais de etapas para o Modo Lista
+  const listSections = useMemo(() => {
+    if (activeView === "MINHA_FILA") {
+      return [
+        {
+          id: "agora",
+          title: "Agora",
+          subtitle: "Ações exigíveis no momento",
+          badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-300",
+          headerBg: "bg-emerald-50/90 border-emerald-300",
+          borderLeft: "border-l-4 border-l-emerald-600",
+          icon: CheckCircle2,
+          iconColor: "text-emerald-600",
+          tickets: filaCategorias.agora,
+          totalValor: filaCategorias.valorAgora
+        },
+        {
+          id: "vencidas",
+          title: "Vencidas",
+          subtitle: "Ações com prazo expirado",
+          badgeClass: "bg-rose-100 text-rose-800 border-rose-300",
+          headerBg: "bg-rose-50/90 border-rose-300",
+          borderLeft: "border-l-4 border-l-rose-600",
+          icon: AlertCircle,
+          iconColor: "text-rose-600",
+          tickets: filaCategorias.vencidas.map(i => i.ticket),
+          totalValor: filaCategorias.valorVencidas
+        },
+        {
+          id: "futuras",
+          title: "Futuras",
+          subtitle: "Ações programadas para mais tarde",
+          badgeClass: "bg-sky-100 text-sky-800 border-sky-300",
+          headerBg: "bg-sky-50/90 border-sky-300",
+          borderLeft: "border-l-4 border-l-sky-600",
+          icon: Clock,
+          iconColor: "text-sky-600",
+          tickets: filaCategorias.futuras,
+          totalValor: filaCategorias.valorFuturas
+        },
+        {
+          id: "acao_especial",
+          title: "Ação Especial",
+          subtitle: "Solicitações pendentes de ação especial",
+          badgeClass: "bg-amber-100 text-amber-900 border-amber-300",
+          headerBg: "bg-amber-50/90 border-amber-300",
+          borderLeft: "border-l-4 border-l-amber-500",
+          icon: Zap,
+          iconColor: "text-amber-600",
+          tickets: filaCategorias.acaoEspecial,
+          totalValor: filaCategorias.valorAcaoEspecial
+        }
+      ]
+    } else {
+      return KANBAN_COLUMNS.map(col => {
+        const colTickets = groupedColumns[col.id] || []
+        const totalColValor = colTickets.reduce((acc, t) => {
+          const opData = getValorOperacaoDeAbertura(t)
+          const opNum = parseValorToNumber(opData.valor)
+          return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+        }, 0)
+        return {
+          id: col.id,
+          title: col.title ? col.title.charAt(0).toUpperCase() + col.title.slice(1).toLowerCase() : col.title,
+          subtitle: col.subtitle,
+          badgeClass: col.badgeClass,
+          headerBg: col.headerBg,
+          borderLeft: `border-l-4 ${col.borderTop.replace('border-t-', 'border-l-')}`,
+          icon: Kanban,
+          iconColor: "text-slate-700",
+          tickets: colTickets,
+          totalValor: totalColValor
+        }
+      })
+    }
+  }, [activeView, filaCategorias, groupedColumns])
+
+  // Agrupamento com filtros e busca aplicados
+  const { totalListLeads, totalListValor, filteredListSections } = useMemo(() => {
+    let leadsCount = 0
+    let valorSum = 0
+
+    const sections = listSections.map(sec => {
+      let secTickets = filterTicketsBySearch(sec.tickets)
+      secTickets = sortTickets(secTickets)
+
+      leadsCount += secTickets.length
+      const secVal = secTickets.reduce((acc, t) => {
+        const opData = getValorOperacaoDeAbertura(t)
+        const opNum = parseValorToNumber(opData.valor)
+        return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+      }, 0)
+      valorSum += secVal
+
+      return {
+        ...sec,
+        displayTickets: secTickets,
+        displayValor: secVal
+      }
+    })
+
+    const finalSections = listFilterStage === "ALL" 
+      ? sections 
+      : sections.filter(s => s.id === listFilterStage)
+
+    return {
+      totalListLeads: leadsCount,
+      totalListValor: valorSum,
+      filteredListSections: finalSections
+    }
+  }, [listSections, filterTicketsBySearch, sortTickets, listFilterStage])
+
+  // Renderizador do Item em Modo Lista (Linha sequencial de etapa)
+  const renderTicketListItem = (ticket: TicketItem) => {
+    const meta = parseMetadata(ticket.descricao)
+    const opData = getValorOperacaoDeAbertura(ticket)
+    const opValorNum = parseValorToNumber(opData.valor)
+    const valorTotal = opValorNum > 0 ? opValorNum : Number(ticket.valor_operacao || ticket.margem || 0)
+    const isCpfRevealed = Boolean(revealedCpfs[ticket.id])
+    const isPhoneRevealed = Boolean(revealedPhones[ticket.id])
+
+    const rawPhone = (ticket.cliente_telefone || meta.cliente_telefone || "").replace(/\D/g, "")
+    const isAltoValor = valorTotal >= 20000
+    const isAcaoEspecial = Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"
+
+    const rawProximaAcao = meta.proxima_acao || (
+      ticket.status === "EM ABORDAGEM" ? "Realizar Primeiro Contato Imediato" :
+      ticket.status === "EM RETOMADA" ? "Enviar Régua de Retomada 1 via WhatsApp" :
+      ticket.status === "EM NEGOCIAÇÃO" ? "Enviar simulação ajustada e esclarecer dúvidas" :
+      ticket.status === "EM REATIVAÇÃO" ? "Resgatar contato esfriado após 48h úteis" :
+      ticket.status === "SEM INTERESSE" ? "Programar cadência longa / nutrição" :
+      ticket.status === "FECHADO" ? "Proposta Digitada no Sistema" :
+      "Finalização registrada por inviabilidade"
+    )
+    const proximaAcaoTexto = rawProximaAcao.replace(/^\[[^\]]+\]\s*/, "")
+
+    const vencimentoLabel = meta.vencimento_acao 
+      ? format(new Date(meta.vencimento_acao), "dd/MM 'às' HH:mm")
+      : null
+
+    const isEmRetomada = ticket.status === "EM RETOMADA"
+
+    return (
+      <div
+        key={ticket.id}
+        className={cn(
+          "bg-white hover:bg-slate-50/90 border rounded-xl p-3 sm:p-3.5 transition-all shadow-2xs flex flex-col xl:flex-row xl:items-center justify-between gap-3 group select-none",
+          isAcaoEspecial && activeView === "KANBAN"
+            ? "border-amber-400 bg-amber-50/30"
+            : "border-slate-200/90 hover:border-slate-300"
+        )}
+      >
+        {/* Coluna 1: Informações do Cliente & Identificação */}
+        <div className="flex-1 min-w-[220px]">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-extrabold text-xs sm:text-sm text-slate-900 tracking-tight group-hover:text-sky-950 transition-colors">
+              {formatShortName(ticket.cliente_nome) || ticket.cliente_nome || "Cliente sem Nome"}
+            </span>
+            {isAltoValor && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                <Zap className="w-2.5 h-2.5 fill-amber-500 text-amber-600" />
+                Alto Valor
+              </span>
+            )}
+            {isAcaoEspecial && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                <AlertCircle className="w-2.5 h-2.5 text-amber-600" />
+                Ação Especial {meta.acao_especial_destinatario ? `(${meta.acao_especial_destinatario})` : ""}
+              </span>
+            )}
+          </div>
+
+          {/* CPF e Telefone com toggles e botões de cópia */}
+          <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 flex-wrap">
+            <div className="flex items-center gap-1 font-mono">
+              <span>CPF:</span>
+              <span className="font-semibold text-slate-700">
+                {isCpfRevealed ? ticket.cliente_cpf : (ticket.cliente_cpf ? maskCpf(ticket.cliente_cpf) : "Não inf.")}
+              </span>
+              {ticket.cliente_cpf && (
+                <button
+                  type="button"
+                  onClick={() => setRevealedCpfs(p => ({ ...p, [ticket.id]: !p[ticket.id] }))}
+                  className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                  title={isCpfRevealed ? "Ocultar CPF" : "Revelar CPF"}
+                >
+                  {isCpfRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                </button>
+              )}
+              {ticket.cliente_cpf && (
+                <button
+                  type="button"
+                  onClick={() => handleCopy(ticket.cliente_cpf!, "CPF")}
+                  className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                  title="Copiar CPF"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            <span className="text-slate-300">|</span>
+
+            <div className="flex items-center gap-1 font-mono">
+              <Phone className="w-3 h-3 text-emerald-600" />
+              <span className="font-semibold text-slate-700">
+                {isPhoneRevealed 
+                  ? (ticket.cliente_telefone || "Não inf.") 
+                  : (ticket.cliente_telefone ? maskPhone(ticket.cliente_telefone) : "Não inf.")}
+              </span>
+              {ticket.cliente_telefone && (
+                <button
+                  type="button"
+                  onClick={() => setRevealedPhones(p => ({ ...p, [ticket.id]: !p[ticket.id] }))}
+                  className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                  title={isPhoneRevealed ? "Ocultar Telefone" : "Revelar Telefone"}
+                >
+                  {isPhoneRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                </button>
+              )}
+              {rawPhone && (
+                <button
+                  type="button"
+                  onClick={() => handleCopy(rawPhone, "Telefone")}
+                  className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                  title="Copiar Telefone"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Coluna 2: Convênio & Valores (Operação) */}
+        <div className="min-w-[140px]">
+          <div className="text-[10px] uppercase font-bold text-slate-400">
+            Convênio / Operação
+          </div>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="text-xs font-black text-slate-900">
+              {valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+            </span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+              {formatConvenioOrigem(meta.convenio || ticket.cliente_convenio || "INSS")}
+            </span>
+          </div>
+          {opData.tipo && (
+            <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
+              {opData.tipo} {opData.banco ? `• ${opData.banco}` : ""}
+            </p>
+          )}
+        </div>
+
+        {/* Coluna 3: Próxima Ação & Vencimento */}
+        <div className="flex-1 min-w-[200px] max-w-sm">
+          <div className="text-[10px] uppercase font-bold text-slate-400">
+            Próxima Ação & Prazo
+          </div>
+          <p className="text-xs text-slate-800 font-semibold truncate mt-0.5" title={proximaAcaoTexto}>
+            {proximaAcaoTexto}
+          </p>
+          <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500">
+            <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+            <span>{vencimentoLabel ? `Vencimento: ${vencimentoLabel}` : "Sem agendamento definido"}</span>
+            {meta.alerta_atrasado && (
+              <span className="px-1.5 py-0.2 rounded-full font-bold bg-rose-100 text-rose-700 border border-rose-300">
+                Atrasado
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Coluna 4: Responsável & Etapa */}
+        <div className="min-w-[130px]">
+          <div className="text-[10px] uppercase font-bold text-slate-400">
+            Etapa / Responsável
+          </div>
+          <div className="mt-0.5">
+            <span className="inline-block text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-200">
+              {ticket.status || "EM RETOMADA"}
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-500 truncate mt-0.5 flex items-center gap-1">
+            <User className="w-2.5 h-2.5" />
+            <span>{ticket.responsavel_nome || "Não atribuído"}</span>
+          </p>
+        </div>
+
+        {/* Coluna 5: Ações Rápidas (Execução item a item) */}
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
+          {/* Botão de Atendimento */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setAtendimentoModalTicket(ticket)
+              setAtendimentoMensagem("")
+              setHistoricoMensagens([])
+            }}
+            className={cn(
+              "h-8 px-2.5 text-xs font-bold rounded-lg border shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer",
+              isEmRetomada
+                ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 hover:shadow-xs"
+                : "bg-sky-600 hover:bg-sky-700 text-white border-sky-700 hover:shadow-xs"
+            )}
+            title={isEmRetomada ? "Iniciar Abordagem com este cliente" : "Abrir Informações do Cliente"}
+          >
+            {isEmRetomada ? <Zap className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">
+              {isEmRetomada ? "INICIAR ABORDAGEM" : "INFORMAÇÕES"}
+            </span>
+          </Button>
+
+          {/* Botão AÇÃO ESPECIAL (cor âmbar da coluna Ação Especial) */}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setAtendimentoModalTicket(ticket)
+              setIsAcaoEspecialModalOpen(true)
+            }}
+            className="h-8 px-2.5 text-xs font-bold rounded-lg border border-amber-400 bg-amber-500 hover:bg-amber-600 text-white shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Solicitar Ação Especial para este cliente"
+          >
+            <AlertCircle className="w-3.5 h-3.5 text-white" />
+            <span className="hidden sm:inline">AÇÃO ESPECIAL</span>
+          </Button>
+
+          {/* Botão Mover Etapa */}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setMoverModalTicket(ticket)
+              setNovaEtapaSelecionada(ticket.status || "EM ABORDAGEM")
+              setMotivoMudancaEtapa("")
+            }}
+            className="h-8 px-2 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg text-xs font-semibold cursor-pointer"
+            title="Mover etapa do Kanban"
+          >
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Button>
+
+          {/* Botão Histórico */}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setHistoricoModalTicket(ticket)}
+            className="h-8 w-8 p-0 text-purple-600 hover:text-purple-900 hover:bg-purple-50 border border-purple-200/80 rounded-lg cursor-pointer"
+            title="Histórico do Atendimento"
+          >
+            <History className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Em ambiente de produção: exibe mensagem e tela informando que o módulo está em desenvolvimento para quem não for Administrador ou Desenvolvedor
+  if (hasCheckedEnv && !canAccessKanban) {
     return (
       <div className="flex flex-col h-screen min-h-screen bg-[#FDFDFD]">
         <Header hideQuickLinks />
@@ -3538,10 +3967,43 @@ export default function KanbanPage() {
       </Header>
       
       <main className="flex-1 pt-2 px-3 sm:px-4 pb-2 sm:pb-3 space-y-2.5 overflow-hidden flex flex-col bg-[#FDFDFD] min-h-0">
-        {/* Barra de Seletores e Gavetas na área de trabalho acima das colunas (alinhada à direita e com largura da gaveta) */}
-        <div className="flex items-center justify-end gap-2.5 shrink-0 overflow-x-auto pb-0.5 no-scrollbar">
-          {/* Card / Visão: Minha Fila */}
-          <div
+        {/* Barra de Seletores, Modo de Exibição (Quadro x Lista) e Gavetas */}
+        <div className="flex items-center justify-between gap-2.5 shrink-0 overflow-x-auto pb-0.5 no-scrollbar">
+          {/* Seletor de Modo: Quadro vs Lista */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/90 shadow-2xs shrink-0 select-none">
+            <button
+              type="button"
+              onClick={() => setDisplayMode("QUADRO")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                displayMode === "QUADRO"
+                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/80 font-black"
+                  : "text-slate-500 hover:text-slate-800"
+              )}
+              title="Visualização em Quadro (Colunas com cartões)"
+            >
+              <LayoutGrid className="w-3.5 h-3.5 text-slate-700" />
+              <span>Quadro</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDisplayMode("LISTA")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                displayMode === "LISTA"
+                  ? "bg-white text-sky-950 shadow-xs border border-sky-300 font-black"
+                  : "text-slate-500 hover:text-slate-800"
+              )}
+              title="Visualização em Lista (Linhas sequenciais de etapas)"
+            >
+              <List className="w-3.5 h-3.5 text-sky-700" />
+              <span>Lista</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* Card / Visão: Minha Fila */}
+            <div
             onClick={() => setActiveView("MINHA_FILA")}
             className={cn(
               "w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-xs hover:shadow-sm transition-all flex items-center gap-2.5 cursor-pointer group select-none",
@@ -3679,10 +4141,11 @@ export default function KanbanPage() {
               {whatsappDivergenteTickets.length}
             </span>
           </div>
+          </div>
         </div>
 
-        {/* Visão 1: Minha Fila (4 Colunas Simultâneas: Agora, Vencidas, Futuras e Ação Especial) */}
-        {activeView === "MINHA_FILA" && (
+        {/* Visão 1: Minha Fila (4 Colunas Simultâneas: Agora, Vencidas, Futuras e Ação Especial) em Modo Quadro */}
+        {activeView === "MINHA_FILA" && displayMode === "QUADRO" && (
           <div className="flex-1 flex flex-col md:flex-row gap-3.5 sm:gap-4 h-full min-h-0 overflow-x-auto overflow-y-hidden">
                 {/* Coluna 1: AGORA */}
                 <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-200/80 shadow-2xs overflow-hidden bg-emerald-50/70">
@@ -3846,8 +4309,8 @@ export default function KanbanPage() {
               </div>
         )}
 
-        {/* Visão 2: Quadro das 7 Colunas do Kanban */}
-        {activeView === "KANBAN" && (
+        {/* Visão 2: Quadro das 7 Colunas do Kanban em Modo Quadro */}
+        {activeView === "KANBAN" && displayMode === "QUADRO" && (
           <div className="flex-1 overflow-x-auto pb-1 min-h-0 h-full">
             <div className="flex items-stretch gap-3.5 sm:gap-4 w-full min-w-max h-full">
                 {KANBAN_COLUMNS.map(col => {
@@ -3931,6 +4394,156 @@ export default function KanbanPage() {
             })}
           </div>
         </div>
+        )}
+
+        {/* Visão Alternativa: Modo Lista (Linhas sequenciais de etapas) */}
+        {displayMode === "LISTA" && (
+          <div className="flex-1 flex flex-col min-h-0 space-y-2.5 overflow-hidden">
+            {/* Barra de Filtros e Ordenação da Lista */}
+            <div className="bg-white border border-slate-200/90 rounded-xl p-2.5 sm:p-3 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 shrink-0">
+              <div className="flex items-center gap-2 flex-1 max-w-md">
+                <div className="relative w-full">
+                  <Input
+                    placeholder="Filtrar por nome, CPF ou telefone..."
+                    value={listSearch}
+                    onChange={(e) => setListSearch(e.target.value)}
+                    className="h-8.5 pr-8 pl-3 text-xs bg-slate-50 border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-500"
+                  />
+                  {listSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setListSearch("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Filtro por Etapa */}
+                <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <Filter className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="font-bold text-slate-700 hidden sm:inline">Etapa:</span>
+                  <select
+                    value={listFilterStage}
+                    onChange={(e) => setListFilterStage(e.target.value)}
+                    className="h-8.5 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                  >
+                    <option value="ALL">Todas as etapas ({totalListLeads})</option>
+                    {listSections.map(sec => (
+                      <option key={sec.id} value={sec.id}>
+                        {sec.title} ({sec.tickets.length})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Ordenação */}
+                <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="font-bold text-slate-700 hidden sm:inline">Ordenar:</span>
+                  <select
+                    value={listSortBy}
+                    onChange={(e) => setListSortBy(e.target.value as "vencimento" | "valor" | "nome")}
+                    className="h-8.5 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+                  >
+                    <option value="vencimento">⏱️ Vencimento (Urgência)</option>
+                    <option value="valor">💰 Maior Valor de Operação</option>
+                    <option value="nome">🔤 Nome do Cliente (A-Z)</option>
+                  </select>
+                </div>
+
+                {/* Totais Gerais */}
+                <div className="flex items-center gap-2 pl-2 sm:border-l border-slate-200 text-xs">
+                  <span className="font-medium text-slate-600">
+                    <strong className="text-slate-900 font-bold">{totalListLeads}</strong> leads
+                  </span>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-medium text-slate-600">
+                    Total: <strong className="text-slate-950 font-black">{totalListValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Lista Sequencial de Seções de Etapas */}
+            <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-1">
+              {filteredListSections.map(sec => {
+                const isCollapsed = Boolean(collapsedSections[sec.id])
+                const count = sec.displayTickets.length
+                const valor = sec.displayValor
+                const IconComponent = sec.icon || Kanban
+
+                return (
+                  <div
+                    key={sec.id}
+                    className="bg-white border border-slate-200/90 rounded-xl overflow-hidden shadow-2xs"
+                  >
+                    {/* Cabeçalho da Etapa / Seção (Linha expansível) */}
+                    <div
+                      onClick={() => toggleSectionCollapse(sec.id)}
+                      className={cn(
+                        "p-3 sm:px-4 flex items-center justify-between gap-3 cursor-pointer select-none transition-colors border-b",
+                        sec.headerBg,
+                        sec.borderLeft,
+                        isCollapsed ? "border-b-transparent" : "border-b-slate-200/80"
+                      )}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={cn("p-1.5 rounded-lg bg-white/90 border border-slate-200 shadow-2xs shrink-0", sec.iconColor)}>
+                          <IconComponent className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-extrabold text-sm text-slate-900 tracking-tight truncate">
+                              {sec.title}
+                            </h3>
+                            <span className={cn("text-[10.5px] font-black px-2 py-0.5 rounded-full border shadow-2xs", sec.badgeClass)}>
+                              {count} {count === 1 ? "lead" : "leads"}
+                            </span>
+                          </div>
+                          {sec.subtitle && (
+                            <p className="text-[11px] text-slate-600 font-medium truncate mt-0.5">
+                              {sec.subtitle}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="text-right hidden sm:block">
+                          <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
+                            Total da Etapa
+                          </p>
+                          <p className="text-xs font-black text-slate-900">
+                            {valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </p>
+                        </div>
+                        <div className="p-1 rounded-lg text-slate-400 hover:text-slate-700 transition-transform">
+                          <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isCollapsed && "-rotate-90")} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Itens Sequenciais da Etapa */}
+                    {!isCollapsed && (
+                      <div className="p-2 sm:p-3 space-y-2 bg-slate-50/40">
+                        {count === 0 ? (
+                          <div className="py-8 text-center text-xs text-slate-400 font-medium">
+                            Nenhum lead nesta etapa
+                          </div>
+                        ) : (
+                          sec.displayTickets.map(ticket => renderTicketListItem(ticket))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         )}
   </main>
 
