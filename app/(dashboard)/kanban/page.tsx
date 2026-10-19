@@ -217,6 +217,15 @@ interface TicketMetadata {
     data: string
     autor?: string
   }>
+  // Motor de Cadência e Automações (A0, RT1-RT6, RE1-RE3)
+  cadencia_tipo?: TipoCadencia
+  regua_etapa?: EtapaRegua
+  regua_indice?: number
+  regua_dias_ciclo?: string
+  regua_ultima_execucao?: string
+  regua_proximo_vencimento?: string
+  regua_pausada?: boolean
+  cliente_respondeu?: boolean
 }
 
 interface TicketItem {
@@ -408,6 +417,271 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
   }
 
   return { valor: "R$ 0,00", label: "Valor Operação", color: "text-slate-400" }
+}
+
+// ==========================================
+// MOTOR DE CADÊNCIA COMERCIAL (A0, RT1-RT6, RE1-RE3)
+// ==========================================
+export type TipoCadencia = "PADRAO" | "AMPLIADA"
+export type EtapaRegua = "A0" | "RT1" | "RT2" | "RT3" | "RT4" | "RT5" | "RT6" | "RE1" | "RE2" | "RE3" | "ESPERA_FINAL" | "ENCERRADO"
+
+// Adiciona dias úteis excluindo sábado e domingo
+function addBusinessDays(startDate: Date, days: number): Date {
+  const result = new Date(startDate)
+  let added = 0
+  while (added < days) {
+    result.setDate(result.getDate() + 1)
+    const dayOfWeek = result.getDay()
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      added++
+    }
+  }
+  return result
+}
+
+// Determina se a cadência é PADRÃO (3 RTs) ou AMPLIADA (6 RTs)
+function getCadenceType(ticket: TicketItem, meta?: TicketMetadata): TipoCadencia {
+  if (meta?.cadencia_tipo) return meta.cadencia_tipo
+  const opData = getValorOperacaoDeAbertura(ticket)
+  const opValorNum = parseValorToNumber(opData.valor)
+  const valorTotal = opValorNum > 0 ? opValorNum : Number(ticket.valor_operacao || ticket.margem || 0)
+  const conv = (ticket.convenio || meta?.convenio || opData.tipo || "").toLowerCase()
+
+  const isCartao = conv.includes("cartao") || conv.includes("cartão") || conv.includes("rmc") || conv.includes("rcc")
+  if (isCartao && valorTotal > 20000) return "AMPLIADA"
+
+  const isFacultativa = conv.includes("facultativ")
+  if (isFacultativa && valorTotal > 50000) return "AMPLIADA"
+
+  if (valorTotal > 50000) return "AMPLIADA"
+  return "PADRAO"
+}
+
+// Obtém o estado atual da régua do lead
+function getLeadCadenceState(ticket: TicketItem, meta: TicketMetadata): {
+  tipo: TipoCadencia
+  etapaRegua: EtapaRegua
+  proximaEtapa: EtapaRegua | null
+  diasCiclo: string
+  proximoVencimento: Date | null
+  isUltima: boolean
+  isEsperaFinal: boolean
+  isPausado: boolean
+} {
+  const tipo = getCadenceType(ticket, meta)
+  const isPausado = Boolean(meta.regua_pausada || meta.cliente_respondeu)
+
+  let etapa = meta.regua_etapa
+  if (!etapa) {
+    if (ticket.status === "EM REATIVAÇÃO") {
+      etapa = "RE1"
+    } else {
+      etapa = "RT1"
+    }
+  }
+
+  let proximaEtapa: EtapaRegua | null = null
+  let diasCiclo = "D1"
+  let isUltima = false
+  const isEsperaFinal = etapa === "ESPERA_FINAL"
+
+  if (ticket.status === "EM REATIVAÇÃO" || etapa.startsWith("RE")) {
+    if (etapa === "RE1") {
+      proximaEtapa = "RE2"
+      diasCiclo = "D1"
+    } else if (etapa === "RE2") {
+      proximaEtapa = "RE3"
+      diasCiclo = "D3"
+    } else if (etapa === "RE3") {
+      proximaEtapa = "ESPERA_FINAL"
+      diasCiclo = "D5 (Avaliação D8)"
+      isUltima = true
+    } else {
+      proximaEtapa = null
+      diasCiclo = "D8"
+    }
+  } else {
+    // Retomada
+    if (tipo === "PADRAO") {
+      if (etapa === "RT1") {
+        proximaEtapa = "RT2"
+        diasCiclo = "D1"
+      } else if (etapa === "RT2") {
+        proximaEtapa = "RT3"
+        diasCiclo = "D2"
+      } else if (etapa === "RT3") {
+        proximaEtapa = "ESPERA_FINAL"
+        diasCiclo = "D3"
+        isUltima = true
+      } else {
+        proximaEtapa = null
+        diasCiclo = "Pós RT3 (1,5 dia útil)"
+      }
+    } else {
+      // AMPLIADA (6 RTs)
+      if (etapa === "RT1") {
+        proximaEtapa = "RT2"
+        diasCiclo = "D1"
+      } else if (etapa === "RT2") {
+        proximaEtapa = "RT3"
+        diasCiclo = "D2 (manhã)"
+      } else if (etapa === "RT3") {
+        proximaEtapa = "RT4"
+        diasCiclo = "D2 (tarde ≥3h)"
+      } else if (etapa === "RT4") {
+        proximaEtapa = "RT5"
+        diasCiclo = "D3"
+      } else if (etapa === "RT5") {
+        proximaEtapa = "RT6"
+        diasCiclo = "D6"
+      } else if (etapa === "RT6") {
+        proximaEtapa = "ESPERA_FINAL"
+        diasCiclo = "D10"
+        isUltima = true
+      } else {
+        proximaEtapa = null
+        diasCiclo = "Pós RT6 (1,5 dia útil)"
+      }
+    }
+  }
+
+  let proximoVencimento: Date | null = null
+  const dateStr = meta.regua_proximo_vencimento || meta.vencimento_acao || meta.agendamento_data
+  if (dateStr) {
+    const p = new Date(dateStr)
+    if (!isNaN(p.getTime())) proximoVencimento = p
+  }
+
+  return {
+    tipo,
+    etapaRegua: etapa,
+    proximaEtapa,
+    diasCiclo,
+    proximoVencimento,
+    isUltima,
+    isEsperaFinal,
+    isPausado
+  }
+}
+
+// Calcula o próximo vencimento e ação conforme agenda da especificação
+function calculateNextCadenceDue(
+  currentStage: EtapaRegua,
+  tipo: TipoCadencia,
+  baseDate: Date = new Date()
+): { nextStage: EtapaRegua; dueDate: Date; actionText: string } {
+  const now = new Date(baseDate)
+
+  if (currentStage === "RT1") {
+    const d2 = addBusinessDays(now, 1)
+    d2.setHours(10, 0, 0, 0)
+    return {
+      nextStage: "RT2",
+      dueDate: d2,
+      actionText: "Enviar Régua de Retomada 2 (RT2) via WhatsApp"
+    }
+  } else if (currentStage === "RT2") {
+    if (tipo === "AMPLIADA") {
+      const d2tarde = new Date(now)
+      d2tarde.setHours(d2tarde.getHours() + 3)
+      if (d2tarde.getHours() >= 18) {
+        const nextDay = addBusinessDays(now, 1)
+        nextDay.setHours(10, 0, 0, 0)
+        return {
+          nextStage: "RT3",
+          dueDate: nextDay,
+          actionText: "Enviar Régua de Retomada 3 (RT3) via WhatsApp"
+        }
+      }
+      return {
+        nextStage: "RT3",
+        dueDate: d2tarde,
+        actionText: "Enviar Régua de Retomada 3 (RT3) via WhatsApp (tarde D2)"
+      }
+    } else {
+      const d3 = addBusinessDays(now, 1)
+      d3.setHours(11, 0, 0, 0)
+      return {
+        nextStage: "RT3",
+        dueDate: d3,
+        actionText: "Enviar Régua de Retomada 3 (RT3) via WhatsApp"
+      }
+    }
+  } else if (currentStage === "RT3") {
+    if (tipo === "AMPLIADA") {
+      const d3 = addBusinessDays(now, 1)
+      d3.setHours(11, 0, 0, 0)
+      return {
+        nextStage: "RT4",
+        dueDate: d3,
+        actionText: "Enviar Régua de Retomada 4 (RT4) via WhatsApp"
+      }
+    } else {
+      const waitDate = addBusinessDays(now, 2)
+      waitDate.setHours(14, 0, 0, 0)
+      return {
+        nextStage: "ESPERA_FINAL",
+        dueDate: waitDate,
+        actionText: "Aguardar retorno pós-RT3 (1,5 dia útil antes de encerrar)"
+      }
+    }
+  } else if (currentStage === "RT4") {
+    const d6 = addBusinessDays(now, 3)
+    d6.setHours(14, 0, 0, 0)
+    return {
+      nextStage: "RT5",
+      dueDate: d6,
+      actionText: "Enviar Régua de Retomada 5 (RT5) via WhatsApp"
+    }
+  } else if (currentStage === "RT5") {
+    const d10 = addBusinessDays(now, 4)
+    d10.setHours(14, 0, 0, 0)
+    return {
+      nextStage: "RT6",
+      dueDate: d10,
+      actionText: "Enviar Régua de Retomada 6 (RT6) via WhatsApp"
+    }
+  } else if (currentStage === "RT6") {
+    const waitDate = addBusinessDays(now, 2)
+    waitDate.setHours(14, 0, 0, 0)
+    return {
+      nextStage: "ESPERA_FINAL",
+      dueDate: waitDate,
+      actionText: "Aguardar retorno pós-RT6 (1,5 dia útil antes de encerrar)"
+    }
+  } else if (currentStage === "RE1") {
+    const d3 = addBusinessDays(now, 2)
+    d3.setHours(11, 0, 0, 0)
+    return {
+      nextStage: "RE2",
+      dueDate: d3,
+      actionText: "Enviar Segunda Recuperação (RE2) via WhatsApp"
+    }
+  } else if (currentStage === "RE2") {
+    const d5 = addBusinessDays(now, 2)
+    d5.setHours(14, 0, 0, 0)
+    return {
+      nextStage: "RE3",
+      dueDate: d5,
+      actionText: "Enviar Terceira Recuperação (RE3) via WhatsApp"
+    }
+  } else if (currentStage === "RE3") {
+    const d8 = addBusinessDays(now, 3)
+    d8.setHours(17, 0, 0, 0)
+    return {
+      nextStage: "ESPERA_FINAL",
+      dueDate: d8,
+      actionText: "Avaliação final de Reativação D8 (Supervisão / Encerramento)"
+    }
+  } else {
+    const defaultNext = addBusinessDays(now, 1)
+    defaultNext.setHours(14, 0, 0, 0)
+    return {
+      nextStage: "RT1",
+      dueDate: defaultNext,
+      actionText: "Executar próxima ação de contato"
+    }
+  }
 }
 
 // Mapeia o chamado para a etapa do Kanban
@@ -993,6 +1267,14 @@ export default function KanbanPage() {
     }
   }, [destinatariosAcaoEspecial, acaoEspecialDestinatario])
   const [isSubmittingAcaoEspecial, setIsSubmittingAcaoEspecial] = useState(false)
+  const [isAvancandoCadencia, setIsAvancandoCadencia] = useState(false)
+
+  // Estado computado da Cadência no Modal de Atendimento
+  const modalCadencia = useMemo(() => {
+    if (!atendimentoModalTicket) return null
+    const meta = parseMetadata(atendimentoModalTicket.descricao)
+    return getLeadCadenceState(atendimentoModalTicket, meta)
+  }, [atendimentoModalTicket])
 
   // Histórico de Atendimentos e Propostas do Cliente (Modal Atendimento)
   const [clientTicketsHistory, setClientTicketsHistory] = useState<Record<string, unknown>[]>([])
@@ -2242,6 +2524,213 @@ export default function KanbanPage() {
     }
   }
 
+  // ==========================================
+  // HANDLERS DO MOTOR DE CADÊNCIA (A0, RT1-RT6, RE1-RE3)
+  // ==========================================
+  const handleAvancarCadencia = async () => {
+    if (!atendimentoModalTicket || !user) return
+    setIsAvancandoCadencia(true)
+    const now = new Date()
+    const nowIso = now.toISOString()
+    const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+    const cadencia = getLeadCadenceState(atendimentoModalTicket, currentMeta)
+    
+    const nextAction = calculateNextCadenceDue(cadencia.etapaRegua, cadencia.tipo, now)
+    const nextDueFormatted = format(nextAction.dueDate, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+    const obsTexto = `📲 [MOTOR DE CADÊNCIA]: ${cadencia.etapaRegua} confirmada via WhatsApp. Próxima ação: ${nextAction.actionText} agendada para ${nextDueFormatted}.`
+
+    try {
+      const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
+      if (Array.isArray(currentMeta.observacoes_historico)) {
+        historicoExistente.push(...currentMeta.observacoes_historico)
+      }
+      const novaObsItem = {
+        texto: obsTexto,
+        data: nowIso,
+        autor: perfil?.nome || user?.email || "Colaborador"
+      }
+      const updatedHistorico = [...historicoExistente, novaObsItem]
+      const observacoesAcumuladas = updatedHistorico.slice().reverse().map(i => i.texto.trim()).filter(Boolean).join("\n\n")
+
+      const updatedMeta: TicketMetadata = {
+        ...currentMeta,
+        cadencia_tipo: cadencia.tipo,
+        regua_etapa: nextAction.nextStage,
+        regua_proximo_vencimento: nextAction.dueDate.toISOString(),
+        vencimento_acao: nextAction.dueDate.toISOString(),
+        proxima_acao: nextAction.actionText,
+        regua_ultima_execucao: nowIso,
+        regua_pausada: false,
+        cliente_respondeu: false,
+        observacoes_historico: updatedHistorico,
+        observacao_data: nowIso
+      }
+
+      if (atendimentoModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(atendimentoModalTicket.id)) {
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
+
+        const { error } = await supabase
+          .from("kanban_fichas")
+          .update({
+            observacoes: observacoesAcumuladas,
+            metadata: metaParaSalvar,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+        if (error) throw error
+      } else {
+        const newDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+        const { error } = await supabase
+          .from("chamados")
+          .update({
+            descricao: newDesc,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+        if (error) throw error
+      }
+
+      const novaDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+      setAtendimentoModalTicket(prev => prev ? { ...prev, descricao: novaDesc } : null)
+      setTickets(prev => prev.map(t => t.id === atendimentoModalTicket.id ? { ...t, descricao: novaDesc } : t))
+
+      toast.success(`Régua ${cadencia.etapaRegua} executada! Agendada próxima: ${nextAction.nextStage} (${nextDueFormatted})`)
+    } catch (err: any) {
+      console.error("Erro ao avançar cadência:", err)
+      toast.error("Erro ao avançar régua de cadência.")
+    } finally {
+      setIsAvancandoCadencia(false)
+    }
+  }
+
+  const handleClienteRespondeu = async () => {
+    if (!atendimentoModalTicket || !user) return
+    setIsAvancandoCadencia(true)
+    const nowIso = new Date().toISOString()
+    const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+    const obsTexto = "💬 [MOTOR DE CADÊNCIA]: Cliente respondeu ao contato. Cadência suspensa para classificação e negociação."
+
+    try {
+      const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
+      if (Array.isArray(currentMeta.observacoes_historico)) {
+        historicoExistente.push(...currentMeta.observacoes_historico)
+      }
+      const updatedHistorico = [...historicoExistente, { texto: obsTexto, data: nowIso, autor: perfil?.nome || "Colaborador" }]
+      const observacoesAcumuladas = updatedHistorico.slice().reverse().map(i => i.texto.trim()).filter(Boolean).join("\n\n")
+
+      const updatedMeta: TicketMetadata = {
+        ...currentMeta,
+        cliente_respondeu: true,
+        regua_pausada: true,
+        kanban_stage: "EM NEGOCIAÇÃO",
+        proxima_acao: "Negociar proposta e esclarecer dúvidas com o cliente",
+        observacoes_historico: updatedHistorico,
+        observacao_data: nowIso
+      }
+
+      if (atendimentoModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(atendimentoModalTicket.id)) {
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
+
+        await supabase
+          .from("kanban_fichas")
+          .update({
+            etapa: "EM NEGOCIAÇÃO",
+            observacoes: observacoesAcumuladas,
+            metadata: metaParaSalvar,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+      } else {
+        const newDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+        await supabase
+          .from("chamados")
+          .update({
+            status: "EM NEGOCIAÇÃO",
+            descricao: newDesc,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+      }
+
+      const novaDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+      setAtendimentoModalTicket(prev => prev ? { ...prev, status: "EM NEGOCIAÇÃO", descricao: novaDesc } : null)
+      setTickets(prev => prev.map(t => t.id === atendimentoModalTicket.id ? { ...t, status: "EM NEGOCIAÇÃO", descricao: novaDesc } : t))
+      toast.success("Cliente respondeu! Cadência suspensa e lead movido para Em Negociação.")
+    } catch (err) {
+      console.error("Erro ao registrar resposta do cliente:", err)
+      toast.error("Erro ao registrar resposta.")
+    } finally {
+      setIsAvancandoCadencia(false)
+    }
+  }
+
+  const handleEncerrarPorEsgotamento = async () => {
+    if (!atendimentoModalTicket || !user) return
+    setIsAvancandoCadencia(true)
+    const nowIso = new Date().toISOString()
+    const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+    const obsTexto = "🏁 [MOTOR DE CADÊNCIA]: Cadência de retomada esgotada sem resposta após 1,5 dia útil. Movido para Perdido."
+
+    try {
+      const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
+      if (Array.isArray(currentMeta.observacoes_historico)) {
+        historicoExistente.push(...currentMeta.observacoes_historico)
+      }
+      const updatedHistorico = [...historicoExistente, { texto: obsTexto, data: nowIso, autor: perfil?.nome || "Colaborador" }]
+      const observacoesAcumuladas = updatedHistorico.slice().reverse().map(i => i.texto.trim()).filter(Boolean).join("\n\n")
+
+      const updatedMeta: TicketMetadata = {
+        ...currentMeta,
+        regua_etapa: "ENCERRADO",
+        kanban_stage: "PERDIDO",
+        proxima_acao: "Cadência de retomada esgotada",
+        observacoes_historico: updatedHistorico,
+        observacao_data: nowIso
+      }
+
+      if (atendimentoModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(atendimentoModalTicket.id)) {
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
+
+        await supabase
+          .from("kanban_fichas")
+          .update({
+            etapa: "PERDIDO",
+            motivo_perda: "Cadência de retomada esgotada",
+            observacoes: observacoesAcumuladas,
+            metadata: metaParaSalvar,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+      } else {
+        const newDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+        await supabase
+          .from("chamados")
+          .update({
+            status: "PERDIDO",
+            descricao: newDesc,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+      }
+
+      const novaDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+      setAtendimentoModalTicket(null)
+      setTickets(prev => prev.map(t => t.id === atendimentoModalTicket.id ? { ...t, status: "PERDIDO", descricao: novaDesc } : t))
+      toast.success("Lead arquivado como Perdido por esgotamento de cadência.")
+    } catch (err) {
+      console.error("Erro ao encerrar por esgotamento:", err)
+      toast.error("Erro ao encerrar por esgotamento.")
+    } finally {
+      setIsAvancandoCadencia(false)
+    }
+  }
+
   // Alternar opções rápidas (Sem interação / Sem interesse) com gravação direta em kanban_fichas
   const handleToggleOpcaoAtendimento = async (opcao: "Sem interação" | "Sem interesse") => {
     if (!atendimentoModalTicket) return
@@ -3122,7 +3611,7 @@ export default function KanbanPage() {
     leadsAtivos.forEach(ticket => {
       const meta = parseMetadata(ticket.descricao)
       const isAcaoEspecial = Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"
-      const dateStr = meta.vencimento_acao || meta.agendamento_data
+      const dateStr = meta.regua_proximo_vencimento || meta.vencimento_acao || meta.agendamento_data
 
       let vencimentoDate: Date | null = null
       if (dateStr) {
@@ -3256,6 +3745,35 @@ export default function KanbanPage() {
                 {ticket.status}
               </span>
             )}
+
+            {/* SINALIZAÇÃO DESTACADA DO MOTOR DE CADÊNCIA NO FRONTEND */}
+            {(ticket.status === "EM RETOMADA" || ticket.status === "EM REATIVAÇÃO") && (() => {
+              const cadState = getLeadCadenceState(ticket, meta)
+              return (
+                <span 
+                  title={`Motor de Cadência ${cadState.tipo}: ${cadState.diasCiclo} • Próx: ${cadState.proximoVencimento ? format(cadState.proximoVencimento, "dd/MM 'às' HH:mm") : "Pendente"}`}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-black text-[10px] tracking-tight whitespace-nowrap shadow-xs border-2 ring-2 transition-all",
+                    cadState.isPausado
+                      ? "bg-blue-100 text-blue-950 border-blue-500 ring-blue-300/50"
+                      : cadState.isEsperaFinal
+                      ? "bg-amber-100 text-amber-950 border-amber-500 ring-amber-300/60 animate-pulse"
+                      : ticket.status === "EM REATIVAÇÃO"
+                      ? "bg-purple-100 text-purple-950 border-purple-500 ring-purple-300/50"
+                      : "bg-emerald-100 text-emerald-950 border-emerald-500 ring-emerald-300/50"
+                  )}
+                >
+                  <Zap className="w-3 h-3 text-emerald-700 fill-emerald-500 shrink-0" />
+                  <span>
+                    {cadState.isPausado 
+                      ? "PAUSADO" 
+                      : cadState.isEsperaFinal
+                      ? "ESPERA 1,5d"
+                      : `${cadState.etapaRegua} (${cadState.tipo === "AMPLIADA" ? "6 RTs" : "3 RTs"})`}
+                  </span>
+                </span>
+              )
+            })()}
           </div>
 
           {/* Cronômetro / Tempo na Etapa */}
@@ -4734,6 +5252,81 @@ export default function KanbanPage() {
                             </div>
                           )
                         })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* PAINEL DO MOTOR DE CADÊNCIA & RÉGUAS - SINALIZAÇÃO DESTACADA NO FRONTEND */}
+                  {modalCadencia && (atendimentoModalTicket.status === "EM RETOMADA" || atendimentoModalTicket.status === "EM REATIVAÇÃO") && (
+                    <div className="rounded-xl border-2 border-emerald-500 bg-gradient-to-r from-emerald-50 via-teal-50/80 to-amber-50/90 p-3.5 shadow-md ring-2 ring-emerald-400/40 space-y-2.5 animate-in fade-in">
+                      <div className="flex items-center justify-between flex-wrap gap-2 border-b border-emerald-200/80 pb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-emerald-600 text-white shadow-xs flex items-center gap-1 ring-1 ring-emerald-700/30">
+                            <Zap className="w-3 h-3 fill-white" />
+                            MOTOR DE CADÊNCIA ATIVO
+                          </span>
+                          <span className="text-xs font-extrabold text-slate-800">
+                            Trilha {modalCadencia.tipo} ({modalCadencia.tipo === "AMPLIADA" ? "6 RTs" : "3 RTs"})
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-semibold text-slate-700 flex items-center gap-2">
+                          <span>Marco: <strong className="text-slate-900 font-extrabold">{modalCadencia.diasCiclo}</strong></span>
+                          <span>•</span>
+                          <span>Régua: <strong className="text-emerald-800 font-extrabold px-1.5 py-0.5 rounded bg-emerald-100 border border-emerald-300">{modalCadencia.etapaRegua}</strong></span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-slate-700">
+                        <span>
+                          Próximo Vencimento: <strong className="text-slate-900 font-bold">{modalCadencia.proximoVencimento ? format(modalCadencia.proximoVencimento, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) : "Pendente de agendamento"}</strong>
+                        </span>
+                        {modalCadencia.isPausado && (
+                          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                            Pausado (Cliente Respondeu)
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Botões do Motor de Cadência */}
+                      <div className="flex items-center gap-2 flex-wrap pt-1">
+                        {modalCadencia.proximaEtapa ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleAvancarCadencia}
+                            disabled={isAvancandoCadencia}
+                            className="h-8 text-xs font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm gap-1.5 border border-emerald-700/30 cursor-pointer"
+                            title="Confirma envio da régua atual e agenda a próxima etapa calculada por dias úteis"
+                          >
+                            {isAvancandoCadencia ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                            Confirmar Envio {modalCadencia.etapaRegua} ➔ Agendar {modalCadencia.proximaEtapa}
+                          </Button>
+                        ) : modalCadencia.isEsperaFinal ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleEncerrarPorEsgotamento}
+                            disabled={isAvancandoCadencia}
+                            className="h-8 text-xs font-extrabold bg-amber-600 hover:bg-amber-700 text-white shadow-sm gap-1.5 border border-amber-700/30 cursor-pointer"
+                            title="Esgotar cadência e mover para Perdido com histórico após 1,5 dia útil"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            Esgotar Cadência e Mover para Perdido (1,5 dia útil)
+                          </Button>
+                        ) : null}
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleClienteRespondeu}
+                          disabled={isAvancandoCadencia}
+                          className="h-8 text-xs font-bold text-sky-800 bg-sky-50 border-sky-300 hover:bg-sky-100 gap-1.5 shadow-2xs cursor-pointer"
+                          title="Pausa a cadência e avança o lead para Negociação"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5 text-sky-600" />
+                          Cliente Respondeu (Mover para Negociação)
+                        </Button>
                       </div>
                     </div>
                   )}
