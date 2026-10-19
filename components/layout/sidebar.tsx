@@ -63,7 +63,7 @@ const allMenuItems = [
         name: "KANBAN", 
         href: "/kanban", 
         icon: Kanban, 
-        roles: ["Administrador", "Desenvolvedor", "Recursos Humanos", "RH"] 
+        roles: ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Corretor", "Monitoramento", "Estágio", "Estagio", "Processo Seletivo", "PROCESSO SELETIVO", "Recursos Humanos", "RH"] 
       },
       { 
         name: "DASHBOARD", 
@@ -365,6 +365,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         // PERFIL PROFISSIONAL visível para todos os colaboradores do sistema
         if (item.href === "/perfil-profissional") {
+          return true
+        }
+
+        // KANBAN: visível para todos os usuários
+        if (item.href === "/kanban") {
           return true
         }
 

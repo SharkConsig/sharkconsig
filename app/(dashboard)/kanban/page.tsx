@@ -19,6 +19,7 @@ import {
   Clock, 
   AlertCircle, 
   Zap,
+  Kanban,
   ShieldAlert, 
   User, 
   DollarSign, 
@@ -516,8 +517,44 @@ const formatCurrency = (val: number | string | null | undefined): string => {
   return Number(val).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 }
 
+// Detecção de ambiente: Desenvolvimento (Google AI Studio / localhost) x Produção
+function checkIsDevEnvironment(): boolean {
+  if (typeof window === "undefined") {
+    return process.env.NODE_ENV === "development"
+  }
+
+  try {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("ambiente") === "producao" || params.get("env") === "prod") return false
+    if (params.get("ambiente") === "dev" || params.get("env") === "dev") return true
+  } catch {}
+
+  const host = window.location.hostname || ""
+  const isAiStudio = host.includes("ais-dev-") || host.includes("ais-pre-") || host.includes("aistudio")
+  const isLocalhost = host === "localhost" || host === "127.0.0.1" || host.endsWith(".localhost")
+
+  if (isAiStudio || isLocalhost) {
+    return true
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    return true
+  }
+
+  return false
+}
+
 export default function KanbanPage() {
   const { user, perfil, isAdmin } = useAuth()
+
+  // Verificação de ambiente (Desenvolvimento no AI Studio vs Produção)
+  const [isDevEnv, setIsDevEnv] = useState<boolean>(true)
+  const [hasCheckedEnv, setHasCheckedEnv] = useState<boolean>(false)
+
+  useEffect(() => {
+    setIsDevEnv(checkIsDevEnvironment())
+    setHasCheckedEnv(true)
+  }, [])
 
   // Determinar se o usuário atual é gestor ou operador de execução
   const userRole = (perfil?.role || "").trim()
@@ -1288,8 +1325,13 @@ export default function KanbanPage() {
   }, [isGestor, user, userRole])
 
   useEffect(() => {
+    if (!hasCheckedEnv) return
+    if (!isDevEnv) {
+      setIsLoading(false)
+      return
+    }
     fetchChamados()
-  }, [fetchChamados])
+  }, [fetchChamados, hasCheckedEnv, isDevEnv])
 
   // Filtragem dos chamados
   const naoExisteWhatsappTickets = useMemo(() => {
@@ -3426,6 +3468,45 @@ export default function KanbanPage() {
             <History className="w-3.5 h-3.5 transition-colors" />
           </Button>
         </div>
+      </div>
+    )
+  }
+
+  // Em ambiente de produção: exibe mensagem e tela informando que o módulo está em desenvolvimento
+  if (hasCheckedEnv && !isDevEnv) {
+    return (
+      <div className="flex flex-col h-screen min-h-screen bg-[#FDFDFD]">
+        <Header hideQuickLinks />
+        <main className="flex-1 flex items-center justify-center p-4 sm:p-6 bg-[#FDFDFD]">
+          <div className="max-w-lg w-full bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 shadow-sm text-center space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200/80 text-amber-600 flex items-center justify-center mx-auto shadow-inner">
+              <Kanban className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-2.5">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-100/70 text-amber-800 border border-amber-200">
+                <Clock className="w-3.5 h-3.5" />
+                Em Desenvolvimento
+              </div>
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                Módulo KANBAN em Desenvolvimento
+              </h1>
+              <p className="text-sm text-slate-600 leading-relaxed max-w-md mx-auto">
+                Este módulo está atualmente disponível exclusivamente no ambiente de desenvolvimento para homologação, testes e ajustes de acessos. Em breve estará liberado para operação em produção com total estabilidade.
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
+              <Button
+                variant="default"
+                onClick={() => router.push("/")}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              >
+                Voltar ao Início
+              </Button>
+            </div>
+          </div>
+        </main>
       </div>
     )
   }
