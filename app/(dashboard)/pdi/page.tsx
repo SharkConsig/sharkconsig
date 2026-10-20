@@ -207,159 +207,53 @@ const DEFAULT_WEEKLY_LOG: WeeklyLog = {
   proximoPasso: ""
 }
 
-function createDefaultPDIData(colab?: Partial<CollaboratorBasic>): PDIData {
+function createBlankPDIData(colab?: Partial<CollaboratorBasic>): PDIData {
   return {
     etapaProfissional: "Desenvolvimento",
-    liderancaDireta: "Gestão Comercial & Operacional",
-    area: colab?.role?.toLowerCase().includes("vendas") || colab?.role?.toLowerCase().includes("comercial") ? "Comercial / Vendas" : "Operações Consignado",
-    cargo: colab?.role || "Consultor de Crédito",
-    objetivosProfissionais: "Aprimorar assertividade no fechamento de propostas de portabilidade e alcançar consistência de superação de metas mensais.",
-    interessesCrescimento: "Assumir liderança de equipe júnior de televendas e especializar-se em negociações de alto valor.",
+    liderancaDireta: "",
+    area: colab?.area || "",
+    cargo: colab?.role || "",
+    objetivosProfissionais: "",
+    interessesCrescimento: "",
     
-    habilidadesTecnicas: [
-      { nome: "Cálculo de Coeficientes & Simulação", nivel: "Avançado" },
-      { nome: "CRM SharkConsig & Discador", nivel: "Avançado" },
-      { nome: "Esteiras Bancárias & Regras INSS", nivel: "Intermediário" },
-      { nome: "Contorno de Objeções Telefônicas", nivel: "Intermediário" }
-    ],
-    habilidadesComportamentais: [
-      "Comunicação persuasiva e clara",
-      "Resiliência sob pressão",
-      "Proatividade em follow-ups",
-      "Disciplina com processos diários"
-    ],
-    pontosFortes: [
-      "Excelente rapport inicial com aposentados e pensionistas",
-      "Alto volume de ligações diárias com energia contagiante",
-      "Cumprimento rigoroso das tabulações no sistema"
-    ],
-    competenciasNovas: [
-      "Mentoria de novos consultores em fase de onboarding",
-      "Negociação consultiva com clientes de grande margem"
-    ],
+    habilidadesTecnicas: [],
+    habilidadesComportamentais: [],
+    pontosFortes: [],
+    competenciasNovas: [],
 
-    feedbacks: [
-      {
-        id: "fb-1",
-        data: "08/10/2026",
-        responsavel: "Coordenação de RH & Liderança",
-        contexto: "Alinhamento quinzenal de desempenho e contorno de objeções em propostas de portabilidade com troco.",
-        percepcaoFuncionario: "Reconheceu que sentia insegurança quando o cliente mencionava 'vou pensar' ou preferia falar com o banco de origem.",
-        pontosPositivos: "Bateu meta de contatos tabulados e manteve postura ética exemplar em todas as gravações ouvidas.",
-        pontosMelhoria: "Reforçar a técnica de fechamento imediato e evitar postergar a simulação com o cliente em linha.",
-        combinados: "Realizar 2 simulações diárias guiadas pelo líder e registrar os aprendizados no registro semanal do PDI.",
-        dataRetorno: "22/10/2026"
-      }
-    ],
-
-    comportamentos: [
-      {
-        id: "comp-1",
-        comportamento: "Hesitação no fechamento da proposta ao ouvir objeção de tempo",
-        situacao: "Ao ouvir 'preciso pensar com meu filho', encerra a chamada sem apresentar o comparativo de juros.",
-        impacto: "Queda na taxa de conversão direta de clientes quentes que acabam fechando com a concorrência.",
-        comportamentoEsperado: "Conduzir a conversa com empatia, oferecendo enviar o comparativo em PDF e mantendo o canal ativo com horário marcado.",
-        prioridade: "Alta",
-        status: "Em desenvolvimento"
-      },
-      {
-        id: "comp-2",
-        comportamento: "Gestão do tempo e organização do pipeline diário",
-        situacao: "Priorização desbalanceada entre novos leads e follow-ups de fichas em andamento.",
-        impacto: "Atraso no retorno a clientes que solicitaram contato no turno da tarde.",
-        comportamentoEsperado: "Blocos fixos de 1h30 para retorno de esteira e disparos automáticos.",
-        prioridade: "Média",
-        status: "Consolidado"
-      }
-    ],
-
-    acoes: [
-      {
-        id: "acao-1",
-        objetivo: "Dominar e aplicar contorno de objeções no primeiro contato",
-        acoesPraticas: "Treinar a objeção 'vou pensar' em duas simulações e aplicar a técnica nas negociações reais.",
-        responsavel: "Colaborador + Líder Direto",
-        prazo: "31/10/2026",
-        frequencia: "Semanal",
-        indicador: "Taxa de conversão de leads contactados > 18%",
-        resultadoEsperado: "Aumento de 25% nas propostas digitadas e redução do tempo médio de negociação.",
-        resultadoAlcancado: "Em evolução positiva nas primeiras duas semanas.",
-        status: "Em andamento"
-      },
-      {
-        id: "acao-2",
-        objetivo: "Certificação interna em regras e esteiras de refinanciamento",
-        acoesPraticas: "Concluir módulo no Shark Treinamentos e obter pontuação superior a 90% no quiz final.",
-        responsavel: "RH & Instrutor Técnico",
-        prazo: "15/11/2026",
-        frequencia: "Quinzenal",
-        indicador: "Nota final do teste de proficiência",
-        resultadoEsperado: "Zero erros de digitação por divergência de regras bancárias.",
-        resultadoAlcancado: "Módulo 1 e 2 concluídos com sucesso.",
-        status: "Em andamento"
-      }
-    ],
+    feedbacks: [],
+    comportamentos: [],
+    acoes: [],
 
     registroSemanal: {
-      semana1: {
-        acaoPrevista: "Treinar a objeção 'vou pensar' em duas simulações e aplicar a técnica nas negociações reais.",
-        evidenciaObservada: "Conduziu duas simulações com o supervisor, identificou os gatilhos da objeção e conseguiu reter 3 clientes que iriam desistir na quinta-feira.",
-        status: "Concluído",
-        proximoPasso: "Ajustar o tom de voz no momento de pedir a assinatura digital do contrato."
-      },
-      semana2: {
-        acaoPrevista: "Aplicar a técnica de quebra de objeções nos contatos ativos de disparos matinais.",
-        evidenciaObservada: "Registrou 14 contatos com a nova abordagem e gerou 4 propostas em digitação.",
-        status: "Em andamento",
-        proximoPasso: "Acompanhar a esteira de averbação junto ao time operacional."
-      },
-      semana3: {
-        acaoPrevista: "Simulação de portabilidade com redução de taxa e foco no comparativo impresso em PDF.",
-        evidenciaObservada: "",
-        status: "Não iniciado",
-        proximoPasso: "Agendar sessão de alinhamento com a coordenação na quarta-feira."
-      },
-      semana4: {
-        acaoPrevista: "Avaliação final do ciclo mensal e consolidação dos números de conversão do mês.",
-        evidenciaObservada: "",
-        status: "Não iniciado",
-        proximoPasso: "Consolidar relatório para a reunião mensal de 1:1."
-      }
+      semana1: { acaoPrevista: "", evidenciaObservada: "", status: "Não iniciado", proximoPasso: "" },
+      semana2: { acaoPrevista: "", evidenciaObservada: "", status: "Não iniciado", proximoPasso: "" },
+      semana3: { acaoPrevista: "", evidenciaObservada: "", status: "Não iniciado", proximoPasso: "" },
+      semana4: { acaoPrevista: "", evidenciaObservada: "", status: "Não iniciado", proximoPasso: "" }
     },
 
-    evidencias: [
-      {
-        id: "ev-1",
-        titulo: "Gravação de Atendimento - Objeção Superada com Sucesso",
-        atividadesConcluidas: "Aplicação da técnica de empatia e apresentação do valor presente da redução de parcelas.",
-        situacaoReal: "Cliente pensionista com receio de portabilidade de outro banco.",
-        resultadoAntesDepois: "Antes o cliente desligava; agora fechou proposta de R$ 18.500,00 com redução de juros.",
-        linkDocumento: "Gravação ID #98241 / Shark CRM",
-        evidenciaAplicacao: "Proposta digitada e averbada com sucesso no sistema.",
-        validacaoLideranca: "Validado",
-        dataValidacao: "11/10/2026"
-      }
-    ],
+    evidencias: [],
 
-    avaliacaoInicial: "Colaborador admitido com excelente potencial comunicativo, porém com pouca vivência específica nas regras restritivas do consignado público e INSS.",
-    revisoesPeriodicas: "Primeiro mês: rápida curva de aprendizado nas ferramentas. Segundo mês: destaque no volume de contatos diários. Momento atual: foco em qualidade e fechamento.",
-    evolucoesPercebidas: "Aumento expressivo na maturidade emocional, maior postura profissional nas abordagens e domínio dos cálculos da calculadora.",
-    pontosAtencao: "Atenção constante aos prazos de retorno das propostas pendentes de documentação.",
-    validacaoRotina: "Demonstra comportamento aderente aos combinados em mais de 90% das rotinas diárias observadas pela supervisão.",
-    proximosPassosEvolucao: "Completar o ciclo de 3 meses para avaliação de transição para o plano sênior ou líder multiplicador.",
+    avaliacaoInicial: "",
+    revisoesPeriodicas: "",
+    evolucoesPercebidas: "",
+    pontosAtencao: "",
+    validacaoRotina: "",
+    proximosPassosEvolucao: "",
 
-    competenciasProximoNivel: "Capacidade analítica de relatórios de esteira, mentoria de pares e gestão de carteiras estratégicas.",
-    preparacaoNovasResponsabilidades: "Acompanhar reuniões de alinhamento de metas da liderança e atuar como ponto focal em plantões de vendas.",
-    necessidadesTreinamento: "Curso avançado de Negociação & Comunicação Não-Violenta e Workshop de Esteiras Digitais Avançadas.",
-    criteriosEfetivacao: "Manutenção de no mínimo 100% da meta nos últimos 3 meses consecutivos, nota superior a 8,5 no PDI e zero faltas sem justificativa.",
-    decisoesAcordadas: "Reavaliação formal do enquadramento de nível na reunião de final de ano (Dezembro/2026).",
-    prontidao: "Pronto em 3-6 Meses"
+    competenciasProximoNivel: "",
+    preparacaoNovasResponsabilidades: "",
+    necessidadesTreinamento: "",
+    criteriosEfetivacao: "",
+    decisoesAcordadas: "",
+    prontidao: "Em Desenvolvimento Ativo"
   }
 }
 
 export default function PDIPage() {
   const [collaborators, setCollaborators] = useState<CollaboratorBasic[]>([])
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterEtapa, setFilterEtapa] = useState<string>("todos")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
@@ -407,6 +301,23 @@ export default function PDIPage() {
     resultadoAlcancado: "",
     status: "Em andamento"
   })
+
+  // Estados para inserção inline de habilidades e competências (evita window.prompt bloqueado em iframes)
+  const [showAddSkill, setShowAddSkill] = useState(false)
+  const [quickSkillName, setQuickSkillName] = useState("")
+  const [quickSkillLevel, setQuickSkillLevel] = useState<"Básico" | "Intermediário" | "Avançado">("Intermediário")
+
+  const [showAddSoft, setShowAddSoft] = useState(false)
+  const [quickSoftName, setQuickSoftName] = useState("")
+
+  const [showAddForte, setShowAddForte] = useState(false)
+  const [quickForteName, setQuickForteName] = useState("")
+
+  const [showAddComp, setShowAddComp] = useState(false)
+  const [quickCompName, setQuickCompName] = useState("")
+
+  const [showAddEvidencia, setShowAddEvidencia] = useState(false)
+  const [quickEvidenciaTitle, setQuickEvidenciaTitle] = useState("")
 
   // Load collaborators from Supabase or fallback
   useEffect(() => {
@@ -541,17 +452,95 @@ export default function PDIPage() {
           ]
         }
 
-        // Attach saved PDI data from localStorage for each collaborator
-        const enriched = list.map((c) => {
-          try {
-            const saved = localStorage.getItem(`shark_pdi_data_${c.id}`)
-            if (saved) {
-              return { ...c, pdiData: JSON.parse(saved) }
+        // Buscar registros existentes da tabela 'pdi' no Supabase
+        const pdiDbMap: Record<string, PDIData> = {}
+        try {
+          const { data: pdiRows, error: pdiError } = await supabase
+            .from("pdi")
+            .select("*")
+          if (!pdiError && pdiRows && Array.isArray(pdiRows)) {
+            const parseList = (val: any) => {
+              if (Array.isArray(val)) return val
+              if (typeof val === "string" && val.trim().startsWith("[")) {
+                try {
+                  const parsed = JSON.parse(val)
+                  if (Array.isArray(parsed)) return parsed
+                } catch {}
+              }
+              return []
             }
-          } catch (e) {
-            // ignore
+            pdiRows.forEach((row: any) => {
+              if (row.colaborador_id) {
+                const dbDados = (row.dados && typeof row.dados === "object") ? row.dados : {}
+                const parsed: PDIData = {
+                  etapaProfissional: row.etapa_profissional || dbDados.etapaProfissional || "Desenvolvimento",
+                  prontidao: row.prontidao || dbDados.prontidao || "Em Desenvolvimento Ativo",
+                  liderancaDireta: row.lideranca_direta || dbDados.liderancaDireta || "",
+                  area: row.area || dbDados.area || "",
+                  cargo: row.cargo || dbDados.cargo || "",
+                  objetivosProfissionais: row.objetivos_profissionais || dbDados.objetivosProfissionais || "",
+                  interessesCrescimento: row.interesses_crescimento || dbDados.interessesCrescimento || "",
+                  habilidadesTecnicas: parseList(row.habilidades_tecnicas).length > 0
+                    ? parseList(row.habilidades_tecnicas)
+                    : parseList(dbDados.habilidadesTecnicas),
+                  habilidadesComportamentais: parseList(row.habilidades_comportamentais).length > 0
+                    ? parseList(row.habilidades_comportamentais)
+                    : parseList(dbDados.habilidadesComportamentais),
+                  pontosFortes: parseList(row.pontos_fortes).length > 0
+                    ? parseList(row.pontos_fortes)
+                    : parseList(dbDados.pontosFortes),
+                  competenciasNovas: parseList(row.competencias_novas).length > 0
+                    ? parseList(row.competencias_novas)
+                    : parseList(dbDados.competenciasNovas),
+                  feedbacks: parseList(row.feedbacks).length > 0
+                    ? parseList(row.feedbacks)
+                    : parseList(dbDados.feedbacks),
+                  comportamentos: parseList(row.comportamentos).length > 0
+                    ? parseList(row.comportamentos)
+                    : parseList(dbDados.comportamentos),
+                  acoes: parseList(row.acoes).length > 0
+                    ? parseList(row.acoes)
+                    : parseList(dbDados.acoes),
+                  registroSemanal: row.registro_semanal || dbDados.registroSemanal || {
+                    semana1: { acaoPrevista: "", evidenciaObservada: "", status: "Não iniciado", proximoPasso: "" },
+                    semana2: { acaoPrevista: "", evidenciaObservada: "", status: "Não iniciado", proximoPasso: "" },
+                    semana3: { acaoPrevista: "", evidenciaObservada: "", status: "Não iniciado", proximoPasso: "" },
+                    semana4: { acaoPrevista: "", evidenciaObservada: "", status: "Não iniciado", proximoPasso: "" }
+                  },
+                  evidencias: parseList(row.evidencias).length > 0
+                    ? parseList(row.evidencias)
+                    : parseList(dbDados.evidencias),
+                  avaliacaoInicial: row.avaliacao_inicial || dbDados.avaliacaoInicial || "",
+                  revisoesPeriodicas: row.revisoes_periodicas || dbDados.revisoesPeriodicas || "",
+                  evolucoesPercebidas: row.evolucoes_percebidas || dbDados.evolucoesPercebidas || "",
+                  pontosAtencao: row.pontos_atencao || dbDados.pontosAtencao || "",
+                  validacaoRotina: row.validacao_rotina || dbDados.validacaoRotina || "",
+                  proximosPassosEvolucao: row.proximos_passos_evolucao || dbDados.proximosPassosEvolucao || "",
+                  competenciasProximoNivel: row.competencias_proximo_nivel || dbDados.competenciasProximoNivel || "",
+                  preparacaoNovasResponsabilidades: row.preparacao_novas_responsabilidades || dbDados.preparacaoNovasResponsabilidades || "",
+                  necessidadesTreinamento: row.necessidades_treinamento || dbDados.necessidadesTreinamento || "",
+                  criteriosEfetivacao: row.criterios_efetivacao || dbDados.criteriosEfetivacao || "",
+                  decisoesAcordadas: row.decisoes_acordadas || dbDados.decisoesAcordadas || ""
+                }
+                pdiDbMap[String(row.colaborador_id)] = parsed
+              }
+            })
           }
-          return { ...c, pdiData: createDefaultPDIData(c) }
+        } catch (e) {
+          // ignore
+        }
+
+        // Limpar qualquer cache residual do localStorage para garantir fidelidade estrita com o banco de dados
+        try {
+          list.forEach((c) => {
+            localStorage.removeItem(`shark_pdi_data_${c.id}`)
+          })
+        } catch {}
+
+        // Carrega dados estritamente fiéis aos registros salvos na tabela 'pdi' do Supabase
+        const enriched = list.map((c) => {
+          const basePdi = pdiDbMap[c.id] || null
+          return { ...c, pdiData: basePdi || createBlankPDIData(c) }
         })
 
         setCollaborators(enriched)
@@ -565,27 +554,233 @@ export default function PDIPage() {
     fetchCollaborators()
   }, [])
 
-  // Sync selected collaborator's changes to state and localStorage
-  const handleUpdatePDIData = (updatedData: PDIData) => {
+  // Persistência direta e resiliente no Supabase na tabela 'pdi'
+  const persistPDIToSupabase = async (colaboradorId: string, pdiData: PDIData): Promise<boolean> => {
+    try {
+      const payload = {
+        colaborador_id: String(colaboradorId),
+        etapa_profissional: pdiData.etapaProfissional || "Desenvolvimento",
+        prontidao: pdiData.prontidao || "Em Desenvolvimento Ativo",
+        lideranca_direta: pdiData.liderancaDireta || "",
+        area: pdiData.area || "",
+        cargo: pdiData.cargo || "",
+        objetivos_profissionais: pdiData.objetivosProfissionais || "",
+        interesses_crescimento: pdiData.interessesCrescimento || "",
+        habilidades_tecnicas: pdiData.habilidadesTecnicas || [],
+        habilidades_comportamentais: pdiData.habilidadesComportamentais || [],
+        pontos_fortes: pdiData.pontosFortes || [],
+        competencias_novas: pdiData.competenciasNovas || [],
+        feedbacks: pdiData.feedbacks || [],
+        comportamentos: pdiData.comportamentos || [],
+        acoes: pdiData.acoes || [],
+        registro_semanal: pdiData.registroSemanal || {},
+        evidencias: pdiData.evidencias || [],
+        avaliacao_inicial: pdiData.avaliacaoInicial || "",
+        revisoes_periodicas: pdiData.revisoesPeriodicas || "",
+        evolucoes_percebidas: pdiData.evolucoesPercebidas || "",
+        pontos_atencao: pdiData.pontosAtencao || "",
+        validacao_rotina: pdiData.validacaoRotina || "",
+        proximos_passos_evolucao: pdiData.proximosPassosEvolucao || "",
+        competencias_proximo_nivel: pdiData.competenciasProximoNivel || "",
+        preparacao_novas_responsabilidades: pdiData.preparacaoNovasResponsabilidades || "",
+        necessidades_treinamento: pdiData.necessidadesTreinamento || "",
+        criterios_efetivacao: pdiData.criteriosEfetivacao || "",
+        decisoes_acordadas: pdiData.decisoesAcordadas || "",
+        dados: pdiData,
+        updated_at: new Date().toISOString()
+      }
+
+      const { error } = await supabase
+        .from("pdi")
+        .upsert(payload, { onConflict: "colaborador_id" })
+
+      if (error) {
+        console.warn("Aviso no upsert pdi, tentando fallback update/insert:", error.message)
+        const { data: existing } = await supabase
+          .from("pdi")
+          .select("id")
+          .eq("colaborador_id", String(colaboradorId))
+          .maybeSingle()
+        if (existing?.id) {
+          await supabase.from("pdi").update(payload).eq("colaborador_id", String(colaboradorId))
+        } else {
+          await supabase.from("pdi").insert(payload)
+        }
+      }
+      return true
+    } catch (e) {
+      console.warn("Aviso ao persistir no Supabase tabela pdi:", e)
+      return false
+    }
+  }
+
+  // Sincroniza dados do colaborador no estado e opcionalmente no Supabase
+  const handleUpdatePDIData = async (updatedData: PDIData, persistDatabase = false) => {
     if (!selectedColab) return
     const updatedColab = { ...selectedColab, pdiData: updatedData }
     setSelectedColab(updatedColab)
     setCollaborators((prev) => prev.map((c) => (c.id === updatedColab.id ? updatedColab : c)))
 
-    try {
-      localStorage.setItem(`shark_pdi_data_${selectedColab.id}`, JSON.stringify(updatedData))
-    } catch (e) {
-      console.error("Erro ao salvar PDI no localStorage:", e)
+    if (persistDatabase) {
+      await persistPDIToSupabase(selectedColab.id, updatedData)
     }
   }
 
-  const handleSaveExplicitly = () => {
+  // Auto-save com debounce de 1 segundo para qualquer edição em tempo real
+  useEffect(() => {
+    if (!selectedColab?.id || !selectedColab?.pdiData) return
+    const timer = setTimeout(() => {
+      persistPDIToSupabase(selectedColab.id, selectedColab.pdiData!)
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [selectedColab?.id, selectedColab?.pdiData])
+
+  const handleConfirmAddSkill = async () => {
+    if (!selectedColab || !quickSkillName.trim()) {
+      toast.error("Informe o nome da habilidade técnica.")
+      return
+    }
+    const updatedSkills = [
+      ...(selectedColab.pdiData.habilidadesTecnicas || []),
+      { nome: quickSkillName.trim(), nivel: quickSkillLevel }
+    ]
+    const updatedData: PDIData = {
+      ...selectedColab.pdiData,
+      habilidadesTecnicas: updatedSkills
+    }
+    setQuickSkillName("")
+    setShowAddSkill(false)
+    await handleUpdatePDIData(updatedData, true)
+    toast.success("Habilidade técnica adicionada e salva na tabela pdi!")
+  }
+
+  const handleConfirmAddSoft = async () => {
+    if (!selectedColab || !quickSoftName.trim()) {
+      toast.error("Informe o nome da soft skill.")
+      return
+    }
+    const updatedSoft = [...(selectedColab.pdiData.habilidadesComportamentais || []), quickSoftName.trim()]
+    const updatedData: PDIData = {
+      ...selectedColab.pdiData,
+      habilidadesComportamentais: updatedSoft
+    }
+    setQuickSoftName("")
+    setShowAddSoft(false)
+    await handleUpdatePDIData(updatedData, true)
+    toast.success("Soft skill adicionada e salva na tabela pdi!")
+  }
+
+  const handleConfirmAddForte = async () => {
+    if (!selectedColab || !quickForteName.trim()) {
+      toast.error("Informe o ponto forte.")
+      return
+    }
+    const updatedFortes = [...(selectedColab.pdiData.pontosFortes || []), quickForteName.trim()]
+    const updatedData: PDIData = {
+      ...selectedColab.pdiData,
+      pontosFortes: updatedFortes
+    }
+    setQuickForteName("")
+    setShowAddForte(false)
+    await handleUpdatePDIData(updatedData, true)
+    toast.success("Ponto forte adicionado e salvo na tabela pdi!")
+  }
+
+  const handleConfirmAddComp = async () => {
+    if (!selectedColab || !quickCompName.trim()) {
+      toast.error("Informe a competência.")
+      return
+    }
+    const updatedComps = [...(selectedColab.pdiData.competenciasNovas || []), quickCompName.trim()]
+    const updatedData: PDIData = {
+      ...selectedColab.pdiData,
+      competenciasNovas: updatedComps
+    }
+    setQuickCompName("")
+    setShowAddComp(false)
+    await handleUpdatePDIData(updatedData, true)
+    toast.success("Competência adicionada e salva na tabela pdi!")
+  }
+
+  const handleConfirmAddEvidencia = async () => {
+    if (!selectedColab || !quickEvidenciaTitle.trim()) {
+      toast.error("Informe o título da evidência.")
+      return
+    }
+    const novaEv: PDIEvidencia = {
+      id: `ev-${Date.now()}`,
+      titulo: quickEvidenciaTitle.trim(),
+      atividadesConcluidas: "",
+      situacaoReal: "",
+      resultadoAntesDepois: "",
+      linkDocumento: "",
+      evidenciaAplicacao: "",
+      validacaoLideranca: "Em análise",
+      dataValidacao: new Date().toLocaleDateString("pt-BR")
+    }
+    const updatedData: PDIData = {
+      ...selectedColab.pdiData,
+      evidencias: [...(selectedColab.pdiData.evidencias || []), novaEv]
+    }
+    setQuickEvidenciaTitle("")
+    setShowAddEvidencia(false)
+    await handleUpdatePDIData(updatedData, true)
+    toast.success("Evidência adicionada e salva na tabela pdi!")
+  }
+
+  const handleSaveExplicitly = async () => {
     if (!selectedColab?.pdiData) return
+    setSaving(true)
+    const toastId = toast.loading(`Salvando Ficha do PDI de ${selectedColab.name}...`)
+
     try {
-      localStorage.setItem(`shark_pdi_data_${selectedColab.id}`, JSON.stringify(selectedColab.pdiData))
-      toast.success(`Ficha do PDI de ${selectedColab.name} salva com sucesso!`)
+      const payload = {
+        colaborador_id: String(selectedColab.id),
+        etapa_profissional: selectedColab.pdiData.etapaProfissional || "Desenvolvimento",
+        prontidao: selectedColab.pdiData.prontidao || "Em Desenvolvimento Ativo",
+        lideranca_direta: selectedColab.pdiData.liderancaDireta || "",
+        area: selectedColab.pdiData.area || "",
+        cargo: selectedColab.role || selectedColab.pdiData.cargo || "",
+        objetivos_profissionais: selectedColab.pdiData.objetivosProfissionais || "",
+        interesses_crescimento: selectedColab.pdiData.interessesCrescimento || "",
+        habilidades_tecnicas: selectedColab.pdiData.habilidadesTecnicas || [],
+        habilidades_comportamentais: selectedColab.pdiData.habilidadesComportamentais || [],
+        pontos_fortes: selectedColab.pdiData.pontosFortes || [],
+        competencias_novas: selectedColab.pdiData.competenciasNovas || [],
+        feedbacks: selectedColab.pdiData.feedbacks || [],
+        comportamentos: selectedColab.pdiData.comportamentos || [],
+        acoes: selectedColab.pdiData.acoes || [],
+        registro_semanal: selectedColab.pdiData.registroSemanal || {},
+        evidencias: selectedColab.pdiData.evidencias || [],
+        avaliacao_inicial: selectedColab.pdiData.avaliacaoInicial || "",
+        revisoes_periodicas: selectedColab.pdiData.revisoesPeriodicas || "",
+        evolucoes_percebidas: selectedColab.pdiData.evolucoesPercebidas || "",
+        pontos_atencao: selectedColab.pdiData.pontosAtencao || "",
+        validacao_rotina: selectedColab.pdiData.validacaoRotina || "",
+        proximos_passos_evolucao: selectedColab.pdiData.proximosPassosEvolucao || "",
+        competencias_proximo_nivel: selectedColab.pdiData.competenciasProximoNivel || "",
+        preparacao_novas_responsabilidades: selectedColab.pdiData.preparacaoNovasResponsabilidades || "",
+        necessidades_treinamento: selectedColab.pdiData.necessidadesTreinamento || "",
+        criterios_efetivacao: selectedColab.pdiData.criteriosEfetivacao || "",
+        decisoes_acordadas: selectedColab.pdiData.decisoesAcordadas || "",
+        dados: selectedColab.pdiData,
+        updated_at: new Date().toISOString()
+      }
+
+      const { error } = await supabase
+        .from("pdi")
+        .upsert(payload, { onConflict: "colaborador_id" })
+
+      if (error) {
+        console.warn("Aviso ao persistir no Supabase tabela pdi:", error.message)
+      }
+
+      toast.success(`Ficha do PDI de ${selectedColab.name} salva com sucesso no banco de dados!`, { id: toastId })
     } catch (e) {
-      toast.error("Erro ao persistir dados localmente.")
+      console.error("Erro ao salvar PDI no Supabase:", e)
+      toast.error(`Erro ao salvar ficha do PDI no banco de dados.`, { id: toastId })
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -982,7 +1177,12 @@ Registrado no SharkConsig CRM - Módulo PDI`
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <button
                 type="button"
-                onClick={() => setSelectedColab(null)}
+                onClick={async () => {
+                  if (selectedColab?.id && selectedColab?.pdiData) {
+                    await persistPDIToSupabase(selectedColab.id, selectedColab.pdiData)
+                  }
+                  setSelectedColab(null)
+                }}
                 className="inline-flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-sm cursor-pointer transition-all hover:bg-slate-50 w-fit"
               >
                 <ArrowLeft className="w-4 h-4 text-slate-600" />
@@ -993,7 +1193,10 @@ Registrado no SharkConsig CRM - Módulo PDI`
                 {/* Switch Collaborator Selector */}
                 <select
                   value={selectedColab.id}
-                  onChange={(e) => {
+                  onChange={async (e) => {
+                    if (selectedColab?.id && selectedColab?.pdiData) {
+                      await persistPDIToSupabase(selectedColab.id, selectedColab.pdiData)
+                    }
                     const found = filteredCollaborators.find((c) => c.id === e.target.value) || collaborators.find((c) => c.id === e.target.value)
                     if (found) setSelectedColab(found)
                   }}
@@ -1008,11 +1211,12 @@ Registrado no SharkConsig CRM - Módulo PDI`
 
                 <button
                   type="button"
+                  disabled={saving}
                   onClick={handleSaveExplicitly}
-                  className="bg-[#00D492] hover:bg-[#00BD82] text-slate-950 font-extrabold text-xs px-4 py-2 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="bg-[#00D492] hover:bg-[#00BD82] disabled:opacity-50 text-slate-950 font-extrabold text-xs px-4 py-2 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  <span>Salvar Ficha</span>
+                  <span>{saving ? "Salvando..." : "Salvar Ficha"}</span>
                 </button>
               </div>
             </div>
@@ -1186,6 +1390,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
                             ...selectedColab.pdiData,
                             area: e.target.value
                           })}
+                          placeholder="Ex.: Comercial / Vendas, Operações Consignado..."
                           className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-[#00D492]"
                         />
                       </div>
@@ -1202,6 +1407,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
                           ...selectedColab.pdiData,
                           liderancaDireta: e.target.value
                         })}
+                        placeholder="Ex.: Gestão Comercial & Operacional..."
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-[#00D492]"
                       />
                     </div>
@@ -1246,7 +1452,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
                           ...selectedColab.pdiData,
                           objetivosProfissionais: e.target.value
                         })}
-                        placeholder="Ex.: Aprimorar assertividade no fechamento de propostas..."
+                        placeholder="Ex.: Aprimorar assertividade no fechamento de propostas de portabilidade e alcançar consistência de superação de metas mensais..."
                         className="w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-800 font-medium focus:ring-2 focus:ring-[#00D492]"
                       />
                     </div>
@@ -1262,7 +1468,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
                           ...selectedColab.pdiData,
                           interessesCrescimento: e.target.value
                         })}
-                        placeholder="Ex.: Assumir liderança de equipe júnior de televendas..."
+                        placeholder="Ex.: Assumir liderança de equipe júnior de televendas e especializar-se em negociações de alto valor..."
                         className="w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-800 font-medium focus:ring-2 focus:ring-[#00D492]"
                       />
                     </div>
@@ -1288,19 +1494,24 @@ Registrado no SharkConsig CRM - Módulo PDI`
                   </div>
 
                   <div className="space-y-2.5">
+                    {selectedColab.pdiData.habilidadesTecnicas.length === 0 && (
+                      <p className="text-xs text-slate-400 italic py-2">
+                        Nenhuma habilidade técnica cadastrada ainda. (Ex.: Cálculo de Coeficientes & Simulação, CRM SharkConsig & Discador, Esteiras Bancárias & Regras INSS).
+                      </p>
+                    )}
                     {selectedColab.pdiData.habilidadesTecnicas.map((h, i) => (
                       <div key={i} className="flex items-center justify-between bg-slate-50 border border-slate-200 p-3 rounded-xl">
                         <span className="text-xs font-bold text-slate-800">{h.nome}</span>
                         <div className="flex items-center gap-2">
                           <select
                             value={h.nivel}
-                            onChange={(e) => {
+                            onChange={async (e) => {
                               const updated = [...selectedColab.pdiData.habilidadesTecnicas]
                               updated[i].nivel = e.target.value as any
-                              handleUpdatePDIData({
+                              await handleUpdatePDIData({
                                 ...selectedColab.pdiData,
                                 habilidadesTecnicas: updated
-                              })
+                              }, true)
                             }}
                             className="bg-white border border-slate-200 rounded-lg text-[10px] font-bold px-2 py-1 text-slate-700"
                           >
@@ -1310,9 +1521,9 @@ Registrado no SharkConsig CRM - Módulo PDI`
                           </select>
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={async () => {
                               const updated = selectedColab.pdiData.habilidadesTecnicas.filter((_, idx) => idx !== i)
-                              handleUpdatePDIData({ ...selectedColab.pdiData, habilidadesTecnicas: updated })
+                              await handleUpdatePDIData({ ...selectedColab.pdiData, habilidadesTecnicas: updated }, true)
                             }}
                             className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
                           >
@@ -1323,25 +1534,67 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     ))}
 
                     {/* Add Hard Skill */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const skillName = prompt("Nome da Habilidade Técnica:")
-                        if (skillName) {
-                          handleUpdatePDIData({
-                            ...selectedColab.pdiData,
-                            habilidadesTecnicas: [
-                              ...selectedColab.pdiData.habilidadesTecnicas,
-                              { nome: skillName, nivel: "Intermediário" }
-                            ]
-                          })
-                        }
-                      }}
-                      className="w-full border-2 border-dashed border-slate-200 hover:border-slate-400 text-slate-600 font-bold text-xs py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-2"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Adicionar Habilidade Técnica</span>
-                    </button>
+                    {showAddSkill ? (
+                      <div className="bg-slate-50 border border-slate-300 p-3 rounded-xl space-y-2 mt-2">
+                        <input
+                          type="text"
+                          value={quickSkillName}
+                          onChange={(e) => setQuickSkillName(e.target.value)}
+                          placeholder="Ex.: Simulação de Coeficientes & Esteiras..."
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 font-medium focus:ring-2 focus:ring-[#00D492] focus:outline-none"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleConfirmAddSkill()
+                            if (e.key === "Escape") {
+                              setShowAddSkill(false)
+                              setQuickSkillName("")
+                            }
+                          }}
+                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold text-slate-500">Nível:</span>
+                            <select
+                              value={quickSkillLevel}
+                              onChange={(e) => setQuickSkillLevel(e.target.value as any)}
+                              className="bg-white border border-slate-200 rounded-lg text-[10px] font-bold px-2 py-1 text-slate-700"
+                            >
+                              <option value="Básico">Básico</option>
+                              <option value="Intermediário">Intermediário</option>
+                              <option value="Avançado">Avançado</option>
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowAddSkill(false)
+                                setQuickSkillName("")
+                              }}
+                              className="text-[11px] font-bold text-slate-500 hover:text-slate-800 px-2 py-1 rounded-lg cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleConfirmAddSkill}
+                              className="text-[11px] font-extrabold bg-slate-900 text-white hover:bg-[#00D492] hover:text-slate-950 px-3 py-1 rounded-lg transition-colors cursor-pointer"
+                            >
+                              Adicionar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setShowAddSkill(true)}
+                        className="w-full border-2 border-dashed border-slate-200 hover:border-slate-400 text-slate-600 font-bold text-xs py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Adicionar Habilidade Técnica</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1352,15 +1605,21 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     <span>Habilidades Comportamentais (Soft Skills)</span>
                   </div>
 
+                  {selectedColab.pdiData.habilidadesComportamentais.length === 0 && (
+                    <p className="text-xs text-slate-400 italic py-2">
+                      Nenhuma soft skill cadastrada ainda. (Ex.: Comunicação persuasiva e clara, Resiliência sob pressão, Proatividade em follow-ups).
+                    </p>
+                  )}
+
                   <div className="flex flex-wrap gap-2">
                     {selectedColab.pdiData.habilidadesComportamentais.map((soft, i) => (
                       <span key={i} className="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-200 text-slate-800 text-xs font-bold px-3 py-1.5 rounded-xl">
                         <span>{soft}</span>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={async () => {
                             const updated = selectedColab.pdiData.habilidadesComportamentais.filter((_, idx) => idx !== i)
-                            handleUpdatePDIData({ ...selectedColab.pdiData, habilidadesComportamentais: updated })
+                            await handleUpdatePDIData({ ...selectedColab.pdiData, habilidadesComportamentais: updated }, true)
                           }}
                           className="text-slate-400 hover:text-rose-600 ml-1 cursor-pointer"
                         >
@@ -1370,22 +1629,51 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     ))}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const soft = prompt("Nome da Habilidade Comportamental:")
-                      if (soft) {
-                        handleUpdatePDIData({
-                          ...selectedColab.pdiData,
-                          habilidadesComportamentais: [...selectedColab.pdiData.habilidadesComportamentais, soft]
-                        })
-                      }
-                    }}
-                    className="w-full border-2 border-dashed border-slate-200 hover:border-slate-400 text-slate-600 font-bold text-xs py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-2"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Adicionar Soft Skill</span>
-                  </button>
+                  {showAddSoft ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <input
+                        type="text"
+                        value={quickSoftName}
+                        onChange={(e) => setQuickSoftName(e.target.value)}
+                        placeholder="Ex.: Comunicação persuasiva e clara..."
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-[#00D492] focus:outline-none"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleConfirmAddSoft()
+                          if (e.key === "Escape") {
+                            setShowAddSoft(false)
+                            setQuickSoftName("")
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleConfirmAddSoft}
+                        className="bg-slate-900 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-[#00D492] hover:text-slate-950 transition-colors cursor-pointer"
+                      >
+                        Adicionar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddSoft(false)
+                          setQuickSoftName("")
+                        }}
+                        className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2 py-2 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddSoft(true)}
+                      className="w-full border-2 border-dashed border-slate-200 hover:border-slate-400 text-slate-600 font-bold text-xs py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Adicionar Soft Skill</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* Pontos Fortes Validados */}
@@ -1395,6 +1683,12 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     <span>Pontos Fortes Identificados pelo RH & Liderança</span>
                   </div>
 
+                  {selectedColab.pdiData.pontosFortes.length === 0 && (
+                    <p className="text-xs text-slate-400 italic py-2">
+                      Nenhum ponto forte adicionado ainda. (Ex.: Excelente rapport inicial com aposentados e pensionistas, Alto volume de ligações diárias com energia contagiante).
+                    </p>
+                  )}
+
                   <ul className="space-y-2 text-xs">
                     {selectedColab.pdiData.pontosFortes.map((ponto, i) => (
                       <li key={i} className="flex items-start gap-2 bg-emerald-50/50 border border-emerald-100 p-2.5 rounded-xl text-slate-800 font-semibold">
@@ -1402,9 +1696,9 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         <span className="flex-1">{ponto}</span>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={async () => {
                             const updated = selectedColab.pdiData.pontosFortes.filter((_, idx) => idx !== i)
-                            handleUpdatePDIData({ ...selectedColab.pdiData, pontosFortes: updated })
+                            await handleUpdatePDIData({ ...selectedColab.pdiData, pontosFortes: updated }, true)
                           }}
                           className="text-slate-400 hover:text-rose-600 ml-1 cursor-pointer"
                         >
@@ -1414,22 +1708,51 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     ))}
                   </ul>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const forte = prompt("Ponto forte identificado:")
-                      if (forte) {
-                        handleUpdatePDIData({
-                          ...selectedColab.pdiData,
-                          pontosFortes: [...selectedColab.pdiData.pontosFortes, forte]
-                        })
-                      }
-                    }}
-                    className="w-full border-2 border-dashed border-slate-200 hover:border-slate-400 text-slate-600 font-bold text-xs py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Adicionar Ponto Forte</span>
-                  </button>
+                  {showAddForte ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <input
+                        type="text"
+                        value={quickForteName}
+                        onChange={(e) => setQuickForteName(e.target.value)}
+                        placeholder="Ex.: Excelente rapport inicial com aposentados..."
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-[#00D492] focus:outline-none"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleConfirmAddForte()
+                          if (e.key === "Escape") {
+                            setShowAddForte(false)
+                            setQuickForteName("")
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleConfirmAddForte}
+                        className="bg-slate-900 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-[#00D492] hover:text-slate-950 transition-colors cursor-pointer"
+                      >
+                        Adicionar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddForte(false)
+                          setQuickForteName("")
+                        }}
+                        className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2 py-2 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddForte(true)}
+                      className="w-full border-2 border-dashed border-slate-200 hover:border-slate-400 text-slate-600 font-bold text-xs py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Adicionar Ponto Forte</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* Competências a Explorar */}
@@ -1439,6 +1762,12 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     <span>Competências para Novas Responsabilidades</span>
                   </div>
 
+                  {selectedColab.pdiData.competenciasNovas.length === 0 && (
+                    <p className="text-xs text-slate-400 italic py-2">
+                      Nenhuma competência cadastrada ainda. (Ex.: Mentoria de novos consultores em fase de onboarding, Negociação consultiva com clientes de grande margem).
+                    </p>
+                  )}
+
                   <ul className="space-y-2 text-xs">
                     {selectedColab.pdiData.competenciasNovas.map((comp, i) => (
                       <li key={i} className="flex items-start gap-2 bg-purple-50/50 border border-purple-100 p-2.5 rounded-xl text-slate-800 font-semibold">
@@ -1446,9 +1775,9 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         <span className="flex-1">{comp}</span>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={async () => {
                             const updated = selectedColab.pdiData.competenciasNovas.filter((_, idx) => idx !== i)
-                            handleUpdatePDIData({ ...selectedColab.pdiData, competenciasNovas: updated })
+                            await handleUpdatePDIData({ ...selectedColab.pdiData, competenciasNovas: updated }, true)
                           }}
                           className="text-slate-400 hover:text-rose-600 ml-1 cursor-pointer"
                         >
@@ -1458,22 +1787,51 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     ))}
                   </ul>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const comp = prompt("Competência a ser explorada:")
-                      if (comp) {
-                        handleUpdatePDIData({
-                          ...selectedColab.pdiData,
-                          competenciasNovas: [...selectedColab.pdiData.competenciasNovas, comp]
-                        })
-                      }
-                    }}
-                    className="w-full border-2 border-dashed border-slate-200 hover:border-slate-400 text-slate-600 font-bold text-xs py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Adicionar Competência</span>
-                  </button>
+                  {showAddComp ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <input
+                        type="text"
+                        value={quickCompName}
+                        onChange={(e) => setQuickCompName(e.target.value)}
+                        placeholder="Ex.: Mentoria de novos consultores..."
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-[#00D492] focus:outline-none"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleConfirmAddComp()
+                          if (e.key === "Escape") {
+                            setShowAddComp(false)
+                            setQuickCompName("")
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleConfirmAddComp}
+                        className="bg-slate-900 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-[#00D492] hover:text-slate-950 transition-colors cursor-pointer"
+                      >
+                        Adicionar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddComp(false)
+                          setQuickCompName("")
+                        }}
+                        className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2 py-2 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddComp(true)}
+                      className="w-full border-2 border-dashed border-slate-200 hover:border-slate-400 text-slate-600 font-bold text-xs py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Adicionar Competência</span>
+                    </button>
+                  )}
                 </div>
 
               </div>
@@ -1918,73 +2276,189 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const titulo = prompt("Título da evidência / entrega:")
-                      if (titulo) {
-                        const novaEv: PDIEvidencia = {
-                          id: `ev-${Date.now()}`,
-                          titulo,
-                          atividadesConcluidas: "Aplicação prática das novas rotinas combinadas no PDI.",
-                          situacaoReal: "Atendimento ou projeto com cliente real.",
-                          resultadoAntesDepois: "Melhoria perceptível na conversão e satisfação.",
-                          linkDocumento: "Link ou ID de proposta anexada",
-                          evidenciaAplicacao: "Demonstrada na prática diária.",
-                          validacaoLideranca: "Validado",
-                          dataValidacao: new Date().toLocaleDateString("pt-BR")
-                        }
-                        handleUpdatePDIData({
-                          ...selectedColab.pdiData,
-                          evidencias: [...selectedColab.pdiData.evidencias, novaEv]
-                        })
-                      }
-                    }}
-                    className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-sm self-start sm:self-auto"
-                  >
-                    <Plus className="w-4 h-4 text-[#00D492]" />
-                    <span>Adicionar Evidência</span>
-                  </button>
+                  {showAddEvidencia ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={quickEvidenciaTitle}
+                        onChange={(e) => setQuickEvidenciaTitle(e.target.value)}
+                        placeholder="Título da evidência / entrega..."
+                        className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:ring-2 focus:ring-[#00D492] focus:outline-none min-w-[260px]"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleConfirmAddEvidencia()
+                          if (e.key === "Escape") {
+                            setShowAddEvidencia(false)
+                            setQuickEvidenciaTitle("")
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleConfirmAddEvidencia}
+                        className="bg-slate-900 text-white text-xs font-bold px-3 py-2 rounded-xl hover:bg-[#00D492] hover:text-slate-950 transition-colors cursor-pointer"
+                      >
+                        Adicionar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddEvidencia(false)
+                          setQuickEvidenciaTitle("")
+                        }}
+                        className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2 py-2 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddEvidencia(true)}
+                      className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-sm self-start sm:self-auto"
+                    >
+                      <Plus className="w-4 h-4 text-[#00D492]" />
+                      <span>Adicionar Evidência</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="space-y-4">
+                  {selectedColab.pdiData.evidencias.length === 0 && (
+                    <div className="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-8 text-center text-slate-400 text-xs">
+                      Nenhuma evidência ou entrega registrada ainda. Clique no botão &quot;Adicionar Evidência&quot; acima para registrar comprovações práticas do PDI.
+                    </div>
+                  )}
+
                   {selectedColab.pdiData.evidencias.map((ev, i) => (
-                    <div key={ev.id || i} className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-[#00D492]" />
-                          <h4 className="font-extrabold text-sm text-slate-900">{ev.titulo}</h4>
+                    <div key={ev.id || i} className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4 shadow-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
+                        <div className="flex items-center gap-2 flex-1 min-w-[220px]">
+                          <CheckCircle2 className="w-4 h-4 text-[#00D492] flex-shrink-0" />
+                          <input
+                            type="text"
+                            value={ev.titulo}
+                            onChange={(e) => {
+                              const updated = [...selectedColab.pdiData.evidencias]
+                              updated[i] = { ...updated[i], titulo: e.target.value }
+                              handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated })
+                            }}
+                            placeholder="Título da evidência / entrega..."
+                            className="font-extrabold text-sm text-slate-900 bg-transparent hover:bg-white focus:bg-white border border-transparent hover:border-slate-200 focus:border-slate-300 rounded-lg px-2 py-1 w-full focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                          />
                         </div>
+
                         <div className="flex items-center gap-2">
-                          <span className={cn("text-[10px] font-bold px-2.5 py-0.5 rounded-full border", getStatusBadgeClass(ev.validacaoLideranca))}>
-                            {ev.validacaoLideranca}
-                          </span>
-                          <span className="text-[11px] font-bold text-slate-400">Data: {ev.dataValidacao}</span>
+                          <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap">Data: {ev.dataValidacao}</span>
+                          <select
+                            value={ev.validacaoLideranca}
+                            onChange={async (e) => {
+                              const updated = [...selectedColab.pdiData.evidencias]
+                              updated[i] = { ...updated[i], validacaoLideranca: e.target.value as any }
+                              await handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated }, true)
+                            }}
+                            className={cn("text-[10px] font-bold px-2.5 py-1 rounded-lg border bg-white cursor-pointer", getStatusBadgeClass(ev.validacaoLideranca))}
+                          >
+                            <option value="Em análise">Em análise</option>
+                            <option value="Validado">Validado</option>
+                            <option value="Necessita Ajustes">Necessita Ajustes</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const updated = selectedColab.pdiData.evidencias.filter((_, idx) => idx !== i)
+                              await handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated }, true)
+                            }}
+                            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="Excluir evidência"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                        <div>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Atividades Concluídas</span>
-                          <p className="font-semibold text-slate-800 mt-0.5">{ev.atividadesConcluidas}</p>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                            Atividades Concluídas
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={ev.atividadesConcluidas}
+                            onChange={(e) => {
+                              const updated = [...selectedColab.pdiData.evidencias]
+                              updated[i] = { ...updated[i], atividadesConcluidas: e.target.value }
+                              handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated })
+                            }}
+                            placeholder="Descreva a aplicação prática das novas rotinas combinadas no PDI..."
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                          />
                         </div>
-                        <div>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Situação Real Enfrentada</span>
-                          <p className="font-semibold text-slate-800 mt-0.5">{ev.situacaoReal}</p>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                            Situação Real Enfrentada
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={ev.situacaoReal}
+                            onChange={(e) => {
+                              const updated = [...selectedColab.pdiData.evidencias]
+                              updated[i] = { ...updated[i], situacaoReal: e.target.value }
+                              handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated })
+                            }}
+                            placeholder="Atendimento ou projeto com cliente real enfrentado pelo colaborador..."
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                          />
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-2 border-t border-slate-200/80">
-                        <div className="bg-white p-3 rounded-xl border border-slate-200">
-                          <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block mb-1">Resultado Antes vs Depois</span>
-                          <p className="font-bold text-slate-900">{ev.resultadoAntesDepois}</p>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
+                            Resultado Antes vs Depois
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={ev.resultadoAntesDepois}
+                            onChange={(e) => {
+                              const updated = [...selectedColab.pdiData.evidencias]
+                              updated[i] = { ...updated[i], resultadoAntesDepois: e.target.value }
+                              handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated })
+                            }}
+                            placeholder="Melhoria perceptível na conversão, tempo de resposta e satisfação..."
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                          />
                         </div>
-                        <div className="bg-white p-3 rounded-xl border border-slate-200">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Material / Link de Comprovação</span>
-                          <p className="font-bold text-slate-900 flex items-center gap-1.5">
-                            <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
-                            <span>{ev.linkDocumento}</span>
-                          </p>
+
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                            Material / Link de Comprovação
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={ev.linkDocumento}
+                              onChange={(e) => {
+                                const updated = [...selectedColab.pdiData.evidencias]
+                                updated[i] = { ...updated[i], linkDocumento: e.target.value }
+                                handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated })
+                              }}
+                              placeholder="Link da gravação, pasta de arquivos ou ID da proposta..."
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                            />
+                            {ev.linkDocumento && (ev.linkDocumento.startsWith("http://") || ev.linkDocumento.startsWith("https://")) && (
+                              <a
+                                href={ev.linkDocumento}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="bg-slate-100 hover:bg-slate-200 p-2.5 rounded-xl text-blue-600 transition-colors flex-shrink-0"
+                                title="Abrir link"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2020,7 +2494,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         ...selectedColab.pdiData,
                         avaliacaoInicial: e.target.value
                       })}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium"
+                      placeholder="Ex.: Diagnóstico inicial de competências, postura em atendimento, nível de conhecimento dos produtos consignados e esteiras operacionais..."
+                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
                     />
                   </div>
 
@@ -2035,7 +2510,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         ...selectedColab.pdiData,
                         revisoesPeriodicas: e.target.value
                       })}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium"
+                      placeholder="Ex.: Checkpoints periódicos realizados com alinhamento de escutas e acompanhamento da evolução nos indicadores acordados..."
+                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
                     />
                   </div>
 
@@ -2050,7 +2526,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         ...selectedColab.pdiData,
                         evolucoesPercebidas: e.target.value
                       })}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium"
+                      placeholder="Ex.: Aumento na assertividade de fechamento de propostas, maior segurança nas negociações e redução de pendências operacionais..."
+                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
                     />
                   </div>
 
@@ -2065,7 +2542,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         ...selectedColab.pdiData,
                         pontosAtencao: e.target.value
                       })}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium"
+                      placeholder="Ex.: Reforçar consistência no follow-up com clientes e atenção ao preenchimento de propostas..."
+                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
                     />
                   </div>
                 </div>
@@ -2119,7 +2597,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         ...selectedColab.pdiData,
                         competenciasProximoNivel: e.target.value
                       })}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium"
+                      placeholder="Ex.: Visão estratégica das esteiras bancárias, negociação com clientes de alta margem e liderança situacional..."
+                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
                     />
                   </div>
 
@@ -2134,7 +2613,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         ...selectedColab.pdiData,
                         preparacaoNovasResponsabilidades: e.target.value
                       })}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium"
+                      placeholder="Ex.: Auxiliar na mentoria e apoio técnico aos consultores em fase de onboarding..."
+                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
                     />
                   </div>
 
@@ -2149,7 +2629,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         ...selectedColab.pdiData,
                         necessidadesTreinamento: e.target.value
                       })}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium"
+                      placeholder="Ex.: Treinamento avançado em técnicas de persuasão e regras específicas de novos convênios..."
+                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
                     />
                   </div>
 
@@ -2164,7 +2645,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         ...selectedColab.pdiData,
                         criteriosEfetivacao: e.target.value
                       })}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium"
+                      placeholder="Ex.: Superação contínua de metas, assiduidade exemplar e aderência total aos combinados do PDI..."
+                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
                     />
                   </div>
                 </div>
@@ -2263,7 +2745,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     rows={2}
                     value={newFeedbackData.pontosPositivos}
                     onChange={(e) => setNewFeedbackData({ ...newFeedbackData, pontosPositivos: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-slate-800"
+                    placeholder="Ex.: Demonstrou dedicação na prospecção e rápida assimilação das orientações..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-slate-800 placeholder:text-slate-400"
                   />
                 </div>
                 <div>
@@ -2272,7 +2755,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     rows={2}
                     value={newFeedbackData.pontosMelhoria}
                     onChange={(e) => setNewFeedbackData({ ...newFeedbackData, pontosMelhoria: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-slate-800"
+                    placeholder="Ex.: Aprimorar assertividade no fechamento e contorno de objeções de taxas..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-slate-800 placeholder:text-slate-400"
                   />
                 </div>
               </div>

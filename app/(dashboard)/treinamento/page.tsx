@@ -3621,7 +3621,8 @@ export default function TreinamentoPage() {
                     .sort((a, b) => a - b)
                     .map(diaNum => {
                       const isCurrent = diaNum === selectedDia
-                      const isBloqueadoPorAvaliacao = (selectedDia === 11 || selectedDia === 22) && !isCurrent
+                      const isAvaliacaoEmAndamento = (selectedDia === 11 || selectedDia === 22) && !diasConcluidos.includes(selectedDia)
+                      const isBloqueadoPorAvaliacao = isAvaliacaoEmAndamento && !isCurrent
                       return (
                         <button
                           key={diaNum}
@@ -3641,7 +3642,7 @@ export default function TreinamentoPage() {
                           )}
                           title={
                             isBloqueadoPorAvaliacao
-                              ? "Navegação bloqueada durante o dia da avaliação"
+                              ? "Navegação bloqueada durante o andamento da avaliação"
                               : `Revisitar o DIA ${diaNum}`
                           }
                         >
@@ -3657,7 +3658,8 @@ export default function TreinamentoPage() {
 
                   {/* Dia Ativo (Em curso) */}
                   {!diasConcluidos.includes(diaAtivoEmCurso) && (() => {
-                    const isBloqueadoPorAvaliacao = (selectedDia === 11 || selectedDia === 22) && diaAtivoEmCurso !== selectedDia
+                    const isAvaliacaoEmAndamento = (selectedDia === 11 || selectedDia === 22) && !diasConcluidos.includes(selectedDia)
+                    const isBloqueadoPorAvaliacao = isAvaliacaoEmAndamento && diaAtivoEmCurso !== selectedDia
                     return statusLiberacaoDiaAtivo.liberado ? (
                       <button
                         type="button"
