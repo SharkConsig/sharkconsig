@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo } from "react"
+import Image from "next/image"
 import { toast } from "sonner"
 import { Header } from "@/components/layout/header"
 import { cn } from "@/lib/utils"
@@ -33,7 +34,8 @@ import {
   Phone,
   LayoutGrid,
   List,
-  ChevronDown
+  ChevronDown,
+  X
 } from "lucide-react"
 
 // Types
@@ -151,6 +153,9 @@ export interface CollaboratorBasic {
   id: string
   name: string
   role: string
+  employmentType?: string
+  cnpj?: string
+  avatarUrl?: string
   area?: string
   email?: string
   phone?: string
@@ -159,6 +164,40 @@ export interface CollaboratorBasic {
   usuarioId?: string
   workLocation?: string
   pdiData?: PDIData
+}
+
+function safeFormatDate(dateStr: any, fallback = "2026"): string {
+  if (!dateStr) return fallback
+  const s = String(dateStr).trim()
+  if (s.includes("/")) return s
+  const d = new Date(s)
+  if (!isNaN(d.getTime())) return d.toLocaleDateString("pt-BR")
+  return s || fallback
+}
+
+export function isPJCollaborator(regime?: string, role?: string, cnpj?: string, metaIncentives?: string): boolean {
+  const r = (regime || "").toUpperCase().trim()
+  const f = (role || "").toUpperCase().trim()
+  const c = (cnpj || "").trim()
+
+  if (r === "PJ" || r.includes("PJ")) return true
+  if (f === "PJ" || f.startsWith("PJ ") || f.endsWith(" PJ")) return true
+  if (c && c.length > 0 && c !== "-") return true
+
+  if (metaIncentives && metaIncentives.startsWith("{") && metaIncentives.includes('"__meta":true')) {
+    try {
+      const parsed = JSON.parse(metaIncentives)
+      if (parsed.empType && String(parsed.empType).toUpperCase().includes("PJ")) return true
+    } catch {}
+  }
+
+  return false
+}
+
+export function isActiveCollaborator(status?: string, dataDemissao?: string | null): boolean {
+  if (dataDemissao && dataDemissao.trim().length > 0) return false
+  const s = (status || "Ativo").toLowerCase().trim()
+  return s !== "inativo" && s !== "desligado" && s !== "demitido"
 }
 
 const DEFAULT_WEEKLY_LOG: WeeklyLog = {
@@ -333,6 +372,7 @@ export default function PDIPage() {
   const [selectedSemana, setSelectedSemana] = useState<"semana1" | "semana2" | "semana3" | "semana4">("semana1")
   
   // New entry modals & states
+  const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null)
   const [showAddFeedbackModal, setShowAddFeedbackModal] = useState(false)
   const [newFeedbackData, setNewFeedbackData] = useState<Partial<PDIFeedback>>({
     data: new Date().toLocaleDateString("pt-BR"),
@@ -375,30 +415,86 @@ export default function PDIPage() {
       try {
         const { data, error } = await supabase
           .from("hr_colaboradores")
-          .select("id, nome, funcao, local_trabalho, email, telefone, data_admissao, status, usuario_id")
+          .select("id, nome, funcao, regime_contratacao, preferencia_incentivos, cnpj, local_trabalho, email, telefone, data_admissao, data_demissao, status, usuario_id")
           .order("nome", { ascending: true })
+
+        // Buscar mapeamento de avatares de perfis (mesma fonte usada no cabeçalho)
+        const avatarsMap: Record<string, string> = {}
+        try {
+          const { data: perfisList } = await supabase
+            .from("perfis")
+            .select("id, nome, email, avatar_url, username")
+          if (perfisList && Array.isArray(perfisList)) {
+            perfisList.forEach((p: any) => {
+              if (p.avatar_url) {
+                if (p.id) avatarsMap[p.id] = p.avatar_url
+                if (p.email) avatarsMap[p.email.toLowerCase().trim()] = p.avatar_url
+                if (p.nome) avatarsMap[p.nome.toLowerCase().trim()] = p.avatar_url
+                if (p.username) avatarsMap[p.username.toLowerCase().trim()] = p.avatar_url
+              }
+            })
+          }
+        } catch (e) {
+          // ignore
+        }
 
         let list: CollaboratorBasic[] = []
 
         if (!error && data && data.length > 0) {
-          list = data.map((d: any) => ({
-            id: String(d.id),
-            name: d.nome || "Colaborador",
-            role: d.funcao || "Consultor",
-            area: d.local_trabalho === "Home Office" ? "Vendas Remoto (Home Office)" : "Comercial Presencial",
-            email: d.email || `${d.nome?.toLowerCase().replace(/\s+/g, '.')}@sharkconsig.com.br`,
-            phone: d.telefone || "(11) 99999-0000",
-            joinDate: d.data_admissao ? new Date(d.data_admissao).toLocaleDateString("pt-BR") : "02/01/2026",
-            status: d.status || "Ativo",
-            usuarioId: d.usuario_id || ""
-          }))
+          // Filtrar estritamente: SOMENTE ATIVOS e EXCLUIR PJ (PDI exclusivo para CLT e Estágio)
+          const validData = data.filter((d: any) => {
+            const active = isActiveCollaborator(d.status, d.data_demissao)
+            const isPJ = isPJCollaborator(d.regime_contratacao, d.funcao, d.cnpj, d.preferencia_incentivos)
+            return active && !isPJ
+          })
+
+          list = validData.map((d: any) => {
+            let parsedEmpType = d.regime_contratacao || ""
+            if (d.preferencia_incentivos && d.preferencia_incentivos.includes('"__meta":true')) {
+              try {
+                const parsed = JSON.parse(d.preferencia_incentivos)
+                if (parsed.empType) parsedEmpType = parsed.empType
+              } catch {}
+            }
+            if (!parsedEmpType) {
+              if (d.funcao === "Estagiário" || d.funcao === "Estagiário Operacional") parsedEmpType = "Estágio"
+              else parsedEmpType = "CLT"
+            }
+
+            const emailKey = (d.email || "").toLowerCase().trim()
+            const nameKey = (d.nome || "").toLowerCase().trim()
+            const userIdKey = d.usuario_id || ""
+            const resolvedAvatar = 
+              avatarsMap[userIdKey] ||
+              avatarsMap[emailKey] ||
+              avatarsMap[nameKey] ||
+              d.avatar_url ||
+              d.foto_url ||
+              `https://picsum.photos/seed/${encodeURIComponent(d.nome || d.id)}/100/100`
+
+            return {
+              id: String(d.id),
+              name: d.nome || "Colaborador",
+              role: d.funcao || "Consultor",
+              employmentType: parsedEmpType,
+              cnpj: d.cnpj || "",
+              avatarUrl: resolvedAvatar,
+              area: d.local_trabalho === "Home Office" ? "Vendas Remoto (Home Office)" : "Comercial Presencial",
+              email: d.email || `${d.nome?.toLowerCase().replace(/\s+/g, '.')}@sharkconsig.com.br`,
+              phone: d.telefone || "(11) 99999-0000",
+              joinDate: safeFormatDate(d.data_admissao, "02/01/2026"),
+              status: d.status || "Ativo",
+              usuarioId: d.usuario_id || ""
+            }
+          })
         } else {
-          // Default mock list if DB is empty so user can test right away
+          // Default mock list se banco estiver vazio: estritamente ATIVOS e CLT/Estágio (sem PJ)
           list = [
             {
               id: "colab-1",
               name: "Maria Dolores Rodriguez",
               role: "Consultora de Vendas - Consignado",
+              employmentType: "CLT",
               area: "Comercial / Vendas",
               email: "maria.dolores@sharkconsig.com.br",
               phone: "(11) 98765-4321",
@@ -409,7 +505,8 @@ export default function PDIPage() {
             {
               id: "colab-2",
               name: "Pablo Navarro Muñoz",
-              role: "Operador de Atendimento",
+              role: "Estagiário Operacional",
+              employmentType: "Estágio",
               area: "Operações & Esteiras",
               email: "pablo.navarro@sharkconsig.com.br",
               phone: "(11) 98765-1122",
@@ -421,6 +518,7 @@ export default function PDIPage() {
               id: "colab-3",
               name: "Sónia Jiménez Ruiz",
               role: "Supervisora Comercial",
+              employmentType: "CLT",
               area: "Comercial / Liderança",
               email: "sonia.jimenez@sharkconsig.com.br",
               phone: "(11) 98765-9988",
@@ -432,6 +530,7 @@ export default function PDIPage() {
               id: "colab-4",
               name: "Francisco Martín Rodriguez",
               role: "Consultor de Portabilidade",
+              employmentType: "CLT",
               area: "Vendas Externas",
               email: "francisco.martin@sharkconsig.com.br",
               phone: "(11) 97654-3321",
@@ -524,6 +623,12 @@ Registrado no SharkConsig CRM - Módulo PDI`
   // Filtered collaborators for the directory grid
   const filteredCollaborators = useMemo(() => {
     return collaborators.filter((c) => {
+      // Regra 1: Somente colaboradores Ativos
+      if (!isActiveCollaborator(c.status)) return false
+
+      // Regra 2: Módulo exclusivo para CLT e Estágio (remover PJ)
+      if (isPJCollaborator(c.employmentType, c.role, c.cnpj)) return false
+
       const matchSearch = 
         c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -600,7 +705,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     <span>Diretório de Talentos & PDI</span>
                   </h1>
                   <p className="text-xs text-slate-500 font-medium">
-                    Acompanhamento contínuo, ciclos semanais, habilidades e matriz de evolução profissional.
+                    Acompanhamento contínuo, ciclos semanais e evolução profissional.
                   </p>
                 </div>
 
@@ -682,7 +787,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
 
             {/* Total counter */}
             <div className="flex items-center justify-between text-xs font-bold text-slate-500 px-1">
-              <span>{filteredCollaborators.length} colaborador(es) encontrado(s)</span>
+              <span>{filteredCollaborators.length} colaborador(es) ativo(s) encontrado(s)</span>
               <span className="text-[11px] font-medium text-slate-400">Clique em qualquer colaborador para acessar o PDI completo</span>
             </div>
 
@@ -705,12 +810,28 @@ Registrado no SharkConsig CRM - Módulo PDI`
                       className="group bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm hover:shadow-md hover:border-slate-400/80 transition-all cursor-pointer flex flex-col justify-between space-y-4"
                     >
                       <div className="flex items-start gap-3.5">
-                        {/* Avatar com status ativo */}
+                        {/* Foto de perfil (clique para ampliar) */}
                         <div className="relative flex-shrink-0">
-                          <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-slate-800 to-slate-900 text-white flex items-center justify-center font-black text-base shadow-sm ring-2 ring-white">
-                            {getInitials(c.name)}
-                          </div>
-                          <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#00D492] border-2 border-white rounded-full" title="Colaborador Ativo" />
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setPreviewPhoto({
+                                url: c.avatarUrl || `https://picsum.photos/seed/${encodeURIComponent(c.name || c.id)}/600/600`,
+                                name: c.name
+                              })
+                            }}
+                            title="Clique para ver a foto em tamanho real"
+                            className="relative w-14 h-14 rounded-full overflow-hidden bg-slate-200 border-2 border-slate-50 shadow-sm ring-2 ring-white hover:ring-[#00D492] hover:scale-105 transition-all cursor-zoom-in block"
+                          >
+                            <Image
+                              src={c.avatarUrl || `https://picsum.photos/seed/${encodeURIComponent(c.name || c.id)}/100/100`}
+                              alt={c.name}
+                              fill
+                              className="object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          </button>
                         </div>
 
                         {/* Informações Básicas */}
@@ -730,9 +851,14 @@ Registrado no SharkConsig CRM - Módulo PDI`
 
                       {/* Badges de Etapa & Status */}
                       <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                        <span className={cn("text-[10px] font-bold px-2.5 py-1 rounded-full border", getEtapaBadgeClass(etapa))}>
-                          {etapa}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            {c.employmentType || "CLT"}
+                          </span>
+                          <span className={cn("text-[10px] font-bold px-2.5 py-1 rounded-full border", getEtapaBadgeClass(etapa))}>
+                            {etapa}
+                          </span>
+                        </div>
 
                         <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
                           <Clock className="w-3 h-3 text-slate-400" />
@@ -776,6 +902,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     <tr className="bg-slate-900 text-white text-[10px] font-extrabold uppercase tracking-wider">
                       <th className="py-3.5 px-4">Colaborador</th>
                       <th className="py-3.5 px-4">Cargo & Área</th>
+                      <th className="py-3.5 px-4 text-center">Regime</th>
                       <th className="py-3.5 px-4">Etapa Profissional</th>
                       <th className="py-3.5 px-4 text-center">Ações PDI</th>
                       <th className="py-3.5 px-4 text-center">Feedbacks</th>
@@ -793,15 +920,37 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         className={cn("hover:bg-slate-50 transition-colors cursor-pointer", idx % 2 === 0 ? "bg-white" : "bg-slate-50/40")}
                       >
                         <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs">
-                            {getInitials(c.name)}
-                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setPreviewPhoto({
+                                url: c.avatarUrl || `https://picsum.photos/seed/${encodeURIComponent(c.name || c.id)}/600/600`,
+                                name: c.name
+                              })
+                            }}
+                            title="Clique para ver a foto em tamanho real"
+                            className="relative w-9 h-9 rounded-full overflow-hidden bg-slate-200 border border-slate-200 shrink-0 hover:ring-2 hover:ring-[#00D492] hover:scale-105 transition-all cursor-zoom-in block"
+                          >
+                            <Image
+                              src={c.avatarUrl || `https://picsum.photos/seed/${encodeURIComponent(c.name || c.id)}/100/100`}
+                              alt={c.name}
+                              fill
+                              className="object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          </button>
                           <div>
                             <span className="block text-slate-900 font-extrabold">{c.name}</span>
                             <span className="text-[11px] text-slate-400 font-normal">{c.email}</span>
                           </div>
                         </td>
                         <td className="py-3 px-4">{c.role}</td>
+                        <td className="py-3 px-4 text-center">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            {c.employmentType || "CLT"}
+                          </span>
+                        </td>
                         <td className="py-3 px-4">
                           <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border", getEtapaBadgeClass(c.pdiData?.etapaProfissional || "Desenvolvimento"))}>
                             {c.pdiData?.etapaProfissional || "Desenvolvimento"}
@@ -845,13 +994,15 @@ Registrado no SharkConsig CRM - Módulo PDI`
                 <select
                   value={selectedColab.id}
                   onChange={(e) => {
-                    const found = collaborators.find((c) => c.id === e.target.value)
+                    const found = filteredCollaborators.find((c) => c.id === e.target.value) || collaborators.find((c) => c.id === e.target.value)
                     if (found) setSelectedColab(found)
                   }}
                   className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-[#00D492]"
                 >
-                  {collaborators.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                  {filteredCollaborators.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.employmentType || "CLT"})
+                    </option>
                   ))}
                 </select>
 
@@ -875,10 +1026,25 @@ Registrado no SharkConsig CRM - Módulo PDI`
                 {/* Avatar e Dados Principais */}
                 <div className="flex items-start sm:items-center gap-4">
                   <div className="relative">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-slate-900 text-white flex items-center justify-center font-black text-xl sm:text-2xl shadow-md ring-4 ring-slate-100">
-                      {getInitials(selectedColab.name)}
-                    </div>
-                    <span className="absolute bottom-1 right-1 w-4 h-4 bg-[#00D492] border-2 border-white rounded-full" title="Colaborador Ativo" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPreviewPhoto({
+                          url: selectedColab.avatarUrl || `https://picsum.photos/seed/${encodeURIComponent(selectedColab.name || selectedColab.id)}/600/600`,
+                          name: selectedColab.name
+                        })
+                      }}
+                      title="Clique para ver a foto em tamanho real"
+                      className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden bg-slate-200 shadow-md ring-4 ring-slate-100 border-2 border-white hover:ring-[#00D492] hover:scale-105 transition-all cursor-zoom-in block"
+                    >
+                      <Image
+                        src={selectedColab.avatarUrl || `https://picsum.photos/seed/${encodeURIComponent(selectedColab.name || selectedColab.id)}/200/200`}
+                        alt={selectedColab.name}
+                        fill
+                        className="object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    </button>
                   </div>
 
                   <div className="space-y-1">
@@ -886,9 +1052,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                       <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                         {selectedColab.name}
                       </h2>
-                      <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        Ativo
+                      <span className="bg-slate-100 text-slate-800 border border-slate-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        {selectedColab.employmentType || "CLT"}
                       </span>
                       <span className={cn("text-[10px] font-bold px-2.5 py-0.5 rounded-full border", getEtapaBadgeClass(selectedColab.pdiData.etapaProfissional))}>
                         {selectedColab.pdiData.etapaProfissional}
@@ -900,7 +1065,6 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     </p>
 
                     <div className="flex flex-wrap items-center gap-4 text-[11px] text-slate-400 font-medium pt-1">
-                      <span>ID: <strong className="text-slate-700 font-bold">{selectedColab.usuarioId || selectedColab.id.substring(0, 8)}</strong></span>
                       <span>Admissão: <strong className="text-slate-700 font-bold">{selectedColab.joinDate || "02/01/2026"}</strong></span>
                       <span className="flex items-center gap-1">
                         <Mail className="w-3 h-3 text-slate-400" />
@@ -932,7 +1096,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
               {/* AS 8 ABAS DO BIZNEO HR & PDI                             */}
               {/* ======================================================== */}
               <div className="mt-6 pt-2 border-t border-slate-100">
-                <nav className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar text-xs font-bold">
+                <nav className="flex items-center gap-2 overflow-x-auto pb-3 pt-1 custom-scrollbar text-xs font-bold [scrollbar-width:thin] [scrollbar-color:#94a3b8_#f1f5f9]">
                   {[
                     { id: 1, label: "1. Perfil & Contexto", icon: User },
                     { id: 2, label: "2. Habilidades & Forças", icon: Award },
@@ -1004,12 +1168,10 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         </label>
                         <input
                           type="text"
-                          value={selectedColab.pdiData.cargo}
-                          onChange={(e) => handleUpdatePDIData({
-                            ...selectedColab.pdiData,
-                            cargo: e.target.value
-                          })}
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-[#00D492]"
+                          value={selectedColab.role || selectedColab.pdiData.cargo}
+                          disabled
+                          readOnly
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-700 font-bold"
                         />
                       </div>
 
@@ -2034,7 +2196,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
       {/* MODAL: NOVO FEEDBACK                                           */}
       {/* ============================================================== */}
       {showAddFeedbackModal && selectedColab && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[999]">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
@@ -2184,7 +2346,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
       {/* MODAL: NOVO COMPORTAMENTO                                      */}
       {/* ============================================================== */}
       {showAddComportamentoModal && selectedColab && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[999]">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
@@ -2316,7 +2478,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
       {/* MODAL: NOVA META PDI                                           */}
       {/* ============================================================== */}
       {showAddAcaoModal && selectedColab && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[999]">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
@@ -2454,6 +2616,60 @@ Registrado no SharkConsig CRM - Módulo PDI`
                 className="bg-slate-900 hover:bg-[#00D492] hover:text-slate-950 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-sm"
               >
                 Salvar Meta
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Simples de Foto em Tamanho Real */}
+      {previewPhoto && (
+        <div 
+          className="fixed inset-0 z-[999] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div 
+            className="relative bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden max-w-lg w-full flex flex-col animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header do modal */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-slate-500" />
+                <h3 className="font-extrabold text-sm text-slate-900 truncate">
+                  {previewPhoto.name}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewPhoto(null)}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+                title="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Imagem em tamanho real */}
+            <div className="relative bg-slate-950 flex items-center justify-center p-2 min-h-[280px] max-h-[75vh] overflow-hidden">
+              <img
+                src={previewPhoto.url}
+                alt={previewPhoto.name}
+                className="max-h-[70vh] w-auto max-w-full rounded-lg object-contain shadow-md"
+              />
+            </div>
+
+            {/* Rodapé com botão fechar */}
+            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-white">
+              <span className="text-[11px] font-medium text-slate-400">
+                Visualização em tamanho real
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewPhoto(null)}
+                className="px-4 py-1.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-[#00D492] hover:text-slate-950 text-white transition-all cursor-pointer shadow-sm"
+              >
+                Fechar
               </button>
             </div>
           </div>

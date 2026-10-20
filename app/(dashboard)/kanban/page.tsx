@@ -7361,22 +7361,6 @@ export default function KanbanPage() {
                       </div>
                     </div>
                   </div>
-
-                  {/* Outros operadores atendendo simultaneamente */}
-                  {leadEmAtendimentoInfo.outros_operadores && leadEmAtendimentoInfo.outros_operadores.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-slate-200/60">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 block mb-1">
-                        ⚡ Concorrência: Também atendido por
-                      </span>
-                      <div className="flex flex-wrap gap-1">
-                        {leadEmAtendimentoInfo.outros_operadores.map((op, idx) => (
-                          <span key={idx} className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">
-                            {op.operador_nome} ({op.etapa})
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className={cn(
