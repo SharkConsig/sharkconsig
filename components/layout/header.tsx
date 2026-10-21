@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronDown, LogOut, Menu, MessageSquarePlus, MessageSquareText, ClipboardList, FileEdit, LifeBuoy, X, Sun, Moon } from "lucide-react"
+import { ChevronDown, LogOut, Menu, MessageSquarePlus, MessageSquareText, ClipboardList, FileEdit, LifeBuoy, X, Sun, Moon, FolderOpen } from "lucide-react"
 import Image from "next/image"
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
@@ -17,6 +17,7 @@ interface HeaderProps {
 import { useAuth } from "@/context/auth-context"
 import { RHMessagingModal } from "@/components/rh/rh-messaging-modal"
 import { RHMessagePopup } from "@/components/rh/rh-message-popup"
+import { MateriaisApoioModal } from "@/components/materiais-apoio/materiais-apoio-modal"
 
 export function Header({ title, children, hideQuickLinks = false }: HeaderProps) {
   const router = useRouter()
@@ -28,10 +29,31 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const { toggleSidebar, isCollapsed, isHovered, isTrainingBlocked } = useSidebar()
   const effectiveCollapsed = isCollapsed && !isHovered
-  const { perfil, user, isAdmin, isRecursosHumanos, isCorretor, isDeveloper } = useAuth()
+  const { perfil, user, isAdmin, isRecursosHumanos, isCorretor, isDeveloper, isSupervisor, isEstagio, isMonitoramento } = useAuth()
 
   const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
   const isCorretorPJ = (perfil?.role === 'Corretor' || isCorretor) && regimeUpper === 'PJ' && !isAdmin
+
+  // Permissões do Módulo de Materiais de Apoio
+  const [isMaterialApoioOpen, setIsMaterialApoioOpen] = useState(false)
+  const userRoleNorm = (perfil?.role || "").trim().toLowerCase()
+  const isCorretorPJBlocked = (userRoleNorm === 'corretor' || isCorretor) && regimeUpper.includes('PJ') && !isAdmin && !isDeveloper
+  const isOperacionalBlocked = userRoleNorm === 'operacional' && !isAdmin && !isDeveloper
+  const isMonitoramentoBlocked = (userRoleNorm === 'monitoramento' || isMonitoramento) && !isAdmin && !isDeveloper
+  const isRecursosHumanosBlocked = (userRoleNorm === 'recursos humanos' || isRecursosHumanos) && !isAdmin && !isDeveloper
+
+  const isAdm = isAdmin || userRoleNorm === 'administrador' || userRoleNorm === 'admin'
+  const isDev = isDeveloper || userRoleNorm === 'desenvolvedor' || userRoleNorm === 'dev'
+  const isSup = isSupervisor || userRoleNorm === 'supervisor' || userRoleNorm === 'supervisor/coordenador'
+  const isEst = isEstagio || userRoleNorm === 'estágio' || userRoleNorm === 'estagio' || userRoleNorm === 'estagiário' || userRoleNorm === 'estagiario'
+  const isCorretorCLT = (userRoleNorm === 'corretor' || isCorretor) && !isCorretorPJBlocked
+
+  // Disponível em todas as áreas exceto Kanban para perfis autorizados
+  const canAccessMaterialApoio = !isKanban && !isCorretorPJBlocked && !isOperacionalBlocked && !isMonitoramentoBlocked && !isRecursosHumanosBlocked && (
+    isAdm || isDev || isSup || isEst || isCorretorCLT
+  )
+  // Upload permitido apenas para Supervisor, Administrador e Desenvolvedor
+  const canUploadMaterialApoio = isAdm || isDev || isSup
 
   // Isenção da regra de bloqueio da barra fixa do topo durante a aula
   const userRole = (perfil?.role || "").trim()
@@ -470,6 +492,21 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
               <ClipboardList className="w-[21px] h-[21px]" />
             </Link>
           </div>
+        )}
+
+        {/* Botão de Acesso a Materiais de Apoio (posicionado ao lado direito dos botões de atalho) */}
+        {canAccessMaterialApoio && (
+          <button
+            type="button"
+            id="header-material-apoio-btn"
+            onClick={() => setIsMaterialApoioOpen(true)}
+            className="h-9 px-3 sm:px-3.5 text-[11px] font-black uppercase tracking-wider bg-[#0F172B] hover:bg-slate-800 text-white rounded-xl shadow-xs hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap mr-2 border border-slate-700/60"
+            title="Acessar Materiais de Apoio (Vídeos, Imagens, Áudios e Documentos)"
+          >
+            <FolderOpen className="w-4 h-4 text-[#00D492]" />
+            <span className="hidden sm:inline">Material de Apoio</span>
+            <span className="sm:hidden">Apoio</span>
+          </button>
         )}
 
         {(perfil?.role?.toLowerCase() === 'recursos humanos' || isRecursosHumanos) && (
@@ -942,6 +979,13 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
 
       {/* Pop-up de Mensagem Recebida do RH para o Colaborador */}
       <RHMessagePopup />
+
+      {/* Modal Módulo de Materiais de Apoio (Vídeos, Imagens, Áudios, Documentos) */}
+      <MateriaisApoioModal
+        isOpen={isMaterialApoioOpen}
+        onClose={() => setIsMaterialApoioOpen(false)}
+        canUpload={canUploadMaterialApoio}
+      />
     </header>
   )
 }
