@@ -1,6 +1,6 @@
 "use client"
 
-import { ChevronDown, LogOut, Menu, MessageSquarePlus, MessageSquareText, ClipboardList, FileEdit, LifeBuoy, X, Sun, Moon, FolderOpen } from "lucide-react"
+import { ChevronDown, LogOut, Menu, MessageSquarePlus, MessageSquareText, ClipboardList, FileEdit, LifeBuoy, X, Sun, Moon, FolderOpen, MessageSquareWarning } from "lucide-react"
 import Image from "next/image"
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
@@ -18,6 +18,7 @@ import { useAuth } from "@/context/auth-context"
 import { RHMessagingModal } from "@/components/rh/rh-messaging-modal"
 import { RHMessagePopup } from "@/components/rh/rh-message-popup"
 import { MateriaisApoioModal } from "@/components/materiais-apoio/materiais-apoio-modal"
+import { RelatosSituacoesModal } from "@/components/relatos-situacoes/relatos-situacoes-modal"
 
 export function Header({ title, children, hideQuickLinks = false }: HeaderProps) {
   const router = useRouter()
@@ -36,6 +37,7 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
 
   // Permissões do Módulo de Materiais de Apoio
   const [isMaterialApoioOpen, setIsMaterialApoioOpen] = useState(false)
+  const [isRelatosOpen, setIsRelatosOpen] = useState(false)
   const userRoleNorm = (perfil?.role || "").trim().toLowerCase()
   const isCorretorPJBlocked = (userRoleNorm === 'corretor' || isCorretor) && regimeUpper.includes('PJ') && !isAdmin && !isDeveloper
   const isRecursosHumanosBlocked = (userRoleNorm === 'recursos humanos' || isRecursosHumanos) && !isAdmin && !isDeveloper
@@ -500,7 +502,7 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
             type="button"
             id="header-material-apoio-btn"
             onClick={() => setIsMaterialApoioOpen(true)}
-            className="h-9 px-3 sm:px-3.5 text-[11px] font-black uppercase tracking-wider bg-[#0F172B] hover:bg-slate-800 text-white rounded-xl shadow-xs hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap mr-2 border border-slate-700/60"
+            className="h-9 px-3 sm:px-3.5 text-xs font-bold bg-[#0F172B] hover:bg-slate-800 text-white rounded-xl shadow-xs hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap mr-2 border border-slate-700/60"
             title="Acessar Materiais de Apoio (Vídeos, Imagens, Áudios e Documentos)"
           >
             <FolderOpen className="w-4 h-4 text-[#00D492]" />
@@ -513,10 +515,25 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
           <button
             type="button"
             onClick={() => setIsRHMessagingOpen(true)}
-            className="h-9 px-4 text-xs font-bold text-white bg-[#171717] hover:bg-black rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap uppercase tracking-wider mr-2"
+            className="h-9 px-4 text-xs font-bold text-white bg-[#171717] hover:bg-black rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap mr-2"
           >
             <MessageSquareText className="w-4 h-4" />
-            MENSAGEM DO RH
+            Mensagem do RH
+          </button>
+        )}
+
+        {/* Botão Relatar Situação (para todos os usuários) / Situações Relatadas (para Administrador) */}
+        {!isKanban && (
+          <button
+            type="button"
+            id="header-relatar-situacao-btn"
+            onClick={() => setIsRelatosOpen(true)}
+            className="h-9 px-3 sm:px-3.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl shadow-xs hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap mr-2 border border-amber-600/30"
+            title={isAdmin ? "Visualizar situações e dúvidas relatadas pela equipe" : "Relatar uma situação ou dúvida ao Administrador"}
+          >
+            <MessageSquareWarning className="w-4 h-4 text-slate-950" />
+            <span className="hidden sm:inline">{isAdmin ? "Situações Relatadas" : "Relatar Situação"}</span>
+            <span className="sm:hidden">{isAdmin ? "Relatos" : "Relatar"}</span>
           </button>
         )}
 
@@ -985,6 +1002,13 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
         isOpen={isMaterialApoioOpen}
         onClose={() => setIsMaterialApoioOpen(false)}
         canUpload={canUploadMaterialApoio}
+      />
+
+      {/* Modal de Relato de Situações / Situações Relatadas */}
+      <RelatosSituacoesModal
+        isOpen={isRelatosOpen}
+        onClose={() => setIsRelatosOpen(false)}
+        isAdmin={Boolean(isAdmin || userRoleNorm === 'administrador' || userRoleNorm === 'admin')}
       />
     </header>
   )

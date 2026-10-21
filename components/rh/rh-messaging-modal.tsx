@@ -587,30 +587,35 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
   const selectedUser = users.find(u => u.id === selectedUserId)
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
-      <div className="bg-white border border-slate-200 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Modal Header */}
-        <div className="bg-[#171717] px-6 py-5 flex items-center justify-between text-white shrink-0">
+    <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-6 animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+        {/* Header do Modal */}
+        <div className="flex items-center justify-between px-5 sm:px-7 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <MessageSquare className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-[#0F172B] dark:bg-amber-600 text-white flex items-center justify-center shadow-xs">
+              <MessageSquare className="w-5 h-5 text-amber-400" />
             </div>
             <div>
-              <h3 className="text-sm font-bold uppercase tracking-wider text-white">
-                Mensagens do RH
+              <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                Mensagem do RH
               </h3>
+              <p className="text-[12px] sm:text-[13px] text-slate-500 dark:text-slate-400 font-medium">
+                Envie comunicados, mensagens personalizadas ou imagens comemorativas para a equipe
+              </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={handleCancel}
-            className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 transition-colors cursor-pointer"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Fechar Janela"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div className="p-6 space-y-5 overflow-y-auto">
+        {/* Corpo do Modal */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 dark:bg-slate-950/40 space-y-4">
           {statusBanner && (
             <div className={`p-3.5 rounded-xl text-xs font-bold flex items-center gap-2 ${
               statusBanner.type === 'success' 
@@ -624,7 +629,7 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
 
           {/* Destinatário Selector Dropdown */}
           <div className="space-y-1.5">
-            <label className="text-xs font-extrabold uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-slate-500" />
               Usuário Destinatário:
             </label>
@@ -632,7 +637,7 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
               value={selectedUserId}
               onChange={(e) => handleUserChange(e.target.value)}
               disabled={loadingUsers || sending}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer transition-all disabled:opacity-50"
+              className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#0F172B] dark:focus:ring-amber-500 cursor-pointer transition-all disabled:opacity-50"
             >
               <option value="">-- Selecione o colaborador destinatário --</option>
               {users.map((u) => (
@@ -642,7 +647,7 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
               ))}
             </select>
             {loadingUsers && (
-              <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+              <p className="text-[10px] text-slate-400 font-medium flex items-center gap-1 pt-1">
                 <Loader2 className="w-3 h-3 animate-spin text-amber-500" /> Carregando lista de colaboradores...
               </p>
             )}
@@ -650,71 +655,69 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
 
           {/* Active Message Alert Notice if selected user has one */}
           {selectedUser && (selectedUser.rh_mensagem_destaque || activeCommunicado) && (
-            <div className="p-3.5 bg-amber-50/90 border border-amber-200/80 rounded-2xl flex items-center justify-between gap-3 text-xs">
+            <div className="p-3.5 bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 rounded-xl flex items-center justify-between gap-3 text-xs">
               <div className="space-y-0.5 min-w-0">
-                <p className="font-extrabold text-amber-950 text-[11px] uppercase tracking-wide flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <p className="font-extrabold text-amber-950 dark:text-amber-200 text-[11px] uppercase tracking-wide flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
                   <span>Comunicado Ativo no Dashboard deste Colaborador</span>
                 </p>
-                <p className="text-amber-900 text-xs italic truncate">
+                <p className="text-amber-900 dark:text-amber-300 text-xs italic truncate">
                   &ldquo;{activeCommunicado?.mensagem || selectedUser.rh_mensagem_destaque || 'Imagem comemorativa ativa'}&rdquo;
                   {activeCommunicado?.imagem_url && ' (+ imagem anexa)'}
                 </p>
               </div>
-              <Button
+              <button
                 type="button"
-                variant="outline"
-                size="sm"
                 onClick={handleClearMessage}
                 disabled={sending}
-                className="border-rose-200 bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 font-extrabold text-[11px] uppercase px-3 py-1.5 rounded-xl cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
+                className="h-8 px-3 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-700 dark:text-rose-300 font-bold text-[11px] cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs transition-colors"
                 title="Apagar mensagem e imagem enviadas especificamente para este colaborador"
               >
-                <Trash2 className="w-3 h-3 text-rose-600" />
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                 <span>Apagar Deste Colaborador</span>
-              </Button>
+              </button>
             </div>
           )}
 
           {/* Textarea for Message */}
           <div className="space-y-1.5">
-            <label className="text-xs font-extrabold uppercase text-slate-700 tracking-wider flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                 Mensagem Personalizada:
-              </span>
+              </label>
               <span className="text-[10px] text-slate-400 font-normal">
                 {message.length} caractere(s)
               </span>
-            </label>
+            </div>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Digite a mensagem para o colaborador (ex: Parabéns pelo excelente trabalho no projeto! / Feliz Aniversário!)..."
               rows={3}
               disabled={sending}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all resize-none disabled:opacity-50"
+              className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-medium text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0F172B] dark:focus:ring-amber-500 transition-all resize-none disabled:opacity-50"
             />
           </div>
 
           {/* Anexo de Imagem (Paisagem 1448x1086 e Vertical 1024x1536 com enquadramento interativo) */}
-          <div className="space-y-3 pt-1 border-t border-slate-100">
+          <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <label className="text-xs font-extrabold uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                 <ImageIcon className="w-3.5 h-3.5 text-amber-500" />
                 Imagem Anexa (Opcional):
               </label>
 
               {/* Seletor de Orientações com proporções solicitadas */}
-              <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold shrink-0">
+              <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold shrink-0">
                 <button
                   type="button"
                   onClick={() => handleOrientationChange('vertical')}
                   disabled={sending || isProcessingImage}
                   className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all text-[11px] cursor-pointer ${
                     orientation === 'vertical'
-                      ? 'bg-white text-slate-900 shadow-xs border border-slate-200 font-extrabold'
-                      : 'text-slate-500 hover:text-slate-900'
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border border-slate-200 dark:border-slate-700 font-extrabold'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
                   }`}
                   title="Formato Vertical (1024 x 1536 px)"
                 >
@@ -727,8 +730,8 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
                   disabled={sending || isProcessingImage}
                   className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all text-[11px] cursor-pointer ${
                     orientation === 'horizontal'
-                      ? 'bg-white text-slate-900 shadow-xs border border-slate-200 font-extrabold'
-                      : 'text-slate-500 hover:text-slate-900'
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border border-slate-200 dark:border-slate-700 font-extrabold'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
                   }`}
                   title="Formato Paisagem (1448 x 1086 px)"
                 >
@@ -751,19 +754,19 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
               /* Dropzone / Botão de Seleção */
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-200 hover:border-amber-400 bg-slate-50 hover:bg-amber-50/40 rounded-2xl p-5 text-center transition-all cursor-pointer group"
+                className="border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-amber-400 bg-white dark:bg-slate-900/60 rounded-xl p-4 text-center transition-all cursor-pointer group"
               >
                 {isProcessingImage ? (
                   <div className="flex flex-col items-center justify-center py-2 space-y-2">
                     <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
-                    <span className="text-xs font-bold text-slate-600">Comprimindo e formatando imagem no Canvas...</span>
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Comprimindo e formatando imagem no Canvas...</span>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center space-y-1.5">
-                    <div className="w-10 h-10 rounded-full bg-white shadow-xs border border-slate-200 flex items-center justify-center text-slate-600 group-hover:text-amber-600 group-hover:scale-105 transition-transform">
+                    <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-slate-800 shadow-xs border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 group-hover:text-amber-600 group-hover:scale-105 transition-transform">
                       <Upload className="w-5 h-5" />
                     </div>
-                    <p className="text-xs font-extrabold text-slate-700">
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
                       Clique para anexar imagem comemorativa
                     </p>
                     <p className="text-[10px] text-slate-400 font-medium">
@@ -774,14 +777,14 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
               </div>
             ) : (
               /* Pré-visualização com Proporção Real, Ajuste de Enquadramento e Botões */
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="p-3.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
                 <div className="flex items-center justify-end text-xs">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={sending || isProcessingImage}
-                      className="text-[11px] font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer transition-colors"
+                      className="text-[11px] font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center gap-1 cursor-pointer transition-colors"
                       title="Substituir foto"
                     >
                       <RefreshCw className="w-3 h-3" /> Trocar
@@ -799,7 +802,7 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
                 </div>
 
                 {/* Box de Pré-visualização com recurso de Clicar, Segurar e Posicionar para Enquadramento */}
-                <div className="w-full flex flex-col items-center bg-slate-900/95 rounded-xl p-3 overflow-hidden select-none">
+                <div className="w-full flex flex-col items-center bg-slate-900 rounded-xl p-3 overflow-hidden select-none">
                   <div
                     ref={previewContainerRef}
                     onMouseDown={(e) => handleDragStart(e.clientX, e.clientY)}
@@ -859,14 +862,13 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
           </div>
         </div>
 
-        {/* Modal Footer Buttons */}
-        <div className="bg-slate-50 border-t border-slate-100 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-          <Button
+        {/* Rodapé do Modal */}
+        <div className="px-5 sm:px-7 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+          <button
             type="button"
-            variant="outline"
             onClick={handleClearAllMessages}
             disabled={sending}
-            className="w-full sm:w-auto border-rose-200 bg-white hover:bg-rose-50 text-rose-700 hover:text-rose-800 font-bold text-xs uppercase px-4 py-2.5 rounded-xl cursor-pointer flex items-center justify-center gap-1.5 transition-all shadow-xs shrink-0 whitespace-nowrap disabled:opacity-50"
+            className="w-full sm:w-auto h-9 px-3.5 text-xs font-bold text-rose-700 hover:text-rose-800 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-xl cursor-pointer flex items-center justify-center gap-1.5 transition-all shadow-xs disabled:opacity-50"
             title="Apagar todas as mensagens enviadas para todos os colaboradores"
           >
             {sending ? (
@@ -874,25 +876,24 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
             ) : (
               <Trash2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
             )}
-            <span>{sending ? "Apagando..." : "Apagar Todas as Mensagens"}</span>
-          </Button>
+            <span>{sending ? "Apagando..." : "Apagar todas as mensagens"}</span>
+          </button>
 
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-end shrink-0">
-            <Button
+          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end shrink-0">
+            <button
               type="button"
-              variant="outline"
               onClick={handleCancel}
               disabled={sending}
-              className="border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs uppercase px-5 py-2.5 rounded-xl cursor-pointer shrink-0 whitespace-nowrap"
+              className="h-10 px-5 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
             >
               Cancelar
-            </Button>
+            </button>
 
-            <Button
+            <button
               type="button"
               onClick={handleSend}
               disabled={sending || !selectedUserId || (!message.trim() && !processedImageDataUrl)}
-              className="bg-[#171717] hover:bg-black text-white font-bold text-xs uppercase px-6 py-2.5 rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2 shrink-0 whitespace-nowrap"
+              className="h-10 px-6 text-xs font-bold bg-[#0F172B] hover:bg-slate-800 text-white rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {sending ? (
                 <>
@@ -901,11 +902,11 @@ export function RHMessagingModal({ isOpen, onClose, onSuccess, initialUserId, in
                 </>
               ) : (
                 <>
-                  <Send className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>Enviar Mensagem</span>
+                  <Send className="w-4 h-4 text-[#00D492] shrink-0" />
+                  <span>Enviar mensagem</span>
                 </>
               )}
-            </Button>
+            </button>
           </div>
         </div>
       </div>

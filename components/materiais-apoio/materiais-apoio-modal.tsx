@@ -330,7 +330,7 @@ export function MateriaisApoioModal({ isOpen, onClose, canUpload }: MateriaisApo
               <FolderOpen className="w-5 h-5 text-[#00D492]" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+              <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
                 Materiais de Apoio
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
                   {materials.length} {materials.length === 1 ? "arquivo" : "arquivos"}
@@ -347,7 +347,7 @@ export function MateriaisApoioModal({ isOpen, onClose, canUpload }: MateriaisApo
               <button
                 type="button"
                 onClick={() => setShowUploadForm(!showUploadForm)}
-                className="h-9 px-3.5 sm:px-4 text-[11px] font-black uppercase tracking-wider bg-[#0F172B] hover:bg-slate-800 text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                className="h-9 px-3.5 sm:px-4 text-xs font-bold bg-[#0F172B] hover:bg-slate-800 text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <Upload className="w-4 h-4 text-[#00D492]" />
                 <span className="hidden sm:inline">{showUploadForm ? "Cancelar Upload" : "Enviar Material"}</span>
@@ -405,7 +405,7 @@ export function MateriaisApoioModal({ isOpen, onClose, canUpload }: MateriaisApo
             <button
               type="submit"
               disabled={uploading || !selectedFile}
-              className="w-full sm:w-auto h-9 px-5 text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shrink-0"
+              className="w-full sm:w-auto h-9 px-5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shrink-0"
             >
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
               {uploading ? "Enviando..." : "Confirmar Envio"}

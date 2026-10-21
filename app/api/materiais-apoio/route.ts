@@ -149,7 +149,30 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const validFiles = (activeFiles || []).filter((f: any) => f.name && !f.name.startsWith(".") && f.name !== ".emptyFolderPlaceholder")
+    // Limpeza e filtragem rigorosa: arquivos de relatos NUNCA pertencem a materiais de apoio
+    const validFiles = (activeFiles || []).filter((f: any) => {
+      if (!f.name || f.name.startsWith(".") || f.name === ".emptyFolderPlaceholder") return false
+      const lower = f.name.toLowerCase()
+      if (
+        lower.startsWith("relato") || 
+        lower.includes("_print_") || 
+        lower.startsWith("print_") ||
+        f.id === "relatos"
+      ) {
+        // Remove do bucket de material_apoio para manter o bucket limpo e isolado
+        supabaseAdmin.storage.from(bucketInUse).remove([f.name]).catch(() => {})
+        return false
+      }
+      return true
+    })
+
+    // Limpa também subpasta relatos/ se existir dentro do bucket de material_apoio
+    supabaseAdmin.storage.from(bucketInUse).list("relatos").then(({ data: subRelatos }) => {
+      if (subRelatos && subRelatos.length > 0) {
+        const paths = subRelatos.map((s: any) => `relatos/${s.name}`)
+        supabaseAdmin.storage.from(bucketInUse).remove(paths).catch(() => {})
+      }
+    }).catch(() => {})
     
     // Gerar URLs seguras para cada item (usando o endpoint de proxy /api/materiais-apoio?file= para garantir carregamento 100% de imagens/vídeos/áudios)
     const items = validFiles.map((file: any) => {
