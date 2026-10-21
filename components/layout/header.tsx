@@ -38,22 +38,22 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
   const [isMaterialApoioOpen, setIsMaterialApoioOpen] = useState(false)
   const userRoleNorm = (perfil?.role || "").trim().toLowerCase()
   const isCorretorPJBlocked = (userRoleNorm === 'corretor' || isCorretor) && regimeUpper.includes('PJ') && !isAdmin && !isDeveloper
-  const isOperacionalBlocked = userRoleNorm === 'operacional' && !isAdmin && !isDeveloper
-  const isMonitoramentoBlocked = (userRoleNorm === 'monitoramento' || isMonitoramento) && !isAdmin && !isDeveloper
   const isRecursosHumanosBlocked = (userRoleNorm === 'recursos humanos' || isRecursosHumanos) && !isAdmin && !isDeveloper
 
   const isAdm = isAdmin || userRoleNorm === 'administrador' || userRoleNorm === 'admin'
   const isDev = isDeveloper || userRoleNorm === 'desenvolvedor' || userRoleNorm === 'dev'
   const isSup = isSupervisor || userRoleNorm === 'supervisor' || userRoleNorm === 'supervisor/coordenador'
+  const isOperacional = userRoleNorm === 'operacional'
+  const isMonitoramentoUser = userRoleNorm === 'monitoramento' || isMonitoramento
   const isEst = isEstagio || userRoleNorm === 'estágio' || userRoleNorm === 'estagio' || userRoleNorm === 'estagiário' || userRoleNorm === 'estagiario'
   const isCorretorCLT = (userRoleNorm === 'corretor' || isCorretor) && !isCorretorPJBlocked
 
-  // Disponível em todas as áreas exceto Kanban para perfis autorizados
-  const canAccessMaterialApoio = !isKanban && !isCorretorPJBlocked && !isOperacionalBlocked && !isMonitoramentoBlocked && !isRecursosHumanosBlocked && (
-    isAdm || isDev || isSup || isEst || isCorretorCLT
+  // Disponível em todas as áreas exceto Kanban para perfis autorizados (inclui Monitoramento e Operacional)
+  const canAccessMaterialApoio = !isKanban && !isCorretorPJBlocked && !isRecursosHumanosBlocked && (
+    isAdm || isDev || isSup || isOperacional || isMonitoramentoUser || isEst || isCorretorCLT
   )
-  // Upload permitido apenas para Supervisor, Administrador e Desenvolvedor
-  const canUploadMaterialApoio = isAdm || isDev || isSup
+  // Upload e gestão de materiais permitidos para Administrador, Supervisor, Desenvolvedor, Monitoramento e Operacional
+  const canUploadMaterialApoio = isAdm || isDev || isSup || isOperacional || isMonitoramentoUser
 
   // Isenção da regra de bloqueio da barra fixa do topo durante a aula
   const userRole = (perfil?.role || "").trim()
