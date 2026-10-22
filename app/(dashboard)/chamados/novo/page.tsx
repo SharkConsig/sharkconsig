@@ -26,6 +26,7 @@ import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
 import { withRetry, cn } from "@/lib/utils"
+import { TelefoneEmpresa, getLocalTelefonesEmpresa, fetchTelefonesEmpresa, EVENT_TELEFONES_UPDATED } from "@/lib/telefones-empresa"
 
 export interface NewTicketFormProps {
   isModal?: boolean;
@@ -138,6 +139,13 @@ export function NewTicketForm({
   const isFromClient = !!getParam("nome")
   const isFromKanban = getParam("from_kanban") === "true" || getParam("origem") === "KANBAN" || (isModal && !getParam("origem"))
 
+  const isCorretorPJ = (() => {
+    const regime = ((perfil as any)?.regime_contratacao || (perfil as any)?.regime_trabalho || (perfil as any)?.regime || "").trim().toLowerCase();
+    const role = (perfil?.role || "").trim().toLowerCase();
+    const func = ((perfil as any)?.funcao || "").trim().toLowerCase();
+    return regime === "pj" || role === "pj" || func === "pj" || role.includes("corretor pj") || func.includes("corretor pj") || role.includes("pj") || func.includes("pj");
+  })();
+
   const [formData, setFormData] = useState({
     origem: (getParam("origem") && getParam("origem") !== "KANBAN") ? getParam("origem") : "",
     equipe: (() => {
@@ -180,6 +188,36 @@ export function NewTicketForm({
   const [pastedImages, setPastedImages] = useState<File[]>([])
   const [dbConvenios, setDbConvenios] = useState<string[]>([])
   const [equipesList, setEquipesList] = useState<{ id: string; nome: string; role?: string }[]>([])
+
+  // Telefone da Empresa Utilizado
+  const [selectedEmpresaPhone, setSelectedEmpresaPhone] = useState<string>(() => getParam("telefone_empresa") || "")
+  const [searchEmpresaPhone, setSearchEmpresaPhone] = useState<string>("")
+  const [empresaPhonesList, setEmpresaPhonesList] = useState<TelefoneEmpresa[]>(() => getLocalTelefonesEmpresa())
+  const [isEmpresaPhoneOpen, setIsEmpresaPhoneOpen] = useState(false)
+  const empresaPhoneRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handlePhonesUpdated = () => {
+      setEmpresaPhonesList(getLocalTelefonesEmpresa())
+    }
+    window.addEventListener(EVENT_TELEFONES_UPDATED, handlePhonesUpdated)
+    fetchTelefonesEmpresa(supabase).then(phones => {
+      if (phones && phones.length > 0) {
+        setEmpresaPhonesList(phones)
+      }
+    })
+    return () => window.removeEventListener(EVENT_TELEFONES_UPDATED, handlePhonesUpdated)
+  }, [])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (empresaPhoneRef.current && !empresaPhoneRef.current.contains(event.target as Node)) {
+        setIsEmpresaPhoneOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   // Ticket number state (using a timestamp-based ID or fetching last)
   const [ticketNumber, setTicketNumber] = useState<string>("...")
@@ -623,6 +661,13 @@ export function NewTicketForm({
       return;
     }
 
+    // Validação do Telefone da Empresa Utilizado (obrigatório no formulário geral, dispensado para Corretores PJ e modal do Kanban)
+    if (!isModal && !isCorretorPJ && (!selectedEmpresaPhone || !selectedEmpresaPhone.trim())) {
+      setValidationError("POR FAVOR, SELECIONE O TELEFONE DA EMPRESA UTILIZADO");
+      toast.error("Por favor, selecione o Telefone da Empresa Utilizado.");
+      return;
+    }
+
     // Campos obrigatórios básicos com mensagens específicas
     if (!formData.origem) {
       setValidationError("POR FAVOR, SELECIONE A ORIGEM DO CLIENTE");
@@ -787,7 +832,8 @@ export function NewTicketForm({
         valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : undefined,
         selected_operation_type: selectedOpType,
         from_kanban: isFromKanban,
-        origem_pipeline: isFromKanban ? "KANBAN" : undefined
+        origem_pipeline: isFromKanban ? "KANBAN" : undefined,
+        telefone_empresa: selectedEmpresaPhone || undefined
       };
       finalDescription += `\n\n<!-- TICKET_METADATA: ${JSON.stringify(initialMetadata)} -->`;
 
@@ -860,6 +906,7 @@ export function NewTicketForm({
                 valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : prevMeta.valor_operacao,
                 selected_operation_type: selectedOpType || prevMeta.selected_operation_type,
                 convenio: formData.convenio || prevMeta.convenio,
+                telefone_empresa: selectedEmpresaPhone || prevMeta.telefone_empresa || undefined,
                 ultimo_chamado_aberto_em: new Date().toISOString()
               };
 
@@ -868,6 +915,9 @@ export function NewTicketForm({
                 updated_at: new Date().toISOString()
               };
 
+              if (selectedEmpresaPhone) {
+                updatePayload.telefone_empresa = selectedEmpresaPhone;
+              }
               if (valorOperacaoCalculado > 0) {
                 updatePayload.valor_solicitado = valorOperacaoCalculado;
               }
@@ -972,6 +1022,117 @@ export function NewTicketForm({
 
             <div className="flex flex-col md:flex-row justify-between items-start mb-8 gap-6">
               <div className="flex flex-col gap-6 flex-1 w-full max-w-4xl">
+                {/* Campo Telefone da Empresa Utilizado (exibido no formulário de Abrir Chamado geral, exceto Corretores PJ) */}
+                {!isModal && !isCorretorPJ && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div ref={empresaPhoneRef} className="space-y-2 relative">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                        Telefone da Empresa Utilizado <span className="text-red-500">*</span>
+                      </label>
+                      <div
+                        onClick={() => setIsEmpresaPhoneOpen(prev => !prev)}
+                        className={cn(
+                          "w-full h-[34px] px-3 rounded-lg border text-[12px] font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer flex items-center justify-between shadow-2xs select-none",
+                          validationError?.includes("TELEFONE DA EMPRESA")
+                            ? "border-red-400 bg-red-50/40 ring-1 ring-red-400"
+                            : "border-slate-200 bg-[#E8E8E8]"
+                        )}
+                      >
+                        <span className={selectedEmpresaPhone ? "text-slate-800 font-semibold" : "text-slate-500 font-normal"}>
+                          {selectedEmpresaPhone || "Selecione"}
+                        </span>
+                        <ChevronDown className={cn("w-4 h-4 text-slate-500 transition-transform", isEmpresaPhoneOpen && "rotate-180")} />
+                      </div>
+
+                      {/* Dropdown com Campo de Busca e Opções visíveis com rolagem */}
+                      {isEmpresaPhoneOpen && (
+                        <div className="w-full absolute left-0 top-[100%] mt-1.5 bg-white border border-slate-200 rounded-lg shadow-lg p-2 space-y-2 animate-in fade-in duration-100 z-50">
+                          {/* Campo de Busca por número pelos 4 últimos dígitos */}
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={searchEmpresaPhone}
+                              onChange={(e) => setSearchEmpresaPhone(e.target.value)}
+                              placeholder="Buscar por 4 dígitos, número ou setor..."
+                              autoFocus
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full h-8 px-2.5 text-[12px] font-medium rounded-md border border-slate-200 bg-slate-50 placeholder:text-slate-400 text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                            />
+                          </div>
+
+                          {/* Lista de Opções: mostra pelo menos 3 e barra de rolagem para os demais */}
+                          <div className="max-h-[140px] overflow-y-auto space-y-0.5 divide-y divide-slate-100 pr-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedEmpresaPhone("")
+                                setIsEmpresaPhoneOpen(false)
+                              }}
+                              className={cn(
+                                "w-full text-left px-2.5 py-1.5 text-[12px] rounded-md transition-colors flex items-center justify-between cursor-pointer",
+                                !selectedEmpresaPhone ? "bg-slate-100 text-slate-900 font-bold" : "text-slate-600 hover:bg-slate-50"
+                              )}
+                            >
+                              <span>Selecione</span>
+                            </button>
+                            {(() => {
+                              const term = searchEmpresaPhone.trim().toLowerCase()
+                              const cleanSearch = searchEmpresaPhone.replace(/\D/g, "")
+                              const activePhones = empresaPhonesList.filter(t => t.ativo !== false)
+                              const filteredList = activePhones.filter(tel => {
+                                if (!term) return true
+                                const cleanPhone = tel.numero.replace(/\D/g, "")
+                                const matchDigits = cleanSearch.length > 0 && (
+                                  cleanPhone.endsWith(cleanSearch) || 
+                                  cleanPhone.includes(cleanSearch)
+                                )
+                                const matchText = tel.numero.toLowerCase().includes(term) ||
+                                  Boolean(tel.descricao && tel.descricao.toLowerCase().includes(term))
+                                return matchDigits || matchText
+                              })
+
+                              if (filteredList.length === 0) {
+                                return (
+                                  <p className="text-[11px] text-slate-400 italic px-2.5 py-2 text-center">Nenhum telefone encontrado</p>
+                                )
+                              }
+
+                              return filteredList.map(tel => {
+                                const isSelected = selectedEmpresaPhone === tel.numero
+                                return (
+                                  <button
+                                    key={tel.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedEmpresaPhone(tel.numero)
+                                      setIsEmpresaPhoneOpen(false)
+                                      if (validationError) setValidationError(null)
+                                    }}
+                                    className={cn(
+                                      "w-full text-left px-2.5 py-2 text-[12px] rounded-md transition-colors flex items-center justify-between cursor-pointer",
+                                      isSelected ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-800 hover:bg-slate-50 font-semibold"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2 truncate">
+                                      <span>{tel.numero}</span>
+                                      {tel.descricao && (
+                                        <span className="text-[10px] text-slate-400 font-normal truncate">
+                                          • {tel.descricao}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                                  </button>
+                                )
+                              })
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Row 1: Origem and Equipe */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">

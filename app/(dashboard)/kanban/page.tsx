@@ -322,26 +322,34 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
   const selectedType = meta?.selected_operation_type
   if (selectedType) {
     if (selectedType === 'margem') {
-      const val = (meta.valor_operacao_margem && meta.valor_operacao_margem !== "R$ 0,00") 
-        ? formatValorBrl(meta.valor_operacao_margem) 
-        : (explicitDescValor || "R$ 0,00")
+      const rawVal = (meta.valor_operacao_margem && meta.valor_operacao_margem !== "R$ 0,00") 
+        ? meta.valor_operacao_margem 
+        : (meta.valor_operacao || ticket.valor_operacao || explicitDescValor || "R$ 0,00")
+      const val = formatValorBrl(rawVal)
       return { valor: val, label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
     }
     if (selectedType === 'liquida5') {
-      const val = (meta.valor_operacao_liquida5 && meta.valor_operacao_liquida5 !== "R$ 0,00") 
-        ? formatValorBrl(meta.valor_operacao_liquida5) 
-        : (explicitDescValor || "R$ 0,00")
+      const rawVal = (meta.valor_operacao_liquida5 && meta.valor_operacao_liquida5 !== "R$ 0,00") 
+        ? meta.valor_operacao_liquida5 
+        : (meta.valor_operacao || ticket.valor_operacao || explicitDescValor || "R$ 0,00")
+      const val = formatValorBrl(rawVal)
       return { valor: val, label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
     }
     if (selectedType === 'beneficio5') {
-      const val = (meta.valor_operacao_beneficio5 && meta.valor_operacao_beneficio5 !== "R$ 0,00") 
-        ? formatValorBrl(meta.valor_operacao_beneficio5) 
-        : (explicitDescValor || "R$ 0,00")
+      const rawVal = (meta.valor_operacao_beneficio5 && meta.valor_operacao_beneficio5 !== "R$ 0,00") 
+        ? meta.valor_operacao_beneficio5 
+        : (meta.valor_operacao || ticket.valor_operacao || explicitDescValor || "R$ 0,00")
+      const val = formatValorBrl(rawVal)
       return { valor: val, label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
     }
   }
 
-  // 2. Coluna valor_operacao no banco
+  // 2. Coluna valor_operacao no banco ou metadados
+  if (meta?.valor_operacao && Number(meta.valor_operacao) > 0) {
+    const valStr = formatValorBrl(meta.valor_operacao)
+    return { valor: valStr, label: "Valor Operação", color: "text-slate-900" }
+  }
+
   if (ticket.valor_operacao !== null && ticket.valor_operacao !== undefined && Number(ticket.valor_operacao) > 0) {
     const valStr = "R$ " + Number(ticket.valor_operacao).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     const descNorm = desc ? desc.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() : ""
@@ -1697,7 +1705,7 @@ export default function KanbanPage() {
 
       setTickets(formatted)
 
-      // Recuperação retroativa para fichas que estejam com Valor Operação zerado e já possuam chamado aberto
+      // Recuperação retroativa para fichas que estejam com Valor Operação zerado E pertençam ao PRÓPRIO operador do chamado
       const cpfsComValorZerado = Array.from(new Set(
         formatted
           .filter(t => {
@@ -1711,16 +1719,19 @@ export default function KanbanPage() {
       if (cpfsComValorZerado.length > 0) {
         supabase
           .from("chamados")
-          .select("id, cliente_cpf, margem, margem_liquida_5, margem_beneficio_5, descricao, created_at")
+          .select("id, cliente_cpf, user_id, margem, margem_liquida_5, margem_beneficio_5, valor_operacao, created_at")
           .in("cliente_cpf", cpfsComValorZerado)
           .order("created_at", { ascending: false })
           .then(({ data: chamadosExistentes }) => {
             if (chamadosExistentes && chamadosExistentes.length > 0) {
-              const mapaChamados = new Map<string, any>()
+              // Mapeia chamados estritamente pelo par [CPF + USER_ID] para NUNCA herdar dados de outro operador
+              const mapaChamadosDoOperador = new Map<string, any>()
               chamadosExistentes.forEach(ch => {
                 const cCpf = (ch.cliente_cpf || "").replace(/\D/g, "")
-                if (cCpf && !mapaChamados.has(cCpf)) {
-                  mapaChamados.set(cCpf, ch)
+                const uId = ch.user_id ? String(ch.user_id) : ""
+                const key = `${cCpf}_${uId}`
+                if (cCpf && uId && !mapaChamadosDoOperador.has(key)) {
+                  mapaChamadosDoOperador.set(key, ch)
                 }
               })
 
@@ -1728,15 +1739,14 @@ export default function KanbanPage() {
                 let alterou = false
                 const atualizados = prev.map(t => {
                   const cCpf = (t.cliente_cpf || "").replace(/\D/g, "")
-                  const ch = mapaChamados.get(cCpf)
+                  const tUserId = t.user_id ? String(t.user_id) : ""
+                  const key = `${cCpf}_${tUserId}`
+                  // Isolamento rigoroso: somente preenche se o chamado pertencer ao MESMO usuário/operador
+                  const ch = mapaChamadosDoOperador.get(key)
                   if (ch) {
                     const op = getValorOperacaoDeAbertura(t)
                     if (!op.valor || op.valor === "R$ 0,00") {
                       alterou = true
-                      const chMeta = parseMetadata(ch.descricao || "")
-                      const descFinal = t.descricao 
-                        ? `${t.descricao}\n<!-- TICKET_METADATA: ${JSON.stringify(chMeta)} -->` 
-                        : (ch.descricao || "")
                       return {
                         ...t,
                         margem: (t.margem && t.margem > 0) ? t.margem : (ch.margem || undefined),
@@ -1744,8 +1754,7 @@ export default function KanbanPage() {
                         margem_beneficio_5: (t.margem_beneficio_5 && t.margem_beneficio_5 > 0) ? t.margem_beneficio_5 : (ch.margem_beneficio_5 || undefined),
                         valor_operacao: (t.valor_operacao && t.valor_operacao > 0) 
                           ? t.valor_operacao 
-                          : (chMeta.valor_operacao ? Number(chMeta.valor_operacao) : undefined),
-                        descricao: descFinal
+                          : (ch.valor_operacao ? Number(ch.valor_operacao) : undefined)
                       }
                     }
                   }
@@ -3935,7 +3944,7 @@ export default function KanbanPage() {
                 🔴 ATRASADO
               </span>
             )}
-            {!isMinhaFilaAcaoEspecial && (meta.acao_especial || isAltoValor) && (
+            {!isMinhaFilaAcaoEspecial && Boolean(meta.acao_especial || meta.acao_especial_status === "pendente") && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800 border border-amber-200 text-[10px] whitespace-nowrap">
                 🟡 AÇÃO ESPECIAL
               </span>
@@ -4232,8 +4241,11 @@ export default function KanbanPage() {
               </div>
               <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
                 <span className="text-slate-500">Produto/Modalidade:</span>
-                <span className="font-semibold text-slate-700 truncate max-w-[130px]">
-                  {meta.produto_modalidade || meta.modalidade || "---"}
+                <span 
+                  className="font-bold text-slate-900 leading-tight uppercase truncate max-w-[150px]"
+                  title={opData.label && opData.label !== "Valor Operação" ? opData.label.toUpperCase() : (meta.produto_modalidade || meta.modalidade || "---")}
+                >
+                  {opData.label && opData.label !== "Valor Operação" ? opData.label.toUpperCase() : (meta.produto_modalidade || meta.modalidade || "---")}
                 </span>
               </div>
               <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">

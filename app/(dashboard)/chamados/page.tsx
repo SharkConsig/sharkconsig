@@ -79,6 +79,7 @@ export interface Ticket {
   user_id: string
   user_nome?: string
   user_avatar?: string
+  telefone_empresa?: string
 }
 
 const APROVADOS_LABELS = [
@@ -1208,6 +1209,28 @@ export default function TicketsPage() {
     return Array.from(new Set(names)).sort()
   }, [tickets])
 
+  const isCorretorPJ = useMemo(() => {
+    const roleLower = (perfil?.role || '').toLowerCase()
+    const regime = ((perfil as any)?.regime_contratacao || (perfil as any)?.regime_trabalho || (perfil as any)?.regime || "").trim().toLowerCase()
+    const func = ((perfil as any)?.funcao || "").trim().toLowerCase()
+    return regime === 'pj' || func === 'pj' || roleLower === 'pj' || roleLower.includes('corretor pj') || func.includes('corretor pj') || roleLower.includes('pj') || func.includes('pj')
+  }, [perfil?.role, perfil?.regime_contratacao, (perfil as any)?.regime_trabalho, (perfil as any)?.regime, (perfil as any)?.funcao])
+
+  const extractTelefoneEmpresa = useCallback((ticket: Ticket): string => {
+    if (ticket.telefone_empresa) return ticket.telefone_empresa
+    const desc = ticket.descricao || ticket.content || ""
+    const match = desc.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/)
+    if (match && match[1]) {
+      try {
+        const meta = JSON.parse(match[1])
+        if (meta && meta.telefone_empresa) return meta.telefone_empresa
+      } catch {
+        // ignore
+      }
+    }
+    return ""
+  }, [])
+
   // Base tickets filtered by search and advanced filters
   const isGestaoOrSupervisor = useMemo(() => {
     const roleLower = (perfil?.role || '').toLowerCase()
@@ -1752,6 +1775,7 @@ export default function TicketsPage() {
       // Define columns
       worksheet.columns = [
         { header: 'ID', key: 'id', width: 10 },
+        ...(!isCorretorPJ ? [{ header: 'Telefone Empresa', key: 'telefone_empresa', width: 22 }] : []),
         { header: 'Status', key: 'status', width: 25 },
         { header: 'Corretor', key: 'corretor', width: 30 },
         { header: 'Origem', key: 'origem', width: 15 },
@@ -1768,6 +1792,7 @@ export default function TicketsPage() {
         const opData = getValorOperacaoDeAbertura(ticket)
         worksheet.addRow({
           id: ticket.id,
+          ...(!isCorretorPJ ? { telefone_empresa: extractTelefoneEmpresa(ticket) || '---' } : {}),
           status: ticket.status_chamados?.nome || ticket.status,
           corretor: ticket.user_nome || '---',
           origem: ticket.origem,
@@ -2353,6 +2378,9 @@ export default function TicketsPage() {
                     {(isOperational || isAdmin || isSupervisor || isDeveloper) && (
                       <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[120px]">Corretor</th>
                     )}
+                    {!isCorretorPJ && (
+                      <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[130px]">Tel. Empresa</th>
+                    )}
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[150px]">Status</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[110px]">Origem</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[200px]">Cliente / Convênio</th>
@@ -2367,7 +2395,7 @@ export default function TicketsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {isLoading && tickets.length === 0 ? (
                     <tr>
-                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0)} className="px-4 py-12 text-center">
+                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0) + (!isCorretorPJ ? 1 : 0)} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <Loader2 className="w-6 h-6 text-primary animate-spin" />
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando chamados...</span>
@@ -2420,6 +2448,17 @@ export default function TicketsPage() {
                                 </span>
                                 <span className="text-[8px] text-slate-400 font-medium">Equipe: {ticket.equipe}</span>
                               </div>
+                            </td>
+                          )}
+                          {!isCorretorPJ && (
+                            <td className="px-4 py-4 text-[12px] font-bold text-slate-700 whitespace-nowrap">
+                              {extractTelefoneEmpresa(ticket) ? (
+                                <span className="inline-flex items-center gap-1 font-mono text-[11px] text-slate-800 bg-slate-200/60 px-2 py-0.5 rounded-md border border-slate-300/60">
+                                  {extractTelefoneEmpresa(ticket)}
+                                </span>
+                              ) : (
+                                <span className="text-slate-300 font-normal">---</span>
+                              )}
                             </td>
                           )}
                           <td className="px-4 py-4">
@@ -2668,7 +2707,7 @@ export default function TicketsPage() {
                         </tr>
                         {expandedTicketId === ticket.id.toString() && (
                           <tr className={cn(index % 2 === 0 ? "bg-slate-100" : "bg-white")}>
-                            <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0)} className="p-0 border-b border-slate-200">
+                            <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0) + (!isCorretorPJ ? 1 : 0)} className="p-0 border-b border-slate-200">
                               <div className="animate-in slide-in-from-top-2 duration-300">
                                 <TicketAtendimento 
                                   ticket={{
@@ -2723,7 +2762,7 @@ export default function TicketsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0)} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
+                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0) + (!isCorretorPJ ? 1 : 0)} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
                         Nenhum chamado encontrado.
                       </td>
                     </tr>
