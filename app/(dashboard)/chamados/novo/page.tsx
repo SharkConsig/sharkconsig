@@ -719,17 +719,73 @@ export function NewTicketForm({
         finalDescription += "\n\n--- IMAGENS EM ANEXO ---\n" + pastedUrls.map((url, i) => `![Print ${i+1}](${url})`).join("\n");
       }
 
+      // Identificar margens e calcular valor de operação selecionado
+      const margemStr = formData.margem || originalMargins.margem || "";
+      const liquida5Str = formData.liquida5 || originalMargins.liquida5 || "";
+      const beneficio5Str = formData.beneficio5 || originalMargins.beneficio5 || "";
+
+      const valOpMargemStr = calculateValorOperacao(margemStr, coefficients.margem);
+      const valOpLiquida5Str = calculateValorOperacao(liquida5Str, coefficients.liquida5);
+      const valOpBeneficio5Str = calculateValorOperacao(beneficio5Str, coefficients.beneficio5);
+
+      const valOpMargemNum = parseCurrencyToFloat(valOpMargemStr);
+      const valOpLiquida5Num = parseCurrencyToFloat(valOpLiquida5Str);
+      const valOpBeneficio5Num = parseCurrencyToFloat(valOpBeneficio5Str);
+
+      let selectedOpType: 'margem' | 'liquida5' | 'beneficio5' | undefined = undefined;
+      let valorOperacaoCalculado = 0;
+      let margemSelecionadaNum = 0;
+
+      if (formData.margem) {
+        selectedOpType = 'margem';
+        valorOperacaoCalculado = valOpMargemNum;
+        margemSelecionadaNum = cleanMoney(margemStr);
+      } else if (formData.liquida5) {
+        selectedOpType = 'liquida5';
+        valorOperacaoCalculado = valOpLiquida5Num;
+        margemSelecionadaNum = cleanMoney(liquida5Str);
+      } else if (formData.beneficio5) {
+        selectedOpType = 'beneficio5';
+        valorOperacaoCalculado = valOpBeneficio5Num;
+        margemSelecionadaNum = cleanMoney(beneficio5Str);
+      } else {
+        if (valOpMargemNum > 0) {
+          selectedOpType = 'margem';
+          valorOperacaoCalculado = valOpMargemNum;
+          margemSelecionadaNum = cleanMoney(margemStr);
+        } else if (valOpLiquida5Num > 0) {
+          selectedOpType = 'liquida5';
+          valorOperacaoCalculado = valOpLiquida5Num;
+          margemSelecionadaNum = cleanMoney(liquida5Str);
+        } else if (valOpBeneficio5Num > 0) {
+          selectedOpType = 'beneficio5';
+          valorOperacaoCalculado = valOpBeneficio5Num;
+          margemSelecionadaNum = cleanMoney(beneficio5Str);
+        }
+      }
+
+      // Se mais de uma margem tiver sido selecionada/preenchida, calcula a soma das operações
+      const somaOpsSelecionadas = 
+        (formData.margem ? valOpMargemNum : 0) +
+        (formData.liquida5 ? valOpLiquida5Num : 0) +
+        (formData.beneficio5 ? valOpBeneficio5Num : 0);
+      if (somaOpsSelecionadas > 0) {
+        valorOperacaoCalculado = somaOpsSelecionadas;
+      }
+
       // Adicionar metadados iniciais das margens, coeficientes e valores de operação de abertura
       const initialMetadata = {
-        margem: formData.margem || originalMargins.margem,
-        liquida5: formData.liquida5 || originalMargins.liquida5,
-        beneficio5: formData.beneficio5 || originalMargins.beneficio5,
+        margem: margemStr,
+        liquida5: liquida5Str,
+        beneficio5: beneficio5Str,
         coeficiente_margem: coefficients.margem,
         coeficiente_liquida5: coefficients.liquida5,
         coeficiente_beneficio5: coefficients.beneficio5,
-        valor_operacao_margem: calculateValorOperacao(formData.margem || originalMargins.margem, coefficients.margem),
-        valor_operacao_liquida5: calculateValorOperacao(formData.liquida5 || originalMargins.liquida5, coefficients.liquida5),
-        valor_operacao_beneficio5: calculateValorOperacao(formData.beneficio5 || originalMargins.beneficio5, coefficients.beneficio5),
+        valor_operacao_margem: valOpMargemStr,
+        valor_operacao_liquida5: valOpLiquida5Str,
+        valor_operacao_beneficio5: valOpBeneficio5Str,
+        valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : undefined,
+        selected_operation_type: selectedOpType,
         from_kanban: isFromKanban,
         origem_pipeline: isFromKanban ? "KANBAN" : undefined
       };
@@ -778,6 +834,61 @@ export function NewTicketForm({
         throw error;
       }
 
+      // Sincronização Imediata com a Ficha Comercial em kanban_fichas
+      const cleanCpfDigits = cleanCPF(formData.cpf);
+      if (cleanCpfDigits) {
+        try {
+          const { data: fichasRelacionadas } = await supabase
+            .from('kanban_fichas')
+            .select('id, metadata, margem_disponivel, valor_solicitado')
+            .eq('cliente_cpf', cleanCpfDigits);
+
+          if (fichasRelacionadas && fichasRelacionadas.length > 0) {
+            for (const ficha of fichasRelacionadas) {
+              const prevMeta = (ficha.metadata && typeof ficha.metadata === 'object') ? ficha.metadata : {};
+              const updatedMeta = {
+                ...prevMeta,
+                margem: margemStr || prevMeta.margem,
+                liquida5: liquida5Str || prevMeta.liquida5,
+                beneficio5: beneficio5Str || prevMeta.beneficio5,
+                coeficiente_margem: coefficients.margem,
+                coeficiente_liquida5: coefficients.liquida5,
+                coeficiente_beneficio5: coefficients.beneficio5,
+                valor_operacao_margem: valOpMargemStr || prevMeta.valor_operacao_margem,
+                valor_operacao_liquida5: valOpLiquida5Str || prevMeta.valor_operacao_liquida5,
+                valor_operacao_beneficio5: valOpBeneficio5Str || prevMeta.valor_operacao_beneficio5,
+                valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : prevMeta.valor_operacao,
+                selected_operation_type: selectedOpType || prevMeta.selected_operation_type,
+                convenio: formData.convenio || prevMeta.convenio,
+                ultimo_chamado_aberto_em: new Date().toISOString()
+              };
+
+              const updatePayload: any = {
+                metadata: updatedMeta,
+                updated_at: new Date().toISOString()
+              };
+
+              if (valorOperacaoCalculado > 0) {
+                updatePayload.valor_solicitado = valorOperacaoCalculado;
+              }
+              if (margemSelecionadaNum > 0) {
+                updatePayload.margem_disponivel = margemSelecionadaNum;
+              }
+              if (formData.convenio) {
+                updatePayload.convenio = formData.convenio;
+              }
+
+              await supabase
+                .from('kanban_fichas')
+                .update(updatePayload)
+                .eq('id', ficha.id);
+            }
+          }
+        } catch (syncErr) {
+          console.warn("Aviso ao sincronizar ficha comercial do Kanban com o chamado:", syncErr);
+        }
+      }
+
       console.log("Chamado aberto com sucesso!");
       localStorage.removeItem('new_ticket_draft');
       toast.dismiss(loadingToast);
@@ -801,19 +912,19 @@ export function NewTicketForm({
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
       {isModal ? (
-        <div className="px-6 py-4 bg-[#171717] text-white flex items-center justify-between shrink-0 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-amber-400">
-              <MessageSquare className="w-4 h-4" />
+        <div className="flex items-center justify-between px-6 sm:px-8 py-4 sm:py-5 border-b border-slate-100 bg-slate-50/50 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#162546]/10 text-[#162546] rounded-xl flex items-center justify-center">
+              <MessageSquare className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-black uppercase tracking-wider">ABRIR CHAMADO</h2>
+              <h3 className="text-[15px] font-bold text-slate-900 tracking-tight">Abrir Chamado</h3>
             </div>
           </div>
           <button 
             type="button" 
             onClick={onCloseModal}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-slate-600 transition-colors p-2 hover:bg-slate-100 rounded-full cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>

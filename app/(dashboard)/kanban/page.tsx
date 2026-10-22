@@ -314,92 +314,189 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
   const conv = (ticket.convenio || meta.convenio || "")?.toUpperCase()
   const isSantoAndre = conv.includes("SANTO ANDRÉ") || conv.includes("SANTO ANDRE")
 
+  // Extrai valor explícito da descrição caso presente (ex: "com valor de operação R$ 10.547,17.")
+  const descValMatch = desc.match(/com\s+valor\s+de\s+operaç[aã]o\s+([^\.,\s]+[\d\.,]+)/i) || desc.match(/valor\s+(?:da|de)\s+operaç[aã]o[:\s]+(R\$\s*[\d\.,]+)/i)
+  const explicitDescValor = descValMatch ? (descValMatch[1].startsWith("R$") ? descValMatch[1].trim() : "R$ " + descValMatch[1].trim()) : null
+
   // 1. Tipo selecionado nos metadados
   const selectedType = meta?.selected_operation_type
   if (selectedType) {
     if (selectedType === 'margem') {
-      return { valor: formatValorBrl(meta.valor_operacao_margem), label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
+      const val = (meta.valor_operacao_margem && meta.valor_operacao_margem !== "R$ 0,00") 
+        ? formatValorBrl(meta.valor_operacao_margem) 
+        : (explicitDescValor || "R$ 0,00")
+      return { valor: val, label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
     }
     if (selectedType === 'liquida5') {
-      return { valor: formatValorBrl(meta.valor_operacao_liquida5), label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
+      const val = (meta.valor_operacao_liquida5 && meta.valor_operacao_liquida5 !== "R$ 0,00") 
+        ? formatValorBrl(meta.valor_operacao_liquida5) 
+        : (explicitDescValor || "R$ 0,00")
+      return { valor: val, label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
     }
     if (selectedType === 'beneficio5') {
-      return { valor: formatValorBrl(meta.valor_operacao_beneficio5), label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
+      const val = (meta.valor_operacao_beneficio5 && meta.valor_operacao_beneficio5 !== "R$ 0,00") 
+        ? formatValorBrl(meta.valor_operacao_beneficio5) 
+        : (explicitDescValor || "R$ 0,00")
+      return { valor: val, label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
     }
   }
 
   // 2. Coluna valor_operacao no banco
-  if (ticket.valor_operacao !== null && ticket.valor_operacao !== undefined && ticket.valor_operacao !== 0) {
+  if (ticket.valor_operacao !== null && ticket.valor_operacao !== undefined && Number(ticket.valor_operacao) > 0) {
     const valStr = "R$ " + Number(ticket.valor_operacao).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const descNorm = desc ? desc.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() : ""
+    if (descNorm.includes("BENEFICIO")) {
+      return { valor: valStr, label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
+    } else if (descNorm.includes("LIQUIDA") || descNorm.includes("CARTAO")) {
+      return { valor: valStr, label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
+    } else if (descNorm.includes("MARGEM") || descNorm.includes("EMPRESTIMO") || descNorm.includes("CONSIGNACOES")) {
+      return { valor: valStr, label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
+    }
     return { valor: valStr, label: "Valor Operação", color: "text-slate-900" }
   }
 
-  // 3. Inferência pelo texto da descrição
+  // 3. Inferência pelo texto da descrição (insensível a maiúsculas/minúsculas e acentuação)
+  const descNorm = desc ? desc.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() : ""
   let textSelectedType: 'margem' | 'liquida5' | 'beneficio5' | null = null
-  if (desc.includes("MARGEM 35%") || desc.includes("MARGEM LÍQUIDA EMPRÉSTIMO")) {
-    textSelectedType = 'margem'
-  } else if (desc.includes("LÍQUIDA 5%") || desc.includes("MARGEM LÍQUIDA CARTÃO")) {
-    textSelectedType = 'liquida5'
-  } else if (desc.includes("BENEFÍCIO 5%") || desc.includes("CARTÃO BENEFÍCIO") || desc.includes("CARTÃO CONSIGINADO") || desc.includes("CARTAO CONSIGINADO") || desc.includes("CARTÃO")) {
+
+  // PRIORIDADE 1: BENEFÍCIO (qualquer menção a benefício é benefício 5%, incluindo "LÍQUIDA CARTÃO BENEFÍCIO")
+  if (
+    descNorm.includes("BENEFICIO") || 
+    descNorm.includes("CARTAO BENEFICIO") || 
+    descNorm.includes("MARGEM BENEFICIO") ||
+    descNorm.includes("PARA A MARGEM BENEFICIO") ||
+    descNorm.includes("PARA O BENEFICIO")
+  ) {
     textSelectedType = 'beneficio5'
+  } 
+  // PRIORIDADE 2: LÍQUIDA 5% (Cartão Crédito / Margem Líquida Cartão)
+  else if (
+    descNorm.includes("LIQUIDA 5%") || 
+    descNorm.includes("MARGEM LIQUIDA CARTAO") || 
+    descNorm.includes("LIQUIDA CARTAO CREDITO") ||
+    descNorm.includes("LIQUIDA CARTAO") ||
+    descNorm.includes("MARGEM CARTAO") ||
+    descNorm.includes("CARTAO CREDITO") ||
+    descNorm.includes("PARA A LIQUIDA") ||
+    descNorm.includes("PARA A MARGEM LIQUIDA")
+  ) {
+    textSelectedType = 'liquida5'
+  } 
+  // PRIORIDADE 3: MARGEM 35% / EMPRÉSTIMO
+  else if (
+    descNorm.includes("MARGEM 35%") || 
+    descNorm.includes("MARGEM LIQUIDA EMPRESTIMO") || 
+    descNorm.includes("LIQUIDA CONSIGNACOES") ||
+    descNorm.includes("LIQ EMPRESTIMO") ||
+    descNorm.includes("DISPONIVEL EMPRESTIMO") ||
+    descNorm.includes("MARGEM EMPRESTIMO") ||
+    descNorm.includes("PARA A MARGEM 35%") ||
+    descNorm.includes("PARA A MARGEM EMPRESTIMO")
+  ) {
+    textSelectedType = 'margem'
+  }
+
+  // Se não foi identificado pelo texto, verifica valores nos metadados protegendo contra margem 35% negativa
+  if (!textSelectedType && meta) {
+    const valMargemNum = parseValorToNumber(meta.margem)
+    const valLiqNum = parseValorToNumber(meta.liquida5)
+    const valBenNum = parseValorToNumber(meta.beneficio5)
+
+    if (valMargemNum <= 0 && valBenNum > 0) {
+      textSelectedType = 'beneficio5'
+    } else if (valMargemNum <= 0 && valLiqNum > 0) {
+      textSelectedType = 'liquida5'
+    } else if (valBenNum > 0) {
+      textSelectedType = 'beneficio5'
+    } else if (valLiqNum > 0) {
+      textSelectedType = 'liquida5'
+    } else if (valMargemNum > 0) {
+      textSelectedType = 'margem'
+    }
   }
 
   if (textSelectedType) {
-    if (textSelectedType === 'margem') {
-      if (meta && meta.valor_operacao_margem) return { valor: formatValorBrl(meta.valor_operacao_margem), label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
-      const mVal = ticket.margem || 0
-      const opVal = mVal / 0.028
-      return { 
-        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-        label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
-        color: "text-amber-600" 
+    if (textSelectedType === 'beneficio5') {
+      if (meta && meta.valor_operacao_beneficio5 && meta.valor_operacao_beneficio5 !== "R$ 0,00") {
+        return { valor: formatValorBrl(meta.valor_operacao_beneficio5), label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
+      }
+      if (explicitDescValor) {
+        return { valor: explicitDescValor, label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
+      }
+      const mVal = ticket.margem_beneficio_5 || (meta ? parseValorToNumber(meta.beneficio5) : 0) || 0
+      if (mVal > 0) {
+        const opVal = mVal / 0.053
+        return { 
+          valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+          label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
+          color: "text-blue-600" 
+        }
       }
     }
     if (textSelectedType === 'liquida5') {
-      if (meta && meta.valor_operacao_liquida5) return { valor: formatValorBrl(meta.valor_operacao_liquida5), label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
-      const mVal = ticket.margem_liquida_5 || 0
-      const opVal = mVal / 0.053
-      return { 
-        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-        label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", 
-        color: "text-emerald-600" 
+      if (meta && meta.valor_operacao_liquida5 && meta.valor_operacao_liquida5 !== "R$ 0,00") {
+        return { valor: formatValorBrl(meta.valor_operacao_liquida5), label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
+      }
+      if (explicitDescValor) {
+        return { valor: explicitDescValor, label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
+      }
+      const mVal = ticket.margem_liquida_5 || (meta ? parseValorToNumber(meta.liquida5) : 0) || 0
+      if (mVal > 0) {
+        const opVal = mVal / 0.053
+        return { 
+          valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+          label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", 
+          color: "text-emerald-600" 
+        }
       }
     }
-    if (textSelectedType === 'beneficio5') {
-      if (meta && meta.valor_operacao_beneficio5) return { valor: formatValorBrl(meta.valor_operacao_beneficio5), label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
-      const mVal = ticket.margem_beneficio_5 || 0
-      const opVal = mVal / 0.053
-      return { 
-        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-        label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
-        color: "text-blue-600" 
+    if (textSelectedType === 'margem') {
+      if (meta && meta.valor_operacao_margem && meta.valor_operacao_margem !== "R$ 0,00") {
+        return { valor: formatValorBrl(meta.valor_operacao_margem), label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
+      }
+      if (explicitDescValor) {
+        return { valor: explicitDescValor, label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
+      }
+      const mVal = ticket.margem || (meta ? parseValorToNumber(meta.margem) : 0) || 0
+      if (mVal > 0) {
+        const opVal = mVal / 0.028
+        return { 
+          valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+          label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
+          color: "text-amber-600" 
+        }
       }
     }
   }
 
   // 4. Campos dos metadados sem seleção explícita
   if (meta) {
-    if (meta.margem && meta.margem !== "" && meta.margem !== "R$ 0,00") {
-      return { valor: formatValorBrl(meta.valor_operacao_margem), label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
+    if (meta.beneficio5 && meta.beneficio5 !== "" && meta.beneficio5 !== "R$ 0,00") {
+      return { valor: formatValorBrl(meta.valor_operacao_beneficio5) || (explicitDescValor || "R$ 0,00"), label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
     }
     if (meta.liquida5 && meta.liquida5 !== "" && meta.liquida5 !== "R$ 0,00") {
-      return { valor: formatValorBrl(meta.valor_operacao_liquida5), label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
+      return { valor: formatValorBrl(meta.valor_operacao_liquida5) || (explicitDescValor || "R$ 0,00"), label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" }
     }
-    if (meta.beneficio5 && meta.beneficio5 !== "" && meta.beneficio5 !== "R$ 0,00") {
-      return { valor: formatValorBrl(meta.valor_operacao_beneficio5), label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" }
+    if (meta.margem && meta.margem !== "" && meta.margem !== "R$ 0,00") {
+      return { valor: formatValorBrl(meta.valor_operacao_margem) || (explicitDescValor || "R$ 0,00"), label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" }
     }
   }
 
-  // 5. Fallback das margens da base de dados
-  if (typeof ticket.margem === 'number' && ticket.margem !== 0) {
-    const opVal = ticket.margem / 0.028
+  // 5. Fallback com valor extraído da descrição, se houver
+  if (explicitDescValor) {
+    return { valor: explicitDescValor, label: "Valor Operação", color: "text-slate-900" }
+  }
+
+  // 6. Fallback das margens da base de dados
+  if (typeof ticket.margem_beneficio_5 === 'number' && ticket.margem_beneficio_5 > 0) {
+    const opVal = ticket.margem_beneficio_5 / 0.053
     return { 
       valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-      label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
-      color: "text-amber-600" 
+      label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
+      color: "text-blue-600" 
     }
   }
-  if (typeof ticket.margem_liquida_5 === 'number' && ticket.margem_liquida_5 !== 0) {
+  if (typeof ticket.margem_liquida_5 === 'number' && ticket.margem_liquida_5 > 0) {
     const opVal = ticket.margem_liquida_5 / 0.053
     return { 
       valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
@@ -407,12 +504,12 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
       color: "text-emerald-600" 
     }
   }
-  if (typeof ticket.margem_beneficio_5 === 'number' && ticket.margem_beneficio_5 !== 0) {
-    const opVal = ticket.margem_beneficio_5 / 0.053
+  if (typeof ticket.margem === 'number' && ticket.margem > 0) {
+    const opVal = ticket.margem / 0.028
     return { 
       valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-      label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
-      color: "text-blue-600" 
+      label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
+      color: "text-amber-600" 
     }
   }
 
@@ -437,6 +534,31 @@ function addBusinessDays(startDate: Date, days: number): Date {
     }
   }
   return result
+}
+
+function formatEtapaLabel(etapa: string | null | undefined): string {
+  if (!etapa) return ""
+  return etapa
+    .replace(/^RT([1-6])/i, "Retomada $1")
+    .replace(/^RE([1-3])/i, "Recuperação $1")
+}
+
+function formatMarcoLabel(marco: string | null | undefined): string {
+  if (!marco) return ""
+  return marco.replace(/\bD([1-9][0-9]?)\b/g, "Dia $1")
+}
+
+function formatObservacaoTexto(texto: string): string {
+  if (!texto) return ""
+  return texto
+    .replace(/📲\s*\[MOTOR DE CADÊNCIA\]:\s*RT([1-6])/gi, "📲 Retomada $1")
+    .replace(/📲\s*\[MOTOR DE CADÊNCIA\]:\s*RE([1-3])/gi, "📲 Recuperação $1")
+    .replace(/\[MOTOR DE CADÊNCIA\]:\s*/gi, "")
+    .replace(/Enviar Régua de Retomada\s*([1-6])\s*\(RT\1\)\s*via WhatsApp/gi, "Executar Retomada $1 via WhatsApp")
+    .replace(/Enviar Régua de Retomada\s*([1-6])\s*via WhatsApp/gi, "Executar Retomada $1 via WhatsApp")
+    .replace(/Enviar Régua de Retomada\s*([1-6])/gi, "Executar Retomada $1")
+    .replace(/Enviar Segunda Recuperação\s*\(RE2\)\s*via WhatsApp/gi, "Executar Recuperação 2 via WhatsApp")
+    .replace(/Enviar Terceira Recuperação\s*\(RE3\)\s*via WhatsApp/gi, "Executar Recuperação 3 via WhatsApp")
 }
 
 // Determina se a cadência é PADRÃO (3 RTs) ou AMPLIADA (6 RTs)
@@ -578,7 +700,7 @@ function calculateNextCadenceDue(
     return {
       nextStage: "RT2",
       dueDate: d2,
-      actionText: "Enviar Régua de Retomada 2 (RT2) via WhatsApp"
+      actionText: "Executar Retomada 2 via WhatsApp"
     }
   } else if (currentStage === "RT2") {
     if (tipo === "AMPLIADA") {
@@ -590,13 +712,13 @@ function calculateNextCadenceDue(
         return {
           nextStage: "RT3",
           dueDate: nextDay,
-          actionText: "Enviar Régua de Retomada 3 (RT3) via WhatsApp"
+          actionText: "Executar Retomada 3 via WhatsApp"
         }
       }
       return {
         nextStage: "RT3",
         dueDate: d2tarde,
-        actionText: "Enviar Régua de Retomada 3 (RT3) via WhatsApp (tarde D2)"
+        actionText: "Executar Retomada 3 via WhatsApp (tarde D2)"
       }
     } else {
       const d3 = addBusinessDays(now, 1)
@@ -604,7 +726,7 @@ function calculateNextCadenceDue(
       return {
         nextStage: "RT3",
         dueDate: d3,
-        actionText: "Enviar Régua de Retomada 3 (RT3) via WhatsApp"
+        actionText: "Executar Retomada 3 via WhatsApp"
       }
     }
   } else if (currentStage === "RT3") {
@@ -614,7 +736,7 @@ function calculateNextCadenceDue(
       return {
         nextStage: "RT4",
         dueDate: d3,
-        actionText: "Enviar Régua de Retomada 4 (RT4) via WhatsApp"
+        actionText: "Executar Retomada 4 via WhatsApp"
       }
     } else {
       const waitDate = addBusinessDays(now, 2)
@@ -631,7 +753,7 @@ function calculateNextCadenceDue(
     return {
       nextStage: "RT5",
       dueDate: d6,
-      actionText: "Enviar Régua de Retomada 5 (RT5) via WhatsApp"
+      actionText: "Executar Retomada 5 via WhatsApp"
     }
   } else if (currentStage === "RT5") {
     const d10 = addBusinessDays(now, 4)
@@ -639,7 +761,7 @@ function calculateNextCadenceDue(
     return {
       nextStage: "RT6",
       dueDate: d10,
-      actionText: "Enviar Régua de Retomada 6 (RT6) via WhatsApp"
+      actionText: "Executar Retomada 6 via WhatsApp"
     }
   } else if (currentStage === "RT6") {
     const waitDate = addBusinessDays(now, 2)
@@ -655,7 +777,7 @@ function calculateNextCadenceDue(
     return {
       nextStage: "RE2",
       dueDate: d3,
-      actionText: "Enviar Segunda Recuperação (RE2) via WhatsApp"
+      actionText: "Executar Recuperação 2 via WhatsApp"
     }
   } else if (currentStage === "RE2") {
     const d5 = addBusinessDays(now, 2)
@@ -663,7 +785,7 @@ function calculateNextCadenceDue(
     return {
       nextStage: "RE3",
       dueDate: d5,
-      actionText: "Enviar Terceira Recuperação (RE3) via WhatsApp"
+      actionText: "Executar Recuperação 3 via WhatsApp"
     }
   } else if (currentStage === "RE3") {
     const d8 = addBusinessDays(now, 3)
@@ -871,7 +993,7 @@ export default function KanbanPage() {
   const toggleSectionCollapse = (sectionId: string) => {
     setCollapsedSections(prev => ({
       ...prev,
-      [sectionId]: !prev[sectionId]
+      [sectionId]: prev[sectionId] !== undefined ? !prev[sectionId] : false
     }))
   }
 
@@ -1574,6 +1696,67 @@ export default function KanbanPage() {
       })
 
       setTickets(formatted)
+
+      // Recuperação retroativa para fichas que estejam com Valor Operação zerado e já possuam chamado aberto
+      const cpfsComValorZerado = Array.from(new Set(
+        formatted
+          .filter(t => {
+            const op = getValorOperacaoDeAbertura(t)
+            return !op.valor || op.valor === "R$ 0,00"
+          })
+          .map(t => (t.cliente_cpf || "").replace(/\D/g, ""))
+          .filter(Boolean)
+      ))
+
+      if (cpfsComValorZerado.length > 0) {
+        supabase
+          .from("chamados")
+          .select("id, cliente_cpf, margem, margem_liquida_5, margem_beneficio_5, descricao, created_at")
+          .in("cliente_cpf", cpfsComValorZerado)
+          .order("created_at", { ascending: false })
+          .then(({ data: chamadosExistentes }) => {
+            if (chamadosExistentes && chamadosExistentes.length > 0) {
+              const mapaChamados = new Map<string, any>()
+              chamadosExistentes.forEach(ch => {
+                const cCpf = (ch.cliente_cpf || "").replace(/\D/g, "")
+                if (cCpf && !mapaChamados.has(cCpf)) {
+                  mapaChamados.set(cCpf, ch)
+                }
+              })
+
+              setTickets(prev => {
+                let alterou = false
+                const atualizados = prev.map(t => {
+                  const cCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+                  const ch = mapaChamados.get(cCpf)
+                  if (ch) {
+                    const op = getValorOperacaoDeAbertura(t)
+                    if (!op.valor || op.valor === "R$ 0,00") {
+                      alterou = true
+                      const chMeta = parseMetadata(ch.descricao || "")
+                      const descFinal = t.descricao 
+                        ? `${t.descricao}\n<!-- TICKET_METADATA: ${JSON.stringify(chMeta)} -->` 
+                        : (ch.descricao || "")
+                      return {
+                        ...t,
+                        margem: (t.margem && t.margem > 0) ? t.margem : (ch.margem || undefined),
+                        margem_liquida_5: (t.margem_liquida_5 && t.margem_liquida_5 > 0) ? t.margem_liquida_5 : (ch.margem_liquida_5 || undefined),
+                        margem_beneficio_5: (t.margem_beneficio_5 && t.margem_beneficio_5 > 0) ? t.margem_beneficio_5 : (ch.margem_beneficio_5 || undefined),
+                        valor_operacao: (t.valor_operacao && t.valor_operacao > 0) 
+                          ? t.valor_operacao 
+                          : (chMeta.valor_operacao ? Number(chMeta.valor_operacao) : undefined),
+                        descricao: descFinal
+                      }
+                    }
+                  }
+                  return t
+                })
+                return alterou ? atualizados : prev
+              })
+            }
+          })
+          .catch(err => console.warn("Aviso ao buscar chamados para cartões do Kanban:", err))
+      }
 
       // Identificar operadores em atendimento simultâneo para os CPFs presentes no pipeline
       const cpfs = Array.from(new Set(formatted.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)))
@@ -2514,7 +2697,7 @@ export default function KanbanPage() {
     
     const nextAction = calculateNextCadenceDue(cadencia.etapaRegua, cadencia.tipo, now)
     const nextDueFormatted = format(nextAction.dueDate, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
-    const obsTexto = `📲 [MOTOR DE CADÊNCIA]: ${cadencia.etapaRegua} confirmada via WhatsApp. Próxima ação: ${nextAction.actionText} agendada para ${nextDueFormatted}.`
+    const obsTexto = `📲 ${formatEtapaLabel(cadencia.etapaRegua)} confirmada via WhatsApp. Próxima ação: ${nextAction.actionText} agendada para ${nextDueFormatted}.`
 
     try {
       const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
@@ -2573,7 +2756,7 @@ export default function KanbanPage() {
       setAtendimentoModalTicket(prev => prev ? { ...prev, descricao: novaDesc } : null)
       setTickets(prev => prev.map(t => t.id === atendimentoModalTicket.id ? { ...t, descricao: novaDesc } : t))
 
-      toast.success(`Régua ${cadencia.etapaRegua} executada! Agendada próxima: ${nextAction.nextStage} (${nextDueFormatted})`)
+      toast.success(`${formatEtapaLabel(cadencia.etapaRegua)} executada! Agendada: ${formatEtapaLabel(nextAction.nextStage)} (${nextDueFormatted})`)
     } catch (err: any) {
       console.error("Erro ao avançar cadência:", err)
       toast.error("Erro ao avançar régua de cadência.")
@@ -4343,6 +4526,35 @@ export default function KanbanPage() {
             <span className="font-extrabold text-xs sm:text-sm text-slate-900 tracking-tight group-hover:text-sky-950 transition-colors">
               {formatShortName(ticket.cliente_nome) || ticket.cliente_nome || "Cliente sem Nome"}
             </span>
+
+            {/* Selo do Motor de Cadência (RTs) ao lado direito do nome do cliente (padronizado com os selos de grupo) */}
+            {(ticket.status === "EM RETOMADA" || ticket.status === "EM REATIVAÇÃO" || Boolean(meta.regua_etapa)) && (() => {
+              const cadState = getLeadCadenceState(ticket, meta)
+              return (
+                <span 
+                  title={`Motor de Cadência ${cadState.tipo}: ${cadState.diasCiclo} • Próx: ${cadState.proximoVencimento ? format(cadState.proximoVencimento, "dd/MM 'às' HH:mm") : "Pendente"}`}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-black text-[10.5px] leading-tight tracking-tight whitespace-nowrap shadow-2xs border ring-1 transition-all",
+                    cadState.isPausado
+                      ? "bg-blue-100 text-blue-950 border-blue-400 ring-blue-300/40"
+                      : cadState.isEsperaFinal
+                      ? "bg-amber-100 text-amber-950 border-amber-400 ring-amber-300/50 animate-pulse"
+                      : ticket.status === "EM REATIVAÇÃO"
+                      ? "bg-purple-100 text-purple-950 border-purple-400 ring-purple-300/40"
+                      : "bg-emerald-100 text-emerald-950 border-emerald-400 ring-emerald-300/40"
+                  )}
+                >
+                  <Zap className="w-2.5 h-2.5 text-emerald-700 fill-emerald-500 shrink-0" />
+                  <span>
+                    {cadState.isPausado 
+                      ? "PAUSADO" 
+                      : cadState.isEsperaFinal
+                      ? "ESPERA 1,5d"
+                      : `${cadState.etapaRegua} (${cadState.tipo === "AMPLIADA" ? "6 RTs" : "3 RTs"})`}
+                  </span>
+                </span>
+              )
+            })()}
             {isAltoValor && (
               <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
                 <Zap className="w-2.5 h-2.5 fill-amber-500 text-amber-600" />
@@ -4586,33 +4798,98 @@ export default function KanbanPage() {
   return (
     <div className="flex flex-col h-screen min-h-screen bg-[#FDFDFD]">
       <Header hideQuickLinks>
-        <div className="relative w-full max-w-[420px] sm:max-w-[520px] md:max-w-[600px]">
-          <Input 
-            placeholder="Buscar Cliente por CPF ou Telefone" 
-            value={clientSearchQuery}
-            onChange={(e) => {
-              setClientSearchQuery(e.target.value)
-              if (clientSearchError) setClientSearchError(null)
-            }}
-            onKeyDown={(e) => e.key === "Enter" && handleClientSearch()}
-            className="h-10 pr-10 pl-3.5 text-[12px] bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-400 text-slate-900 placeholder:text-slate-600 placeholder:font-medium rounded-xl transition-all"
-          />
-          <button
-            type="button"
-            onClick={handleClientSearch}
-            disabled={isSearchingClient}
-            title="Buscar Cliente"
-            className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <Search className="w-4 h-4" />
-          </button>
+        <div className="flex items-center gap-2.5 sm:gap-3 w-full">
+          <div className="relative w-full max-w-[340px] sm:max-w-[420px] md:max-w-[480px]">
+            <Input 
+              placeholder="Buscar Cliente por CPF ou Telefone" 
+              value={clientSearchQuery}
+              onChange={(e) => {
+                setClientSearchQuery(e.target.value)
+                if (clientSearchError) setClientSearchError(null)
+              }}
+              onKeyDown={(e) => e.key === "Enter" && handleClientSearch()}
+              className="h-10 pr-10 pl-3.5 text-[12px] bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-400 text-slate-900 placeholder:text-slate-600 placeholder:font-medium rounded-xl transition-all"
+            />
+            <button
+              type="button"
+              onClick={handleClientSearch}
+              disabled={isSearchingClient}
+              title="Buscar Cliente"
+              className="absolute right-1 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Cards / Visões: Minha Fila e Kanban ao lado direito da busca */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Card / Visão: Minha Fila */}
+            <div
+              onClick={() => setActiveView("MINHA_FILA")}
+              className={cn(
+                "w-[165px] sm:w-[195px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-2.5 sm:px-3 py-1.5 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2 cursor-pointer group select-none",
+                activeView === "MINHA_FILA" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-xs"
+              )}
+              title="Visualizar Minha Fila (Tela inicial)"
+            >
+              <div className={cn(
+                "w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 transition-colors",
+                activeView === "MINHA_FILA"
+                  ? "bg-sky-500 text-white border-sky-600"
+                  : "bg-sky-50 border-sky-200/60 text-sky-600"
+              )}>
+                <UserCheck className="w-3.5 h-3.5" />
+              </div>
+              <div className="text-left flex-1 min-w-0">
+                <p className={cn(
+                  "text-xs font-bold tracking-tight transition-colors leading-tight truncate",
+                  activeView === "MINHA_FILA" ? "text-sky-950 font-black" : "text-slate-800 group-hover:text-slate-900"
+                )}>
+                  Minha Fila
+                </p>
+                <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
+                  Atendimento individual
+                </p>
+              </div>
+            </div>
+
+            {/* Card / Visão: Kanban */}
+            <div
+              onClick={() => setActiveView("KANBAN")}
+              className={cn(
+                "w-[165px] sm:w-[195px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-2.5 sm:px-3 py-1.5 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2 cursor-pointer group select-none",
+                activeView === "KANBAN" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-xs"
+              )}
+              title="Visualizar Pipeline Kanban"
+            >
+              <div className={cn(
+                "w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 transition-colors",
+                activeView === "KANBAN"
+                  ? "bg-sky-500 text-white border-sky-600"
+                  : "bg-slate-100 border-slate-200 text-slate-600"
+              )}>
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+              </div>
+              <div className="text-left flex-1 min-w-0">
+                <p className={cn(
+                  "text-xs font-bold tracking-tight transition-colors leading-tight truncate",
+                  activeView === "KANBAN" ? "text-sky-950 font-black" : "text-slate-800 group-hover:text-slate-900"
+                )}>
+                  Kanban
+                </p>
+                <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
+                  Pipeline e 7 colunas
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </Header>
       
       <main className="flex-1 pt-2 px-3 sm:px-4 pb-2 sm:pb-3 space-y-2.5 overflow-hidden flex flex-col bg-[#FDFDFD] min-h-0">
-        {/* Barra de Seletores, Modo de Exibição (Quadro x Lista) e Gavetas */}
+        {/* Barra de Gavetas e Seletor de Modo (Quadro x Lista) */}
         <div className="flex items-center justify-between gap-2.5 shrink-0 overflow-x-auto pb-0.5 no-scrollbar">
-          {/* Seletor de Modo: Quadro vs Lista */}
+          {/* Seletor de Modo: Quadro vs Lista (Alinhado à esquerda no início da linha) */}
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/90 shadow-2xs shrink-0 select-none">
             <button
               type="button"
@@ -4644,146 +4921,156 @@ export default function KanbanPage() {
             </button>
           </div>
 
+          {/* Gavetas de WhatsApp Arquivado */}
           <div className="flex items-center gap-2.5 shrink-0">
-            {/* Card / Visão: Minha Fila */}
+            {/* Gaveta: Não Existe Whatsapp */}
             <div
-            onClick={() => setActiveView("MINHA_FILA")}
-            className={cn(
-              "w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-xs hover:shadow-sm transition-all flex items-center gap-2.5 cursor-pointer group select-none",
-              activeView === "MINHA_FILA" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-sm"
-            )}
-            title="Visualizar Minha Fila (Tela inicial)"
-          >
-            <div className={cn(
-              "w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 transition-colors",
-              activeView === "MINHA_FILA"
-                ? "bg-sky-500 text-white border-sky-600"
-                : "bg-sky-50 border-sky-200/60 text-sky-600"
-            )}>
-              <UserCheck className="w-3.5 h-3.5" />
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = "move"
+                if (dragOverDrawer !== "NAO_EXISTE") setDragOverDrawer("NAO_EXISTE")
+              }}
+              onDragLeave={() => setDragOverDrawer(null)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragOverDrawer(null)
+                const ticketId = e.dataTransfer.getData("text/plain")
+                const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
+                if (ticketToMove) {
+                  handleDropInDrawer(ticketToMove, "NAO_EXISTE")
+                }
+              }}
+              onClick={() => setSelectedDrawer("NAO_EXISTE")}
+              className={cn(
+                "w-[200px] sm:w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2.5 cursor-pointer group select-none",
+                dragOverDrawer === "NAO_EXISTE" && "ring-2 ring-rose-500 bg-rose-50/50 border-rose-300"
+              )}
+              title="Gaveta: Não Existe Whatsapp (Clique para abrir ou arraste leads para cá)"
+            >
+              <div className="w-6 h-6 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600 shrink-0">
+                <PhoneOff className="w-3.5 h-3.5" />
+              </div>
+              <div className="text-left flex-1 min-w-0">
+                <p className="text-xs font-bold text-slate-800 tracking-tight group-hover:text-slate-900 leading-tight truncate">
+                  Não Existe Whatsapp
+                </p>
+                <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
+                  {naoExisteWhatsappTickets.length} {naoExisteWhatsappTickets.length === 1 ? "lead arquivado" : "leads arquivados"}
+                </p>
+              </div>
+              <span className="ml-1 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+                {naoExisteWhatsappTickets.length}
+              </span>
             </div>
-            <div className="text-left flex-1 min-w-0">
-              <p className={cn(
-                "text-xs font-bold tracking-tight transition-colors leading-tight truncate",
-                activeView === "MINHA_FILA" ? "text-sky-950 font-black" : "text-slate-800 group-hover:text-slate-900"
-              )}>
-                Minha Fila
-              </p>
-              <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
-                Atendimento individual
-              </p>
+
+            {/* Gaveta: Whatsapp Divergente */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = "move"
+                if (dragOverDrawer !== "DIVERGENTE") setDragOverDrawer("DIVERGENTE")
+              }}
+              onDragLeave={() => setDragOverDrawer(null)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setDragOverDrawer(null)
+                const ticketId = e.dataTransfer.getData("text/plain")
+                const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
+                if (ticketToMove) {
+                  handleDropInDrawer(ticketToMove, "DIVERGENTE")
+                }
+              }}
+              onClick={() => setSelectedDrawer("DIVERGENTE")}
+              className={cn(
+                "w-[200px] sm:w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2.5 cursor-pointer group select-none",
+                dragOverDrawer === "DIVERGENTE" && "ring-2 ring-amber-500 bg-amber-50/50 border-amber-300"
+              )}
+              title="Gaveta: Whatsapp Divergente (Clique para abrir ou arraste leads para cá)"
+            >
+              <div className="w-6 h-6 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600 shrink-0">
+                <MessageSquareOff className="w-3.5 h-3.5" />
+              </div>
+              <div className="text-left flex-1 min-w-0">
+                <p className="text-xs font-bold text-slate-800 tracking-tight group-hover:text-slate-900 leading-tight truncate">
+                  Whatsapp Divergente
+                </p>
+                <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
+                  {whatsappDivergenteTickets.length} {whatsappDivergenteTickets.length === 1 ? "lead arquivado" : "leads arquivados"}
+                </p>
+              </div>
+              <span className="ml-1 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+                {whatsappDivergenteTickets.length}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Barra de Filtros e Totais (Disponível tanto na visualização Quadro quanto Lista) */}
+        <div className="bg-white border border-slate-200/90 rounded-xl p-2.5 sm:p-3 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 shrink-0">
+          <div className="flex items-center gap-2 flex-1 max-w-md">
+            <div className="relative w-full">
+              <Input
+                placeholder="Filtrar por nome, CPF ou telefone..."
+                value={listSearch}
+                onChange={(e) => setListSearch(e.target.value)}
+                className="h-8.5 pr-8 pl-3 text-xs bg-slate-50 border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-500"
+              />
+              {listSearch && (
+                <button
+                  type="button"
+                  onClick={() => setListSearch("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Card / Visão: Kanban */}
-          <div
-            onClick={() => setActiveView("KANBAN")}
-            className={cn(
-              "w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-xs hover:shadow-sm transition-all flex items-center gap-2.5 cursor-pointer group select-none",
-              activeView === "KANBAN" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-sm"
-            )}
-            title="Visualizar Pipeline Kanban"
-          >
-            <div className={cn(
-              "w-6 h-6 rounded-lg border flex items-center justify-center shrink-0 transition-colors",
-              activeView === "KANBAN"
-                ? "bg-sky-500 text-white border-sky-600"
-                : "bg-slate-100 border-slate-200 text-slate-600"
-            )}>
-              <SlidersHorizontal className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filtro por Etapa */}
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <Filter className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-bold text-slate-700 hidden sm:inline">Etapa:</span>
+              <select
+                value={listFilterStage}
+                onChange={(e) => setListFilterStage(e.target.value)}
+                className="h-8.5 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+              >
+                <option value="ALL">Todas as etapas ({totalListLeads})</option>
+                {listSections.map(sec => (
+                  <option key={sec.id} value={sec.id}>
+                    {sec.title} ({sec.tickets.length})
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="text-left flex-1 min-w-0">
-              <p className={cn(
-                "text-xs font-bold tracking-tight transition-colors leading-tight truncate",
-                activeView === "KANBAN" ? "text-sky-950 font-black" : "text-slate-800 group-hover:text-slate-900"
-              )}>
-                Kanban
-              </p>
-              <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
-                Pipeline e 7 colunas
-              </p>
-            </div>
-          </div>
 
-          {/* Gaveta: Não Existe Whatsapp */}
-          <div
-            onDragOver={(e) => {
-              e.preventDefault()
-              e.dataTransfer.dropEffect = "move"
-              if (dragOverDrawer !== "NAO_EXISTE") setDragOverDrawer("NAO_EXISTE")
-            }}
-            onDragLeave={() => setDragOverDrawer(null)}
-            onDrop={(e) => {
-              e.preventDefault()
-              setDragOverDrawer(null)
-              const ticketId = e.dataTransfer.getData("text/plain")
-              const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
-              if (ticketToMove) {
-                handleDropInDrawer(ticketToMove, "NAO_EXISTE")
-              }
-            }}
-            onClick={() => setSelectedDrawer("NAO_EXISTE")}
-            className={cn(
-              "w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-xs hover:shadow-sm transition-all flex items-center gap-2.5 cursor-pointer group select-none",
-              dragOverDrawer === "NAO_EXISTE" && "ring-2 ring-rose-500 bg-rose-50/50 border-rose-300"
-            )}
-            title="Gaveta: Não Existe Whatsapp (Clique para abrir ou arraste leads para cá)"
-          >
-            <div className="w-6 h-6 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600 shrink-0">
-              <PhoneOff className="w-3.5 h-3.5" />
+            {/* Ordenação */}
+            <div className="flex items-center gap-1.5 text-xs text-slate-600">
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+              <span className="font-bold text-slate-700 hidden sm:inline">Ordenar:</span>
+              <select
+                value={listSortBy}
+                onChange={(e) => setListSortBy(e.target.value as "vencimento" | "valor" | "nome")}
+                className="h-8.5 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+              >
+                <option value="vencimento">⏱️ Vencimento (Urgência)</option>
+                <option value="valor">💰 Maior Valor de Operação</option>
+                <option value="nome">🔤 Nome do Cliente (A-Z)</option>
+              </select>
             </div>
-            <div className="text-left flex-1 min-w-0">
-              <p className="text-xs font-bold text-slate-800 tracking-tight group-hover:text-slate-900 leading-tight truncate">
-                Não Existe Whatsapp
-              </p>
-              <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
-                {naoExisteWhatsappTickets.length} {naoExisteWhatsappTickets.length === 1 ? "lead arquivado" : "leads arquivados"}
-              </p>
-            </div>
-            <span className="ml-1 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
-              {naoExisteWhatsappTickets.length}
-            </span>
-          </div>
 
-          {/* Gaveta: Whatsapp Divergente */}
-          <div
-            onDragOver={(e) => {
-              e.preventDefault()
-              e.dataTransfer.dropEffect = "move"
-              if (dragOverDrawer !== "DIVERGENTE") setDragOverDrawer("DIVERGENTE")
-            }}
-            onDragLeave={() => setDragOverDrawer(null)}
-            onDrop={(e) => {
-              e.preventDefault()
-              setDragOverDrawer(null)
-              const ticketId = e.dataTransfer.getData("text/plain")
-              const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
-              if (ticketToMove) {
-                handleDropInDrawer(ticketToMove, "DIVERGENTE")
-              }
-            }}
-            onClick={() => setSelectedDrawer("DIVERGENTE")}
-            className={cn(
-              "w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-xs hover:shadow-sm transition-all flex items-center gap-2.5 cursor-pointer group select-none",
-              dragOverDrawer === "DIVERGENTE" && "ring-2 ring-amber-500 bg-amber-50/50 border-amber-300"
-            )}
-            title="Gaveta: Whatsapp Divergente (Clique para abrir ou arraste leads para cá)"
-          >
-            <div className="w-6 h-6 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600 shrink-0">
-              <MessageSquareOff className="w-3.5 h-3.5" />
+            {/* Totais Gerais */}
+            <div className="flex items-center gap-2 pl-2 sm:border-l border-slate-200 text-xs">
+              <span className="font-medium text-slate-600">
+                <strong className="text-slate-900 font-bold">{totalListLeads}</strong> leads
+              </span>
+              <span className="text-slate-300">•</span>
+              <span className="font-medium text-slate-600">
+                Total: <strong className="text-slate-950 font-black">{totalListValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
+              </span>
             </div>
-            <div className="text-left flex-1 min-w-0">
-              <p className="text-xs font-bold text-slate-800 tracking-tight group-hover:text-slate-900 leading-tight truncate">
-                Whatsapp Divergente
-              </p>
-              <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
-                {whatsappDivergenteTickets.length} {whatsappDivergenteTickets.length === 1 ? "lead arquivado" : "leads arquivados"}
-              </p>
-            </div>
-            <span className="ml-1 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
-              {whatsappDivergenteTickets.length}
-            </span>
-          </div>
           </div>
         </div>
 
@@ -4791,164 +5078,206 @@ export default function KanbanPage() {
         {activeView === "MINHA_FILA" && displayMode === "QUADRO" && (
           <div className="flex-1 flex flex-col md:flex-row gap-3.5 sm:gap-4 h-full min-h-0 overflow-x-auto overflow-y-hidden">
                 {/* Coluna 1: AGORA */}
-                <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-200/80 shadow-2xs overflow-hidden bg-emerald-50/70">
-                  {/* Cabeçalho da Coluna Agora */}
-                  <div className="p-3.5 border-b border-emerald-200/70 bg-emerald-50/70 border-t-4 border-t-emerald-600 rounded-t-xl shrink-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>Agora</span>
-                      </h2>
-                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                        {filaCategorias.agora.length}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
-                      Ações exigíveis no momento
-                    </p>
+                {(listFilterStage === "ALL" || listFilterStage === "agora") && (() => {
+                  const ticketsAgora = sortTickets(filterTicketsBySearch(filaCategorias.agora))
+                  const valorAgora = ticketsAgora.reduce((acc, t) => {
+                    const opData = getValorOperacaoDeAbertura(t)
+                    const opNum = parseValorToNumber(opData.valor)
+                    return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+                  }, 0)
+                  return (
+                    <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-200/80 shadow-2xs overflow-hidden bg-emerald-50/70">
+                      {/* Cabeçalho da Coluna Agora */}
+                      <div className="p-3.5 border-b border-emerald-200/70 bg-emerald-50/70 border-t-4 border-t-emerald-600 rounded-t-xl shrink-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Agora</span>
+                          </h2>
+                          <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            {ticketsAgora.length}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
+                          Ações exigíveis no momento
+                        </p>
 
-                    {/* Totais Acumulados para Gestão e Operação */}
-                    <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
-                      <span className="font-semibold text-slate-800">
-                        {filaCategorias.agora.length} {filaCategorias.agora.length === 1 ? "lead" : "leads"}
-                      </span>
-                      <span className="font-extrabold text-slate-950">
-                        {filaCategorias.valorAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Lista de Cards da Coluna Agora */}
-                  <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-emerald-50/70">
-                    {filaCategorias.agora.length === 0 ? (
-                      <div className="py-12 text-center text-xs text-emerald-800/60 font-medium">
-                        Nenhum atendimento para agora
+                        {/* Totais Acumulados para Gestão e Operação */}
+                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
+                          <span className="font-semibold text-slate-800">
+                            {ticketsAgora.length} {ticketsAgora.length === 1 ? "lead" : "leads"}
+                          </span>
+                          <span className="font-extrabold text-slate-950">
+                            {valorAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </span>
+                        </div>
                       </div>
-                    ) : (
-                      filaCategorias.agora.map(ticket => renderTicketCard(ticket, undefined, false))
-                    )}
-                  </div>
-                </div>
+
+                      {/* Lista de Cards da Coluna Agora */}
+                      <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-emerald-50/70">
+                        {ticketsAgora.length === 0 ? (
+                          <div className="py-12 text-center text-xs text-emerald-800/60 font-medium">
+                            Nenhum atendimento para agora
+                          </div>
+                        ) : (
+                          ticketsAgora.map(ticket => renderTicketCard(ticket, undefined, false))
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Coluna 2: VENCIDAS */}
-                <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-rose-200/80 shadow-2xs overflow-hidden bg-rose-50/70">
-                  {/* Cabeçalho da Coluna Vencidas */}
-                  <div className="p-3.5 border-b border-rose-200/70 bg-rose-50/70 border-t-4 border-t-rose-600 rounded-t-xl shrink-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
-                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                        <span>Vencidas</span>
-                      </h2>
-                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300">
-                        {filaCategorias.vencidas.length}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
-                      Prazo de atendimento expirado
-                    </p>
+                {(listFilterStage === "ALL" || listFilterStage === "vencidas") && (() => {
+                  const filteredVencidas = filaCategorias.vencidas.filter(item => {
+                    return filterTicketsBySearch([item.ticket]).length > 0
+                  })
+                  const valorVencidas = filteredVencidas.reduce((acc, i) => {
+                    const opData = getValorOperacaoDeAbertura(i.ticket)
+                    const opNum = parseValorToNumber(opData.valor)
+                    return acc + (opNum > 0 ? opNum : Number(i.ticket.valor_operacao || i.ticket.margem || 0))
+                  }, 0)
+                  return (
+                    <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-rose-200/80 shadow-2xs overflow-hidden bg-rose-50/70">
+                      {/* Cabeçalho da Coluna Vencidas */}
+                      <div className="p-3.5 border-b border-rose-200/70 bg-rose-50/70 border-t-4 border-t-rose-600 rounded-t-xl shrink-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                            <span>Vencidas</span>
+                          </h2>
+                          <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-300">
+                            {filteredVencidas.length}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
+                          Prazo de atendimento expirado
+                        </p>
 
-                    {/* Totais Acumulados para Gestão e Operação */}
-                    <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
-                      <span className="font-semibold text-slate-800">
-                        {filaCategorias.vencidas.length} {filaCategorias.vencidas.length === 1 ? "lead" : "leads"}
-                      </span>
-                      <span className="font-extrabold text-slate-950">
-                        {filaCategorias.valorVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Lista de Cards da Coluna Vencidas */}
-                  <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-rose-50/70">
-                    {filaCategorias.vencidas.length === 0 ? (
-                      <div className="py-12 text-center text-xs text-rose-800/60 font-medium">
-                        Nenhum atendimento vencido
+                        {/* Totais Acumulados para Gestão e Operação */}
+                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
+                          <span className="font-semibold text-slate-800">
+                            {filteredVencidas.length} {filteredVencidas.length === 1 ? "lead" : "leads"}
+                          </span>
+                          <span className="font-extrabold text-slate-950">
+                            {valorVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </span>
+                        </div>
                       </div>
-                    ) : (
-                      filaCategorias.vencidas.map(item => renderTicketCard(item.ticket, item.atrasoTexto, false))
-                    )}
-                  </div>
-                </div>
+
+                      {/* Lista de Cards da Coluna Vencidas */}
+                      <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-rose-50/70">
+                        {filteredVencidas.length === 0 ? (
+                          <div className="py-12 text-center text-xs text-rose-800/60 font-medium">
+                            Nenhum atendimento vencido
+                          </div>
+                        ) : (
+                          filteredVencidas.map(item => renderTicketCard(item.ticket, item.atrasoTexto, false))
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Coluna 3: FUTURAS */}
-                <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-indigo-200/80 shadow-2xs overflow-hidden bg-indigo-50/70">
-                  {/* Cabeçalho da Coluna Futuras */}
-                  <div className="p-3.5 border-b border-indigo-200/70 bg-indigo-50/70 border-t-4 border-t-indigo-600 rounded-t-xl shrink-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
-                        <CalendarIcon className="w-4 h-4 text-indigo-600 shrink-0" />
-                        <span>Futuras</span>
-                      </h2>
-                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-300">
-                        {filaCategorias.futuras.length}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
-                      Próximas ações do dia
-                    </p>
+                {(listFilterStage === "ALL" || listFilterStage === "futuras") && (() => {
+                  const ticketsFuturas = sortTickets(filterTicketsBySearch(filaCategorias.futuras))
+                  const valorFuturas = ticketsFuturas.reduce((acc, t) => {
+                    const opData = getValorOperacaoDeAbertura(t)
+                    const opNum = parseValorToNumber(opData.valor)
+                    return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+                  }, 0)
+                  return (
+                    <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-indigo-200/80 shadow-2xs overflow-hidden bg-indigo-50/70">
+                      {/* Cabeçalho da Coluna Futuras */}
+                      <div className="p-3.5 border-b border-indigo-200/70 bg-indigo-50/70 border-t-4 border-t-indigo-600 rounded-t-xl shrink-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                            <CalendarIcon className="w-4 h-4 text-indigo-600 shrink-0" />
+                            <span>Futuras</span>
+                          </h2>
+                          <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-300">
+                            {ticketsFuturas.length}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
+                          Próximas ações do dia
+                        </p>
 
-                    {/* Totais Acumulados para Gestão e Operação */}
-                    <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
-                      <span className="font-semibold text-slate-800">
-                        {filaCategorias.futuras.length} {filaCategorias.futuras.length === 1 ? "lead" : "leads"}
-                      </span>
-                      <span className="font-extrabold text-slate-950">
-                        {filaCategorias.valorFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Lista de Cards da Coluna Futuras */}
-                  <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-indigo-50/70">
-                    {filaCategorias.futuras.length === 0 ? (
-                      <div className="py-12 text-center text-xs text-indigo-800/60 font-medium">
-                        Nenhum agendamento futuro
+                        {/* Totais Acumulados para Gestão e Operação */}
+                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
+                          <span className="font-semibold text-slate-800">
+                            {ticketsFuturas.length} {ticketsFuturas.length === 1 ? "lead" : "leads"}
+                          </span>
+                          <span className="font-extrabold text-slate-950">
+                            {valorFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </span>
+                        </div>
                       </div>
-                    ) : (
-                      filaCategorias.futuras.map(ticket => renderTicketCard(ticket, undefined, false))
-                    )}
-                  </div>
-                </div>
+
+                      {/* Lista de Cards da Coluna Futuras */}
+                      <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-indigo-50/70">
+                        {ticketsFuturas.length === 0 ? (
+                          <div className="py-12 text-center text-xs text-indigo-800/60 font-medium">
+                            Nenhum agendamento futuro
+                          </div>
+                        ) : (
+                          ticketsFuturas.map(ticket => renderTicketCard(ticket, undefined, false))
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Coluna 4: AÇÃO ESPECIAL */}
-                <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-amber-300/80 shadow-2xs overflow-hidden bg-amber-50/70">
-                  {/* Cabeçalho da Coluna Ação Especial */}
-                  <div className="p-3.5 border-b border-amber-200/70 bg-amber-50/70 border-t-4 border-t-amber-500 rounded-t-xl shrink-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
-                        <Zap className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span>Ação Especial</span>
-                      </h2>
-                      <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
-                        {filaCategorias.acaoEspecial.length}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
-                      Intervenções e casos especiais
-                    </p>
+                {(listFilterStage === "ALL" || listFilterStage === "acao_especial") && (() => {
+                  const ticketsAcao = sortTickets(filterTicketsBySearch(filaCategorias.acaoEspecial))
+                  const valorAcao = ticketsAcao.reduce((acc, t) => {
+                    const opData = getValorOperacaoDeAbertura(t)
+                    const opNum = parseValorToNumber(opData.valor)
+                    return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+                  }, 0)
+                  return (
+                    <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-amber-300/80 shadow-2xs overflow-hidden bg-amber-50/70">
+                      {/* Cabeçalho da Coluna Ação Especial */}
+                      <div className="p-3.5 border-b border-amber-200/70 bg-amber-50/70 border-t-4 border-t-amber-500 rounded-t-xl shrink-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                            <Zap className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>Ação Especial</span>
+                          </h2>
+                          <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                            {ticketsAcao.length}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
+                          Intervenções e casos especiais
+                        </p>
 
-                    {/* Totais Acumulados para Gestão e Operação */}
-                    <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
-                      <span className="font-semibold text-slate-800">
-                        {filaCategorias.acaoEspecial.length} {filaCategorias.acaoEspecial.length === 1 ? "lead" : "leads"}
-                      </span>
-                      <span className="font-extrabold text-slate-950">
-                        {filaCategorias.valorAcaoEspecial.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Lista de Cards da Coluna Ação Especial */}
-                  <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-amber-50/70">
-                    {filaCategorias.acaoEspecial.length === 0 ? (
-                      <div className="py-12 text-center text-xs text-amber-900/60 font-medium">
-                        Nenhuma ação especial pendente
+                        {/* Totais Acumulados para Gestão e Operação */}
+                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
+                          <span className="font-semibold text-slate-800">
+                            {ticketsAcao.length} {ticketsAcao.length === 1 ? "lead" : "leads"}
+                          </span>
+                          <span className="font-extrabold text-slate-950">
+                            {valorAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </span>
+                        </div>
                       </div>
-                    ) : (
-                      filaCategorias.acaoEspecial.map(ticket => renderTicketCard(ticket, undefined, false, undefined, true))
-                    )}
-                  </div>
-                </div>
+
+                      {/* Lista de Cards da Coluna Ação Especial */}
+                      <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-amber-50/70">
+                        {ticketsAcao.length === 0 ? (
+                          <div className="py-12 text-center text-xs text-amber-900/60 font-medium">
+                            Nenhuma ação especial pendente
+                          </div>
+                        ) : (
+                          ticketsAcao.map(ticket => renderTicketCard(ticket, undefined, false, undefined, true))
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
         )}
 
@@ -4956,13 +5285,17 @@ export default function KanbanPage() {
         {activeView === "KANBAN" && displayMode === "QUADRO" && (
           <div className="flex-1 overflow-x-auto pb-1 min-h-0 h-full">
             <div className="flex items-stretch gap-3.5 sm:gap-4 w-full min-w-max h-full">
-                {KANBAN_COLUMNS.map(col => {
-                  const colTickets = groupedColumns[col.id] || []
-                  const totalColValor = colTickets.reduce((acc, t) => {
-                    const opData = getValorOperacaoDeAbertura(t)
-                    const opNum = parseValorToNumber(opData.valor)
-                    return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-                  }, 0)
+                {KANBAN_COLUMNS
+                  .filter(col => listFilterStage === "ALL" || col.id === listFilterStage)
+                  .map(col => {
+                    let colTickets = groupedColumns[col.id] || []
+                    colTickets = filterTicketsBySearch(colTickets)
+                    colTickets = sortTickets(colTickets)
+                    const totalColValor = colTickets.reduce((acc, t) => {
+                      const opData = getValorOperacaoDeAbertura(t)
+                      const opNum = parseValorToNumber(opData.valor)
+                      return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+                    }, 0)
 
                   return (
                     <div
@@ -5042,79 +5375,10 @@ export default function KanbanPage() {
         {/* Visão Alternativa: Modo Lista (Linhas sequenciais de etapas) */}
         {displayMode === "LISTA" && (
           <div className="flex-1 flex flex-col min-h-0 space-y-2.5 overflow-hidden">
-            {/* Barra de Filtros e Ordenação da Lista */}
-            <div className="bg-white border border-slate-200/90 rounded-xl p-2.5 sm:p-3 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 shrink-0">
-              <div className="flex items-center gap-2 flex-1 max-w-md">
-                <div className="relative w-full">
-                  <Input
-                    placeholder="Filtrar por nome, CPF ou telefone..."
-                    value={listSearch}
-                    onChange={(e) => setListSearch(e.target.value)}
-                    className="h-8.5 pr-8 pl-3 text-xs bg-slate-50 border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-500"
-                  />
-                  {listSearch && (
-                    <button
-                      type="button"
-                      onClick={() => setListSearch("")}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Filtro por Etapa */}
-                <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                  <Filter className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="font-bold text-slate-700 hidden sm:inline">Etapa:</span>
-                  <select
-                    value={listFilterStage}
-                    onChange={(e) => setListFilterStage(e.target.value)}
-                    className="h-8.5 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
-                  >
-                    <option value="ALL">Todas as etapas ({totalListLeads})</option>
-                    {listSections.map(sec => (
-                      <option key={sec.id} value={sec.id}>
-                        {sec.title} ({sec.tickets.length})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Ordenação */}
-                <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                  <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="font-bold text-slate-700 hidden sm:inline">Ordenar:</span>
-                  <select
-                    value={listSortBy}
-                    onChange={(e) => setListSortBy(e.target.value as "vencimento" | "valor" | "nome")}
-                    className="h-8.5 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
-                  >
-                    <option value="vencimento">⏱️ Vencimento (Urgência)</option>
-                    <option value="valor">💰 Maior Valor de Operação</option>
-                    <option value="nome">🔤 Nome do Cliente (A-Z)</option>
-                  </select>
-                </div>
-
-                {/* Totais Gerais */}
-                <div className="flex items-center gap-2 pl-2 sm:border-l border-slate-200 text-xs">
-                  <span className="font-medium text-slate-600">
-                    <strong className="text-slate-900 font-bold">{totalListLeads}</strong> leads
-                  </span>
-                  <span className="text-slate-300">•</span>
-                  <span className="font-medium text-slate-600">
-                    Total: <strong className="text-slate-950 font-black">{totalListValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
-                  </span>
-                </div>
-              </div>
-            </div>
-
             {/* Lista Sequencial de Seções de Etapas */}
             <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-1">
               {filteredListSections.map(sec => {
-                const isCollapsed = Boolean(collapsedSections[sec.id])
+                const isCollapsed = collapsedSections[sec.id] !== undefined ? Boolean(collapsedSections[sec.id]) : true
                 const count = sec.displayTickets.length
                 const valor = sec.displayValor
                 const IconComponent = sec.icon || Kanban
@@ -5351,48 +5615,6 @@ export default function KanbanPage() {
 
               return (
                 <div className="p-5 overflow-y-auto space-y-4 flex-1 text-xs bg-[#FAFAFA] text-slate-800">
-                  {/* SINALIZAÇÃO DE CONCORRÊNCIA COMERCIAL ATIVA NO MODAL DE ATENDIMENTO */}
-                  {(() => {
-                    const cleanCpf = (atendimentoModalTicket.cliente_cpf || "").replace(/\D/g, "")
-                    const outrosAtendendo = tickets.filter(t => {
-                      if (t.id === atendimentoModalTicket.id) return false
-                      const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")
-                      if (!cleanCpf || tCpf !== cleanCpf) return false
-                      const tMeta = parseMetadata(t.descricao)
-                      const isDrawer = (
-                        t.status === "NÃO EXISTE WHATSAPP" ||
-                        t.status === "NAO_EXISTE_WHATSAPP" ||
-                        t.status === "WHATSAPP DIVERGENTE" ||
-                        Boolean(tMeta.tabulacao_whatsapp)
-                      )
-                      return !isDrawer && t.status !== "PERDIDO"
-                    })
-                    const outrosNomes = Array.from(new Set(outrosAtendendo.map(t => `${t.responsavel_nome || t.corretor_nome || "Outro Usuário"} (${t.status || "EM RETOMADA"})`))).filter(Boolean)
-                    const metaOutros = modalMeta.concorrencia_outros_operadores || []
-                    const listaExibir = outrosNomes.length > 0 ? outrosNomes : metaOutros
-
-                    if (listaExibir.length === 0 && !modalMeta.conflito_titularidade) return null
-
-                    return (
-                      <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border-2 border-amber-400 text-amber-950 flex items-start gap-2.5 shadow-xs">
-                        <div className="p-1 rounded-lg bg-amber-500 text-white shrink-0 mt-0.5">
-                          <Zap className="w-3.5 h-3.5 fill-white" />
-                        </div>
-                        <div className="flex-1 text-xs">
-                          <p className="font-black text-[11px] uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
-                            <span>⚡ Concorrência Comercial: Lead em Atendimento Simultâneo</span>
-                          </p>
-                          <p className="text-[11.5px] text-amber-900 font-medium mt-0.5 leading-snug">
-                            Este cliente também está sendo atendido por: <strong className="font-bold underline decoration-amber-400">{listaExibir.join(", ") || "outro promotor"}</strong>.
-                          </p>
-                          <p className="text-[10.5px] text-amber-800/90 mt-1">
-                            Seu histórico de observações e mensagens abaixo é <strong>100% individual</strong>.
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  })()}
-
                   {/* Informações Resumidas do Cliente */}
                   {!isEtapaPersonalizada && (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs bg-white p-3 rounded-lg border border-slate-200 shadow-xs">
@@ -5428,18 +5650,13 @@ export default function KanbanPage() {
                     <div className="rounded-xl border-2 border-emerald-500 bg-gradient-to-r from-emerald-50 via-teal-50/80 to-amber-50/90 p-3.5 shadow-md ring-2 ring-emerald-400/40 space-y-2.5 animate-in fade-in">
                       <div className="flex items-center justify-between flex-wrap gap-2 border-b border-emerald-200/80 pb-2">
                         <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-emerald-600 text-white shadow-xs flex items-center gap-1 ring-1 ring-emerald-700/30">
-                            <Zap className="w-3 h-3 fill-white" />
-                            MOTOR DE CADÊNCIA ATIVO
+                          <strong className="text-emerald-800 font-extrabold px-2.5 py-0.5 rounded-md bg-emerald-100 border border-emerald-300 text-xs shadow-2xs">
+                            {formatEtapaLabel(modalCadencia.etapaRegua)}
+                          </strong>
+                          <span className="text-slate-400 font-bold">•</span>
+                          <span className="text-slate-900 font-extrabold text-xs">
+                            {formatMarcoLabel(modalCadencia.diasCiclo)}
                           </span>
-                          <span className="text-xs font-extrabold text-slate-800">
-                            Trilha {modalCadencia.tipo} ({modalCadencia.tipo === "AMPLIADA" ? "6 RTs" : "3 RTs"})
-                          </span>
-                        </div>
-                        <div className="text-[11px] font-semibold text-slate-700 flex items-center gap-2">
-                          <span>Marco: <strong className="text-slate-900 font-extrabold">{modalCadencia.diasCiclo}</strong></span>
-                          <span>•</span>
-                          <span>Régua: <strong className="text-emerald-800 font-extrabold px-1.5 py-0.5 rounded bg-emerald-100 border border-emerald-300">{modalCadencia.etapaRegua}</strong></span>
                         </div>
                       </div>
 
@@ -5466,7 +5683,7 @@ export default function KanbanPage() {
                             title="Confirma envio da régua atual e agenda a próxima etapa calculada por dias úteis"
                           >
                             {isAvancandoCadencia ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                            Confirmar Envio {modalCadencia.etapaRegua} ➔ Agendar {modalCadencia.proximaEtapa}
+                            {formatEtapaLabel(modalCadencia.etapaRegua)} Executada! Agendar {modalCadencia.proximaEtapa === "ESPERA_FINAL" ? "Aguardar Retorno (1,5d)" : formatEtapaLabel(modalCadencia.proximaEtapa)}
                           </Button>
                         ) : modalCadencia.isEsperaFinal ? (
                           <Button
@@ -5738,7 +5955,7 @@ export default function KanbanPage() {
                                   </span>
                                 )}
                                 <span className="text-[12.7px] italic text-black/90">
-                                  {obs.texto}
+                                  {formatObservacaoTexto(obs.texto)}
                                 </span>
                               </p>
                             )

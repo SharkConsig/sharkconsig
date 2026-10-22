@@ -2784,19 +2784,19 @@ export function NewProposalForm({
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
       {isModal ? (
-        <div className="px-6 py-4 bg-[#171717] text-white flex items-center justify-between shrink-0 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-amber-400">
-              <FileEdit className="w-4 h-4" />
+        <div className="flex items-center justify-between px-6 sm:px-8 py-4 sm:py-5 border-b border-slate-100 bg-slate-50/50 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#162546]/10 text-[#162546] rounded-xl flex items-center justify-center">
+              <FileEdit className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-black uppercase tracking-wider">DIGITAR PROPOSTA</h2>
+              <h3 className="text-[15px] font-bold text-slate-900 tracking-tight">Digitar Proposta</h3>
             </div>
           </div>
           <button 
             type="button" 
             onClick={onCloseModal}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-slate-600 transition-colors p-2 hover:bg-slate-100 rounded-full cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>

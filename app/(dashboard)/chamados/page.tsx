@@ -1476,19 +1476,17 @@ export default function TicketsPage() {
   const counts = useMemo(() => {
     const res: Record<string, number> = {}
     baseFilteredTickets.forEach(t => {
-      if (isTicketFromKanban(t)) return
       const s = (t.status_chamados?.nome || t.status || "").trim().toUpperCase()
       res[s] = (res[s] || 0) + 1
     })
     return res
-  }, [baseFilteredTickets, isTicketFromKanban])
+  }, [baseFilteredTickets])
 
   const filteredTickets = useMemo(() => {
     return baseFilteredTickets.filter(ticket => {
       // Status category filter
       let matchesStatus = true
       const ticketStatusUpper = (ticket.status_chamados?.nome || ticket.status || "").trim().toUpperCase()
-      const isKanbanTicket = isTicketFromKanban(ticket)
       
       if (selectedSecondaryStatus) {
         const u = selectedSecondaryStatus.toUpperCase()
@@ -1499,12 +1497,7 @@ export default function TicketsPage() {
           matchesStatus = ticketStatusUpper === u || ticketStatusUpper === ua
         }
       } else if (selectedStatus && selectedStatus !== "TODOS") {
-        if (selectedStatus === "TESTE KANBAN" || selectedStatus === "TESTES KANBAN") {
-          matchesStatus = isKanbanTicket
-        } else if (isKanbanTicket) {
-          // Chamados abertos a partir da área KANBAN são guardados exclusivamente na pasta TESTE KANBAN
-          matchesStatus = false
-        } else if (selectedStatus === "APROVADOS") {
+        if (selectedStatus === "APROVADOS") {
           matchesStatus = APROVADOS_LABELS.some(label => {
             const u = label.toUpperCase()
             const ua = u.replace('BENEFICIO', 'BENEFÍCIO')
@@ -1536,53 +1529,24 @@ export default function TicketsPage() {
       
       return matchesStatus
     })
-  }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus, isTicketFromKanban])
+  }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus])
 
   // Summing values per status label
   const statusValues = useMemo(() => {
     const res: Record<string, number> = {}
     baseFilteredTickets.forEach(t => {
-      if (isTicketFromKanban(t)) return
       const s = (t.status_chamados?.nome || t.status || "").trim().toUpperCase()
       const opData = getValorOperacaoDeAbertura(t)
       const opVal = parseValorToNumber(opData.valor)
       res[s] = (res[s] || 0) + opVal
     })
     return res;
-  }, [baseFilteredTickets, isTicketFromKanban])
+  }, [baseFilteredTickets])
 
   const statusCards = useMemo(() => {
     const list = statusCardsList.map(c => ({ ...c }))
 
-    // Adiciona pasta TESTE KANBAN ao lado direito de TODOS exclusivamente para Desenvolvedor e Administrador
-    if (isUserAdmin) {
-      const kanbanTickets = baseFilteredTickets.filter(t => isTicketFromKanban(t))
-      const kanbanCount = kanbanTickets.length
-      const kanbanTotalValor = kanbanTickets.reduce((acc, t) => {
-        const opData = getValorOperacaoDeAbertura(t)
-        return acc + parseValorToNumber(opData.valor)
-      }, 0)
-
-      const kanbanCard = {
-        label: "TESTE KANBAN",
-        count: kanbanCount,
-        totalValor: kanbanTotalValor,
-        color: "border-t-indigo-600 bg-indigo-50/20",
-        textColor: "text-indigo-600"
-      }
-
-      const todosIdx = list.findIndex(c => c.label === "TODOS")
-      if (todosIdx !== -1) {
-        list.splice(todosIdx + 1, 0, kanbanCard)
-      } else {
-        list.push(kanbanCard)
-      }
-    }
-
     return list.map(card => {
-      if (card.label === "TESTE KANBAN" || card.label === "TESTES KANBAN") {
-        return card
-      }
       let count = counts[card.label] || 0
       let totalValor = statusValues[card.label] || 0
       
@@ -2253,13 +2217,13 @@ export default function TicketsPage() {
         </Card>
 
         {/* Status Counts Grid */}
-        <div className={cn("grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4", isUserAdmin ? "xl:grid-cols-7" : "xl:grid-cols-6")}>
+        <div className="w-full grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 lg:gap-4">
           {statusCards.map((card) => (
             <button 
               key={card.label}
               onClick={() => handleParentClick(card.label)}
               className={cn(
-                "p-4 bg-white border-t-4 rounded-xl card-shadow transition-all text-left group hover:-translate-y-1 flex flex-col justify-between min-h-[145px]",
+                "w-full p-4 bg-white border-t-4 rounded-xl card-shadow transition-all text-left group hover:-translate-y-1 flex flex-col justify-between min-h-[145px]",
                 card.color,
                 selectedStatus === card.label && "ring-2 ring-primary ring-offset-2 scale-105"
               )}
@@ -2438,7 +2402,16 @@ export default function TicketsPage() {
                               />
                             </td>
                           )}
-                          <td className="px-4 py-4 text-[12px] font-bold text-slate-400">#{ticket.id}</td>
+                          <td className="px-4 py-4 text-[12px] font-bold text-slate-400">
+                            <div className="flex flex-col items-start gap-1">
+                              <span>#{ticket.id}</span>
+                              {isTicketFromKanban(ticket) && (
+                                <Badge className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0 rounded shadow-none">
+                                  Kanban
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
                           {(isOperational || isAdmin || isSupervisor || isDeveloper) && (
                             <td className="px-4 py-4">
                               <div className="flex flex-col">
