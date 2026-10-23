@@ -161,7 +161,13 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
   const [isMarginsCollapsed, setIsMarginsCollapsed] = useState(true)
 
   // Initialize and keep states updated
+  const initializedTicketIdRef = useRef<string | null>(null)
+
   useEffect(() => {
+    if (!ticket?.id) return
+    if (initializedTicketIdRef.current === ticket.id) return
+    initializedTicketIdRef.current = ticket.id
+
     const meta = parseDescriptionMetadata(ticket.descricao || ticket.description || ticket.content || "");
     const initialMargem = ticket.margem !== null && ticket.margem !== undefined ? ticket.margem : 0;
     const initialLiquida = ticket.margem_liquida_5 !== null && ticket.margem_liquida_5 !== undefined ? ticket.margem_liquida_5 : 0;
@@ -228,7 +234,7 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
     }
     
     setSelectedOperationType(meta?.selected_operation_type || detectedType || null);
-  }, [ticket])
+  }, [ticket.id, ticket.descricao, ticket.margem, ticket.margem_liquida_5, ticket.margem_beneficio_5])
 
   const formatAsCurrency = (value: string) => {
     const isNegative = value.includes("-");
@@ -343,6 +349,8 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
         .eq('id', ticket.id);
 
       if (error) throw error;
+
+      initializedTicketIdRef.current = null;
 
       // Check if selected operation has been changed to insert a notification in messages
       const oldMeta = parseDescriptionMetadata(ticket.descricao || ticket.description || ticket.content || "");
@@ -1235,10 +1243,21 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                       getMarginStyleClasses(ticketMargins.margem)
                     )}
                   />
-                  <label className="flex items-center gap-1 cursor-pointer select-none bg-slate-100 hover:bg-slate-200 px-2 h-[34px] rounded-lg border border-slate-200 transition-all text-[10px] font-bold text-slate-700 shrink-0">
+                  <label 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedOperationType('margem')
+                    }}
+                    className={cn(
+                      "flex items-center gap-1.5 cursor-pointer select-none px-2.5 h-[34px] rounded-lg border transition-all text-[10px] font-bold shrink-0",
+                      selectedOperationType === 'margem'
+                        ? "bg-primary text-white border-primary shadow-xs"
+                        : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700"
+                    )}
+                  >
                     <input
                       type="radio"
-                      name="selected_operation"
+                      name={`selected_operation_${ticket.id}`}
                       checked={selectedOperationType === 'margem'}
                       onChange={() => setSelectedOperationType('margem')}
                       className="w-3 h-3 text-primary border-slate-300 focus:ring-primary cursor-pointer"
@@ -1303,10 +1322,21 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                       getMarginStyleClasses(ticketMargins.liquida5)
                     )}
                   />
-                  <label className="flex items-center gap-1 cursor-pointer select-none bg-slate-100 hover:bg-slate-200 px-2 h-[34px] rounded-lg border border-slate-200 transition-all text-[10px] font-bold text-slate-700 shrink-0">
+                  <label 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedOperationType('liquida5')
+                    }}
+                    className={cn(
+                      "flex items-center gap-1.5 cursor-pointer select-none px-2.5 h-[34px] rounded-lg border transition-all text-[10px] font-bold shrink-0",
+                      selectedOperationType === 'liquida5'
+                        ? "bg-primary text-white border-primary shadow-xs"
+                        : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700"
+                    )}
+                  >
                     <input
                       type="radio"
-                      name="selected_operation"
+                      name={`selected_operation_${ticket.id}`}
                       checked={selectedOperationType === 'liquida5'}
                       onChange={() => setSelectedOperationType('liquida5')}
                       className="w-3 h-3 text-primary border-slate-300 focus:ring-primary cursor-pointer"
@@ -1371,10 +1401,21 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                       getMarginStyleClasses(ticketMargins.beneficio5)
                     )}
                   />
-                  <label className="flex items-center gap-1 cursor-pointer select-none bg-slate-100 hover:bg-slate-200 px-2 h-[34px] rounded-lg border border-slate-200 transition-all text-[10px] font-bold text-slate-700 shrink-0">
+                  <label 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedOperationType('beneficio5')
+                    }}
+                    className={cn(
+                      "flex items-center gap-1.5 cursor-pointer select-none px-2.5 h-[34px] rounded-lg border transition-all text-[10px] font-bold shrink-0",
+                      selectedOperationType === 'beneficio5'
+                        ? "bg-primary text-white border-primary shadow-xs"
+                        : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700"
+                    )}
+                  >
                     <input
                       type="radio"
-                      name="selected_operation"
+                      name={`selected_operation_${ticket.id}`}
                       checked={selectedOperationType === 'beneficio5'}
                       onChange={() => setSelectedOperationType('beneficio5')}
                       className="w-3 h-3 text-primary border-slate-300 focus:ring-primary cursor-pointer"
