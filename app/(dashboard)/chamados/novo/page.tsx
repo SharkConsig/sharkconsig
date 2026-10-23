@@ -384,6 +384,42 @@ export function NewTicketForm({
 
     autoFillEquipe()
   }, [user, perfil])
+
+  // Pré-preenche automaticamente a Origem do Cliente salva no cartão do Kanban se ainda não estiver preenchida
+  useEffect(() => {
+    const autoFillOrigemFromKanban = async () => {
+      const cleanDigits = (formData.cpf || "").replace(/\D/g, "");
+      if (!cleanDigits || formData.origem) return;
+
+      try {
+        let queryKf = supabase
+          .from("kanban_fichas")
+          .select("origem, metadata, operador_id, operador_nome")
+          .eq("cliente_cpf", cleanDigits)
+          .order("updated_at", { ascending: false });
+
+        if (user?.id) {
+          queryKf = queryKf.eq("operador_id", user.id);
+        } else if (perfil?.nome) {
+          queryKf = queryKf.ilike("operador_nome", perfil.nome);
+        }
+
+        const { data: records } = await queryKf.limit(1);
+        const record = records?.[0];
+        const foundOrigem = record?.origem || record?.metadata?.origem;
+        if (foundOrigem && foundOrigem !== "KANBAN" && foundOrigem !== "SISTEMA") {
+          setFormData(prev => {
+            if (prev.origem) return prev; // Se o usuário já alterou ou selecionou, mantém a escolha dele
+            return { ...prev, origem: foundOrigem };
+          });
+        }
+      } catch (err) {
+        console.warn("Aviso ao buscar origem da ficha comercial:", err);
+      }
+    };
+
+    autoFillOrigemFromKanban();
+  }, [formData.cpf, formData.origem, user?.id, perfil?.nome])
   
   const fileRefs = {
     frente: useRef<HTMLInputElement>(null),
@@ -859,6 +895,7 @@ export function NewTicketForm({
           margem: cleanMoney(formData.margem || originalMargins.margem),
           margem_liquida_5: cleanMoney(formData.liquida5 || originalMargins.liquida5),
           margem_beneficio_5: cleanMoney(formData.beneficio5 || originalMargins.beneficio5),
+          valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : null,
           convenio: formData.convenio,
           equipe: formData.equipe,
           matricula: matriculaUrl,
@@ -880,17 +917,30 @@ export function NewTicketForm({
         throw error;
       }
 
-      // Sincronização Imediata com a Ficha Comercial em kanban_fichas
+      // Sincronização Imediata com a Ficha Comercial em kanban_fichas (Estritamente isolada por operador)
       const cleanCpfDigits = cleanCPF(formData.cpf);
+      const paddedCpf = cleanCpfDigits ? cleanCpfDigits.padStart(11, "0") : "";
       if (cleanCpfDigits) {
         try {
+          // Filtrar por CPF (suporta formato com ou sem zeros à esquerda)
           const { data: fichasRelacionadas } = await supabase
             .from('kanban_fichas')
-            .select('id, metadata, margem_disponivel, valor_solicitado')
-            .eq('cliente_cpf', cleanCpfDigits);
+            .select('id, metadata, margem_disponivel, valor_solicitado, operador_id, operador_nome')
+            .or(`cliente_cpf.eq.${cleanCpfDigits},cliente_cpf.eq.${paddedCpf}`);
 
           if (fichasRelacionadas && fichasRelacionadas.length > 0) {
-            for (const ficha of fichasRelacionadas) {
+            // Identificar ficha do operador logado ou ficha sem operador previamente vinculado
+            const fichasDoOperador = fichasRelacionadas.filter(f => {
+              const mesmoId = user?.id && f.operador_id === user.id;
+              const mesmoNome = perfil?.nome && f.operador_nome && f.operador_nome.trim().toLowerCase() === perfil.nome.trim().toLowerCase();
+              return mesmoId || mesmoNome;
+            });
+
+            const fichasParaAtualizar = fichasDoOperador.length > 0
+              ? fichasDoOperador
+              : (fichasRelacionadas.length === 1 ? fichasRelacionadas : fichasRelacionadas.filter(f => !f.operador_id && !f.operador_nome));
+
+            for (const ficha of fichasParaAtualizar) {
               const prevMeta = (ficha.metadata && typeof ficha.metadata === 'object') ? ficha.metadata : {};
               const updatedMeta = {
                 ...prevMeta,
@@ -926,6 +976,12 @@ export function NewTicketForm({
               }
               if (formData.convenio) {
                 updatePayload.convenio = formData.convenio;
+              }
+              if (!ficha.operador_id && user?.id) {
+                updatePayload.operador_id = user.id;
+              }
+              if (!ficha.operador_nome && (perfil?.nome || user?.email)) {
+                updatePayload.operador_nome = perfil?.nome || user?.email;
               }
 
               await supabase

@@ -199,6 +199,8 @@ interface ClientDetailsModalProps {
   hidePhoneSelectionBanner?: boolean;
   showPipelineActionButtons?: boolean;
   isEmAbordagem?: boolean;
+  hideAbrirChamado?: boolean;
+  hideDigitarProposta?: boolean;
 }
 
 export function ClientDetailsModal({ 
@@ -212,8 +214,20 @@ export function ClientDetailsModal({
   showTabulacoes,
   hidePhoneSelectionBanner,
   showPipelineActionButtons = false,
-  isEmAbordagem = false
+  isEmAbordagem = false,
+  hideAbrirChamado = false,
+  hideDigitarProposta = false
 }: ClientDetailsModalProps) {
+  const [internalHasChamado, setInternalHasChamado] = useState(false)
+  const [internalHasProposta, setInternalHasProposta] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) {
+      setInternalHasChamado(false)
+      setInternalHasProposta(false)
+    }
+  }, [isOpen])
+
   const [clienteOrigem, setClienteOrigem] = useState<string>("")
   const [selectedEmpresaPhone, setSelectedEmpresaPhone] = useState<string>("")
   const [searchEmpresaPhone, setSearchEmpresaPhone] = useState<string>("")
@@ -1264,7 +1278,16 @@ export function ClientDetailsModal({
 
             const { data: kfRecords } = await queryKf.limit(1)
 
-            const kfRecord = kfRecords?.[0] as any
+            let kfRecord = kfRecords?.[0] as any
+            if (!kfRecord) {
+              const { data: fallbackRecords } = await supabase
+                .from('kanban_fichas')
+                .select('metadata, telefones_contatados, origem, telefone_empresa')
+                .or(`cliente_cpf.eq.${paddedCpf},cliente_cpf.eq.${digits}`)
+                .order('updated_at', { ascending: false })
+                .limit(1)
+              kfRecord = fallbackRecords?.[0] as any
+            }
             if (Array.isArray(kfRecord?.telefones_contatados)) {
               setSelectedPhones(kfRecord.telefones_contatados)
             } else if (kfRecord?.metadata && Array.isArray((kfRecord.metadata as any).telefones_selecionados)) {
@@ -1449,6 +1472,7 @@ export function ClientDetailsModal({
     const formattedCpf = rawCpf.replace(/\D/g, "").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
     const resolvedConvenio = getConvenioParam(clientType)
     const reg = activeRegistration || allRegs[activeRegIndex] || ({} as Registration)
+    const selectedOrigemValue = (clienteOrigem && clienteOrigem !== "KANBAN") ? clienteOrigem : ((client as any)?.origem || "")
 
     const initialData = {
       nome: client.nome || "NOME NÃO INFORMADO",
@@ -1456,6 +1480,8 @@ export function ClientDetailsModal({
       tel1: (client.telefone_1 || "").replace(/\D/g, ""),
       tel2: (client.telefone_2 || "").replace(/\D/g, ""),
       tel3: (client.telefone_3 || "").replace(/\D/g, ""),
+      origem: selectedOrigemValue,
+      telefone_empresa: selectedEmpresaPhone || "",
       margem: formatCurrency(Number(reg.margem_35 || reg.margem_emprestimo || 0)),
       liquida5: formatCurrency(Number(reg.liquida_5 || reg.margem_cartao || 0)),
       beneficio5: formatCurrency(Number(reg.beneficio_liquida_5 || reg.margem_cartao_beneficio || 0)),
@@ -2410,16 +2436,18 @@ export function ClientDetailsModal({
                                   SIMULAR PROPOSTA
                                 </Button>
 
-                                <Button
-                                  type="button"
-                                  onClick={() => handleAbrirChamado(activeReg)}
-                                  className="w-full sm:w-auto h-11 px-8 text-[11px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-2 cursor-pointer"
-                                >
-                                  <MessageSquare className="w-4 h-4" />
-                                  ABRIR CHAMADO
-                                </Button>
+                                {!(hideAbrirChamado || internalHasChamado) && (
+                                  <Button
+                                    type="button"
+                                    onClick={() => handleAbrirChamado(activeReg)}
+                                    className="w-full sm:w-auto h-11 px-8 text-[11px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-2 cursor-pointer"
+                                  >
+                                    <MessageSquare className="w-4 h-4" />
+                                    ABRIR CHAMADO
+                                  </Button>
+                                )}
 
-                                {!isUserEstagio && (
+                                {!isUserEstagio && !(hideDigitarProposta || internalHasProposta) && (
                                   <Button
                                     type="button"
                                     onClick={() => handleDigitarProposta(activeReg)}
@@ -2545,6 +2573,7 @@ export function ClientDetailsModal({
             isOpen={isNovoChamadoModalOpen}
             onClose={() => setIsNovoChamadoModalOpen(false)}
             initialData={chamadoModalData}
+            onSuccess={() => setInternalHasChamado(true)}
           />
         )}
 
@@ -2554,6 +2583,7 @@ export function ClientDetailsModal({
             isOpen={isNovaPropostaModalOpen}
             onClose={() => setIsNovaPropostaModalOpen(false)}
             initialData={propostaModalData}
+            onSuccess={() => setInternalHasProposta(true)}
           />
         )}
       </DialogContent>

@@ -29,7 +29,6 @@ import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
 import { ClientDetailsModal } from "@/components/clients/client-details-modal"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
-import { evaluateTicketSLA, SLATicketState, getSLAGlobalSettings, isCollaboratorTargeted, SLAConfig } from "@/lib/sla-engine"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import ExcelJS from 'exceljs'
@@ -479,9 +478,8 @@ export default function TicketsPage() {
   const [totalClientesUnicos, setTotalClientesUnicos] = useState<number>(0)
   const [isLoadingClientesChamados, setIsLoadingClientesChamados] = useState<boolean>(false)
 
-  // Novos estados para filtros avançados
-  const [slaActive, setSlaActive] = useState(false)
-  const [slaConfigs, setSlaConfigs] = useState<SLAConfig[]>([])
+  // SLA desativado globalmente
+  const slaActive = false
   const [usersMap, setUsersMap] = useState<Record<string, { nome: string; funcao: string; isEstagiario: boolean }>>({})
   const [filterCorretores, setFilterCorretores] = useState<string[]>([])
   const [filterStatusList, setFilterStatusList] = useState<string[]>([])
@@ -717,34 +715,11 @@ export default function TicketsPage() {
     if (!silent) setIsLoading(true)
     isFirstLoadRef.current = false
     try {
-      let query = supabase
-        .from('chamados')
-        .select(`
-          *,
-          status_chamados:status_id (*)
-        `)
-
-      // Aplicar filtros de data no servidor para melhor performance (conversão segura de fuso horário local para UTC)
-      if (startDate && startDate.length === 10) {
-        const localStart = new Date(`${startDate}T00:00:00`)
-        if (!isNaN(localStart.getTime())) {
-          query = query.gte('created_at', localStart.toISOString())
-        } else {
-          query = query.gte('created_at', `${startDate}T00:00:00Z`)
-        }
-      }
-      if (endDate && endDate.length === 10) {
-        const localEnd = new Date(`${endDate}T23:59:59.999`)
-        if (!isNaN(localEnd.getTime())) {
-          query = query.lte('created_at', localEnd.toISOString())
-        } else {
-          query = query.lte('created_at', `${endDate}T23:59:59Z`)
-        }
-      }
+      let allowedUserIds: string[] | null = null
 
       // Aplicar filtros de permissão baseados na Role
       if (perfil.role === 'Estágio' || perfil.role === 'Estagio' || perfil.role === 'Processo Seletivo' || perfil.role === 'PROCESSO SELETIVO') {
-        query = query.eq('user_id', user.id)
+        allowedUserIds = [user.id]
       } else if (perfil.role === 'Corretor') {
         try {
           const controller = new AbortController();
@@ -759,10 +734,9 @@ export default function TicketsPage() {
               .filter((u: { padrinho_id: string }) => u.padrinho_id === user.id)
               .map((u: { id: string }) => u.id)
             
-            query = query.in('user_id', [user.id, ...myEstagiarios])
+            allowedUserIds = [user.id, ...myEstagiarios]
           } else {
-            console.warn("API de usuários retornou status:", response.status)
-            query = query.eq('user_id', user.id)
+            allowedUserIds = [user.id]
           }
         } catch (err) {
           if (err instanceof Error && err.name === 'AbortError') {
@@ -770,7 +744,7 @@ export default function TicketsPage() {
           } else {
             console.error("Erro ao buscar estagiários do padrinho:", err)
           }
-          query = query.eq('user_id', user.id)
+          allowedUserIds = [user.id]
         }
       } else if (perfil.role === 'Supervisor') {
         try {
@@ -786,10 +760,9 @@ export default function TicketsPage() {
               .filter((u: { supervisor_id: string; padrinho_id?: string }) => u.supervisor_id === user.id || u.padrinho_id === user.id)
               .map((u: { id: string }) => u.id)
             
-            query = query.in('user_id', [...subordinates, user.id])
+            allowedUserIds = [...subordinates, user.id]
           } else {
-            console.warn("API de usuários retornou status:", response.status)
-            query = query.eq('user_id', user.id)
+            allowedUserIds = [user.id]
           }
         } catch (err) {
           if (err instanceof Error && err.name === 'AbortError') {
@@ -797,138 +770,75 @@ export default function TicketsPage() {
           } else {
             console.error("Erro ao buscar subordinados:", err)
           }
-          query = query.eq('user_id', user.id)
+          allowedUserIds = [user.id]
         }
       }
 
-      // Superar o limite padrão de 1000 linhas do Supabase/PostgREST
-      let all: Ticket[] = []
-      let from = 0
-      const step = 1000
-      let finished = false
-      
-      const orderedQuery = query.order('updated_at', { ascending: false })
-      
-      while (!finished) {
-        const { data, error } = await withRetry(() => orderedQuery.range(from, from + step - 1))
-        
-        if (error) {
-          console.error("Erro no Supabase ao buscar intervalo:", error)
-          throw error
-        }
-        
-        if (!data || data.length === 0) {
-          finished = true
-        } else {
-          all = [...all, ...(data as Ticket[])]
-          if (data.length < step) {
-            finished = true
+      // Função construtora para garantir nova instância do PostgREST em cada fatia paralela
+      const buildBaseQuery = () => {
+        let q = supabase
+          .from('chamados')
+          .select(`
+            *,
+            status_chamados:status_id (*)
+          `)
+
+        if (startDate && startDate.length === 10) {
+          const localStart = new Date(`${startDate}T00:00:00`)
+          if (!isNaN(localStart.getTime())) {
+            q = q.gte('created_at', localStart.toISOString())
           } else {
-            from += step
+            q = q.gte('created_at', `${startDate}T00:00:00Z`)
           }
         }
-      }
-
-      // Buscar apoios ativos e respostas dos supervisores
-      try {
-        const ticketIds = all.map(t => parseInt(t.id)).filter(id => !isNaN(id))
-        if (ticketIds.length > 0) {
-          const { data: apoioMsgs, error: apoioError } = await supabase
-            .from('mensagens_chamado')
-            .select('chamado_id, action, user_role, created_at')
-            .in('chamado_id', ticketIds)
-            .order('created_at', { ascending: true })
-
-          if (!apoioError && apoioMsgs) {
-            const activeSet = new Set<number>()
-            const statesMap: Record<number, 'pediu' | 'respondido' | 'finalizado' | 'none'> = {}
-            
-            // Initialize
-            for (const id of ticketIds) {
-              statesMap[id] = 'none'
-            }
-
-            for (const msg of apoioMsgs) {
-              const tId = msg.chamado_id
-              const role = (msg.user_role || '').toLowerCase()
-              const isBroker = ['corretor', 'estágio', 'estagio', 'processo seletivo', 'propostas'].includes(role) || !role
-
-              if (msg.action === 'pediu_apoio') {
-                activeSet.add(tId)
-                statesMap[tId] = 'pediu'
-              } else if (msg.action === 'resolveu_apoio') {
-                activeSet.delete(tId)
-                statesMap[tId] = 'finalizado'
-              } else if (statesMap[tId] === 'pediu' && !isBroker) {
-                statesMap[tId] = 'respondido'
-              }
-            }
-            setActiveApoioTicketIds(activeSet)
-            setTicketApoioStates(statesMap)
+        if (endDate && endDate.length === 10) {
+          const localEnd = new Date(`${endDate}T23:59:59.999`)
+          if (!isNaN(localEnd.getTime())) {
+            q = q.lte('created_at', localEnd.toISOString())
+          } else {
+            q = q.lte('created_at', `${endDate}T23:59:59Z`)
           }
-        } else {
-          setActiveApoioTicketIds(new Set())
-          setTicketApoioStates({})
         }
-      } catch (err) {
-        console.error("Erro ao carregar status de apoio dos chamados:", err)
+
+        if (allowedUserIds && allowedUserIds.length > 0) {
+          q = q.in('user_id', allowedUserIds)
+        }
+
+        return q.order('id', { ascending: false })
       }
 
-      // Avaliar status de SLA para cada chamado em tempo real
-      try {
-        const [{ data: slaGlobal }, { data: slaConfigs }] = await Promise.all([
-          supabase.from('sla_global_config').select('*').maybeSingle(),
-          supabase.from('sla_config').select('*')
-        ])
-        const globalSettings = getSLAGlobalSettings(slaConfigs || [], slaGlobal)
-        setSlaActive(globalSettings.ativo)
-        setSlaConfigs(slaConfigs || [])
+      // Primeiro lote (0 - 999)
+      const { data: firstBatch, error: firstErr } = await withRetry(() => 
+        buildBaseQuery().range(0, 999)
+      )
 
-        if (globalSettings.ativo && slaConfigs && slaConfigs.length > 0) {
-          all = all.map(ticket => {
-            const isTargeted = isCollaboratorTargeted(ticket.user_id, globalSettings)
-            if (!isTargeted) return { ...ticket, escalonamento_status: 'nenhum' }
+      if (firstErr) {
+        console.error("Erro no Supabase ao buscar chamados:", firstErr)
+        throw firstErr
+      }
 
-            const { opValMargem, opValCartao } = extractTicketOperationValues(ticket)
+      let all: Ticket[] = (firstBatch || []) as Ticket[]
 
-            const ticketState: SLATicketState = {
-              id: ticket.id,
-              status: ticket.status_chamados?.nome || ticket.status,
-              created_at: ticket.created_at,
-              user_id: ticket.user_id,
-              corretor_id: ticket.user_id,
-              timestamp_ultima_mudanca_status: ticket.timestamp_ultima_mudanca_status || ticket.updated_at || ticket.created_at,
-              pergunta_pendente: ticket.pergunta_pendente,
-              timestamp_gatilho_disparado: ticket.timestamp_gatilho_disparado,
-              soneca_usada: ticket.soneca_usada,
-              timestamp_soneca: ticket.timestamp_soneca,
-              escalonamento_status: ticket.escalonamento_status,
-              timestamp_escalonamento: ticket.timestamp_escalonamento,
-              operacao_valor_margem: opValMargem,
-              operacao_valor_cartao: opValCartao
-            }
-
-            const res = evaluateTicketSLA(ticketState, slaConfigs, null, slaGlobal)
-            let computedEscalonamento: 'nenhum' | 'supervisao' | 'administrador' | 'supervisao_administrador' | 'supervisao_gestao' = 'nenhum'
-            if (res.gatilhoDisparado && !res.sonecaAtiva) {
-              computedEscalonamento = res.escaladoGestao ? 'supervisao_gestao' : res.escaladoSupervisao ? 'supervisao' : 'nenhum'
-            }
-
-            if (ticket.escalonamento_status !== computedEscalonamento) {
-              // Atualizar no banco em background
-              supabase.from('chamados').update({ escalonamento_status: computedEscalonamento }).eq('id', ticket.id).then()
-              return { ...ticket, escalonamento_status: computedEscalonamento }
-            }
-            return ticket
-          })
-        } else {
-          // Quando SLA está desativado, desativa alertas no objeto retornado
-          all = all.map(ticket => ({ ...ticket, escalonamento_status: 'nenhum' }))
+      // Se houver mais de 1000 chamados, busca os lotes restantes em paralelo com novas instâncias independentes
+      if (firstBatch && firstBatch.length === 1000) {
+        const step = 1000
+        const ranges: Array<[number, number]> = []
+        for (let from = 1000; from < 20000; from += step) {
+          ranges.push([from, from + step - 1])
         }
-      } catch (slaErr) {
-        console.error("Erro ao avaliar SLA nos chamados:", slaErr)
-        setSlaActive(false)
-        all = all.map(ticket => ({ ...ticket, escalonamento_status: 'nenhum' }))
+
+        const remainingResults = await Promise.all(
+          ranges.map(([from, to]) => withRetry(() => buildBaseQuery().range(from, to)))
+        )
+
+        for (const res of remainingResults) {
+          if (res.data && res.data.length > 0) {
+            all = [...all, ...(res.data as Ticket[])]
+            if (res.data.length < step) break
+          } else {
+            break
+          }
+        }
       }
 
       setTickets(all)
@@ -1217,18 +1127,28 @@ export default function TicketsPage() {
   }, [perfil?.role, perfil?.regime_contratacao, (perfil as any)?.regime_trabalho, (perfil as any)?.regime, (perfil as any)?.funcao])
 
   const extractTelefoneEmpresa = useCallback((ticket: Ticket): string => {
-    if (ticket.telefone_empresa) return ticket.telefone_empresa
-    const desc = ticket.descricao || ticket.content || ""
-    const match = desc.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/)
-    if (match && match[1]) {
-      try {
-        const meta = JSON.parse(match[1])
-        if (meta && meta.telefone_empresa) return meta.telefone_empresa
-      } catch {
-        // ignore
+    let raw = ticket.telefone_empresa || ""
+    if (!raw) {
+      const desc = ticket.descricao || ticket.content || ""
+      const match = desc.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/)
+      if (match && match[1]) {
+        try {
+          const meta = JSON.parse(match[1])
+          if (meta && meta.telefone_empresa) raw = meta.telefone_empresa
+        } catch {
+          // ignore
+        }
       }
     }
-    return ""
+    if (!raw) return ""
+    const digits = raw.replace(/\D/g, "")
+    if (digits.length === 11) {
+      return digits.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3")
+    }
+    if (digits.length === 10) {
+      return digits.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
+    }
+    return raw
   }, [])
 
   // Base tickets filtered by search and advanced filters
@@ -1677,6 +1597,91 @@ export default function TicketsPage() {
   const displayedTickets = expandedTicketId 
     ? filteredTickets.filter(t => t.id.toString() === expandedTicketId)
     : paginatedTickets
+
+  // Otimização de Performance On-Demand: Carrega status de Apoio e Telefone Empresa apenas para a página visível
+  useEffect(() => {
+    if (paginatedTickets.length === 0) return
+
+    const visibleIds = paginatedTickets.map(t => parseInt(t.id)).filter(id => !isNaN(id))
+
+    // 1. Buscar status de apoio apenas para os chamados visíveis (executa em ~15ms)
+    if (visibleIds.length > 0) {
+      supabase
+        .from('mensagens_chamado')
+        .select('chamado_id, action, user_role, created_at')
+        .in('chamado_id', visibleIds)
+        .order('created_at', { ascending: true })
+        .then(({ data: apoioMsgs, error: apoioError }) => {
+          if (!apoioError && apoioMsgs) {
+            const activeSet = new Set<number>()
+            const statesMap: Record<number, 'pediu' | 'respondido' | 'finalizado' | 'none'> = {}
+            for (const id of visibleIds) statesMap[id] = 'none'
+
+            for (const msg of apoioMsgs) {
+              const tId = msg.chamado_id
+              const role = (msg.user_role || '').toLowerCase()
+              const isBroker = ['corretor', 'estágio', 'estagio', 'processo seletivo', 'propostas'].includes(role) || !role
+
+              if (msg.action === 'pediu_apoio') {
+                activeSet.add(tId)
+                statesMap[tId] = 'pediu'
+              } else if (msg.action === 'resolveu_apoio') {
+                activeSet.delete(tId)
+                statesMap[tId] = 'finalizado'
+              } else if (statesMap[tId] === 'pediu' && !isBroker) {
+                statesMap[tId] = 'respondido'
+              }
+            }
+            setActiveApoioTicketIds(prev => new Set([...prev, ...activeSet]))
+            setTicketApoioStates(prev => ({ ...prev, ...statesMap }))
+          }
+        })
+    }
+
+    // 2. Buscar Telefone da Empresa no Kanban apenas para chamados visíveis que ainda não possuam
+    const ticketsNeedingPhone = paginatedTickets.filter(t => !extractTelefoneEmpresa(t) && !t.telefone_empresa)
+    const cpfsToLookup = Array.from(new Set(
+      ticketsNeedingPhone.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)
+    ))
+
+    if (cpfsToLookup.length > 0) {
+      const allCpfVariants = Array.from(new Set([
+        ...cpfsToLookup,
+        ...cpfsToLookup.map(c => c.padStart(11, '0'))
+      ]))
+
+      supabase
+        .from('kanban_fichas')
+        .select('cliente_cpf, telefone_empresa, metadata')
+        .in('cliente_cpf', allCpfVariants)
+        .order('updated_at', { ascending: false })
+        .then(({ data: kfData, error: kfErr }) => {
+          if (!kfErr && kfData && kfData.length > 0) {
+            const fichasMap: Record<string, string> = {}
+            for (const row of kfData) {
+              const phone = row.telefone_empresa || (row.metadata as any)?.telefone_empresa
+              if (phone && row.cliente_cpf) {
+                const clean = row.cliente_cpf.replace(/\D/g, "")
+                if (!fichasMap[clean]) fichasMap[clean] = phone
+              }
+            }
+
+            if (Object.keys(fichasMap).length > 0) {
+              setTickets(prev => prev.map(t => {
+                if (t.telefone_empresa) return t
+                const clean = (t.cliente_cpf || "").replace(/\D/g, "")
+                const padded = clean.padStart(11, '0')
+                const foundPhone = fichasMap[clean] || fichasMap[padded]
+                if (foundPhone) {
+                  return { ...t, telefone_empresa: foundPhone }
+                }
+                return t
+              }))
+            }
+          }
+        })
+    }
+  }, [paginatedTickets, extractTelefoneEmpresa])
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {

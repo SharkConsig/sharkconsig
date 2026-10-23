@@ -548,7 +548,20 @@ function formatEtapaLabel(etapa: string | null | undefined): string {
   if (!etapa) return ""
   return etapa
     .replace(/^RT([1-6])/i, "Retomada $1")
-    .replace(/^RE([1-3])/i, "Recuperação $1")
+    .replace(/^RE([1-3])/i, "Reativação $1")
+}
+
+function formatSeloCadencia(cadState: { etapaRegua: string; isPausado?: boolean; isEsperaFinal?: boolean; tipo?: string }): string {
+  if (cadState.isPausado) return "PAUSADO"
+  if (cadState.isEsperaFinal) return "ESPERA 1,5d"
+  const etapa = cadState.etapaRegua || ""
+  if (/^RT[1-6]/i.test(etapa)) {
+    return etapa.replace(/^RT([1-6])/i, "Retomada $1")
+  }
+  if (/^RE[1-3]/i.test(etapa)) {
+    return etapa.replace(/^RE([1-3])/i, "Reativação $1")
+  }
+  return formatEtapaLabel(etapa) || etapa
 }
 
 function formatMarcoLabel(marco: string | null | undefined): string {
@@ -785,7 +798,7 @@ function calculateNextCadenceDue(
     return {
       nextStage: "RE2",
       dueDate: d3,
-      actionText: "Executar Recuperação 2 via WhatsApp"
+      actionText: "Executar Reativação 2 via WhatsApp"
     }
   } else if (currentStage === "RE2") {
     const d5 = addBusinessDays(now, 2)
@@ -793,7 +806,7 @@ function calculateNextCadenceDue(
     return {
       nextStage: "RE3",
       dueDate: d5,
-      actionText: "Executar Recuperação 3 via WhatsApp"
+      actionText: "Executar Reativação 3 via WhatsApp"
     }
   } else if (currentStage === "RE3") {
     const d8 = addBusinessDays(now, 3)
@@ -1020,6 +1033,7 @@ export default function KanbanPage() {
   const [isDrawerLeadModal, setIsDrawerLeadModal] = useState(false)
   const [selectedClientCpf, setSelectedClientCpf] = useState<string>("")
   const [isViewingLeadInAttendance, setIsViewingLeadInAttendance] = useState(false)
+  const [leadModalAttendanceContext, setLeadModalAttendanceContext] = useState<{ hasChamado: boolean; hasProposta: boolean } | null>(null)
 
   const handleClientSearch = async () => {
     const raw = clientSearchQuery.trim()
@@ -1377,9 +1391,39 @@ export default function KanbanPage() {
       return
     }
 
+    const ticketMeta = parseMetadata(atendimentoModalTicket.descricao)
+    const targetUserId = (atendimentoModalTicket.user_id || (ticketMeta as any)?.user_id || "").trim()
+    const targetUserName = (
+      atendimentoModalTicket.user_nome || 
+      (atendimentoModalTicket as any).responsavel_nome || 
+      (atendimentoModalTicket as any).corretor_nome || 
+      (ticketMeta as any)?.user_nome || 
+      (ticketMeta as any)?.operador_nome || 
+      perfil?.nome || 
+      ""
+    ).trim()
+
+    const isOperatorMatch = (itemUserId?: string | null, itemUserName?: string | null, itemUserEmail?: string | null) => {
+      if (targetUserId && itemUserId && String(itemUserId) === String(targetUserId)) {
+        return true
+      }
+      const cleanTarget = targetUserName.toLowerCase().trim()
+      const cleanItem = (itemUserName || "").toLowerCase().trim()
+      if (cleanTarget && cleanItem) {
+        if (cleanTarget === cleanItem) return true
+        const targetParts = cleanTarget.split(/\s+/).filter(Boolean)
+        const itemParts = cleanItem.split(/\s+/).filter(Boolean)
+        if (targetParts.length > 0 && itemParts.length > 0 && targetParts[0] === itemParts[0]) {
+          if (targetParts.length === 1 || itemParts.length === 1) return true
+          if (targetParts.some(tp => itemParts.includes(tp))) return true
+        }
+      }
+      return false
+    }
+
     let isMounted = true
 
-    // 1. Buscar Chamados (Histórico de Atendimento)
+    // 1. Buscar Chamados (Histórico de Atendimento) - Correspondente ao Responsável pelo Atendimento
     const loadTickets = async () => {
       setIsLoadingClientTicketsHistory(true)
       try {
@@ -1393,7 +1437,11 @@ export default function KanbanPage() {
           .order('created_at', { ascending: false })
 
         if (!fetchErr && isMounted) {
-          setClientTicketsHistory(data || [])
+          // Filtrar estritamente pelo operador responsável pelo atendimento selecionado
+          const filteredTickets = (data || []).filter((ch: any) => {
+            return isOperatorMatch(ch.user_id, ch.user_nome, ch.user_email)
+          })
+          setClientTicketsHistory(filteredTickets)
         }
       } catch (err) {
         console.error("Erro ao buscar histórico de chamados:", err)
@@ -1402,7 +1450,7 @@ export default function KanbanPage() {
       }
     }
 
-    // 2. Buscar Propostas Comerciais
+    // 2. Buscar Propostas Comerciais - Correspondente ao Responsável pelo Atendimento
     const loadProposals = async () => {
       setIsLoadingClientProposalsHistory(true)
       try {
@@ -1419,14 +1467,19 @@ export default function KanbanPage() {
         if (p3.data) combined = combined.concat(p3.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: true, isCalculadora: false })))
         if (p4.data) combined = combined.concat(p4.data.map((item: any) => ({ ...item, isNovoFormato: false, isQuitacao: false, isCalculadora: true })))
 
-        combined.sort((a, b) => {
+        // Filtrar estritamente pelo operador responsável pelo atendimento selecionado
+        const filteredProposals = combined.filter((prop: any) => {
+          return isOperatorMatch(prop.user_id, prop.user_nome, prop.user_email)
+        })
+
+        filteredProposals.sort((a, b) => {
           const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
           const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
           return dateB - dateA
         })
 
         if (isMounted) {
-          setClientProposalsHistory(combined)
+          setClientProposalsHistory(filteredProposals)
         }
       } catch (err) {
         console.error("Erro ao buscar histórico de propostas:", err)
@@ -1441,7 +1494,7 @@ export default function KanbanPage() {
     return () => {
       isMounted = false
     }
-  }, [atendimentoModalTicket?.id, atendimentoModalTicket?.cliente_cpf])
+  }, [atendimentoModalTicket?.id, atendimentoModalTicket?.cliente_cpf, atendimentoModalTicket?.user_id, atendimentoModalTicket?.user_nome])
 
   const handleDownloadProposalHistory = (proposal: Record<string, any>) => {
     if (!proposal.arquivo_url) return
@@ -1589,8 +1642,10 @@ export default function KanbanPage() {
 
   // Carregar Fichas do Supabase (Apenas registros da tabela kanban_fichas)
   const fetchChamados = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true)
-    setIsRefreshing(true)
+    if (!silent) {
+      setIsLoading(true)
+      setIsRefreshing(true)
+    }
     try {
       let query = supabase
         .from("kanban_fichas")
@@ -1624,7 +1679,7 @@ export default function KanbanPage() {
       const { data, error } = await query
       if (error) {
         console.error("Erro ao consultar kanban_fichas:", error)
-        setTickets([])
+        if (!silent) setTickets([])
         return
       }
 
@@ -1796,11 +1851,15 @@ export default function KanbanPage() {
       }
     } catch (err) {
       console.error("Erro ao carregar fichas para o Kanban:", err)
-      toast.error("Não foi possível carregar as fichas do Kanban.")
-      setTickets([])
+      if (!silent) {
+        toast.error("Não foi possível carregar as fichas do Kanban.")
+        setTickets([])
+      }
     } finally {
-      setIsLoading(false)
-      setIsRefreshing(false)
+      if (!silent) {
+        setIsLoading(false)
+        setIsRefreshing(false)
+      }
     }
   }, [isGestor, user, userRole])
 
@@ -1812,6 +1871,68 @@ export default function KanbanPage() {
     }
     fetchChamados()
   }, [fetchChamados, hasCheckedEnv, canAccessKanban])
+
+  // Sincronização automática em tempo real e em segundo plano (imperceptível para o usuário)
+  useEffect(() => {
+    if (!hasCheckedEnv || !canAccessKanban) return
+
+    let debounceTimer: NodeJS.Timeout | null = null
+    const scheduleSilentRefresh = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        fetchChamados(true)
+      }, 300)
+    }
+
+    // 1. Canal Supabase Realtime para kanban_fichas e chamados (INSERT, UPDATE e DELETE)
+    const channelName = `kanban_sync_${Math.random().toString(36).substring(2, 9)}`
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "kanban_fichas" },
+        (payload: any) => {
+          // Se for exclusão de cartão pelo banco, remove instantaneamente do estado local
+          if (payload?.eventType === "DELETE" && payload?.old?.id) {
+            const deletedId = String(payload.old.id)
+            setTickets(prev => prev.filter(t => t.id !== deletedId))
+          }
+          scheduleSilentRefresh()
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "chamados" },
+        () => {
+          scheduleSilentRefresh()
+        }
+      )
+      .subscribe()
+
+    // 2. Sincronização ao retornar ou focar na aba (ex: após abrir chamado em outra tela)
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === "visible") {
+        scheduleSilentRefresh()
+      }
+    }
+    window.addEventListener("focus", handleVisibilityOrFocus)
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus)
+
+    // 3. Heartbeat periódico silencioso a cada 15 segundos enquanto a aba estiver visível
+    const heartbeatInterval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchChamados(true)
+      }
+    }, 15000)
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      clearInterval(heartbeatInterval)
+      window.removeEventListener("focus", handleVisibilityOrFocus)
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus)
+      supabase.removeChannel(channel)
+    }
+  }, [hasCheckedEnv, canAccessKanban, fetchChamados])
 
   // Filtragem dos chamados
   const naoExisteWhatsappTickets = useMemo(() => {
@@ -3022,7 +3143,7 @@ export default function KanbanPage() {
     }
   }
 
-  // Ação para abrir o modal 'Informações do Lead' ao clicar em 'INICIAR ABORDAGEM'
+  // Ação para abrir o modal 'Informações do Lead' ao clicar em 'INICIAR ABORDAGEM' ou 'INFORMAÇÕES DO CLIENTE'
   const handleIniciarAbordagem = async () => {
     if (!atendimentoModalTicket) return
     const rawCpf = atendimentoModalTicket.cliente_cpf || ""
@@ -3053,6 +3174,12 @@ export default function KanbanPage() {
       toast.error("CPF do cliente não localizado para abrir Informações do Lead.")
       return
     }
+
+    // Salvar contexto isolado deste atendimento específico (chamados e propostas deste operador)
+    const meta = parseMetadata(atendimentoModalTicket.descricao)
+    const hasChamado = clientTicketsHistory.length > 0 || Boolean((meta as any)?.ultimo_chamado_aberto_em || (meta as any)?.chamado_id)
+    const hasProposta = clientProposalsHistory.length > 0 || Boolean((meta as any)?.proposta_id || (meta as any)?.proposta_numero)
+    setLeadModalAttendanceContext({ hasChamado, hasProposta })
 
     setAtendimentoModalTicket(null)
     setSelectedClientCpf(cleanCpf)
@@ -3641,12 +3768,16 @@ export default function KanbanPage() {
           }
         }
 
-        // Se houver algum registro em chamados com essa tabulação de gaveta, limpar também
+        // Se houver algum registro em chamados deste operador com essa tabulação de gaveta, limpar também
         try {
-          const { data: chamadosList } = await supabase
+          let chamadosQuery = supabase
             .from("chamados")
-            .select("id, descricao")
+            .select("id, descricao, user_id")
             .eq("cliente_cpf", cleanCpf)
+          if (validOperadorId) {
+            chamadosQuery = chamadosQuery.eq("user_id", validOperadorId)
+          }
+          const { data: chamadosList } = await chamadosQuery
           if (chamadosList && chamadosList.length > 0) {
             for (const ch of chamadosList) {
               const chMeta = parseMetadata(ch.descricao)
@@ -4082,11 +4213,7 @@ export default function KanbanPage() {
                 >
                   <Zap className="w-3 h-3 text-emerald-700 fill-emerald-500 shrink-0" />
                   <span>
-                    {cadState.isPausado 
-                      ? "PAUSADO" 
-                      : cadState.isEsperaFinal
-                      ? "ESPERA 1,5d"
-                      : `${cadState.etapaRegua} (${cadState.tipo === "AMPLIADA" ? "6 RTs" : "3 RTs"})`}
+                    {formatSeloCadencia(cadState)}
                   </span>
                 </span>
               )
@@ -4558,11 +4685,7 @@ export default function KanbanPage() {
                 >
                   <Zap className="w-2.5 h-2.5 text-emerald-700 fill-emerald-500 shrink-0" />
                   <span>
-                    {cadState.isPausado 
-                      ? "PAUSADO" 
-                      : cadState.isEsperaFinal
-                      ? "ESPERA 1,5d"
-                      : `${cadState.etapaRegua} (${cadState.tipo === "AMPLIADA" ? "6 RTs" : "3 RTs"})`}
+                    {formatSeloCadencia(cadState)}
                   </span>
                 </span>
               )
@@ -4859,9 +4982,6 @@ export default function KanbanPage() {
                 )}>
                   Minha Fila
                 </p>
-                <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
-                  Atendimento individual
-                </p>
               </div>
             </div>
 
@@ -4888,9 +5008,6 @@ export default function KanbanPage() {
                   activeView === "KANBAN" ? "text-sky-950 font-black" : "text-slate-800 group-hover:text-slate-900"
                 )}>
                   Kanban
-                </p>
-                <p className="text-[9.5px] text-slate-400 font-medium leading-tight truncate">
-                  Pipeline e 7 colunas
                 </p>
               </div>
             </div>
@@ -5623,6 +5740,10 @@ export default function KanbanPage() {
               const modalStage = inferKanbanStage(atendimentoModalTicket, modalMeta)
               const isEtapaPersonalizada = true
 
+              const hasChamadoNoAtendimento = clientTicketsHistory.length > 0 || Boolean((modalMeta as any)?.ultimo_chamado_aberto_em || (modalMeta as any)?.chamado_id)
+              const hasPropostaNoAtendimento = clientProposalsHistory.length > 0 || Boolean((modalMeta as any)?.proposta_id || (modalMeta as any)?.proposta_numero)
+              const hasChamadoOuPropostaNoAtendimento = hasChamadoNoAtendimento || hasPropostaNoAtendimento
+
               const convenioOrigemDisplay = resolvedConvenio || formatConvenioOrigem(atendimentoModalTicket.convenio || modalMeta.convenio) || "Não informado"
 
               return (
@@ -5817,9 +5938,11 @@ export default function KanbanPage() {
                         className="text-xs h-7.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer w-full sm:w-auto justify-center"
                       >
                         <UserCheck className="w-3.5 h-3.5" />
-                        {modalStage === "EM ABORDAGEM" || modalStage === "EM RETOMADA"
-                          ? "INICIAR ABORDAGEM"
-                          : "INFORMAÇÕES DO CLIENTE"}
+                        {hasChamadoOuPropostaNoAtendimento
+                          ? "INFORMAÇÕES DO CLIENTE"
+                          : (modalStage === "EM ABORDAGEM" || modalStage === "EM RETOMADA"
+                              ? "INICIAR ABORDAGEM"
+                              : "INFORMAÇÕES DO CLIENTE")}
                       </Button>
 
                       <Button
@@ -7394,6 +7517,8 @@ export default function KanbanPage() {
                 setIsDrawerLeadModal(false)
                 setSelectedClientCpf("")
                 setIsViewingLeadInAttendance(false)
+                setLeadModalAttendanceContext(null)
+                fetchChamados(true)
               }}
               title={isDrawerLeadModal ? "Informações sobre o Lead" : (isKanbanSearchModal ? "EM ABORDAGEM" : "Informações sobre o Lead")}
               isEmAbordagem={isKanbanSearchModal || isDrawerLeadModal}
@@ -7401,6 +7526,8 @@ export default function KanbanPage() {
               showTabulacoes={!isClientInAnyKanbanStage}
               hidePhoneSelectionBanner={isClientInAnyKanbanStage}
               showPipelineActionButtons={isClientInAnyKanbanStage}
+              hideAbrirChamado={Boolean(leadModalAttendanceContext?.hasChamado)}
+              hideDigitarProposta={Boolean(leadModalAttendanceContext?.hasProposta)}
               onTelefonesSelecionadosChange={(cpf, selected) => {
                 const cleanCpf = cpf.replace(/\D/g, "")
                 setTickets(prev => prev.map(t => {

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { Sidebar } from "@/components/layout/sidebar"
 import { SidebarContext } from "@/context/sidebar-context"
 import { NotificationBanner } from "@/components/layout/notification-banner"
-import { SLAModalWrapper } from "@/components/sla/sla-modal-wrapper"
 import { supabase } from "@/lib/supabase"
 import { Loader2 } from "lucide-react"
 import { withRetry } from "@/lib/utils"
@@ -99,7 +98,6 @@ export default function DashboardLayout({
           {children}
         </main>
         <NotificationBanner />
-        <SLAModalWrapper />
       </SidebarContext.Provider>
     </div>
   )

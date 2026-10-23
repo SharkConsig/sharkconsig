@@ -19,6 +19,7 @@ export interface NovoChamadoModalProps {
     matricula?: string;
     origem?: string;
     from_kanban?: string;
+    telefone_empresa?: string;
   };
   onSuccess?: () => void;
 }
