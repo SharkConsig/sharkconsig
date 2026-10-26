@@ -73,6 +73,9 @@ const getRequiredHeadersKeysForType = (type: string): string[][] => {
   if (type === "PREFEITURA_PONTA_GROSSA") {
     return [["cpf"], ["nome"], ["matricula"]];
   }
+  if (type === "AMAZON_PREV") {
+    return [["cpf"], ["nome"], ["matricula"]];
+  }
   if (type === "PREFEITURA_CONTAGEM") {
     return [["cpf"], ["nome"], ["matricula"], ["orgao"]];
   }
@@ -141,6 +144,7 @@ export default function ImportBatchPage() {
   const [totalBaseGovCE, setTotalBaseGovCE] = useState(0);
   const [totalBaseGovRO, setTotalBaseGovRO] = useState(0);
   const [totalBasePrefPontaGrossa, setTotalBasePrefPontaGrossa] = useState(0);
+  const [totalBaseAmazonPrev, setTotalBaseAmazonPrev] = useState(0);
   const [isRefreshingTotal, setIsRefreshingTotal] = useState(false);
   
   // Pagination State
@@ -208,7 +212,7 @@ export default function ImportBatchPage() {
       console.log("Estado da Sessão (fetchTotalBase):", `Logado como ${session.user.email}`);
       console.log("Token JWT (Tamanho):", session.access_token.length);
 
-      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govRRRes, govRJRes, prefSaRes, prefContagemRes, govMGRes, govMSRes, prefNatalRes, prefPortoVelhoRes, govBARes, govAMRes, govCERes, govRORes, prefPontaGrossaRes] = await Promise.all([
+      const [siapeRes, govSPRes, pmspRes, govPIRes, govMARes, govRRRes, govRJRes, prefSaRes, prefContagemRes, govMGRes, govMSRes, prefNatalRes, prefPortoVelhoRes, govBARes, govAMRes, govCERes, govRORes, prefPontaGrossaRes, amazonPrevRes] = await Promise.all([
         withRetry(async () => {
           return await supabase
             .from('clientes')
@@ -298,6 +302,11 @@ export default function ImportBatchPage() {
           return await supabase
             .from('prefeitura_ponta_grossa_clientes')
             .select('*', { count: 'exact', head: true });
+        }).catch(() => ({ count: 0, error: null })),
+        withRetry(async () => {
+          return await supabase
+            .from('amazon_prev_clientes')
+            .select('*', { count: 'exact', head: true });
         }).catch(() => ({ count: 0, error: null }))
       ]);
       
@@ -371,6 +380,7 @@ export default function ImportBatchPage() {
       setTotalBaseGovCE(govCERes.count || 0);
       setTotalBaseGovRO(govRORes.count || 0);
       setTotalBasePrefPontaGrossa(prefPontaGrossaRes.count || 0);
+      setTotalBaseAmazonPrev(amazonPrevRes.count || 0);
     } catch (err: unknown) {
       const error = err as Error;
       console.warn("Aviso inesperado ao buscar total da base:", error?.message || error);
@@ -2220,6 +2230,123 @@ export default function ImportBatchPage() {
     if (identErr) throw new Error(`Erro ao salvar matrículas Ponta Grossa: ${identErr?.message}`);
   };
 
+  const processAmazonPrevChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
+    // cpf,nome,data_nascimento,matricula,orgao,lotacao,situacao_funcional,salario,margem,telefone_1,telefone_2
+    const normalizedRows = results.map(row => {
+      const normRow = normalizeRowKeys(row);
+      return {
+        cpf: normalizeCPF(normRow.cpf || normRow.cpf_numero || ""),
+        nome: normalizeText(normRow.nome || normRow.nome_completo || ""),
+        data_nascimento: normalizeDate(normRow.data_nascimento || normRow.data_de_nascimento || normRow.nascimento || ""),
+        matricula: normalizeText(normRow.matricula || normRow.numero_matricula || ""),
+        orgao: normalizeText(normRow.orgao || normRow.orgao_origem || normRow.empresa || "AMAZON PREV"),
+        lotacao: normalizeText(normRow.lotacao || normRow.secretaria || normRow.departamento || ""),
+        situacao_funcional: normalizeText(normRow.situacao_funcional || normRow.situacao || normRow.vinculo || ""),
+        salario: normalizeMoney(normRow.salario || normRow.renda || normRow.remuneracao || ""),
+        margem: normalizeMoney(normRow.margem || normRow.margem_consignavel || normRow.margem_disponivel || ""),
+        telefone_1: normalizePhone(normRow.telefone_1 || normRow.telefone || ""),
+        telefone_2: normalizePhone(normRow.telefone_2 || "")
+      };
+    }).filter(r => r.cpf && r.cpf.length > 0);
+
+    if (normalizedRows.length === 0) return;
+
+    const cpfs = Array.from(new Set(normalizedRows.map(r => r.cpf)));
+    const existingClientsRaw = await fetchInBatches<Record<string, unknown>>('amazon_prev_clientes', 'cpf', cpfs);
+    const existingClientsMap = new Map(existingClientsRaw.map(c => [c.cpf as string, c]));
+
+    const shouldPreserve = (val: string | number | null | undefined) => {
+      if (val === null || val === undefined) return true;
+      const v = String(val).trim();
+      return v === "" || v === "0" || v === "0.0" || v === "0,0" || v === "0,00" || v === "0.00";
+    };
+
+    const clientMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const dbClient = existingClientsMap.get(row.cpf) as Record<string, unknown> | undefined;
+      const existingInMap = clientMap.get(row.cpf);
+      const existingName = (existingInMap?.nome as string | undefined) || (dbClient?.nome as string | undefined);
+      
+      let nome: string;
+      const dbNameUpper = String(existingName ?? "").toUpperCase().trim();
+      const isDbNameMockOrEmpty = !existingName || 
+                             dbNameUpper === "" || 
+                             dbNameUpper === "MOCK" || 
+                             dbNameUpper.includes("MOCK") || 
+                             dbNameUpper.includes("NAO INFORMADO") || 
+                             dbNameUpper.includes("NÃO INFORMADO");
+
+      if (isDbNameMockOrEmpty) {
+        nome = !shouldPreserve(row.nome) ? row.nome : (existingName || 'NAO INFORMADO');
+      } else {
+        nome = existingName;
+      }
+
+      const data_nascimento = row.data_nascimento || ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
+      const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
+      const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
+
+      clientMap.set(row.cpf, {
+        cpf: row.cpf,
+        nome,
+        data_nascimento,
+        telefone_1,
+        telefone_2,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const clientRows = Array.from(clientMap.values());
+    const { data: clientsData, error: clientErr } = await withRetry(async () => {
+      return await supabase.from('amazon_prev_clientes')
+        .upsert(clientRows, { onConflict: 'cpf' })
+        .select('id, cpf');
+    });
+
+    if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Amazon Prev: ${clientErr?.message}`);
+
+    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const clientIds = Array.from(cpfToClientId.values());
+
+    const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('amazon_prev_matriculas', 'cliente_id', clientIds);
+    const existingIdentsMap = new Map(existingIdentsRaw.map(i => [`${i.cliente_id}_${i.matricula}`, i]));
+
+    const identMap = new Map<string, Record<string, unknown>>();
+    normalizedRows.forEach(row => {
+      const clientId = cpfToClientId.get(row.cpf);
+      if (!clientId || !row.matricula) return;
+
+      const key = `${clientId}_${row.matricula}`;
+      const dbIdent = existingIdentsMap.get(key) as Record<string, unknown> | undefined;
+      const currentInMap = identMap.get(key);
+
+      const orgao = !shouldPreserve(row.orgao) ? row.orgao : (currentInMap?.orgao || dbIdent?.orgao || "AMAZON PREV");
+      const lotacao = !shouldPreserve(row.lotacao) ? row.lotacao : (currentInMap?.lotacao || dbIdent?.lotacao || null);
+      const situacao_funcional = !shouldPreserve(row.situacao_funcional) ? row.situacao_funcional : (currentInMap?.situacao_funcional || dbIdent?.situacao_funcional || null);
+      const salario = !shouldPreserve(row.salario) ? row.salario : (currentInMap?.salario || dbIdent?.salario || 0.00);
+      const margem = !shouldPreserve(row.margem) ? row.margem : (currentInMap?.margem || dbIdent?.margem || 0.00);
+
+      identMap.set(key, {
+        cliente_id: clientId,
+        matricula: row.matricula,
+        orgao,
+        lotacao,
+        situacao_funcional,
+        salario,
+        margem,
+        updated_at: new Date().toISOString()
+      });
+    });
+
+    const identRows = Array.from(identMap.values());
+    const { error: identErr } = await withRetry(async () => {
+      return await supabase.from('amazon_prev_matriculas')
+        .upsert(identRows, { onConflict: 'cliente_id,matricula' });
+    });
+
+    if (identErr) throw new Error(`Erro ao salvar matrículas Amazon Prev: ${identErr?.message}`);
+  };
+
   const processPrefeituraContagemChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
     // cpf,nome,data_de_nascimento,telefone_1,telefone_2,telefone_3,orgao,matricula,data_de_admissao,situacao_do_funcionario,margem_emprestimo_bruta,margem_emprestimo_liquida,margem_cartao_bruta,margem_cartao_liquida
     const normalizedRows = results.map(row => {
@@ -3537,6 +3664,8 @@ export default function ImportBatchPage() {
                 await processPrefeituraSantoAndreChunk(results.data, currentBatch.id);
               } else if (type === "PREFEITURA_PONTA_GROSSA") {
                 await processPrefeituraPontaGrossaChunk(results.data, currentBatch.id);
+              } else if (type === "AMAZON_PREV") {
+                await processAmazonPrevChunk(results.data, currentBatch.id);
               } else if (type === "PREFEITURA_CONTAGEM") {
                 await processPrefeituraContagemChunk(results.data, currentBatch.id);
               } else if (type === "GOVERNO_MG") {
@@ -3628,6 +3757,8 @@ export default function ImportBatchPage() {
               rpcFunctionName = 'refresh_base_consulta_prefeitura_santo_andre';
             } else if (type === 'PREFEITURA_PONTA_GROSSA') {
               rpcFunctionName = 'refresh_base_consulta_prefeitura_ponta_grossa';
+            } else if (type === 'AMAZON_PREV') {
+              rpcFunctionName = 'refresh_base_consulta_amazon_prev';
             } else if (type === 'PREFEITURA_CONTAGEM') {
               rpcFunctionName = 'refresh_base_consulta_prefeitura_contagem';
             } else if (type === 'GOVERNO_MG') {
@@ -3712,7 +3843,7 @@ export default function ImportBatchPage() {
     ));
   };
 
-  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce') => {
+  const downloadCSV = (type: 'siape' | 'contratos' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'governo_ms' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce' | 'amazon_prev') => {
     let headers = "";
     let filename = "";
 
@@ -3773,6 +3904,9 @@ export default function ImportBatchPage() {
     } else if (type === 'governo_ro') {
       headers = "cpf,nome,data_nascimento,matricula,orgao,secretaria,cargo,vinculo,salario,margem_emprestimo,margem_cartao,margem_cartao_beneficio,telefone_1,telefone_2,telefone_3";
       filename = "modelo_governo_rondonia.csv";
+    } else if (type === 'amazon_prev') {
+      headers = "cpf;nome;data_nascimento;matricula;orgao;lotacao;situacao_funcional;salario;margem;telefone_1;telefone_2";
+      filename = "modelo_amazon_prev.csv";
     }
     
     const blob = new Blob([headers], { type: 'text/csv;charset=utf-8;' });
@@ -3815,6 +3949,7 @@ export default function ImportBatchPage() {
                     <option value="GOVERNO_RJ">GOVERNO RIO DE JANEIRO</option>
                     <option value="PREFEITURA_SANTO_ANDRE">PREFEITURA SANTO ANDRÉ</option>
                     <option value="PREFEITURA_PONTA_GROSSA">PREFEITURA DE PONTA GROSSA</option>
+                    <option value="AMAZON_PREV">AMAZON PREV</option>
                     <option value="PREFEITURA_CONTAGEM">PREFEITURA CONTAGEM</option>
                     <option value="GOVERNO_MG">GOVERNO MINAS GERAIS</option>
                     <option value="GOVERNO_MS">GOVERNO MATO GROSSO DO SUL</option>
@@ -3905,6 +4040,7 @@ export default function ImportBatchPage() {
                     { id: 'governo_rj', title: 'MODELO GOVERNO RIO DE JANEIRO', subtitle: 'Base Governo Rio de Janeiro' },
                     { id: 'prefeitura_santo_andre', title: 'MODELO PREFEITURA SANTO ANDRÉ', subtitle: 'Base Prefeitura Santo André' },
                     { id: 'prefeitura_ponta_grossa', title: 'MODELO PREFEITURA DE PONTA GROSSA', subtitle: 'Base Prefeitura de Ponta Grossa' },
+                    { id: 'amazon_prev', title: 'MODELO AMAZON PREV', subtitle: 'Base Amazon Prev' },
                     { id: 'prefeitura_contagem', title: 'MODELO PREFEITURA CONTAGEM', subtitle: 'Base Prefeitura Contagem' },
                     { id: 'governo_mg', title: 'MODELO GOVERNO MINAS GERAIS', subtitle: 'Base Governo de Minas Gerais' },
                     { id: 'governo_ms', title: 'MODELO GOVERNO MATO GROSSO DO SUL', subtitle: 'Base Governo de Mato Grosso do Sul' },
@@ -4014,7 +4150,7 @@ export default function ImportBatchPage() {
                     </button>
                   </div>
                   <p className="text-[14px] font-black text-slate-900 tracking-tighter">
-                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovRR || 0) + (totalBaseGovRJ || 0) + (totalBasePrefSa || 0) + (totalBasePrefContagem || 0) + (totalBaseGovMG || 0) + (totalBaseGovMS || 0) + (totalBasePrefNatal || 0) + (totalBasePrefPortoVelho || 0) + (totalBaseGovBA || 0) + (totalBaseGovAM || 0) + (totalBaseGovCE || 0) + (totalBaseGovRO || 0) + (totalBasePrefPontaGrossa || 0)).toLocaleString('pt-BR')}
+                    {((totalBaseSiape || 0) + (totalBaseGovSP || 0) + (totalBasePMSP || 0) + (totalBaseGovPI || 0) + (totalBaseGovMA || 0) + (totalBaseGovRR || 0) + (totalBaseGovRJ || 0) + (totalBasePrefSa || 0) + (totalBasePrefContagem || 0) + (totalBaseGovMG || 0) + (totalBaseGovMS || 0) + (totalBasePrefNatal || 0) + (totalBasePrefPortoVelho || 0) + (totalBaseGovBA || 0) + (totalBaseGovAM || 0) + (totalBaseGovCE || 0) + (totalBaseGovRO || 0) + (totalBasePrefPontaGrossa || 0) + (totalBaseAmazonPrev || 0)).toLocaleString('pt-BR')}
                   </p>
                 </div>
 
@@ -4218,6 +4354,17 @@ export default function ImportBatchPage() {
                         {totalBasePrefPontaGrossa.toLocaleString('pt-BR')}
                       </p>
                     </div>
+
+                    {/* AMAZON PREV */}
+                    <div className="space-y-1.5 group cursor-default">
+                      <div className="flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                        <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">AMAZON PREV</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900 tracking-tighter leading-none group-hover:text-emerald-700 transition-colors">
+                        {totalBaseAmazonPrev.toLocaleString('pt-BR')}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4272,13 +4419,14 @@ export default function ImportBatchPage() {
                             batch.tipo === "GOVERNO_RJ" ? "bg-pink-600" : 
                             batch.tipo === "PREFEITURA_SANTO_ANDRE" ? "bg-violet-600" : 
                             batch.tipo === "PREFEITURA_PONTA_GROSSA" ? "bg-amber-600" : 
+                            batch.tipo === "AMAZON_PREV" ? "bg-emerald-600" : 
                             batch.tipo === "PREFEITURA_CONTAGEM" ? "bg-rose-600" : 
                             batch.tipo === "GOVERNO_MG" ? "bg-amber-600" : 
                             batch.tipo === "GOVERNO_MS" ? "bg-teal-600" : 
                             batch.tipo === "PREFEITURA_NATAL" ? "bg-sky-600" :
                             batch.tipo === "PREFEITURA_PORTO_VELHO" ? "bg-violet-600" : "bg-cyan-600"
                           )}>
-                            {batch.tipo === "GOVERNO_SP" ? "GOVERNO SP" : batch.tipo === "PREFEITURA_SP" ? "PREFEITURA SP" : batch.tipo === "GOVERNO_PI" ? "GOVERNO PI" : batch.tipo === "GOVERNO_MA" ? "GOVERNO MA" : batch.tipo === "GOVERNO_RR" ? "GOV RR" : batch.tipo === "GOVERNO_RJ" ? "GOV RJ" : batch.tipo === "PREFEITURA_SANTO_ANDRE" ? "PREF STO ANDRÉ" : batch.tipo === "PREFEITURA_PONTA_GROSSA" ? "PREF PONTA GROSSA" : batch.tipo === "PREFEITURA_CONTAGEM" ? "PREF CONTAGEM" : batch.tipo === "GOVERNO_MG" ? "GOV MG" : batch.tipo === "GOVERNO_MS" ? "GOV MS" : batch.tipo === "PREFEITURA_NATAL" ? "PREF NATAL" : batch.tipo === "PREFEITURA_PORTO_VELHO" ? "PREF PORTO VELHO" : batch.tipo}
+                            {batch.tipo === "GOVERNO_SP" ? "GOVERNO SP" : batch.tipo === "PREFEITURA_SP" ? "PREFEITURA SP" : batch.tipo === "GOVERNO_PI" ? "GOVERNO PI" : batch.tipo === "GOVERNO_MA" ? "GOVERNO MA" : batch.tipo === "GOVERNO_RR" ? "GOV RR" : batch.tipo === "GOVERNO_RJ" ? "GOV RJ" : batch.tipo === "PREFEITURA_SANTO_ANDRE" ? "PREF STO ANDRÉ" : batch.tipo === "PREFEITURA_PONTA_GROSSA" ? "PREF PONTA GROSSA" : batch.tipo === "AMAZON_PREV" ? "AMAZON PREV" : batch.tipo === "PREFEITURA_CONTAGEM" ? "PREF CONTAGEM" : batch.tipo === "GOVERNO_MG" ? "GOV MG" : batch.tipo === "GOVERNO_MS" ? "GOV MS" : batch.tipo === "PREFEITURA_NATAL" ? "PREF NATAL" : batch.tipo === "PREFEITURA_PORTO_VELHO" ? "PREF PORTO VELHO" : batch.tipo}
                           </span>
                           <span className="text-[12px] font-semibold text-slate-600 uppercase">{batch.descricao}</span>
                         </div>

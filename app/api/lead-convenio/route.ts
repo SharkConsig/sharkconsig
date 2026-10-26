@@ -22,6 +22,7 @@ const CONVENIO_TABLES = [
   { table: 'prefeitura_natal_clientes', label: 'Prefeitura de Natal' },
   { table: 'prefeitura_porto_velho_clientes', label: 'Prefeitura de Porto Velho' },
   { table: 'prefeitura_ponta_grossa_clientes', label: 'Prefeitura Ponta Grossa' },
+  { table: 'amazon_prev_clientes', label: 'Amazon Prev' },
   { table: 'inss_clientes', label: 'INSS' }
 ]
 

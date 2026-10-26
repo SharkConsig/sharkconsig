@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useAuth } from "@/context/auth-context"
+import { WITCH_DATA_URI } from "./witch-asset"
 
 interface HalloweenItem {
   id: number
@@ -320,7 +321,7 @@ export function HalloweenAnimation() {
             >
               <div className="flex items-center">
                 <img
-                  src="/assets/aistudio/witch-transparent.png"
+                  src={WITCH_DATA_URI}
                   alt="Bruxinha voando"
                   className="w-20 h-auto object-contain select-none pointer-events-none drop-shadow-[0_6px_16px_rgba(0,0,0,0.4)]"
                   draggable={false}
@@ -510,7 +511,7 @@ function WitchMouseFollower() {
     >
       <div className="relative">
         <img
-          src="/assets/aistudio/witch-transparent.png"
+          src={WITCH_DATA_URI}
           alt="Bruxinha voando na vassoura"
           className="w-14 h-auto object-contain select-none pointer-events-none drop-shadow-[0_4px_10px_rgba(0,0,0,0.35)]"
           draggable={false}

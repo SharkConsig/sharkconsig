@@ -97,6 +97,7 @@ const TABLE_MAP: Record<string, string> = {
   'governo_ro': 'base_consulta_governo_ro',
   'governo_mg': 'base_consulta_governo_mg',
   'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
+  'amazon_prev': 'base_consulta_amazon_prev',
 };
 
 const TABLE_COLUMNS: Record<string, string[]> = {
@@ -160,6 +161,9 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   ],
   'base_consulta_prefeitura_ponta_grossa': [
     'cpf', 'nome', 'idade', 'matricula', 'origem', 'situacao', 'vinculo', 'margem_total', 'margem_disponivel', 'telefone_1', 'telefone_2', 'telefone_3'
+  ],
+  'base_consulta_amazon_prev': [
+    'cpf', 'nome', 'data_nascimento', 'matricula', 'orgao', 'lotacao', 'situacao_funcional', 'salario', 'margem', 'telefone_1', 'telefone_2'
   ]
 };
 
@@ -173,6 +177,7 @@ const CONVENIOS = [
   { id: 'governo_rr', label: 'GOVERNO RORAIMA' },
   { id: 'prefeitura_santo_andre', label: 'PREFEITURA SANTO ANDRÉ' },
   { id: 'prefeitura_ponta_grossa', label: 'PREFEITURA DE PONTA GROSSA' },
+  { id: 'amazon_prev', label: 'AMAZON PREV' },
   { id: 'prefeitura_natal', label: 'PREFEITURA DE NATAL' },
   { id: 'prefeitura_porto_velho', label: 'PREFEITURA PORTO VELHO' },
   { id: 'governo_ba', label: 'GOVERNO BAHIA' },
@@ -315,6 +320,21 @@ export default function NewCampaignPage() {
         situacoes = Array.from(new Set(situacoesData?.map(i => i.situacao).filter(Boolean) || [])).sort() as string[];
         regimes = [];
         ufs = [];
+      } else if (activeConvenio === 'amazon_prev') {
+        const { data: orgaosData } = await supabase
+          .from(tableName)
+          .select('orgao')
+          .limit(1000);
+        
+        const { data: situacoesData } = await supabase
+          .from(tableName)
+          .select('situacao_funcional')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(situacoesData?.map(i => i.situacao_funcional).filter(Boolean) || [])).sort() as string[];
+        regimes = [];
+        ufs = [];
       } else {
         const { data: orgaosData } = await supabase
           .from(tableName)
@@ -412,7 +432,7 @@ export default function NewCampaignPage() {
       };
     }
 
-    if (activeConvenio === 'prefeitura_ponta_grossa') {
+    if (activeConvenio === 'prefeitura_ponta_grossa' || activeConvenio === 'amazon_prev') {
       return {
         idade: 1,
         orgao: 2,
@@ -650,6 +670,10 @@ export default function NewCampaignPage() {
         q = q.not("margem_bruta_cartao", "is", null);
         if (mMinNum !== null) q = q.gte("margem_bruta_cartao", mMinNum);
         if (mMaxNum !== null) q = q.lte("margem_bruta_cartao", mMaxNum);
+      } else if (cols.includes('margem')) {
+        q = q.not("margem", "is", null);
+        if (mMinNum !== null) q = q.gte("margem", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem", mMaxNum);
       }
     }
 
@@ -1223,7 +1247,7 @@ export default function NewCampaignPage() {
             if (activeConvenio === 'governo_rr') return null;
             if (activeConvenio === 'governo_pi') return null;
             if (activeConvenio === 'prefeitura_santo_andre') return null;
-            if ((activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho' || activeConvenio === 'prefeitura_ponta_grossa') && (section.id === "3" || section.id === "4")) return null;
+            if ((activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho' || activeConvenio === 'prefeitura_ponta_grossa' || activeConvenio === 'amazon_prev') && (section.id === "3" || section.id === "4")) return null;
             if (section.id === "4" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
             if (section.id === "3" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
             if (activeConvenio === 'governo_ma' && (section.id === "3" || section.id === "4")) return null;
@@ -1412,7 +1436,7 @@ export default function NewCampaignPage() {
             </Card>
           )}
 
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_ponta_grossa' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_ponta_grossa' && activeConvenio !== 'amazon_prev' && (
             /* 7. SALDO 70% */
             <Card className={cn(
               "card-shadow transition-all duration-300",
@@ -1463,7 +1487,7 @@ export default function NewCampaignPage() {
 
 
           {/* 8. EMPRÉSTIMOS */}
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_ponta_grossa' && (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_ponta_grossa' && activeConvenio !== 'amazon_prev' && (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
@@ -1593,7 +1617,7 @@ export default function NewCampaignPage() {
           )}
 
           {/* 9. CARTÕES */}
-          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_natal' && activeConvenio !== 'prefeitura_porto_velho' && activeConvenio !== 'prefeitura_ponta_grossa' ? (
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_natal' && activeConvenio !== 'prefeitura_porto_velho' && activeConvenio !== 'prefeitura_ponta_grossa' && activeConvenio !== 'amazon_prev' ? (
             <Card className={cn(
               "card-shadow transition-all duration-300",
               (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""

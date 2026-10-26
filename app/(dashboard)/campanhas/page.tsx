@@ -596,6 +596,7 @@ export default function CampaignsPage() {
         'governo_ms': 'base_consulta_governo_ms',
         'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
         'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
+        'amazon_prev': 'base_consulta_amazon_prev',
       };
 
       if (convenioKey && TABLE_MAP[convenioKey]) {
@@ -616,6 +617,8 @@ export default function CampaignsPage() {
         targetTable = 'base_consulta_prefeitura_santo_andre';
       } else if (campaignName.includes('PONTA GROSSA') || campaignName.includes('PREFEITURA DE PONTA GROSSA') || campaignName.includes('PREFEITURA PONTA GROSSA') || campaignName.includes('PREF PONTA GROSSA')) {
         targetTable = 'base_consulta_prefeitura_ponta_grossa';
+      } else if (campaignName.includes('AMAZON PREV') || campaignName.includes('AMAZONPREV')) {
+        targetTable = 'base_consulta_amazon_prev';
       } else if (campaignName.includes('NATAL')) {
         targetTable = 'base_consulta_prefeitura_natal';
       } else if (campaignName.includes('PORTO VELHO')) {
@@ -644,11 +647,14 @@ export default function CampaignsPage() {
       const isPrefNatal = targetTable === 'base_consulta_prefeitura_natal';
       const isPrefPortoVelho = targetTable === 'base_consulta_prefeitura_porto_velho';
       const isPrefPontaGrossa = targetTable === 'base_consulta_prefeitura_ponta_grossa';
+      const isAmazonPrev = targetTable === 'base_consulta_amazon_prev';
       const isMultiConvenio = (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect');
 
       const headersArray = ["CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3"];
       if (isPrefPontaGrossa) {
         headersArray.push("IDADE", "MATRÍCULA", "ORIGEM", "SITUAÇÃO", "VÍNCULO", "MARGEM TOTAL", "MARGEM DISPONÍVEL");
+      } else if (isAmazonPrev) {
+        headersArray.push("MATRÍCULA", "ÓRGÃO", "LOTAÇÃO", "SITUAÇÃO FUNCIONAL", "SALÁRIO", "MARGEM");
       } else if (isGovMg) {
         headersArray.push("MATRÍCULA", "ÓRGÃO", "SALDO 70%", "MARGEM EMPRÉSTIMO", "CARTÃO CRÉDITO", "CARTÃO BENEFÍCIO");
       } else if (isGovAm) {
@@ -770,6 +776,7 @@ export default function CampaignsPage() {
           { name: 'base_consulta_governo_ce', prodTable: 'governo_ce_clientes', convenio: 'governo_ce', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, salario, orgao, secretaria, vinculo" },
           { name: 'base_consulta_governo_ro', prodTable: 'governo_ro_clientes', convenio: 'governo_ro', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, vinculo, salario, margem_emprestimo, margem_cartao, margem_cartao_beneficio" },
           { name: 'base_consulta_prefeitura_ponta_grossa', prodTable: 'base_consulta_prefeitura_ponta_grossa', convenio: 'prefeitura_ponta_grossa', columns: "cpf, nome, idade, matricula, origem, situacao, vinculo, margem_total, margem_disponivel, telefone_1, telefone_2, telefone_3" },
+          { name: 'base_consulta_amazon_prev', prodTable: 'amazon_prev_clientes', convenio: 'amazon_prev', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, matricula, orgao, lotacao, situacao_funcional, salario, margem" },
         ];
 
         // 1. Buscar primeiro na tabela preferencial da campanha (targetTable) com lotes paralelos de 150
@@ -1103,6 +1110,21 @@ export default function CampaignsPage() {
               (row as any).margem_total ?? "",
               (row as any).margem_disponivel ?? ""
             ];
+          } else if (isAmazonPrev) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).matricula || "",
+              (row as any).orgao || "AMAZON PREV",
+              (row as any).lotacao || "",
+              (row as any).situacao_funcional || "",
+              (row as any).salario ?? "",
+              (row as any).margem ?? ""
+            ];
           } else if (isPrefNatal) {
             csvFields = [
               row.cpf,
@@ -1237,6 +1259,14 @@ export default function CampaignsPage() {
                 "GOVERNO AMAZONAS",
                 "", (row as any).margem_consignavel ?? "", "", "",
                 (row as any).margem_cartao ?? "", (row as any).margem_cartao_beneficio ?? "", "", (row as any).margem_cartao_beneficio_saque ?? ""
+              ];
+            } else if (conv === "amazon_prev") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "AMAZON PREV",
+                "", (row as any).margem ?? "", "", "",
+                "", "", "", ""
               ];
             } else if (conv === "governo_ce") {
               csvFields = [

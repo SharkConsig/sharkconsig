@@ -1588,6 +1588,7 @@ export default function KanbanPage() {
         { name: "prefeitura_natal_clientes", label: "Prefeitura de Natal" },
         { name: "prefeitura_porto_velho_clientes", label: "Prefeitura de Porto Velho" },
         { name: "prefeitura_ponta_grossa_clientes", label: "Prefeitura Ponta Grossa" },
+        { name: "amazon_prev_clientes", label: "Amazon Prev" },
         { name: "inss_clientes", label: "INSS" }
       ]
 

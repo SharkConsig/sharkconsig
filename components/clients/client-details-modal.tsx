@@ -160,7 +160,7 @@ interface ClientData {
   [key: string]: unknown;
 }
 
-type ConvenioType = 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce' | 'governo_ro' | 'prefeitura_ponta_grossa';
+type ConvenioType = 'siape' | 'governo_sp' | 'prefeitura_sp' | 'governo_pi' | 'governo_ma' | 'governo_rr' | 'governo_rj' | 'prefeitura_santo_andre' | 'prefeitura_contagem' | 'governo_mg' | 'prefeitura_natal' | 'prefeitura_porto_velho' | 'governo_ba' | 'governo_am' | 'governo_ce' | 'governo_ro' | 'prefeitura_ponta_grossa' | 'amazon_prev';
 
 interface ConvenioProfile {
   type: ConvenioType;
@@ -1324,6 +1324,72 @@ export function ClientDetailsModal({
         }
       }
 
+      // 18. Try search in Amazon Prev Clients
+      const { data: amazonData } = await withRetry<ClientData | null>(async () => 
+        await supabase.from('amazon_prev_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
+      )
+      if (amazonData) {
+        const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
+          await supabase.from('amazon_prev_matriculas').select('*').eq('cliente_id', (amazonData as ClientData).id)
+        )
+        if (regError) console.error("Erro ao buscar matrículas Amazon Prev:", regError)
+        const mappedRegs = (regData || []).map((r: Record<string, unknown>) => ({
+          ...r,
+          id: r.id as string,
+          numero_matricula: (r.matricula as string) || '---',
+          matricula: (r.matricula as string) || '---',
+          orgao: (r.orgao as string) || "AMAZON PREV",
+          lotacao: (r.lotacao as string) || null,
+          situacao_funcional: (r.situacao_funcional as string) || null,
+          salario: r.salario || 0.00,
+          margem: r.margem || 0.00,
+          margem_total: r.margem || 0.00,
+          margem_disponivel: r.margem || 0.00,
+          margem_disponivel_emprestimo: r.margem || 0.00,
+          uf: 'AM',
+          instituidores: []
+        }))
+        foundProfiles.push({
+          type: 'amazon_prev',
+          client: amazonData,
+          registrations: mappedRegs as unknown as Registration[]
+        })
+      } else {
+        // Fallback: search in base_consulta_amazon_prev directly
+        const { data: baseAmazonData } = await withRetry<Record<string, unknown> | null>(async () =>
+          await supabase.from('base_consulta_amazon_prev').select('*').eq('cpf', paddedCpf).maybeSingle()
+        )
+        if (baseAmazonData) {
+          const mappedRegs = [{
+            id: (baseAmazonData.id as string) || (baseAmazonData.matricula as string) || '---',
+            numero_matricula: (baseAmazonData.matricula as string) || '---',
+            matricula: (baseAmazonData.matricula as string) || '---',
+            orgao: (baseAmazonData.orgao as string) || 'AMAZON PREV',
+            lotacao: (baseAmazonData.lotacao as string) || null,
+            situacao_funcional: (baseAmazonData.situacao_funcional as string) || null,
+            salario: baseAmazonData.salario || 0.00,
+            margem: baseAmazonData.margem || 0.00,
+            margem_total: baseAmazonData.margem || 0.00,
+            margem_disponivel: baseAmazonData.margem || 0.00,
+            margem_disponivel_emprestimo: baseAmazonData.margem || 0.00,
+            uf: 'AM',
+            instituidores: []
+          }]
+          foundProfiles.push({
+            type: 'amazon_prev',
+            client: {
+              ...baseAmazonData,
+              nome: (baseAmazonData.nome as string) || null,
+              cpf: baseAmazonData.cpf as string,
+              data_nascimento: (baseAmazonData.data_nascimento as string) || null,
+              telefone_1: (baseAmazonData.telefone_1 as string) || null,
+              telefone_2: (baseAmazonData.telefone_2 as string) || null,
+            } as ClientData,
+            registrations: mappedRegs as unknown as Registration[]
+          })
+        }
+      }
+
       if (foundProfiles.length > 0) {
         setProfiles(foundProfiles)
         // Select first profile or match initialMatricula if present
@@ -1551,6 +1617,7 @@ export function ClientDetailsModal({
       case 'governo_ce': return 'GOVERNO CE'
       case 'governo_ro': return 'GOVERNO RO'
       case 'prefeitura_ponta_grossa': return 'PREFEITURA PONTA GROSSA'
+      case 'amazon_prev': return 'AMAZON PREV'
       default: return 'FEDERAL'
     }
   };
@@ -1637,6 +1704,7 @@ export function ClientDetailsModal({
       case "governo_ce": return "Governo do Ceará";
       case "governo_ro": return "Governo de Rondônia";
       case "prefeitura_ponta_grossa": return "Prefeitura de Ponta Grossa";
+      case "amazon_prev": return "Amazon Prev";
       default: return String(type || "CONVÊNIO").toUpperCase();
     }
   };
@@ -1785,7 +1853,8 @@ export function ClientDetailsModal({
                           p.type === 'governo_am' ? 'GOVERNO AMAZONAS' :
                           p.type === 'governo_ce' ? 'GOVERNO CEARÁ' :
                           p.type === 'governo_ro' ? 'GOVERNO RONDÔNIA' :
-                          p.type === 'prefeitura_ponta_grossa' ? 'PREFEITURA PONTA GROSSA' : String(p.type).toUpperCase();
+                          p.type === 'prefeitura_ponta_grossa' ? 'PREFEITURA PONTA GROSSA' :
+                          p.type === 'amazon_prev' ? 'AMAZON PREV' : String(p.type).toUpperCase();
 
                         return (
                           <button
@@ -2610,7 +2679,8 @@ export function ClientDetailsModal({
                                   clientType === 'governo_am' ? 'Governo Amazonas' :
                                   clientType === 'governo_ce' ? 'Governo Ceará' :
                                   clientType === 'governo_ro' ? 'Governo Rondônia' :
-                                  clientType === 'prefeitura_ponta_grossa' ? 'Prefeitura Ponta Grossa' : (clientType ? String(clientType).toUpperCase() : undefined);
+                                  clientType === 'prefeitura_ponta_grossa' ? 'Prefeitura Ponta Grossa' :
+                                  clientType === 'amazon_prev' ? 'Amazon Prev' : (clientType ? String(clientType).toUpperCase() : undefined);
 
                                 await onSelectTabulacao(status, {
                                   cpf: client?.cpf || cpf,
