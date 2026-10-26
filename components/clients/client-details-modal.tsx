@@ -220,11 +220,13 @@ export function ClientDetailsModal({
 }: ClientDetailsModalProps) {
   const [internalHasChamado, setInternalHasChamado] = useState(false)
   const [internalHasProposta, setInternalHasProposta] = useState(false)
+  const [dbHasChamado, setDbHasChamado] = useState(false)
 
   useEffect(() => {
     if (!isOpen) {
       setInternalHasChamado(false)
       setInternalHasProposta(false)
+      setDbHasChamado(false)
     }
   }, [isOpen])
 
@@ -277,6 +279,7 @@ export function ClientDetailsModal({
   const isKanbanLeadModal = isEmAbordagem || Boolean(onSelectTabulacao) || hasTabulacoes || modalTitle.toLowerCase().includes("lead")
   const router = useRouter()
   const { perfil, isEstagio, user } = useAuth()
+
   const [isSimulationModalOpen, setIsSimulationModalOpen] = useState(false)
   const [isNovoChamadoModalOpen, setIsNovoChamadoModalOpen] = useState(false)
   const [chamadoModalData, setChamadoModalData] = useState<any>(null)
@@ -290,6 +293,92 @@ export function ClientDetailsModal({
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [profiles, setProfiles] = useState<ConvenioProfile[]>([])
   const [activeRegIndex, setActiveRegIndex] = useState(0)
+
+  // Consulta direta na tabela 'chamados' para habilitar/desabilitar botão 'Abrir Chamado'
+  useEffect(() => {
+    let isMounted = true
+    const activeCpf = (client?.cpf || cpf || "").replace(/\D/g, "")
+
+    if (!isOpen || !activeCpf) {
+      setDbHasChamado(false)
+      return
+    }
+
+    const checkChamadoNoBanco = async () => {
+      try {
+        const cleanDigits = activeCpf.replace(/\D/g, "")
+        const padded = cleanDigits.padStart(11, "0")
+        const formattedClean = cleanDigits.length === 11 
+          ? cleanDigits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") 
+          : ""
+        const formattedPadded = padded.length === 11 
+          ? padded.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") 
+          : ""
+
+        const variants = Array.from(new Set([cleanDigits, padded, formattedClean, formattedPadded].filter(Boolean)))
+
+        const { data, error } = await supabase
+          .from("chamados")
+          .select("id, user_id, user_nome, cliente_cpf")
+          .in("cliente_cpf", variants)
+
+        if (!isMounted) return
+
+        if (error) {
+          console.error("Erro ao verificar chamado diretamente na tabela chamados:", error)
+          setDbHasChamado(false)
+          return
+        }
+
+        if (!data || data.length === 0) {
+          setDbHasChamado(false)
+          return
+        }
+
+        const currentUserId = user?.id ? String(user.id).trim().toLowerCase() : ""
+        const currentPerfilId = perfil?.id ? String(perfil.id).trim().toLowerCase() : ""
+        const currentUserName = (perfil?.nome || "").trim().toLowerCase()
+        const currentUserEmail = (perfil?.email || user?.email || "").trim().toLowerCase()
+        const currentUsername = (perfil?.username || "").trim().toLowerCase()
+
+        const hasMatch = data.some((ch: any) => {
+          const chUserId = ch.user_id ? String(ch.user_id).trim().toLowerCase() : ""
+          if (currentUserId && chUserId && chUserId === currentUserId) return true
+          if (currentPerfilId && chUserId && chUserId === currentPerfilId) return true
+
+          const chUserName = (ch.user_nome || "").trim().toLowerCase()
+          if (chUserName) {
+            if (currentUserName && chUserName === currentUserName) return true
+            if (currentUserEmail && chUserName === currentUserEmail) return true
+            if (currentUsername && chUserName === currentUsername) return true
+
+            if (currentUserName) {
+              if (chUserName.includes(currentUserName) || currentUserName.includes(chUserName)) return true
+              const uParts = currentUserName.split(/\s+/).filter(Boolean)
+              const chParts = chUserName.split(/\s+/).filter(Boolean)
+              if (uParts.length > 0 && chParts.length > 0 && uParts[0] === chParts[0]) {
+                if (uParts.length === 1 || chParts.length === 1 || uParts[uParts.length - 1] === chParts[chParts.length - 1]) {
+                  return true
+                }
+              }
+            }
+          }
+          return false
+        })
+
+        setDbHasChamado(hasMatch)
+      } catch (err) {
+        console.error("Erro ao verificar chamado diretamente na tabela chamados:", err)
+        if (isMounted) setDbHasChamado(false)
+      }
+    }
+
+    checkChamadoNoBanco()
+
+    return () => {
+      isMounted = false
+    }
+  }, [isOpen, cpf, client?.cpf, user?.id, perfil?.id, perfil?.nome, perfil?.email, user?.email])
 
   const allRegs = React.useMemo(() => {
     if (!client) return []
@@ -2436,7 +2525,7 @@ export function ClientDetailsModal({
                                   SIMULAR PROPOSTA
                                 </Button>
 
-                                {!(hideAbrirChamado || internalHasChamado) && (
+                                {!(hideAbrirChamado || dbHasChamado || internalHasChamado) && (
                                   <Button
                                     type="button"
                                     onClick={() => handleAbrirChamado(activeReg)}
@@ -2573,7 +2662,10 @@ export function ClientDetailsModal({
             isOpen={isNovoChamadoModalOpen}
             onClose={() => setIsNovoChamadoModalOpen(false)}
             initialData={chamadoModalData}
-            onSuccess={() => setInternalHasChamado(true)}
+            onSuccess={() => {
+              setInternalHasChamado(true)
+              setDbHasChamado(true)
+            }}
           />
         )}
 

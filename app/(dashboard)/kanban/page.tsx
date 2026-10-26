@@ -3279,7 +3279,7 @@ export default function KanbanPage() {
 
     // Salvar contexto isolado deste atendimento específico (chamados e propostas deste operador)
     const meta = parseMetadata(atendimentoModalTicket.descricao)
-    const hasChamado = clientTicketsHistory.length > 0 || Boolean((meta as any)?.ultimo_chamado_aberto_em || (meta as any)?.chamado_id)
+    const hasChamado = clientTicketsHistory.length > 0
     const hasProposta = clientProposalsHistory.length > 0 || Boolean((meta as any)?.proposta_id || (meta as any)?.proposta_numero)
     setLeadModalAttendanceContext({ hasChamado, hasProposta })
 
@@ -4205,6 +4205,9 @@ export default function KanbanPage() {
                 roleNorm === "rh"
               )
 
+              // Corretores e Estagiários não têm acesso à etiqueta/funcionalidade de atendimento por outro usuário
+              if (!isVisualizadorTodos) return null
+
               // 1. Operadores obtidos do mapa global concorrenciaPorCpf
               const listaDoMapa = (concorrenciaPorCpf[cleanCpf] || []).map(n => n.trim()).filter(Boolean)
 
@@ -4235,30 +4238,17 @@ export default function KanbanPage() {
                 ...metaOutros
               ])).filter(Boolean)
 
-              // Para Corretor e Estágio/Estagiários: listar SOMENTE o outro usuário que está em atendimento
-              const outrosUsuarios = todosAtendendo.filter(nome => {
-                const nLower = nome.toLowerCase()
-                if (currentUserNameLower && nLower === currentUserNameLower) return false
-                return true
-              })
-
               // Verificar se há concorrência simultânea ativa neste lead
               const temConcorrencia = todosAtendendo.length > 1 || listaDoMapa.length > 1 || outrosAtendendo.length > 0 || Boolean(meta.conflito_titularidade)
 
-              if (!temConcorrencia && outrosUsuarios.length === 0) return null
+              if (!temConcorrencia) return null
 
-              // Selecionar lista conforme a regra de papéis solicitada
-              const nomesExibir = isVisualizadorTodos ? todosAtendendo : outrosUsuarios
-
+              const nomesExibir = todosAtendendo
               if (nomesExibir.length === 0) return null
 
               const totalCount = nomesExibir.length
-              const labelTexto = isVisualizadorTodos
-                ? `Atendido por ${totalCount} ${totalCount === 1 ? "usuário" : "usuários"}`
-                : `Atendido por ${totalCount} ${totalCount === 1 ? "outro usuário" : "outros usuários"}`
-              const tituloBalao = isVisualizadorTodos
-                ? `Usuários em atendimento (${totalCount}):`
-                : (totalCount === 1 ? "Outro usuário em atendimento:" : `Outros usuários em atendimento (${totalCount}):`)
+              const labelTexto = `Atendido por ${totalCount} ${totalCount === 1 ? "usuário" : "usuários"}`
+              const tituloBalao = `Usuários em atendimento (${totalCount}):`
 
               return (
                 <div 
@@ -5842,7 +5832,7 @@ export default function KanbanPage() {
               const modalStage = inferKanbanStage(atendimentoModalTicket, modalMeta)
               const isEtapaPersonalizada = true
 
-              const hasChamadoNoAtendimento = clientTicketsHistory.length > 0 || Boolean((modalMeta as any)?.ultimo_chamado_aberto_em || (modalMeta as any)?.chamado_id)
+              const hasChamadoNoAtendimento = clientTicketsHistory.length > 0
               const hasPropostaNoAtendimento = clientProposalsHistory.length > 0 || Boolean((modalMeta as any)?.proposta_id || (modalMeta as any)?.proposta_numero)
               const hasChamadoOuPropostaNoAtendimento = hasChamadoNoAtendimento || hasPropostaNoAtendimento
 

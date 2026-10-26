@@ -1587,7 +1587,7 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                               <img 
                                 {...props} 
                                 alt={props.alt || "Anexo do chamado"}
-                                className="max-w-full rounded-lg shadow-sm border border-slate-200 mt-2 mb-2 hover:scale-[1.02] transition-transform cursor-pointer" 
+                                className="max-w-full rounded-lg shadow-sm border border-slate-200 mt-2 mb-2 hover:border-slate-400 hover:shadow-md transition-shadow cursor-pointer" 
                                 onClick={() => props.src && window.open(props.src, '_blank')}
                               />
                             ),
