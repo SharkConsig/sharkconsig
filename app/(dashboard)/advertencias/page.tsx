@@ -1041,7 +1041,7 @@ export default function AdvertenciasPage() {
 
             {/* Main Interactive Grid Table in Spreadsheet Style */}
             <div className="overflow-x-auto px-6 pb-6">
-              <table className="w-full text-left border-collapse table-fixed min-w-[1100px]">
+              <table className="w-max text-left border-collapse">
                 <thead>
                   <tr className="bg-[#171717] text-white">
                     <RhTh columnId="colaborador" label="Colaborador" isVisible={isVisible("colaborador")} onToggle={toggleColumn} widthClass="w-[220px]" roundedLeft />

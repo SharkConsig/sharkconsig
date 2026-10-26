@@ -547,6 +547,10 @@ export function RhTh({
     rhSelectionStore.handleContextMenu(columnId, label, e.clientX, e.clientY)
   }
 
+  // Extrair largura exata em pixels da classe widthClass (ex: "w-[180px]" -> "180px")
+  const pxMatch = widthClass.match(/w-\[(\d+)px\]/)
+  const widthPx = pxMatch ? `${pxMatch[1]}px` : undefined
+
   return (
     <>
       <th
@@ -556,6 +560,7 @@ export function RhTh({
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onDoubleClick={() => onToggle(columnId)}
+        style={widthPx ? { width: widthPx, minWidth: widthPx } : undefined}
         title={
           isSelected
             ? `Coluna '${label}' selecionada (${rhSelectionStore.selectedIds.size} selecionada(s)). Clique com botão direito para 'Ocultar'. Shift/Ctrl para alterar.`
@@ -563,7 +568,7 @@ export function RhTh({
         }
         className={cn(
           widthClass,
-          "px-4 py-4 text-[10px] font-extrabold uppercase tracking-widest relative group transition-all duration-150 select-none cursor-pointer",
+          "px-4 py-4 text-[10px] font-extrabold uppercase tracking-widest relative group transition-all duration-150 select-none cursor-pointer first-of-type:rounded-l-xl last-of-type:rounded-r-xl",
           align === "center" && "text-center",
           align === "right" && "text-right",
           isSticky && "sticky top-0 bg-[#171717] z-30",

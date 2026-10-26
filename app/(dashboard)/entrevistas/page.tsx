@@ -1006,7 +1006,7 @@ export default function EntrevistasPage() {
 
             {/* List Table */}
             <div className="overflow-x-auto min-h-[460px] px-6">
-              <table className="w-full text-left border-collapse table-fixed min-w-[1450px]">
+              <table className="w-max text-left border-collapse">
                 <thead>
                   <tr className="bg-[#171717] text-white">
                     <RhTh columnId="candidato" label="Candidato" isVisible={isVisible("candidato")} onToggle={toggleColumn} widthClass="w-[180px]" roundedLeft />

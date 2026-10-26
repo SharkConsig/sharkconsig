@@ -1712,7 +1712,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
             {/* List Table */}
             <div className="overflow-auto max-h-[700px] min-h-[500px] px-6 pb-40 border border-slate-200/60 rounded-2xl relative shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
               {activeTab === "home_office" ? (
-                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2830px]">
+                <table className="w-max text-left border-separate border-spacing-0">
                   <thead>
                     <tr className="bg-[#171717] text-white">
                       <RhTh columnId="nome" label="Nome Completo" isVisible={homeOfficeCols.isVisible("nome")} onToggle={homeOfficeCols.toggleColumn} widthClass="w-[220px]" roundedLeft isSticky>Nome Completo</RhTh>
@@ -1956,7 +1956,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
                   </tbody>
                 </table>
               ) : (
-                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[4530px]">
+                <table className="w-max text-left border-separate border-spacing-0">
                   <thead>
                     <tr className="bg-[#171717] text-white">
                       <RhTh columnId="nome" label="Nome Completo" isVisible={presencialCols.isVisible("nome")} onToggle={presencialCols.toggleColumn} widthClass="w-[220px]" roundedLeft isSticky>Nome Completo</RhTh>
@@ -2425,7 +2425,7 @@ async function safeSupabaseUpdate(id: string, dbRow: Record<string, any>) {
 
               {/* List Table */}
               <div className="overflow-auto max-h-[700px] min-h-[500px] px-6 relative border border-slate-200/60 rounded-2xl shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-                <table className="w-full text-left border-separate border-spacing-0 table-fixed min-w-[2060px]">
+                <table className="w-max text-left border-separate border-spacing-0">
                   <thead>
                     <tr className="bg-[#171717] text-white">
                       <RhTh columnId="nome" label="Nome Completo" isVisible={exCols.isVisible("nome")} onToggle={exCols.toggleColumn} widthClass="w-[220px]" roundedLeft isSticky>Nome Completo</RhTh>
