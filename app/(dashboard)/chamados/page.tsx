@@ -707,9 +707,12 @@ export default function TicketsPage() {
   const [ticketApoioStates, setTicketApoioStates] = useState<Record<number, 'pediu' | 'respondido' | 'finalizado' | 'none'>>({})
   const itemsPerPage = 10
   const isFirstLoadRef = React.useRef(true)
+  const isFetchingTicketsRef = React.useRef(false)
 
   const fetchTickets = useCallback(async (isSilent = false) => {
     if (!perfil || !user) return
+    if (isFetchingTicketsRef.current) return
+    isFetchingTicketsRef.current = true
 
     const silent = (typeof isSilent === "boolean" ? isSilent : false) || !isFirstLoadRef.current
     if (!silent) setIsLoading(true)
@@ -774,14 +777,14 @@ export default function TicketsPage() {
         }
       }
 
-      // Função construtora para garantir nova instância do PostgREST em cada fatia paralela
-      const buildBaseQuery = () => {
+      // Função construtora para garantir nova instância do PostgREST em cada fatia
+      const buildBaseQuery = (withCount = false) => {
         let q = supabase
           .from('chamados')
           .select(`
-            *,
-            status_chamados:status_id (*)
-          `)
+            id, status, status_id, origem, cliente_nome, cliente_cpf, cliente_telefone, cliente_telefone_2, cliente_telefone_3, margem, margem_liquida_5, margem_beneficio_5, convenio, equipe, matricula, created_at, updated_at, user_id, user_nome, user_avatar, descricao, valor_operacao, escalonamento_status, arquivo_rg_frente, arquivo_rg_verso, arquivo_contracheque, arquivo_extrato, arquivo_outros,
+            status_chamados:status_id (id, nome, cor)
+          `, withCount ? { count: 'exact' } : undefined)
 
         if (startDate && startDate.length === 10) {
           const localStart = new Date(`${startDate}T00:00:00`)
@@ -807,9 +810,9 @@ export default function TicketsPage() {
         return q.order('id', { ascending: false })
       }
 
-      // Primeiro lote (0 - 999)
-      const { data: firstBatch, error: firstErr } = await withRetry(() => 
-        buildBaseQuery().range(0, 999)
+      // Primeiro lote (0 - 999) com contagem exata na mesma requisição
+      const { data: firstBatch, error: firstErr, count: totalCount } = await withRetry(() => 
+        buildBaseQuery(true).range(0, 999)
       )
 
       if (firstErr) {
@@ -819,24 +822,35 @@ export default function TicketsPage() {
 
       let all: Ticket[] = (firstBatch || []) as Ticket[]
 
-      // Se houver mais de 1000 chamados, busca os lotes restantes em paralelo com novas instâncias independentes
-      if (firstBatch && firstBatch.length === 1000) {
+      // Se houver mais registros, cria os ranges necessários e busca em grupos de no máximo 3 conexões concorrentes
+      const totalRecords = totalCount || (firstBatch && firstBatch.length === 1000 ? 15000 : 0)
+      if (totalRecords > 1000) {
         const step = 1000
+        const totalBatches = Math.ceil(totalRecords / step)
         const ranges: Array<[number, number]> = []
-        for (let from = 1000; from < 20000; from += step) {
-          ranges.push([from, from + step - 1])
+        for (let i = 1; i < totalBatches; i++) {
+          ranges.push([i * step, Math.min((i + 1) * step - 1, totalRecords - 1)])
         }
 
-        const remainingResults = await Promise.all(
-          ranges.map(([from, to]) => withRetry(() => buildBaseQuery().range(from, to)))
-        )
-
-        for (const res of remainingResults) {
-          if (res.data && res.data.length > 0) {
-            all = [...all, ...(res.data as Ticket[])]
-            if (res.data.length < step) break
-          } else {
-            break
+        const CONCURRENCY_LIMIT = 3
+        let reachedEnd = false
+        for (let i = 0; i < ranges.length; i += CONCURRENCY_LIMIT) {
+          if (reachedEnd) break
+          const chunk = ranges.slice(i, i + CONCURRENCY_LIMIT)
+          const chunkResults = await Promise.all(
+            chunk.map(([from, to]) => withRetry(() => buildBaseQuery().range(from, to)))
+          )
+          for (const res of chunkResults) {
+            if (res.data && res.data.length > 0) {
+              all.push(...(res.data as Ticket[]))
+              if (res.data.length < step) {
+                reachedEnd = true
+                break
+              }
+            } else {
+              reachedEnd = true
+              break
+            }
           }
         }
       }
@@ -851,6 +865,7 @@ export default function TicketsPage() {
         toast.error("Erro ao carregar a lista de chamados")
       }
     } finally {
+      isFetchingTicketsRef.current = false
       setIsLoading(false)
     }
   }, [user?.id, perfil?.id, perfil?.role, startDate, endDate, user, perfil])
@@ -858,10 +873,27 @@ export default function TicketsPage() {
   useEffect(() => {
     if (user?.id && perfil?.id) {
       fetchTickets()
+
+      // Polling inteligente: sincroniza a cada 45 segundos somente com aba visível
       const interval = setInterval(() => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          return
+        }
         fetchTickets(true)
-      }, 15000) // Sincronização em tempo real a cada 15 segundos
-      return () => clearInterval(interval)
+      }, 45000)
+
+      // Atualiza imediatamente quando o usuário volta para a aba
+      const handleVisibilityChange = () => {
+        if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+          fetchTickets(true)
+        }
+      }
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+
+      return () => {
+        clearInterval(interval)
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
+      }
     }
   }, [fetchTickets, user?.id, perfil?.id])
 
