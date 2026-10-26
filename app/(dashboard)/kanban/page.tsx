@@ -989,17 +989,37 @@ export default function KanbanPage() {
     userRole === "RH"
   )
 
-  // Acesso ao Kanban em produção: liberado com acesso total SOMENTE para Administrador e Desenvolvedor.
-  // Em ambiente de desenvolvimento: liberado para todos para testes e ajustes.
-  const isDevOrAdminUser = Boolean(
-    isAdmin || 
+  // Identificação de papéis e regimes para acesso ao Kanban
+  const isDevUser = Boolean(
     isDeveloper || 
-    userRole === "Administrador" || 
     userRole === "Desenvolvedor" || 
-    perfil?.role === "Administrador" || 
     perfil?.role === "Desenvolvedor"
   )
-  const canAccessKanban = isDevEnv || isDevOrAdminUser
+
+  const isAdminUser = Boolean(
+    isAdmin || 
+    userRole === "Administrador" || 
+    perfil?.role === "Administrador"
+  )
+
+  const regimeUpper = (
+    perfil?.regime_contratacao || 
+    (perfil as any)?.regime_trabalho || 
+    (perfil as any)?.regime || 
+    user?.user_metadata?.regime_contratacao || 
+    ""
+  ).toUpperCase().trim()
+
+  // Corretor PJ não tem acesso ao Kanban (Desenvolvedor mesmo sendo PJ continua com acesso normal)
+  const isCorretorPJ = Boolean(
+    !isDevUser &&
+    !isAdminUser &&
+    (userRole === "Corretor" || perfil?.role === "Corretor") &&
+    regimeUpper === "PJ"
+  )
+
+  // Módulo liberado para todos os usuários autorizados (Desenvolvedor mesmo PJ, Administrador, Supervisor, Operacional, Monitoramento, Corretor CLT, Estágio, RH)
+  const canAccessKanban = !isCorretorPJ
 
   // Visão Ativa do Módulo Kanban: "MINHA_FILA" (padrão inicial) ou "KANBAN"
   const [activeView, setActiveView] = useState<"MINHA_FILA" | "KANBAN">("MINHA_FILA")
@@ -1653,26 +1673,34 @@ export default function KanbanPage() {
         .order("updated_at", { ascending: false })
         .limit(1000)
 
-      // Regras de visibilidade conforme o papel
+      // Regras de visibilidade:
+      // - Estágio visualiza SOMENTE os seus próprios atendimentos;
+      // - Corretor visualiza os seus próprios atendimentos e os atendimentos de seus estagiários apadrinhados;
+      // - Desenvolvedor, Administrador, Supervisor, Operacional, Monitoramento e Recursos Humanos (isGestor) visualizam os atendimentos de todos.
+      let myEstagiariosIdsList: string[] = []
       if (!isGestor && user) {
         if (userRole === "Estágio" || userRole === "Estagio") {
           query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
         } else if (userRole === "Corretor") {
-          // Corretor vê seus chamados e pode ver estagiários vinculados
           try {
             const res = await fetch("/api/usuarios")
             if (res.ok) {
-              const all = await res.json()
-              const myEstagiarios = all
+              const allUsers = await res.json()
+              myEstagiariosIdsList = allUsers
                 .filter((u: { padrinho_id: string }) => u.padrinho_id === user.id)
                 .map((u: { id: string }) => u.id)
-              query = query.or(`operador_id.in.(${[user.id, ...myEstagiarios].join(",")}),operador_nome.ilike.%${perfil?.nome || user.email}%`)
-            } else {
-              query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
             }
           } catch {
+            // ignore
+          }
+
+          if (myEstagiariosIdsList.length > 0) {
+            query = query.or(`operador_id.in.(${[user.id, ...myEstagiariosIdsList].join(",")}),operador_nome.ilike.%${perfil?.nome || user.email}%`)
+          } else {
             query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
           }
+        } else {
+          query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
         }
       }
 
@@ -1757,8 +1785,49 @@ export default function KanbanPage() {
           historico_movimentacoes: historicoMov
         }
       })
+      // Filtro de segurança: Estagiário vê seus próprios atendimentos; Corretor vê os seus e os de estagiários apadrinhados
+      let ticketsFinal = formatted
+      if (!isGestor && user) {
+        const uId = String(user.id).trim().toLowerCase()
+        const uNome = (perfil?.nome || user.email || "").trim().toLowerCase()
+        const isEstagiarioUser = userRole === "Estágio" || userRole === "Estagio"
+        const allowedIds = isEstagiarioUser ? [uId] : [uId, ...myEstagiariosIdsList.map(id => String(id).trim().toLowerCase())]
 
-      setTickets(formatted)
+        ticketsFinal = formatted.filter(t => {
+          const meta = parseMetadata(t.descricao)
+          const tUserId = String(t.user_id || "").trim().toLowerCase()
+          const tUserNome = String(t.user_nome || "").trim().toLowerCase()
+          const metaCorretorId = String((meta as any).corretor_id || "").trim().toLowerCase()
+          const metaOperadorId = String((meta as any).operador_id || "").trim().toLowerCase()
+          const metaPadrinhoId = String((meta as any).padrinho_id || "").trim().toLowerCase()
+          const metaUserNome = String((meta as any).user_nome || (meta as any).operador_nome || (meta as any).corretor_nome || "").trim().toLowerCase()
+
+          const isOwn = (
+            (tUserId && tUserId === uId) ||
+            (metaCorretorId && metaCorretorId === uId) ||
+            (metaOperadorId && metaOperadorId === uId) ||
+            (uNome && tUserNome && (tUserNome === uNome || tUserNome.includes(uNome) || uNome.includes(tUserNome))) ||
+            (uNome && metaUserNome && (metaUserNome === uNome || metaUserNome.includes(uNome) || uNome.includes(metaUserNome)))
+          )
+          if (isOwn) return true
+
+          // Corretores também visualizam atendimentos de seus estagiários apadrinhados
+          if (!isEstagiarioUser) {
+            const isEstagiarioApadrinhado = (
+              (tUserId && allowedIds.includes(tUserId)) ||
+              (metaOperadorId && allowedIds.includes(metaOperadorId)) ||
+              (metaPadrinhoId && metaPadrinhoId === uId) ||
+              (metaCorretorId && metaCorretorId === uId) ||
+              (meta.enviado_para_corretor === true && (meta.corretor_id === user.id || meta.corretor_nome === perfil?.nome))
+            )
+            if (isEstagiarioApadrinhado) return true
+          }
+
+          return false
+        })
+      }
+
+      setTickets(ticketsFinal)
 
       // Recuperação retroativa para fichas que estejam com Valor Operação zerado E pertençam ao PRÓPRIO operador do chamado
       const cpfsComValorZerado = Array.from(new Set(
@@ -1973,6 +2042,39 @@ export default function KanbanPage() {
         (Boolean(meta.tabulacao_whatsapp) && t.status !== "EM RETOMADA")
       ) {
         return false
+      }
+
+      // Regras de visibilidade: Estágio vê exclusivamente os seus; Corretor vê os seus e os de estagiários apadrinhados
+      if (!isGestor && user) {
+        const uId = String(user.id).trim().toLowerCase()
+        const uNome = (perfil?.nome || user.email || "").trim().toLowerCase()
+        const isEstagiarioUser = userRole === "Estágio" || userRole === "Estagio"
+        const tUserId = String(t.user_id || "").trim().toLowerCase()
+        const tUserNome = String(t.user_nome || "").trim().toLowerCase()
+        const metaCorretorId = String((meta as any).corretor_id || "").trim().toLowerCase()
+        const metaOperadorId = String((meta as any).operador_id || "").trim().toLowerCase()
+        const metaPadrinhoId = String((meta as any).padrinho_id || "").trim().toLowerCase()
+        const metaUserNome = String((meta as any).user_nome || (meta as any).operador_nome || (meta as any).corretor_nome || "").trim().toLowerCase()
+
+        const isOwn = (
+          (tUserId && tUserId === uId) ||
+          (metaCorretorId && metaCorretorId === uId) ||
+          (metaOperadorId && metaOperadorId === uId) ||
+          (uNome && tUserNome && (tUserNome === uNome || tUserNome.includes(uNome) || uNome.includes(tUserNome))) ||
+          (uNome && metaUserNome && (metaUserNome === uNome || metaUserNome.includes(uNome) || uNome.includes(metaUserNome)))
+        )
+
+        if (isOwn) {
+          // Atendimento próprio permitido
+        } else if (!isEstagiarioUser && (
+          (metaPadrinhoId && metaPadrinhoId === uId) ||
+          (metaCorretorId && metaCorretorId === uId) ||
+          (meta.enviado_para_corretor === true && (meta.corretor_id === user.id || meta.corretor_nome === perfil?.nome))
+        )) {
+          // Atendimento de estagiário apadrinhado permitido para o corretor
+        } else {
+          return false
+        }
       }
 
       // Filtro de Responsável (para gestores)
@@ -4891,27 +4993,27 @@ export default function KanbanPage() {
     )
   }
 
-  // Em ambiente de produção: exibe mensagem e tela informando que o módulo está em desenvolvimento para quem não for Administrador ou Desenvolvedor
+  // Se for Corretor PJ ou usuário sem permissão: exibe mensagem informando que o módulo está restrito
   if (hasCheckedEnv && !canAccessKanban) {
     return (
       <div className="flex flex-col h-screen min-h-screen bg-[#FDFDFD]">
         <Header hideQuickLinks />
         <main className="flex-1 flex items-center justify-center p-4 sm:p-6 bg-[#FDFDFD]">
           <div className="max-w-lg w-full bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 shadow-sm text-center space-y-5 animate-in fade-in zoom-in-95 duration-200">
-            <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200/80 text-amber-600 flex items-center justify-center mx-auto shadow-inner">
+            <div className="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200/80 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
               <Kanban className="w-8 h-8" />
             </div>
 
             <div className="space-y-2.5">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-100/70 text-amber-800 border border-amber-200">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-rose-100/70 text-rose-800 border border-rose-200">
                 <Clock className="w-3.5 h-3.5" />
-                Em Desenvolvimento
+                Acesso Restrito
               </div>
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                Módulo KANBAN em Desenvolvimento
+                Módulo KANBAN Restrito
               </h1>
               <p className="text-sm text-slate-600 leading-relaxed max-w-md mx-auto">
-                Este módulo está atualmente disponível exclusivamente no ambiente de desenvolvimento para homologação, testes e ajustes de acessos. Em breve estará liberado para operação em produção com total estabilidade.
+                O módulo KANBAN não está disponível para o perfil Corretor com regime PJ. Em caso de dúvidas, contate a administração.
               </p>
             </div>
 

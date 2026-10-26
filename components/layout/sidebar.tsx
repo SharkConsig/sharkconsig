@@ -310,7 +310,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   }
 
   const regimeUpper = (perfil?.regime_contratacao || user?.user_metadata?.regime_contratacao || '').toUpperCase().trim()
-  const isCorretorPJ = (perfil?.role === 'Corretor' || isCorretor) && regimeUpper === 'PJ' && !isAdmin
+  const isDevUser = Boolean(isDeveloper || perfil?.role === 'Desenvolvedor')
+  const isCorretorPJ = !isDevUser && !isAdmin && perfil?.role === 'Corretor' && regimeUpper === 'PJ'
 
   const processedMenuItems = allMenuItems.map(section => {
     let items = section.items;
@@ -368,8 +369,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           return true
         }
 
-        // KANBAN: visível para todos os usuários
+        // KANBAN: visível para todos os usuários autorizados, EXCETO Corretor PJ
         if (item.href === "/kanban") {
+          if (isCorretorPJ) return false
           return true
         }
 
