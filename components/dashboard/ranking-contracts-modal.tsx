@@ -308,9 +308,10 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
 
     let baseVal = 0
     if (isRowPJ) {
-      // Corretores PJ: VALOR OPERAÇÃO
+      // Corretores PJ: VALOR PRODUÇÃO (com fallback para valor de operação se produção não informada)
+      const prodVal = parseVal(p.valor_producao)
       const opVal = parseVal(p.valor_operacao) || parseVal(p.valor_cliente) || parseVal(p.valor_cliente_operacional) || parseVal(p.valor_base)
-      baseVal = opVal > 0 ? opVal : (parseVal(p.valor_producao) || 0)
+      baseVal = prodVal > 0 ? prodVal : (opVal > 0 ? opVal : 0)
     } else {
       // Corretores internos (CLT, Supervisor) e estagiários: VALOR PRODUÇÃO
       const prodVal = parseVal(p.valor_producao)
@@ -438,7 +439,7 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
     if (!printWindow) return
 
     const nowFormatted = format(new Date(), "dd/MM/yyyy HH:mm")
-    const valueColumnLabel = isSelectedPersonPJ ? "VALOR OPERAÇÃO" : "VALOR PRODUÇÃO"
+    const valueColumnLabel = "VALOR PRODUÇÃO"
 
     const tableRowsHtml = filteredProposals.map((p, index) => {
       const valOp = getProposalValue(p)
@@ -724,7 +725,7 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
                     <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">OPERAÇÃO</th>
                     <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">STATUS</th>
                     <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">
-                      {isSelectedPersonPJ ? "VALOR OPERAÇÃO" : "VALOR PRODUÇÃO"}
+                      VALOR PRODUÇÃO
                     </th>
                     <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">OBSERVAÇÃO</th>
                     <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">ÚLTIMA ATUALIZAÇÃO</th>

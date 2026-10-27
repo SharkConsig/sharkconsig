@@ -1408,7 +1408,7 @@ export default function DashboardPage() {
               const factor = getInterventionFactor(bId)
               if (factor <= 0) return
               const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
-              const bRawVal = (bIsPJ ? numericValOp : numericVal) * factor
+              const bRawVal = (bIsPJ ? (numericVal > 0 ? numericVal : numericValOp) : numericVal) * factor
 
               if (brokerMetrics[bId]) {
                 brokerMetrics[bId].totalPaid += bVal
@@ -1438,7 +1438,7 @@ export default function DashboardPage() {
               const factor = getInterventionFactor(bId)
               if (factor <= 0) return
               const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
-              const bRawVal = (bIsPJ ? numericValOp : numericVal) * factor
+              const bRawVal = (bIsPJ ? (numericVal > 0 ? numericVal : numericValOp) : numericVal) * factor
 
               if (brokerMetrics[bId]) {
                 brokerMetrics[bId].totalInProcess += bVal
@@ -1473,7 +1473,7 @@ export default function DashboardPage() {
               const factor = getInterventionFactor(bId)
               if (factor <= 0) return
               const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
-              const bRawVal = (bIsPJ ? numericValOp : numericVal) * factor
+              const bRawVal = (bIsPJ ? (numericVal > 0 ? numericVal : numericValOp) : numericVal) * factor
 
               if (brokerMetrics[bId]) {
                 brokerMetrics[bId].totalToday += bVal
@@ -1511,7 +1511,7 @@ export default function DashboardPage() {
             if (estId && estId.trim() !== "") {
               const estUser = allUsers.find((u: User) => u.id === estId)
               const estIsPJ = checkUserPJ(estUser)
-              const valForEst = estIsPJ ? numericValOp : numericVal
+              const valForEst = estIsPJ ? (numericVal > 0 ? numericVal : numericValOp) : numericVal
 
               if (!brokerColaboracoes[targetBrokerIdForColabs].estagiarios[estId]) {
                 brokerColaboracoes[targetBrokerIdForColabs].estagiarios[estId] = {
@@ -1536,7 +1536,7 @@ export default function DashboardPage() {
             } else {
               const propUser = allUsers.find((u: User) => u.id === targetBrokerIdForColabs)
               const propIsPJ = checkUserPJ(propUser)
-              const valForProp = propIsPJ ? numericValOp : numericVal
+              const valForProp = propIsPJ ? (numericVal > 0 ? numericVal : numericValOp) : numericVal
 
               const prop = brokerColaboracoes[targetBrokerIdForColabs].propria
               if (isPaid && isPaidInRange) {
