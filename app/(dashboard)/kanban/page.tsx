@@ -1395,12 +1395,15 @@ export default function KanbanPage() {
   const [isLoadingClientTicketsHistory, setIsLoadingClientTicketsHistory] = useState(false)
   const [clientProposalsHistory, setClientProposalsHistory] = useState<Record<string, any>[]>([])
   const [isLoadingClientProposalsHistory, setIsLoadingClientProposalsHistory] = useState(false)
+  const [clientTypedProposalsHistory, setClientTypedProposalsHistory] = useState<Record<string, any>[]>([])
+  const [isLoadingClientTypedProposalsHistory, setIsLoadingClientTypedProposalsHistory] = useState(false)
 
   // Carregar histórico de atendimentos e propostas para o cliente do modal de atendimento
   useEffect(() => {
     if (!atendimentoModalTicket) {
       setClientTicketsHistory([])
       setClientProposalsHistory([])
+      setClientTypedProposalsHistory([])
       return
     }
 
@@ -1409,6 +1412,7 @@ export default function KanbanPage() {
     if (!cleanCpf) {
       setClientTicketsHistory([])
       setClientProposalsHistory([])
+      setClientTypedProposalsHistory([])
       return
     }
 
@@ -1509,8 +1513,35 @@ export default function KanbanPage() {
       }
     }
 
+    // 3. Buscar Propostas Digitadas (Tabela 'propostas') vinculadas ao CPF do Cliente
+    const loadTypedProposals = async () => {
+      setIsLoadingClientTypedProposalsHistory(true)
+      try {
+        const cpfs = Array.from(new Set([cleanCpf, rawCpf].filter(Boolean)))
+        const { data, error: fetchErr } = await supabase
+          .from('propostas')
+          .select('*')
+          .in('cliente_cpf', cpfs)
+          .order('created_at', { ascending: false })
+
+        if (!fetchErr && isMounted && data) {
+          data.sort((a: any, b: any) => {
+            const dateA = a.created_at || a.data_digitacao ? new Date(a.created_at || a.data_digitacao).getTime() : 0
+            const dateB = b.created_at || b.data_digitacao ? new Date(b.created_at || b.data_digitacao).getTime() : 0
+            return dateB - dateA
+          })
+          setClientTypedProposalsHistory(data)
+        }
+      } catch (err) {
+        console.error("Erro ao buscar histórico de propostas digitadas:", err)
+      } finally {
+        if (isMounted) setIsLoadingClientTypedProposalsHistory(false)
+      }
+    }
+
     loadTickets()
     loadProposals()
+    loadTypedProposals()
 
     return () => {
       isMounted = false
@@ -6230,115 +6261,14 @@ export default function KanbanPage() {
                     })()}
                   </div>
 
-                  {/* Histórico de Chamados */}
-                  <div className="mt-5 pt-5 border-t border-slate-200 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-5 bg-rose-500 rounded-full"></div>
-                      <h4 className="text-[11px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                        Histórico de Chamados{" "}
-                        <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-rose-500/10 text-rose-600 border-none font-black font-sans uppercase">
-                          {clientTicketsHistory.length} {clientTicketsHistory.length === 1 ? 'Chamado' : 'Chamados'}
-                        </Badge>
-                      </h4>
-                    </div>
-
-                    {isLoadingClientTicketsHistory ? (
-                      <div className="flex items-center gap-2 justify-center py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                        <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
-                        <span>Buscando histórico de chamados...</span>
-                      </div>
-                    ) : clientTicketsHistory.length === 0 ? (
-                      <div className="p-3.5 text-center text-xs font-semibold text-slate-400 bg-white rounded-xl border border-slate-200/80">
-                        Nenhum chamado registrado para este cliente.
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-2.5">
-                        {clientTicketsHistory.map((chamado: any) => {
-                          const statusLabel = chamado.status_chamados?.nome || chamado.status || "ABERTO";
-                          const statusUpper = statusLabel.toUpperCase();
-
-                          return (
-                            <div 
-                              key={chamado.id} 
-                              className="p-3 rounded-xl border border-rose-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs hover:border-rose-200 transition-all text-xs"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200/50 flex items-center justify-center font-bold text-[10px] text-rose-500 font-mono">
-                                  #{chamado.id}
-                                </div>
-                                <div>
-                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Corretor</span>
-                                  <span className="text-[12px] font-extrabold text-slate-700 uppercase leading-none block">{formatShortName(chamado.user_nome)}</span>
-                                </div>
-                              </div>
-                              
-                              <div className="flex flex-col md:items-end justify-center">
-                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 md:text-right">Status do Chamado</span>
-                                <span className={cn(
-                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase",
-                                  statusUpper === "ABERTO" ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
-                                  statusUpper === "FECHADO" || statusUpper === "CONCLUÍDO" || statusUpper === "CONCLUIDO" ? "bg-slate-100 text-slate-600 border-slate-200" :
-                                  "bg-amber-50 text-amber-700 border-amber-100"
-                                )}>
-                                  {statusUpper}
-                                </span>
-                              </div>
-
-                              <div className="flex flex-col md:items-end justify-center">
-                                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 md:text-right">Abertura</div>
-                                <div className="flex items-center gap-2">
-                                  <div className="text-[12px] font-bold text-slate-700">
-                                    {(() => {
-                                      if (!chamado.created_at) return "--/--/----";
-                                      try {
-                                        const d = new Date(chamado.created_at);
-                                        if (isNaN(d.getTime())) return "--/--/----";
-                                        const day = String(d.getDate()).padStart(2, '0');
-                                        const month = String(d.getMonth() + 1).padStart(2, '0');
-                                        const year = d.getFullYear();
-                                        return `${day}/${month}/${year}`;
-                                      } catch (e) {
-                                        return String(chamado.created_at).split('T')[0] || "Sem data";
-                                      }
-                                    })()}
-                                  </div>
-                                  <div className="text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200/60 rounded px-1.5 py-0.5 uppercase tracking-tight">
-                                    {(() => {
-                                      if (!chamado.created_at) return "0 dias passados";
-                                      try {
-                                        const createdDate = new Date(chamado.created_at);
-                                        if (isNaN(createdDate.getTime())) return "";
-                                        const today = new Date();
-                                        const createdDateZero = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
-                                        const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-                                        const diffTime = todayZero.getTime() - createdDateZero.getTime();
-                                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                                        if (diffDays <= 0) {
-                                          return "0 dias passados (Hoje)";
-                                        }
-                                        return `${diffDays} ${diffDays === 1 ? "dia passado" : "dias passados"}`;
-                                      } catch (e) {
-                                        return "";
-                                      }
-                                    })()}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Histórico de Propostas Comerciais */}
+                  {/* 1. Histórico de Propostas Comerciais */}
                   <div className="mt-5 pt-5 border-t border-slate-200 space-y-3">
                     <div className="flex items-center gap-2">
                       <div className="w-1.5 h-5 bg-[#162546] rounded-full"></div>
                       <h4 className="text-[11px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
                         Histórico de Propostas Comerciais{" "}
                         <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-[#162546]/10 text-[#162546] border-none font-black font-sans uppercase">
-                          {clientProposalsHistory.length} {clientProposalsHistory.length === 1 ? 'Proposta' : 'Propostas'}
+                          {clientProposalsHistory.length} {clientProposalsHistory.length === 1 ? 'Proposta Comercial' : 'Propostas Comerciais'}
                         </Badge>
                       </h4>
                     </div>
@@ -6346,7 +6276,7 @@ export default function KanbanPage() {
                     {isLoadingClientProposalsHistory ? (
                       <div className="flex items-center gap-2 justify-center py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
                         <Loader2 className="w-4 h-4 animate-spin text-[#162546]" />
-                        <span>Buscando histórico de propostas...</span>
+                        <span>Buscando histórico de propostas comerciais...</span>
                       </div>
                     ) : clientProposalsHistory.length === 0 ? (
                       <div className="p-3.5 text-center text-xs font-semibold text-slate-400 bg-white rounded-xl border border-slate-200/80">
@@ -6538,6 +6468,220 @@ export default function KanbanPage() {
                                     {proposal.tipo_arquivo || "PDF"}
                                   </Button>
                                 )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Histórico de Chamados */}
+                  <div className="mt-5 pt-5 border-t border-slate-200 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-5 bg-rose-500 rounded-full"></div>
+                      <h4 className="text-[11px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                        Histórico de Chamados{" "}
+                        <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-rose-500/10 text-rose-600 border-none font-black font-sans uppercase">
+                          {clientTicketsHistory.length} {clientTicketsHistory.length === 1 ? 'Chamado' : 'Chamados'}
+                        </Badge>
+                      </h4>
+                    </div>
+
+                    {isLoadingClientTicketsHistory ? (
+                      <div className="flex items-center gap-2 justify-center py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                        <Loader2 className="w-4 h-4 animate-spin text-rose-500" />
+                        <span>Buscando histórico de chamados...</span>
+                      </div>
+                    ) : clientTicketsHistory.length === 0 ? (
+                      <div className="p-3.5 text-center text-xs font-semibold text-slate-400 bg-white rounded-xl border border-slate-200/80">
+                        Nenhum chamado registrado para este cliente.
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2.5">
+                        {clientTicketsHistory.map((chamado: any) => {
+                          const statusLabel = chamado.status_chamados?.nome || chamado.status || "ABERTO";
+                          const statusUpper = statusLabel.toUpperCase();
+
+                          return (
+                            <div 
+                              key={chamado.id} 
+                              className="p-3 rounded-xl border border-rose-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs hover:border-rose-200 transition-all text-xs"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200/50 flex items-center justify-center font-bold text-[10px] text-rose-500 font-mono">
+                                  #{chamado.id}
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Corretor</span>
+                                  <span className="text-[12px] font-extrabold text-slate-700 uppercase leading-none block">{formatShortName(chamado.user_nome)}</span>
+                                </div>
+                              </div>
+                              
+                              <div className="flex flex-col md:items-end justify-center">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 md:text-right">Status do Chamado</span>
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase",
+                                  statusUpper === "ABERTO" ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                                  statusUpper === "FECHADO" || statusUpper === "CONCLUÍDO" || statusUpper === "CONCLUIDO" ? "bg-slate-100 text-slate-600 border-slate-200" :
+                                  "bg-amber-50 text-amber-700 border-amber-100"
+                                )}>
+                                  {statusUpper}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col md:items-end justify-center">
+                                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 md:text-right">Abertura</div>
+                                <div className="flex items-center gap-2">
+                                  <div className="text-[12px] font-bold text-slate-700">
+                                    {(() => {
+                                      if (!chamado.created_at) return "--/--/----";
+                                      try {
+                                        const d = new Date(chamado.created_at);
+                                        if (isNaN(d.getTime())) return "--/--/----";
+                                        const day = String(d.getDate()).padStart(2, '0');
+                                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                                        const year = d.getFullYear();
+                                        return `${day}/${month}/${year}`;
+                                      } catch (e) {
+                                        return String(chamado.created_at).split('T')[0] || "Sem data";
+                                      }
+                                    })()}
+                                  </div>
+                                  <div className="text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-200/60 rounded px-1.5 py-0.5 uppercase tracking-tight">
+                                    {(() => {
+                                      if (!chamado.created_at) return "0 dias passados";
+                                      try {
+                                        const createdDate = new Date(chamado.created_at);
+                                        if (isNaN(createdDate.getTime())) return "";
+                                        const today = new Date();
+                                        const createdDateZero = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
+                                        const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                                        const diffTime = todayZero.getTime() - createdDateZero.getTime();
+                                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                                        if (diffDays <= 0) {
+                                          return "0 dias passados (Hoje)";
+                                        }
+                                        return `${diffDays} ${diffDays === 1 ? "dia passado" : "dias passados"}`;
+                                      } catch (e) {
+                                        return "";
+                                      }
+                                    })()}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. Histórico de Propostas (Propostas Digitadas) */}
+                  <div className="mt-5 pt-5 border-t border-slate-200 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-5 bg-emerald-600 rounded-full"></div>
+                      <h4 className="text-[11px] font-bold text-slate-900 uppercase tracking-widest flex items-center gap-2">
+                        Histórico de Propostas{" "}
+                        <Badge variant="secondary" className="h-4 px-1.5 text-[9px] bg-emerald-600/10 text-emerald-700 border-none font-black font-sans uppercase">
+                          {clientTypedProposalsHistory.length} {clientTypedProposalsHistory.length === 1 ? 'Proposta' : 'Propostas'}
+                        </Badge>
+                      </h4>
+                    </div>
+
+                    {isLoadingClientTypedProposalsHistory ? (
+                      <div className="flex items-center gap-2 justify-center py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                        <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                        <span>Buscando histórico de propostas digitadas...</span>
+                      </div>
+                    ) : clientTypedProposalsHistory.length === 0 ? (
+                      <div className="p-3.5 text-center text-xs font-semibold text-slate-400 bg-white rounded-xl border border-slate-200/80">
+                        Nenhuma proposta digitada encontrada para este cliente.
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2.5">
+                        {clientTypedProposalsHistory.map((prop: any) => {
+                          const dateStr = prop.created_at || prop.data_digitacao ? (() => {
+                            try {
+                              const d = new Date(prop.created_at || prop.data_digitacao);
+                              if (isNaN(d.getTime())) return "--/--/----";
+                              const day = String(d.getDate()).padStart(2, '0');
+                              const month = String(d.getMonth() + 1).padStart(2, '0');
+                              const year = d.getFullYear();
+                              return `${day}/${month}/${year}`;
+                            } catch (e) {
+                              return "Sem data";
+                            }
+                          })() : "--/--/----";
+
+                          const statusLabel = prop.status || "DIGITAÇÃO";
+                          const statusUpper = statusLabel.toUpperCase();
+
+                          return (
+                            <div 
+                              key={prop.id || prop.id_lead} 
+                              className="p-3 rounded-xl border border-emerald-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs hover:border-emerald-200 transition-all text-xs"
+                            >
+                              <div className="flex items-center gap-3 min-w-[130px]">
+                                <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200/60 flex items-center justify-center font-bold text-[10px] text-emerald-700 font-mono">
+                                  #{prop.id_lead || prop.id}
+                                </div>
+                                <div>
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Corretor</span>
+                                  <span className="text-[12px] font-extrabold text-slate-700 uppercase leading-none block truncate max-w-[140px]">
+                                    {formatShortName(prop.nome_corretor || prop.corretor || "Não informado")}
+                                  </span>
+                                  {prop.ade && (
+                                    <span className="text-[10px] font-mono font-bold text-slate-500 block mt-0.5">
+                                      ADE: {prop.ade}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Banco / Convênio</span>
+                                <span className="text-[12px] font-extrabold text-slate-800 leading-none block">
+                                  {prop.banco || "-"}{prop.convenio ? ` / ${prop.convenio}` : ""}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5">Operação</span>
+                                <span className="text-[11px] font-bold text-slate-800 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 uppercase tracking-tight w-fit">
+                                  {prop.tipo_operacao || "CONSIGNADO"}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col md:items-end justify-center">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 md:text-right">Status da Proposta</span>
+                                <span className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase border",
+                                  statusUpper.includes("CANCELAD") ? "bg-rose-50 text-rose-700 border-rose-200" :
+                                  statusUpper.includes("PAGO") ? "bg-cyan-50 text-cyan-700 border-cyan-200" :
+                                  statusUpper.includes("ANDAMENTO") ? "bg-orange-50 text-orange-700 border-orange-200" :
+                                  statusUpper.includes("DIGITA") ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                  "bg-slate-100 text-slate-700 border-slate-200"
+                                )}>
+                                  {statusUpper}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col md:items-end justify-center">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 md:text-right">Valor Operação</span>
+                                <span className="text-[12px] font-extrabold text-emerald-600 leading-none block">
+                                  {prop.valor_operacao ? formatCurrency(prop.valor_operacao) : (prop.valor_producao ? formatCurrency(prop.valor_producao) : "--")}
+                                </span>
+                                {prop.prazo && prop.valor_parcela ? (
+                                  <span className="text-[10px] font-semibold text-slate-400 mt-0.5">
+                                    {prop.prazo}x de {formatCurrency(prop.valor_parcela)}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <div className="flex flex-col md:items-end justify-center">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-0.5 md:text-right">Data Digitação</span>
+                                <span className="text-[11px] font-bold text-slate-600 leading-none block">{dateStr}</span>
                               </div>
                             </div>
                           );
