@@ -714,9 +714,12 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
     return initialMessage ? [initialMessage, ...messages] : messages;
   }, [ticket, messages, user?.id, perfil?.avatar_url, initialDesc]);
 
+  const messagesLengthRef = useRef(messages.length)
+  messagesLengthRef.current = messages.length
+
   const fetchMessages = useCallback(async (isSilent = false) => {
     // Só mostramos o loading se não for silencioso e não tivermos mensagens ainda
-    const shouldShowLoading = !isSilent && messages.length === 0
+    const shouldShowLoading = !isSilent && messagesLengthRef.current === 0
     if (shouldShowLoading) setIsLoading(true)
     
     try {
@@ -736,7 +739,7 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
     } finally {
       if (shouldShowLoading) setIsLoading(false)
     }
-  }, [ticket.id, messages.length])
+  }, [ticket.id])
 
   useEffect(() => {
     // Carregamento inicial (não silencioso)
@@ -1529,7 +1532,7 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                 
                 {msg.content && (
                   <div className={cn(
-                    "rounded-xl p-4 border transition-colors",
+                    "rounded-xl p-4 border transition-colors select-text cursor-text",
                     msg.action === 'pediu_apoio' 
                       ? "bg-rose-50/40 border-rose-100/75 group hover:border-rose-200" 
                       : msg.action === 'resolveu_apoio'
@@ -1554,7 +1557,7 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                           </div>
                           <textarea 
                             ref={editContentTextareaRef}
-                            className="w-full min-h-[100px] p-3 text-sm focus:outline-none bg-white"
+                            className="w-full min-h-[100px] p-3 text-sm focus:outline-none bg-white select-text"
                             value={editContent}
                             onChange={(e) => setEditContent(e.target.value)}
                           />
@@ -1580,7 +1583,7 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                         </div>
                       </div>
                     ) : (
-                      <div className="markdown-body text-sm text-slate-600 break-words leading-relaxed">
+                      <div className="markdown-body text-sm text-slate-600 break-words leading-relaxed select-text cursor-text [&_*]:select-text [&_*]:cursor-text selection:bg-blue-100 selection:text-blue-900">
                         <ReactMarkdown 
                           components={{
                             img: ({ ...props }) => (
@@ -1591,7 +1594,7 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                                 onClick={() => props.src && window.open(props.src, '_blank')}
                               />
                             ),
-                            p: ({ children }) => <p className="mb-2 last:mb-0 italic">{children}</p>
+                            p: ({ children }) => <p className="mb-2 last:mb-0 italic select-text cursor-text selection:bg-blue-100 selection:text-blue-900">{children}</p>
                           }}
                         >
                           {msg.content}

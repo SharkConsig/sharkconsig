@@ -204,14 +204,11 @@ export function HalloweenAnimation() {
 
   return (
     <>
-      {/* 🧙‍♀️ Bruxinha voadora mágica que segue o cursor do mouse */}
-      <WitchMouseFollower />
-
       {/* 🎃 Revoada temática que surge a cada 2 minutos */}
       {isActive && (
         <div
           aria-hidden="true"
-          className="fixed inset-0 pointer-events-none z-[999999] overflow-hidden select-none"
+          className="fixed inset-0 pointer-events-none z-[999999] overflow-hidden"
         >
           <style>{`
             @keyframes hw-fly-left {
@@ -427,12 +424,24 @@ function WitchMouseFollower() {
     targetY: -100,
     direction: 1, // 1: olhando para a direita, -1: para a esquerda
     isVisible: false,
+    isMouseDown: false,
   })
   const animFrameRef = useRef<number | null>(null)
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       const pos = posRef.current
+      
+      // Se qualquer botão do mouse estiver pressionado (ex: clicando e arrastando para selecionar texto)
+      if (e.buttons > 0) {
+        pos.isMouseDown = true
+        if (witchRef.current) {
+          witchRef.current.style.display = "none"
+        }
+        return
+      }
+
+      pos.isMouseDown = false
       if (e.clientX > pos.targetX + 2) {
         pos.direction = 1
       } else if (e.clientX < pos.targetX - 2) {
@@ -444,6 +453,22 @@ function WitchMouseFollower() {
       pos.isVisible = true
 
       if (witchRef.current) {
+        witchRef.current.style.display = "flex"
+        witchRef.current.style.opacity = "1"
+      }
+    }
+
+    const handleMouseDown = () => {
+      posRef.current.isMouseDown = true
+      if (witchRef.current) {
+        witchRef.current.style.display = "none"
+      }
+    }
+
+    const handleMouseUp = () => {
+      posRef.current.isMouseDown = false
+      if (witchRef.current && posRef.current.isVisible) {
+        witchRef.current.style.display = "flex"
         witchRef.current.style.opacity = "1"
       }
     }
@@ -451,17 +476,22 @@ function WitchMouseFollower() {
     const handleMouseLeave = () => {
       posRef.current.isVisible = false
       if (witchRef.current) {
-        witchRef.current.style.opacity = "0"
+        witchRef.current.style.display = "none"
       }
     }
 
     window.addEventListener("mousemove", handleMouseMove, { passive: true })
+    window.addEventListener("mousedown", handleMouseDown, { passive: true })
+    window.addEventListener("mouseup", handleMouseUp, { passive: true })
     document.addEventListener("mouseleave", handleMouseLeave)
 
     let t = 0
     const loop = () => {
       const pos = posRef.current
-      if (pos.isVisible && witchRef.current) {
+      if (pos.isVisible && !pos.isMouseDown && witchRef.current) {
+        if (witchRef.current.style.display === "none") {
+          witchRef.current.style.display = "flex"
+        }
         // Interpolação linear (lerp) com inércia de voo graciosa
         const dx = pos.targetX - pos.currentX
         const dy = pos.targetY - pos.currentY
@@ -474,9 +504,9 @@ function WitchMouseFollower() {
         const tilt = Math.max(-16, Math.min(16, dx * 0.22))
 
         const scaleX = pos.direction === 1 ? 1 : -1
-        // Posicionada acompanhando o cursor do mouse
-        const renderX = pos.currentX + (pos.direction === 1 ? 14 : -50)
-        const renderY = pos.currentY + 8 + bobY
+        // Posicionada voando bem afastada atrás/acima do cursor do mouse para não obstruir seleções de texto
+        const renderX = pos.currentX + (pos.direction === 1 ? -60 : 35)
+        const renderY = pos.currentY - 45 + bobY
 
         witchRef.current.style.transform = `translate3d(${renderX}px, ${renderY}px, 0) scaleX(${scaleX}) rotate(${tilt}deg)`
       }
@@ -488,6 +518,8 @@ function WitchMouseFollower() {
 
     return () => {
       window.removeEventListener("mousemove", handleMouseMove)
+      window.removeEventListener("mousedown", handleMouseDown)
+      window.removeEventListener("mouseup", handleMouseUp)
       document.removeEventListener("mouseleave", handleMouseLeave)
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current)
@@ -504,22 +536,24 @@ function WitchMouseFollower() {
         top: 0,
         left: 0,
         pointerEvents: "none",
+        userSelect: "none",
+        WebkitUserSelect: "none",
         zIndex: 999998,
         opacity: 0,
         willChange: "transform, opacity",
-        transition: "opacity 0.25s ease-out",
+        transition: "opacity 0.15s ease-out",
       }}
-      className="select-none flex items-center"
+      className="pointer-events-none select-none flex items-center"
     >
-      <div className="relative">
+      <div className="relative pointer-events-none select-none">
         <img
           src={WITCH_DATA_URI}
           alt="Bruxinha voando na vassoura"
-          className="w-14 h-auto object-contain select-none pointer-events-none drop-shadow-[0_4px_10px_rgba(0,0,0,0.35)]"
+          className="w-14 h-auto object-contain pointer-events-none select-none drop-shadow-[0_4px_10px_rgba(0,0,0,0.35)]"
           draggable={false}
         />
         <span
-          className="absolute -left-1 bottom-1 text-xs select-none pointer-events-none animate-pulse"
+          className="absolute -left-1 bottom-1 text-xs pointer-events-none select-none animate-pulse"
         >
           ✨
         </span>

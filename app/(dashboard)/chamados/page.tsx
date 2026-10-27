@@ -39,6 +39,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
+import { getLocalTelefonesEmpresa } from "@/lib/telefones-empresa"
 
 const statusCardsList = [
   { label: "ABERTO", count: 0, color: "border-t-amber-500", textColor: "text-amber-600" },
@@ -868,7 +869,7 @@ export default function TicketsPage() {
       isFetchingTicketsRef.current = false
       setIsLoading(false)
     }
-  }, [user?.id, perfil?.id, perfil?.role, startDate, endDate, user, perfil])
+  }, [user?.id, perfil?.id, perfil?.role, startDate, endDate])
 
   useEffect(() => {
     if (user?.id && perfil?.id) {
@@ -1173,6 +1174,19 @@ export default function TicketsPage() {
       }
     }
     if (!raw) return ""
+
+    // Resolução inteligente: se o valor salvo for um nome/descrição (ex: "Felícia") em vez de número
+    const rawLower = raw.trim().toLowerCase()
+    if (rawLower === "felícia" || rawLower === "felicia") {
+      raw = "48 99646-6174"
+    } else if (raw.replace(/\D/g, "").length < 8) {
+      const localTelefones = getLocalTelefonesEmpresa()
+      const found = localTelefones.find(t => (t.descricao || "").trim().toLowerCase() === rawLower)
+      if (found && found.numero) {
+        raw = found.numero
+      }
+    }
+
     const digits = raw.replace(/\D/g, "")
     if (digits.length === 11) {
       return digits.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3")
@@ -1630,11 +1644,14 @@ export default function TicketsPage() {
     ? filteredTickets.filter(t => t.id.toString() === expandedTicketId)
     : paginatedTickets
 
+  // Chave estável de IDs dos chamados visíveis (evita loop infinito de re-render provocado por novas instâncias de array)
+  const visibleTicketIdsKey = paginatedTickets.map(t => t.id).join(",")
+
   // Otimização de Performance On-Demand: Carrega status de Apoio e Telefone Empresa apenas para a página visível
   useEffect(() => {
-    if (paginatedTickets.length === 0) return
+    if (!visibleTicketIdsKey) return
 
-    const visibleIds = paginatedTickets.map(t => parseInt(t.id)).filter(id => !isNaN(id))
+    const visibleIds = visibleTicketIdsKey.split(",").map(id => parseInt(id, 10)).filter(id => !isNaN(id))
 
     // 1. Buscar status de apoio apenas para os chamados visíveis (executa em ~15ms)
     if (visibleIds.length > 0) {
@@ -1664,8 +1681,23 @@ export default function TicketsPage() {
                 statesMap[tId] = 'respondido'
               }
             }
-            setActiveApoioTicketIds(prev => new Set([...prev, ...activeSet]))
-            setTicketApoioStates(prev => ({ ...prev, ...statesMap }))
+            setActiveApoioTicketIds(prev => {
+              if (activeSet.size !== prev.size) return activeSet
+              for (const id of activeSet) {
+                if (!prev.has(id)) return activeSet
+              }
+              return prev
+            })
+            setTicketApoioStates(prev => {
+              let hasChange = false
+              for (const [k, v] of Object.entries(statesMap)) {
+                if (prev[Number(k)] !== v) {
+                  hasChange = true
+                  break
+                }
+              }
+              return hasChange ? { ...prev, ...statesMap } : prev
+            })
           }
         })
     }
@@ -1699,21 +1731,26 @@ export default function TicketsPage() {
             }
 
             if (Object.keys(fichasMap).length > 0) {
-              setTickets(prev => prev.map(t => {
-                if (t.telefone_empresa) return t
-                const clean = (t.cliente_cpf || "").replace(/\D/g, "")
-                const padded = clean.padStart(11, '0')
-                const foundPhone = fichasMap[clean] || fichasMap[padded]
-                if (foundPhone) {
-                  return { ...t, telefone_empresa: foundPhone }
-                }
-                return t
-              }))
+              setTickets(prev => {
+                let changed = false
+                const next = prev.map(t => {
+                  if (t.telefone_empresa) return t
+                  const clean = (t.cliente_cpf || "").replace(/\D/g, "")
+                  const padded = clean.padStart(11, '0')
+                  const foundPhone = fichasMap[clean] || fichasMap[padded]
+                  if (foundPhone && foundPhone !== t.telefone_empresa) {
+                    changed = true
+                    return { ...t, telefone_empresa: foundPhone }
+                  }
+                  return t
+                })
+                return changed ? next : prev
+              })
             }
           }
         })
     }
-  }, [paginatedTickets, extractTelefoneEmpresa])
+  }, [visibleTicketIdsKey])
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {

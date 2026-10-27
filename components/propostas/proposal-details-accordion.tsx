@@ -2823,7 +2823,7 @@ function HistoryCard({ event, usersMap, isAuthorized }: { event: HistoryItem; us
               <p className="text-[9px] font-black text-slate-900 uppercase tracking-tight">
                 Observações:
               </p>
-              <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
+              <p className="text-[11px] font-medium text-slate-600 leading-relaxed select-text cursor-text">
                 {event.descricao}
               </p>
             </div>
@@ -2864,7 +2864,7 @@ function HistoryCard({ event, usersMap, isAuthorized }: { event: HistoryItem; us
       {event.observacoes && (
         <div className="space-y-1 pt-2 border-t border-slate-50">
           <p className="text-[9px] font-black text-slate-900 uppercase tracking-tighter">Observações:</p>
-          <p className="text-[10px] font-medium text-slate-700 whitespace-pre-line leading-snug">
+          <p className="text-[10px] font-medium text-slate-700 whitespace-pre-line leading-snug select-text cursor-text">
             {(() => {
               if (isAuthorized) return event.observacoes;
               
