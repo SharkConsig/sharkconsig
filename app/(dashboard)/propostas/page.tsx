@@ -217,6 +217,19 @@ function MultiSelect({
   )
 }
 
+export const isProposalFromKanban = (proposal: any): boolean => {
+  if (!proposal) return false
+  const pAny = proposal as any
+  const origem = String(pAny.origem || pAny.origem_canal || pAny.origem_lead || "").toUpperCase()
+  if (origem.includes("KANBAN")) return true
+  const idLead = String(proposal.id_lead || "").toUpperCase()
+  if (idLead.includes("KANBAN")) return true
+  const stUpper = String(proposal.status || "").toUpperCase()
+  if (stUpper.includes("KANBAN")) return true
+  const obs = (String(proposal.observacoes || "") + " " + String(proposal.obs_corretor || "") + " " + String(proposal.obs_operacional || "")).toUpperCase()
+  return obs.includes("KANBAN") || obs.includes("TESTE KANBAN")
+}
+
 export default function ProposalsPage() {
   const { perfil, isCorretor, isAdmin, isDeveloper, isOperational, isSupervisor, isEstagio, isMonitoramento } = useAuth()
   const router = useRouter()
@@ -833,21 +846,8 @@ export default function ProposalsPage() {
         return true;
       })();
 
-      const isKanban = (() => {
-        const pAny = proposal as any
-        if (pAny.origem && String(pAny.origem).toUpperCase().includes("KANBAN")) return true
-        const idLead = String(proposal.id_lead || "").toUpperCase()
-        if (idLead.includes("KANBAN")) return true
-        const stUpper = String(proposal.status || "").toUpperCase()
-        if (stUpper.includes("KANBAN")) return true
-        const obs = (String(proposal.observacoes || "") + " " + String(proposal.obs_corretor || "")).toUpperCase()
-        return obs.includes("KANBAN") || obs.includes("TESTE KANBAN")
-      })()
-
       if (matchesSearch && matchesDate && matchesCorretor && matchesEquipe && matchesEstagiario && matchesBanco && matchesConvenio && matchesOperacao && matchesValor) {
-        if (isKanban) {
-          newCounts["TESTE KANBAN"] = (newCounts["TESTE KANBAN"] || 0) + 1
-        } else if (proposal.status) {
+        if (proposal.status) {
           newCounts[proposal.status] = (newCounts[proposal.status] || 0) + 1
         }
       }
@@ -856,21 +856,13 @@ export default function ProposalsPage() {
   }, [proposals, searchTerm, startDate, endDate, dateFilterType, filterCorretores, filterEquipes, filterEstagiarios, filterBancos, filterConvenios, filterOperacoes, filterValorMin, filterValorMax])
 
   const statusCards = useMemo(() => {
-    const list = TABS_CONFIG.map(tab => {
+    return TABS_CONFIG.map(tab => {
       const total = (tab.subTabs || []).reduce((acc, sub) => acc + (counts[sub] || 0), 0)
       return {
         ...tab,
         count: total
       }
     })
-    // Adicionar pasta TESTE KANBAN isolada para proteger a esteira de produção
-    list.push({
-      label: "TESTE KANBAN",
-      textColor: "text-indigo-600",
-      subTabs: ["TESTE KANBAN"],
-      count: counts["TESTE KANBAN"] || 0
-    })
-    return list
   }, [counts])
 
   const selectedTabObj = TABS_CONFIG.find(t => t.label === selectedStatus)
@@ -884,24 +876,6 @@ export default function ProposalsPage() {
 
   const filteredProposals = proposals.filter((proposal: Proposal) => {
     const pAny = proposal as any
-    const isKanban = (() => {
-      if (pAny.origem && String(pAny.origem).toUpperCase().includes("KANBAN")) return true
-      const idLead = String(proposal.id_lead || "").toUpperCase()
-      if (idLead.includes("KANBAN")) return true
-      const stUpper = String(proposal.status || "").toUpperCase()
-      if (stUpper.includes("KANBAN")) return true
-      const obs = (String(proposal.observacoes || "") + " " + String(proposal.obs_corretor || "")).toUpperCase()
-      return obs.includes("KANBAN") || obs.includes("TESTE KANBAN")
-    })()
-
-    // Regra de Isolamento:
-    // Se a pasta for TESTE KANBAN, mostra somente do Kanban.
-    // Se a pasta for qualquer outra (ou sem filtro), NUNCA mostra propostas de TESTE KANBAN.
-    if (selectedStatus === "TESTE KANBAN") {
-      if (!isKanban) return false
-    } else if (isKanban) {
-      return false
-    }
 
     const searchLower = searchTerm.toLowerCase()
     const cleanSearch = searchTerm.replace(/\D/g, "")
@@ -1427,7 +1401,7 @@ export default function ProposalsPage() {
 
         {/* Status Section with Grouping */}
         <div className="space-y-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 relative z-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
             {statusCards.map((card) => (
               <div 
                 key={card.label} 
@@ -1563,7 +1537,14 @@ export default function ProposalsPage() {
                             )}
                           >
                             <td className="px-4 py-4 text-[11px] font-bold text-slate-400 group-hover:text-primary">
-                              {proposal.id_lead}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span>{proposal.id_lead}</span>
+                                {isProposalFromKanban(proposal) && (
+                                  <Badge className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0 rounded shadow-none">
+                                    Kanban
+                                  </Badge>
+                                )}
+                              </div>
                               {isLoading && index === 0 && (
                               <div className="absolute top-0 left-0 w-full h-1 bg-primary/20 overflow-hidden">
                                 <div className="h-full bg-primary animate-progress w-full origin-left" />

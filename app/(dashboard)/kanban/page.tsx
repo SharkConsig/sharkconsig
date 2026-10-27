@@ -572,6 +572,7 @@ function formatMarcoLabel(marco: string | null | undefined): string {
 function formatObservacaoTexto(texto: string): string {
   if (!texto) return ""
   return texto
+    .replace(/⚡\s*SOLICITAÇÃO DE AÇÃO ESPECIAL\s*\[([^\]]+)\]:/gi, "⚡ SOLICITAÇÃO DE AÇÃO ESPECIAL para $1:")
     .replace(/📲\s*\[MOTOR DE CADÊNCIA\]:\s*RT([1-6])/gi, "📲 Retomada $1")
     .replace(/📲\s*\[MOTOR DE CADÊNCIA\]:\s*RE([1-3])/gi, "📲 Recuperação $1")
     .replace(/\[MOTOR DE CADÊNCIA\]:\s*/gi, "")
@@ -2775,7 +2776,7 @@ export default function KanbanPage() {
     setIsSubmittingAcaoEspecial(true)
     const nowIso = new Date().toISOString()
     const destinatarioFinal = acaoEspecialDestinatario || (destinatariosAcaoEspecial.length > 0 ? destinatariosAcaoEspecial[0].nome : "Equipe Responsável")
-    const registroTexto = `⚡ SOLICITAÇÃO DE AÇÃO ESPECIAL [${destinatarioFinal}]: ${textoAcao}`
+    const registroTexto = `⚡ SOLICITAÇÃO DE AÇÃO ESPECIAL para ${destinatarioFinal}: ${textoAcao}`
 
     try {
       const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
@@ -4136,6 +4137,32 @@ export default function KanbanPage() {
       ? format(new Date(meta.vencimento_acao), "dd/MM 'às' HH:mm")
       : "Hoje às 14:30"
 
+    const acaoDestinatario = meta.acao_especial_destinatario || (() => {
+      const obsLista = Array.isArray(meta.observacoes_historico) ? meta.observacoes_historico : []
+      for (const item of obsLista.slice().reverse()) {
+        const txt = String(item?.texto || "")
+        const m = txt.match(/SOLICITAÇÃO DE AÇÃO ESPECIAL\s+(?:para\s+([^:]+)|\[([^\]]+)\]):/i)
+        if (m) return (m[1] || m[2])?.trim()
+      }
+      const desc = ticket.descricao || ""
+      const mDesc = desc.match(/SOLICITAÇÃO DE AÇÃO ESPECIAL\s+(?:para\s+([^:]+)|\[([^\]]+)\]):/i)
+      if (mDesc) return (mDesc[1] || mDesc[2])?.trim()
+      if (Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente" || isMinhaFilaAcaoEspecial) {
+        return "Equipe Responsável"
+      }
+      return null
+    })()
+
+    const temAcaoEspecial = Boolean(
+      acaoDestinatario && (
+        meta.acao_especial || 
+        meta.acao_especial_status === "pendente" || 
+        isMinhaFilaAcaoEspecial ||
+        (Array.isArray(meta.observacoes_historico) && meta.observacoes_historico.some((o: any) => String(o?.texto || "").includes("SOLICITAÇÃO DE AÇÃO ESPECIAL"))) ||
+        (ticket.descricao || "").includes("SOLICITAÇÃO DE AÇÃO ESPECIAL")
+      )
+    )
+
     return (
       <div
         key={ticket.id}
@@ -4167,6 +4194,16 @@ export default function KanbanPage() {
               <span>Atraso:</span>
             </span>
             <span className="font-extrabold text-rose-700">{atrasoCustomTexto}</span>
+          </div>
+        )}
+
+        {/* Linha indicando para qual colaborador/usuário foi solicitada a ação especial */}
+        {temAcaoEspecial && (
+          <div className="bg-amber-50 border border-amber-300/90 text-amber-900 px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1.5 shadow-2xs">
+            <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span className="truncate">
+              Ação solicitada para <span className="font-extrabold text-amber-950">{acaoDestinatario}</span>
+            </span>
           </div>
         )}
 

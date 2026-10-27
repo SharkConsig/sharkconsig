@@ -16,6 +16,8 @@ import { Check, X } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 import { useAuth } from "@/context/auth-context"
 import { cn } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { isProposalFromKanban } from "@/app/(dashboard)/propostas/page"
 // Importações removidas: Popover, Calendar, ptBR, format
 
 interface StatusPropostaModalProps {
@@ -230,10 +232,15 @@ export function StatusPropostaModal({ isOpen, onClose, proposal, onStatusUpdate 
         <div className="max-h-[calc(100vh-200px)] overflow-y-auto px-8 py-6 space-y-10 custom-scrollbar">
           {/* Sessão Dados Gerais */}
           <div className="space-y-5">
-            <div className="border-b border-slate-200 pb-2">
+            <div className="border-b border-slate-200 pb-2 flex items-center gap-2">
               <h3 className="text-[12px] font-bold text-[#00a6ed] uppercase tracking-wider">
                 DADOS GERAIS DA PROPOSTA {String(proposal.id_lead)}
               </h3>
+              {isProposalFromKanban(proposal) && (
+                <Badge className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0 rounded shadow-none">
+                  Kanban
+                </Badge>
+              )}
             </div>
             
             <div className="space-y-3">

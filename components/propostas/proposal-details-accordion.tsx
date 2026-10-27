@@ -11,7 +11,9 @@ import { IntervencaoOperacionalModal } from "./intervencao-operacional-modal"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/context/auth-context"
+import { isProposalFromKanban } from "@/app/(dashboard)/propostas/page"
 interface HistoryItem {
   id: string;
   created_at: string;
@@ -1910,9 +1912,16 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">ID Lead</label>
-                <span className="block text-xl font-black text-slate-900 tracking-tight py-1">
-                  {formData.idLead}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="block text-xl font-black text-slate-900 tracking-tight py-1">
+                    {formData.idLead}
+                  </span>
+                  {isProposalFromKanban(proposal) && (
+                    <Badge className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0 rounded shadow-none">
+                      Kanban
+                    </Badge>
+                  )}
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Origem do Cliente</label>
