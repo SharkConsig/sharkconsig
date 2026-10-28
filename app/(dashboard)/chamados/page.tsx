@@ -808,7 +808,7 @@ export default function TicketsPage() {
           q = q.in('user_id', allowedUserIds)
         }
 
-        return q.order('id', { ascending: false })
+        return q.order('updated_at', { ascending: false, nullsFirst: false }).order('id', { ascending: false })
       }
 
       // Primeiro lote (0 - 999) com contagem exata na mesma requisição
@@ -1638,10 +1638,23 @@ export default function TicketsPage() {
     setCurrentPage(1)
   }, [searchTerm, startDate, endDate, filterCorretores, filterStatusList, filterOrigens, filterCliente, filterConvenios, filterEquipes, filterMargemMin, filterMargemMax, filterEncaminhados, filterEstagiarioForwarded, filterCorretorForwarded])
 
-  const totalPages = Math.ceil(filteredTickets.length / itemsPerPage)
-  const paginatedTickets = filteredTickets.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+  const sortedFilteredTickets = useMemo(() => {
+    return [...filteredTickets].sort((a, b) => {
+      const getTimestamp = (t: Ticket) => {
+        const u = t.updated_at ? new Date(t.updated_at).getTime() : 0
+        const c = t.created_at ? new Date(t.created_at).getTime() : 0
+        return Math.max(isNaN(u) ? 0 : u, isNaN(c) ? 0 : c)
+      }
+      const timeDiff = getTimestamp(b) - getTimestamp(a)
+      if (timeDiff !== 0) return timeDiff
+      return Number(b.id || 0) - Number(a.id || 0)
+    })
+  }, [filteredTickets])
+
+  const totalPages = Math.ceil(sortedFilteredTickets.length / itemsPerPage)
+  const paginatedTickets = sortedFilteredTickets.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
   const displayedTickets = expandedTicketId 
-    ? filteredTickets.filter(t => t.id.toString() === expandedTicketId)
+    ? sortedFilteredTickets.filter(t => t.id.toString() === expandedTicketId)
     : paginatedTickets
 
   // Chave estável de IDs dos chamados visíveis (evita loop infinito de re-render provocado por novas instâncias de array)

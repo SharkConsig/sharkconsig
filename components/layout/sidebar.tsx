@@ -190,7 +190,7 @@ const allMenuItems = [
         roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
       },
       { 
-        name: "INGNORE", 
+        name: "CANDIDATOS SITE", 
         href: "/candidatos", 
         icon: Users, 
         roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
@@ -389,6 +389,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         if (
           item.name === "ACERTO FÁCIL" || 
           item.href === "/acerto-facil" ||
+          item.name === "CANDIDATOS SITE" || 
           item.name === "INGNORE" || 
           item.name === "IGNORE" || 
           item.href === "/candidatos" ||

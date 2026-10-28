@@ -1098,100 +1098,202 @@ export default function KanbanPage() {
       let foundCpf: string | null = null
       const last8 = digits.length >= 8 ? digits.slice(-8) : digits
       const last9 = digits.length >= 9 ? digits.slice(-9) : digits
+      const prefix4 = last8.length === 8 ? last8.slice(0, 4) : ""
+      const suffix4 = last8.length === 8 ? last8.slice(4) : ""
 
-      // 1. Buscar primeiramente nos cards já carregados em memória no Kanban (inclui todos os telefones de cada lead)
+      const cleanDigits = (val?: string | null) => (val || "").replace(/\D/g, "")
+
+      const matchesPhone = (targetPhone?: string | null) => {
+        if (!targetPhone) return false
+        const clean = cleanDigits(targetPhone)
+        if (!clean) return false
+        if (clean === digits) return true
+        if (digits.length >= 8 && clean.slice(-8) === last8) return true
+        if (digits.length >= 9 && clean.slice(-9) === last9) return true
+        if (clean.length >= 8 && digits.slice(-8) === clean.slice(-8)) return true
+        return false
+      }
+
+      // 1. Buscar primeiramente nos cards já carregados em memória no Kanban
       const ticketMatch = tickets.find(t => {
-        const cleanTicketCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+        const cleanTicketCpf = cleanDigits(t.cliente_cpf)
         if (digits && cleanTicketCpf === digits) return true
+        const meta = parseMetadata(t.descricao)
         const allPhones = [
           t.cliente_telefone,
           t.cliente_telefone_2,
           t.cliente_telefone_3,
-          ...(t.telefones || [])
-        ].map(p => (p || "").replace(/\D/g, "")).filter(Boolean)
-        return allPhones.some(p => {
-          if (p === digits) return true
-          if (digits.length >= 8 && (p.endsWith(digits) || digits.endsWith(p) || p.slice(-8) === last8)) return true
-          return false
-        })
+          meta.cliente_telefone,
+          meta.cliente_telefone_2,
+          meta.cliente_telefone_3,
+          ...(Array.isArray(t.telefones) ? t.telefones : []),
+          ...(Array.isArray(meta.telefones) ? meta.telefones.map((x: any) => typeof x === "string" ? x : x?.numero) : [])
+        ]
+        return allPhones.some(matchesPhone)
       })
 
       if (ticketMatch?.cliente_cpf) {
         foundCpf = ticketMatch.cliente_cpf
       }
 
-      // 2. Se foram digitados exatamente 11 dígitos que correspondem a um CPF válido, verifica na tabela de clientes
-      if (!foundCpf && digits.length === 11 && isValidCPF(digits)) {
-        const { data: directClient } = await supabase
-          .from("clientes")
-          .select("cpf")
-          .eq("cpf", digits)
-          .maybeSingle()
-
-        if (directClient?.cpf) {
-          foundCpf = directClient.cpf
-        }
-      }
-
-      // 3. Se não encontrou ou a busca foi por número de telefone (>= 8 dígitos), busca em clientes por telefone
-      if (!foundCpf && digits.length >= 8) {
-        const { data: cByTel } = await supabase
-          .from("clientes")
-          .select("cpf")
-          .or(`telefone_1.ilike.%${last8}%,telefone_2.ilike.%${last8}%,telefone_3.ilike.%${last8}%`)
-          .limit(1)
-
-        if (cByTel && cByTel.length > 0 && cByTel[0]?.cpf) {
-          foundCpf = cByTel[0].cpf
-        }
-      }
-
-      // 4. Busca por telefone ou CPF em kanban_fichas no Supabase (incluindo metadados de telefones múltiplos)
-      if (!foundCpf) {
-        const { data: fByTel } = await supabase
-          .from("kanban_fichas")
-          .select("cliente_cpf, cliente_telefone, metadata")
-          .or(`cliente_telefone.ilike.%${last8}%,cliente_cpf.ilike.%${digits}%`)
-          .not("cliente_cpf", "is", null)
-          .limit(5)
-
-        if (fByTel && fByTel.length > 0 && fByTel[0]?.cliente_cpf) {
-          foundCpf = fByTel[0].cliente_cpf
-        }
-
-        // Se não achou na coluna direta, busca dentro do array metadata.telefones
-        if (!foundCpf && digits.length >= 8) {
-          const { data: fByMeta } = await supabase
-            .from("kanban_fichas")
-            .select("cliente_cpf, metadata")
-            .or(`metadata.cs.{"telefones":["${digits}"]},metadata.cs.{"telefones":["${last9}"]}`)
-            .not("cliente_cpf", "is", null)
-            .limit(1)
-
-          if (fByMeta && fByMeta.length > 0 && fByMeta[0]?.cliente_cpf) {
-            foundCpf = fByMeta[0].cliente_cpf
-          }
-        }
-      }
-
-      // 5. Busca por telefone ou CPF em chamados
-      if (!foundCpf) {
-        const { data: chByTel } = await supabase
-          .from("chamados")
-          .select("cliente_cpf")
-          .or(`cliente_telefone.ilike.%${last8}%,cliente_telefone_2.ilike.%${last8}%,cliente_telefone_3.ilike.%${last8}%,cliente_cpf.ilike.%${digits}%`)
-          .not("cliente_cpf", "is", null)
-          .limit(1)
-
-        if (chByTel && chByTel.length > 0 && chByTel[0]?.cliente_cpf) {
-          foundCpf = chByTel[0].cliente_cpf
-        }
-      }
-
-      // 6. Se digitou 11 dígitos e é estritamente um CPF VÁLIDO (não um número de telefone celular com DDD),
-      // repassa o CPF para o ClientDetailsModal (que busca de forma completa em todos os 17 convênios suportados)
+      // 2. Se foram digitados exatamente 11 dígitos que correspondem a um CPF válido
       if (!foundCpf && digits.length === 11 && isValidCPF(digits)) {
         foundCpf = digits
+      }
+
+      // 3. Se for telefone (>= 8 dígitos): buscar em kanban_fichas, chamados e em todas as bases de convênios do CRM
+      if (!foundCpf && digits.length >= 8) {
+        // 3.1 Busca em kanban_fichas
+        try {
+          const { data: fByTel } = await supabase
+            .from("kanban_fichas")
+            .select("cliente_cpf, cliente_telefone, metadata")
+            .or(`cliente_telefone.ilike.%${last8}%,cliente_telefone.ilike.%${prefix4}%${suffix4}%,cliente_cpf.ilike.%${digits}%`)
+            .not("cliente_cpf", "is", null)
+            .limit(10)
+
+          if (fByTel && fByTel.length > 0) {
+            const match = fByTel.find(f => {
+              if (matchesPhone(f.cliente_telefone)) return true
+              const meta = f.metadata && typeof f.metadata === "object" ? f.metadata : {}
+              const metaPhones = [
+                meta.cliente_telefone,
+                meta.cliente_telefone_2,
+                meta.cliente_telefone_3,
+                ...(Array.isArray(meta.telefones) ? meta.telefones.map((x: any) => typeof x === "string" ? x : x?.numero) : [])
+              ]
+              return metaPhones.some(matchesPhone)
+            })
+            if (match?.cliente_cpf) {
+              foundCpf = match.cliente_cpf
+            } else if (fByTel[0]?.cliente_cpf) {
+              foundCpf = fByTel[0].cliente_cpf
+            }
+          }
+        } catch (err) {
+          console.warn("Erro ao buscar telefone em kanban_fichas:", err)
+        }
+
+        // 3.2 Busca em chamados
+        if (!foundCpf) {
+          try {
+            const { data: chByTel } = await supabase
+              .from("chamados")
+              .select("cliente_cpf, cliente_telefone, cliente_telefone_2, cliente_telefone_3")
+              .or(`cliente_telefone.ilike.%${last8}%,cliente_telefone.ilike.%${prefix4}%${suffix4}%,cliente_telefone_2.ilike.%${last8}%,cliente_telefone_2.ilike.%${prefix4}%${suffix4}%,cliente_telefone_3.ilike.%${last8}%,cliente_telefone_3.ilike.%${prefix4}%${suffix4}%,cliente_cpf.ilike.%${digits}%`)
+              .not("cliente_cpf", "is", null)
+              .limit(5)
+
+            if (chByTel && chByTel.length > 0) {
+              const match = chByTel.find(ch => 
+                matchesPhone(ch.cliente_telefone) || 
+                matchesPhone(ch.cliente_telefone_2) || 
+                matchesPhone(ch.cliente_telefone_3)
+              )
+              if (match?.cliente_cpf) {
+                foundCpf = match.cliente_cpf
+              } else if (chByTel[0]?.cliente_cpf) {
+                foundCpf = chByTel[0].cliente_cpf
+              }
+            }
+          } catch (err) {
+            console.warn("Erro ao buscar telefone em chamados:", err)
+          }
+        }
+
+        // 3.3 Busca em todas as tabelas de clientes e bases de consulta dos convênios
+        if (!foundCpf) {
+          const phoneVariations = new Set<string>([digits, last8, last9])
+          if (digits.length === 10) {
+            phoneVariations.add(digits.slice(0, 2) + "9" + digits.slice(2))
+          } else if (digits.length === 11) {
+            phoneVariations.add(digits.slice(0, 2) + digits.slice(3))
+          }
+          if (digits.length >= 10) {
+            phoneVariations.add(`0${digits}`)
+          }
+
+          const phoneTerms: string[] = []
+          phoneVariations.forEach(pv => {
+            phoneTerms.push(`telefone_1.eq.${pv}`, `telefone_2.eq.${pv}`, `telefone_3.eq.${pv}`)
+          })
+          if (prefix4 && suffix4) {
+            phoneTerms.push(
+              `telefone_1.ilike.%${prefix4}%${suffix4}%`,
+              `telefone_2.ilike.%${prefix4}%${suffix4}%`,
+              `telefone_3.ilike.%${prefix4}%${suffix4}%`
+            )
+          }
+
+          const tablesWithoutTel3 = new Set([
+            'base_consulta_amazon_prev',
+            'base_consulta_governo_ma',
+            'amazon_prev_clientes',
+            'governo_ma_clientes',
+            'governo_sp_clientes',
+            'prefeitura_sp_clientes',
+            'governo_pi_clientes'
+          ])
+
+          const conveniosTables = [
+            'base_consulta_siape',
+            'base_consulta_governo_sp',
+            'base_consulta_prefeitura_sp',
+            'base_consulta_governo_pi',
+            'base_consulta_governo_ma',
+            'base_consulta_governo_rr',
+            'base_consulta_governo_rj',
+            'base_consulta_prefeitura_santo_andre',
+            'base_consulta_prefeitura_contagem',
+            'base_consulta_governo_mg',
+            'base_consulta_governo_ms',
+            'base_consulta_prefeitura_natal',
+            'base_consulta_prefeitura_porto_velho',
+            'base_consulta_governo_ba',
+            'base_consulta_governo_am',
+            'base_consulta_governo_ce',
+            'base_consulta_governo_ro',
+            'base_consulta_prefeitura_ponta_grossa',
+            'base_consulta_amazon_prev',
+            'clientes',
+            'governo_sp_clientes',
+            'prefeitura_sp_clientes',
+            'governo_mg_clientes',
+            'governo_rj_clientes',
+            'prefeitura_santo_andre_clientes',
+            'inss_clientes'
+          ]
+
+          try {
+            const searchPromises = conveniosTables.map(async (tableName) => {
+              try {
+                const terms = tablesWithoutTel3.has(tableName)
+                  ? phoneTerms.filter(t => !t.startsWith('telefone_3.'))
+                  : phoneTerms
+
+                const { data } = await supabase
+                  .from(tableName)
+                  .select("cpf")
+                  .or(terms.join(","))
+                  .limit(1)
+                  .maybeSingle()
+
+                if (data?.cpf) return data.cpf as string
+              } catch {
+                return null
+              }
+              return null
+            })
+
+            const foundResults = await Promise.all(searchPromises)
+            const matchCpf = foundResults.find(c => Boolean(c))
+            if (matchCpf) {
+              foundCpf = matchCpf
+            }
+          } catch (err) {
+            console.warn("Erro ao buscar nas tabelas de convênios:", err)
+          }
+        }
       }
 
       if (!foundCpf) {
@@ -4698,12 +4800,27 @@ export default function KanbanPage() {
     return list.filter(t => {
       const nome = (t.cliente_nome || "").toLowerCase()
       const cpf = (t.cliente_cpf || "").replace(/\D/g, "")
-      const tel = (t.cliente_telefone || "").replace(/\D/g, "")
       const meta = parseMetadata(t.descricao)
-      const metaTel = (meta.cliente_telefone || "").replace(/\D/g, "")
+      const allPhones = [
+        t.cliente_telefone,
+        t.cliente_telefone_2,
+        t.cliente_telefone_3,
+        meta.cliente_telefone,
+        meta.cliente_telefone_2,
+        meta.cliente_telefone_3,
+        ...(Array.isArray(t.telefones) ? t.telefones : []),
+        ...(Array.isArray(meta.telefones) ? meta.telefones.map((x: any) => typeof x === "string" ? x : x?.numero) : [])
+      ].map(p => typeof p === "string" ? p.replace(/\D/g, "") : "").filter(Boolean)
+
+      const matchesPhone = qDigits.length >= 4 && allPhones.some(p => 
+        p.includes(qDigits) || 
+        qDigits.includes(p) || 
+        (qDigits.length >= 8 && p.slice(-8) === qDigits.slice(-8))
+      )
+
       return (
         nome.includes(q) ||
-        (qDigits && (cpf.includes(qDigits) || tel.includes(qDigits) || metaTel.includes(qDigits)))
+        (qDigits && (cpf.includes(qDigits) || matchesPhone))
       )
     })
   }, [listSearch])

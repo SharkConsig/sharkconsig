@@ -339,16 +339,19 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
         selectedValNum = parseCurrencyToNumber(ticketOperations.beneficio5);
       }
 
+      const nowIso = new Date().toISOString();
       const { error } = await supabase
         .from('chamados')
         .update({
           // Não alteramos a coluna 'margem' (nem margem_liquida_5, nem margem_beneficio_5) para não alterar a margem do cliente no banco de dados.
           descricao: updatedDescription,
-          valor_operacao: selectedValNum
+          valor_operacao: selectedValNum,
+          updated_at: nowIso
         })
         .eq('id', ticket.id);
 
       if (error) throw error;
+      ticket.updated_at = nowIso;
 
       initializedTicketIdRef.current = null;
 
@@ -835,30 +838,35 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
         toast.dismiss("chat-upload")
       }
 
-      // Se o status mudou, registrar a mudança
+      // Atualizar updated_at e eventuais alterações de status do chamado no banco
+      const nowIso = new Date().toISOString()
+      const chamadoUpdatePayload: Record<string, any> = {
+        updated_at: nowIso
+      }
       let statusChangeData = null
       if (selectedStatusId && selectedStatusId !== ticket.status_id) {
         const newStatus = availableStatuses.find(s => s.id === selectedStatusId)
         if (newStatus) {
-          // Atualizar o chamado no banco
-          const { error: updateError } = await supabase
-            .from('chamados')
-            .update({ 
-              status_id: selectedStatusId,
-              status: newStatus.nome // Manter compatibilidade com a coluna de texto
-            })
-            .eq('id', ticket.id)
-          
-          if (!updateError) {
-            statusChangeData = {
-              from: currentStatusName,
-              to: newStatus.nome,
-              fromColor: "slate", // Simplificado
-              toColor: newStatus.cor
-            }
-            setCurrentStatusName(newStatus.nome)
+          chamadoUpdatePayload.status_id = selectedStatusId
+          chamadoUpdatePayload.status = newStatus.nome // Manter compatibilidade com a coluna de texto
+
+          statusChangeData = {
+            from: currentStatusName,
+            to: newStatus.nome,
+            fromColor: "slate", // Simplificado
+            toColor: newStatus.cor
           }
+          setCurrentStatusName(newStatus.nome)
         }
+      }
+
+      const { error: updateError } = await supabase
+        .from('chamados')
+        .update(chamadoUpdatePayload)
+        .eq('id', ticket.id)
+
+      if (!updateError) {
+        ticket.updated_at = nowIso
       }
 
       let finalReply = reply
