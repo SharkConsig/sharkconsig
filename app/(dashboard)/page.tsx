@@ -1318,7 +1318,7 @@ export default function DashboardPage() {
           // For cards/goals: If PJ, apply percentage calculation (35% Cartão, 9% Margem)
           const isPJBrokerCard = checkUserPJ(brokerUser) || (curr.estagiario_colaborador_id ? checkUserPJ(allUsers.find((u: User) => u.id === curr.estagiario_colaborador_id)) : false)
           const cardVal = isPJBrokerCard ? pjCalculatedVal : numericVal
-          const contractProductionVal = isPJBrokerCard ? (numericValOp || numericVal) : numericVal
+          const contractProductionVal = numericVal > 0 ? numericVal : (numericValOp || 0)
 
           const isBrokerAdmin = isUserAdminRole(brokerUser)
 
