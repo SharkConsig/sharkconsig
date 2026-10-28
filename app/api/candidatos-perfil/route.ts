@@ -95,9 +95,9 @@ export async function POST(request: Request) {
       criado_por_nome
     } = body
 
-    if (!nome?.trim() || !email?.trim()) {
+    if (!nome?.trim()) {
       return NextResponse.json(
-        { success: false, error: "Nome e e-mail do candidato são obrigatórios." },
+        { success: false, error: "Nome do candidato é obrigatório." },
         { status: 400 }
       )
     }
@@ -110,7 +110,7 @@ export async function POST(request: Request) {
     const novoCandidato: CandidatoPerfilRecord = {
       id: generateUUID(),
       nome: nome.trim(),
-      email: email.trim().toLowerCase(),
+      email: email?.trim() ? email.trim().toLowerCase() : "",
       telefone: telefone?.trim() || "",
       endereco: endereco?.trim() || "",
       cargo_pretendido: cargo_pretendido?.trim() || "Candidato",

@@ -30,7 +30,10 @@ import {
   Table,
   UserCheck,
   Kanban,
-  Target
+  Target,
+  Globe,
+  Megaphone,
+  UserPlus
 } from "lucide-react"
 import { useSidebar } from "@/context/sidebar-context"
 
@@ -40,6 +43,12 @@ const allMenuItems = [
   {
     title: "",
     items: [
+      { 
+        name: "ACERTO FÁCIL", 
+        href: "/acerto-facil", 
+        icon: Globe, 
+        roles: ["Administrador", "Desenvolvedor", "Supervisor", "Operacional", "Corretor", "Monitoramento", "Estágio", "Processo Seletivo", "PROCESSO SELETIVO", "Recursos Humanos", "RH"] 
+      },
       { 
         name: "PERFIL PROFISSIONAL", 
         href: "/perfil-profissional", 
@@ -181,6 +190,12 @@ const allMenuItems = [
         roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
       },
       { 
+        name: "INGNORE", 
+        href: "/candidatos", 
+        icon: Users, 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      },
+      { 
         name: "PERFIL CANDIDATOS", 
         href: "/perfil-candidatos", 
         icon: UserCheck, 
@@ -221,6 +236,17 @@ const allMenuItems = [
         href: "/capacitacao-pj", 
         icon: GraduationCap, 
         roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+      }
+    ]
+  },
+  {
+    title: "MARKETING",
+    items: [
+      { 
+        name: "MARKETING", 
+        href: "/marketing", 
+        icon: Megaphone, 
+        roles: ["Administrador", "Desenvolvedor", "Recursos Humanos"] 
       }
     ]
   },
@@ -359,6 +385,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
+        // ACERTO FÁCIL: visível apenas em ambiente de desenvolvimento (oculto em produção)
+        if (item.name === "ACERTO FÁCIL" || item.href === "/acerto-facil") {
+          return process.env.NODE_ENV !== "production"
+        }
+
         // Se for o link COMECE AQUI, visível para todos os usuários do sistema
         if (item.name === "COMECE AQUI" || item.href === "/start-comercial-dev") {
           return true

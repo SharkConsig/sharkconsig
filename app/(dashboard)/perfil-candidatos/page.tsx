@@ -117,8 +117,16 @@ export default function PerfilCandidatosPage() {
   // Link recém gerado
   const [conviteGerado, setConviteGerado] = useState<{ nome: string; link: string; telefone?: string; cargo_pretendido?: string } | null>(null)
   const [copiado, setCopiado] = useState(false)
+  const [telefoneCopiado, setTelefoneCopiado] = useState(false)
   const [candidatoParaExcluir, setCandidatoParaExcluir] = useState<{ id: string; token: string; nome: string } | null>(null)
   const [excluindo, setExcluindo] = useState(false)
+
+  const copiarTelefoneCandidato = (tel: string) => {
+    if (!tel) return
+    navigator.clipboard.writeText(tel)
+    setTelefoneCopiado(true)
+    setTimeout(() => setTelefoneCopiado(false), 2000)
+  }
 
   const obterTextoWhatsApp = (nome: string, link: string, cargo?: string) => {
     const primeiroNome = (nome || "Candidato").split(" ")[0]
@@ -133,6 +141,16 @@ export default function PerfilCandidatosPage() {
   useEffect(() => {
     carregarCandidatos()
   }, [])
+
+  useEffect(() => {
+    if (abaAtiva === "analise") {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" })
+      if (typeof document !== "undefined") {
+        document.documentElement.scrollTop = 0
+        document.body.scrollTop = 0
+      }
+    }
+  }, [abaAtiva, candidatoSelecionadoId])
 
   const carregarCandidatos = async () => {
     setLoading(true)
@@ -156,8 +174,8 @@ export default function PerfilCandidatosPage() {
 
   const criarConvite = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formNome.trim() || !formEmail.trim()) {
-      alert("Preencha ao menos Nome e E-mail.")
+    if (!formNome.trim()) {
+      alert("Preencha ao menos o nome do candidato.")
       return
     }
 
@@ -341,7 +359,14 @@ export default function PerfilCandidatosPage() {
                 Candidatos ({total})
               </button>
               <button
-                onClick={() => setAbaAtiva("analise")}
+                onClick={() => {
+                  setAbaAtiva("analise")
+                  window.scrollTo({ top: 0, left: 0, behavior: "instant" })
+                  if (typeof document !== "undefined") {
+                    document.documentElement.scrollTop = 0
+                    document.body.scrollTop = 0
+                  }
+                }}
                 className={cn(
                   "px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer",
                   abaAtiva === "analise"
@@ -543,20 +568,10 @@ export default function PerfilCandidatosPage() {
 
                         {/* Detalhes de contato */}
                         <div className="flex items-center gap-4 text-xs text-slate-500 font-semibold flex-wrap">
-                          <span className="flex items-center gap-1.5">
-                            <Mail className="w-3.5 h-3.5 text-slate-400" />
-                            {c.email}
-                          </span>
                           {c.telefone && (
                             <span className="flex items-center gap-1.5">
                               <Phone className="w-3.5 h-3.5 text-slate-400" />
                               {c.telefone}
-                            </span>
-                          )}
-                          {c.endereco && (
-                            <span className="flex items-center gap-1.5">
-                              <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                              {c.endereco}
                             </span>
                           )}
                           <span className="flex items-center gap-1.5">
@@ -608,6 +623,11 @@ export default function PerfilCandidatosPage() {
                                   }
                                   setCandidatoSelecionadoId(candKey)
                                   setAbaAtiva("analise")
+                                  window.scrollTo({ top: 0, left: 0, behavior: "instant" })
+                                  if (typeof document !== "undefined") {
+                                    document.documentElement.scrollTop = 0
+                                    document.body.scrollTop = 0
+                                  }
                                 }}
                                 className={cn(
                                   "flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-[11px] font-bold uppercase tracking-wider transition-all shadow-xs cursor-pointer",
@@ -686,9 +706,30 @@ export default function PerfilCandidatosPage() {
                 </span>
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">Candidato em Análise</span>
-                  <h3 className="text-base font-black text-slate-900">
-                    {candidatoAtivo ? candidatoAtivo.nome : "Selecione um candidato concluído"}
-                  </h3>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h3 className="text-base font-black text-slate-900">
+                      {candidatoAtivo ? candidatoAtivo.nome : "Selecione um candidato concluído"}
+                    </h3>
+                    {candidatoAtivo?.telefone && (
+                      <button
+                        type="button"
+                        onClick={() => copiarTelefoneCandidato(candidatoAtivo.telefone!)}
+                        title="Clique para copiar o telefone"
+                        className="group inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900 hover:text-blue-600 transition-colors cursor-pointer select-none"
+                      >
+                        <Phone className="w-4 h-4 text-slate-900 group-hover:text-blue-500 transition-colors" />
+                        <span>{candidatoAtivo.telefone}</span>
+                        {telefoneCopiado ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 animate-in fade-in">
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Copiado!</span>
+                          </span>
+                        ) : (
+                          <Copy className="w-3.5 h-3.5 text-slate-300 group-hover:text-blue-500 transition-colors opacity-70 group-hover:opacity-100" />
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1016,44 +1057,15 @@ export default function PerfilCandidatosPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 block">
-                      E-mail
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="candidato@email.com"
-                      value={formEmail}
-                      onChange={e => setFormEmail(e.target.value)}
-                      className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 text-slate-900"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 block">
-                      Telefone / WhatsApp
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="(11) 98765-4321"
-                      value={formTelefone}
-                      onChange={e => setFormTelefone(e.target.value)}
-                      className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 text-slate-900"
-                    />
-                  </div>
-                </div>
-
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 block">
-                    Endereço Completo
+                    Telefone / WhatsApp
                   </label>
                   <input
                     type="text"
-                    placeholder="Rua, Bairro, Cidade - UF"
-                    value={formEndereco}
-                    onChange={e => setFormEndereco(e.target.value)}
+                    placeholder="(11) 98765-4321"
+                    value={formTelefone}
+                    onChange={e => setFormTelefone(e.target.value)}
                     className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 text-slate-900"
                   />
                 </div>
