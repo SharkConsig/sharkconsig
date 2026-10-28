@@ -385,9 +385,22 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
-        // ACERTO FÁCIL: visível apenas em ambiente de desenvolvimento (oculto em produção)
-        if (item.name === "ACERTO FÁCIL" || item.href === "/acerto-facil") {
-          return process.env.NODE_ENV !== "production"
+        // ACERTO FÁCIL, IGNORE/INGNORE e MARKETING: visíveis apenas em ambiente de desenvolvimento (ocultos em produção)
+        if (
+          item.name === "ACERTO FÁCIL" || 
+          item.href === "/acerto-facil" ||
+          item.name === "INGNORE" || 
+          item.name === "IGNORE" || 
+          item.href === "/candidatos" ||
+          item.name === "MARKETING" || 
+          item.href === "/marketing"
+        ) {
+          if (process.env.NODE_ENV === "production") {
+            return false
+          }
+          if (item.name === "ACERTO FÁCIL" || item.href === "/acerto-facil") {
+            return true
+          }
         }
 
         // Se for o link COMECE AQUI, visível para todos os usuários do sistema

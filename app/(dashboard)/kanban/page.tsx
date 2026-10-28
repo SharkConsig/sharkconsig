@@ -48,7 +48,8 @@ import {
   Download,
   LayoutGrid,
   List,
-  ArrowUpDown
+  ArrowUpDown,
+  Globe
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
@@ -58,10 +59,11 @@ import { ptBR } from "date-fns/locale"
 import { cn, formatShortName } from "@/lib/utils"
 import { ClientDetailsModal, type LeadContactInfo } from "@/components/clients/client-details-modal"
 
-// Definição das 7 Etapas Oficiais do Kanban Comercial
+// Definição das Etapas do Kanban Comercial
 export type KanbanStage = 
   | "EM ABORDAGEM"
   | "EM RETOMADA"
+  | "ENTRADA DO SITE"
   | "EM NEGOCIAÇÃO"
   | "EM REATIVAÇÃO"
   | "SEM INTERESSE"
@@ -100,6 +102,21 @@ const KANBAN_COLUMNS: KanbanColumnConfig[] = [
     descriptionOperador: "Executar tentativas planejadas (RT1 a RT6) para quem não respondeu.",
     descriptionGestor: "Disciplina de execução e cumprimento da sequência planejada."
   },
+  ...(process.env.NODE_ENV !== "production" ? [{
+    id: "ENTRADA DO SITE" as KanbanStage,
+    title: "Entrada do Site",
+    subtitle: "Leads do Site Institucional",
+    code: "SITE",
+    color: "emerald",
+    headerBg: "bg-emerald-100 border-emerald-300 text-slate-900",
+    borderTop: "border-t-emerald-600",
+    badgeClass: "bg-emerald-200 text-emerald-900 border-emerald-400",
+    bgColumn: "bg-emerald-50/70",
+    borderColumn: "border-emerald-300",
+    cardBorder: "border border-slate-200 hover:border-slate-300",
+    descriptionOperador: "Leads originados do simulador do site institucional Acerto Fácil.",
+    descriptionGestor: "Volume de conversão de novos contatos gerados via portal público."
+  }] : []),
   {
     id: "EM NEGOCIAÇÃO",
     title: "Em negociação",
@@ -848,6 +865,11 @@ function inferKanbanStage(ticket: TicketItem, meta: TicketMetadata): KanbanStage
     return meta.kanban_stage
   }
   const s = (ticket.status || "").toUpperCase()
+  const orig = ((ticket as any).origem || "").toUpperCase()
+  const tipo = (ticket.tipo_solicitacao || "").toUpperCase()
+  if (s === "ENTRADA DO SITE" || orig.includes("SITE") || tipo.includes("SITE") || (ticket.descricao && ticket.descricao.includes("Origem: Site Institucional"))) {
+    return "ENTRADA DO SITE"
+  }
   if (s === "FECHADO" || s.includes("PROPOSTA CADASTRADA")) return "FECHADO"
   if (s.includes("NÃO APROVADO") || s.includes("CANCELADO") || s.includes("NÃO É O CLIENTE") || s.includes("IMPOSSIBILITADO")) return "PERDIDO"
   if (s.includes("SEM INTERESSE")) return "SEM INTERESSE"
@@ -2147,6 +2169,7 @@ export default function KanbanPage() {
     const map: Record<KanbanStage, TicketItem[]> = {
       "EM ABORDAGEM": [],
       "EM RETOMADA": [],
+      "ENTRADA DO SITE": [],
       "EM NEGOCIAÇÃO": [],
       "EM REATIVAÇÃO": [],
       "SEM INTERESSE": [],
@@ -2481,7 +2504,8 @@ export default function KanbanPage() {
 
       // Próxima ação padrão da nova etapa (sem siglas)
       let proximaAcaoPadrao = ""
-      if (destinoEtapa === "EM RETOMADA" || destinoEtapa === "EM ABORDAGEM") proximaAcaoPadrao = "Enviar Régua de Retomada 1"
+      if (destinoEtapa === "ENTRADA DO SITE") proximaAcaoPadrao = "Fazer primeiro contato com lead do site"
+      else if (destinoEtapa === "EM RETOMADA" || destinoEtapa === "EM ABORDAGEM") proximaAcaoPadrao = "Enviar Régua de Retomada 1"
       else if (destinoEtapa === "EM NEGOCIAÇÃO") proximaAcaoPadrao = "Enviar simulação e recolher documentos"
       else if (destinoEtapa === "EM REATIVAÇÃO") proximaAcaoPadrao = "Resgatar oportunidade esfriada"
       else if (destinoEtapa === "SEM INTERESSE") proximaAcaoPadrao = "Cadência de Longo Prazo / Nutrição"
@@ -4078,19 +4102,34 @@ export default function KanbanPage() {
     }
   }
 
-  // Categorização da Minha Fila em AGORA, VENCIDAS, FUTURAS e AÇÃO ESPECIAL
+  // Categorização da Minha Fila em AGORA, VENCIDAS, FUTURAS, AÇÃO ESPECIAL e ENTRADA DO SITE
   const filaCategorias = useMemo(() => {
     const now = new Date()
     const vencidas: Array<{ ticket: TicketItem; atrasoTexto: string }> = []
     const agora: TicketItem[] = []
     const futuras: TicketItem[] = []
     const acaoEspecial: TicketItem[] = []
+    const entradaSite: TicketItem[] = []
 
     const leadsAtivos = filteredTickets.filter(t => t.status !== "FECHADO" && t.status !== "PERDIDO")
 
     leadsAtivos.forEach(ticket => {
       const meta = parseMetadata(ticket.descricao)
       const isAcaoEspecial = Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"
+      const orig = ((ticket as any).origem || "").toUpperCase()
+      const tipo = (ticket.tipo_solicitacao || "").toUpperCase()
+      const isEntradaSite = 
+        ticket.status === "ENTRADA DO SITE" || 
+        orig.includes("SITE") || 
+        tipo.includes("SITE") || 
+        meta.kanban_stage === "ENTRADA DO SITE" ||
+        (ticket.descricao && ticket.descricao.includes("Origem: Site Institucional"))
+
+      if (isEntradaSite) {
+        entradaSite.push(ticket)
+        return
+      }
+
       const dateStr = meta.regua_proximo_vencimento || meta.vencimento_acao || meta.agendamento_data
 
       let vencimentoDate: Date | null = null
@@ -4131,8 +4170,9 @@ export default function KanbanPage() {
     const valorVencidas = calcValor(vencidas.map(i => i.ticket))
     const valorFuturas = calcValor(futuras)
     const valorAcaoEspecial = calcValor(acaoEspecial)
+    const valorEntradaSite = calcValor(entradaSite)
 
-    return { agora, vencidas, futuras, acaoEspecial, valorAgora, valorVencidas, valorFuturas, valorAcaoEspecial }
+    return { agora, vencidas, futuras, acaoEspecial, entradaSite, valorAgora, valorVencidas, valorFuturas, valorAcaoEspecial, valorEntradaSite }
   }, [filteredTickets])
 
   // Função reutilizável para renderizar exatamente o mesmo Cartão de Tarefa em ambas as visões
@@ -5568,15 +5608,74 @@ export default function KanbanPage() {
                     </div>
                   )
                 })()}
+
+                {/* Coluna 5: ENTRADA DO SITE (Visível exclusivamente em desenvolvimento para Administrador e Desenvolvedor) */}
+                {process.env.NODE_ENV !== "production" && 
+                 (isAdmin || isDeveloper || perfil?.role === "Administrador" || perfil?.role === "Desenvolvedor") && 
+                 (listFilterStage === "ALL" || listFilterStage === "ENTRADA DO SITE" || (listFilterStage as string) === "entrada_site") && (() => {
+                  const ticketsSite = sortTickets(filterTicketsBySearch(filaCategorias.entradaSite || []))
+                  const valorSite = ticketsSite.reduce((acc, t) => {
+                    const opData = getValorOperacaoDeAbertura(t)
+                    const opNum = parseValorToNumber(opData.valor)
+                    return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+                  }, 0)
+                  return (
+                    <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-300/80 shadow-2xs overflow-hidden bg-emerald-50/70">
+                      {/* Cabeçalho da Coluna Entrada do Site */}
+                      <div className="p-3.5 border-b border-emerald-200/70 bg-emerald-50/70 border-t-4 border-t-emerald-600 rounded-t-xl shrink-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                            <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Entrada do Site</span>
+                          </h2>
+                          <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
+                            {ticketsSite.length}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
+                          Leads gerados no site institucional
+                        </p>
+
+                        {/* Totais Acumulados */}
+                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
+                          <span className="font-semibold text-slate-800">
+                            {ticketsSite.length} {ticketsSite.length === 1 ? "lead" : "leads"}
+                          </span>
+                          <span className="font-extrabold text-slate-950">
+                            {valorSite.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Lista de Cards da Coluna Entrada do Site */}
+                      <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-emerald-50/70">
+                        {ticketsSite.length === 0 ? (
+                          <div className="py-12 text-center text-xs text-emerald-900/60 font-medium">
+                            Nenhum lead novo do site
+                          </div>
+                        ) : (
+                          ticketsSite.map(ticket => renderTicketCard(ticket, undefined, false))
+                        )}
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
         )}
 
-        {/* Visão 2: Quadro das 7 Colunas do Kanban em Modo Quadro */}
+        {/* Visão 2: Quadro das Colunas do Kanban em Modo Quadro */}
         {activeView === "KANBAN" && displayMode === "QUADRO" && (
           <div className="flex-1 overflow-x-auto pb-1 min-h-0 h-full">
             <div className="flex items-stretch gap-3.5 sm:gap-4 w-full min-w-max h-full">
                 {KANBAN_COLUMNS
-                  .filter(col => listFilterStage === "ALL" || col.id === listFilterStage)
+                  .filter(col => {
+                    if (col.id === "ENTRADA DO SITE") {
+                      if (process.env.NODE_ENV === "production") return false
+                      const canSee = Boolean(isAdmin || isDeveloper || perfil?.role === "Administrador" || perfil?.role === "Desenvolvedor")
+                      if (!canSee) return false
+                    }
+                    return listFilterStage === "ALL" || col.id === listFilterStage
+                  })
                   .map(col => {
                     let colTickets = groupedColumns[col.id] || []
                     colTickets = filterTicketsBySearch(colTickets)

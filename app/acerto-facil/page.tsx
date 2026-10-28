@@ -14,6 +14,7 @@ import {
   Utensils, 
   CheckCircle2, 
   ArrowRight, 
+  ArrowLeft,
   Phone, 
   Mail, 
   MapPin, 
@@ -253,20 +254,29 @@ export default function AcertoFacilPublicPage() {
           </nav>
 
           {/* Ações do Header */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 text-xs font-bold transition-all shadow-2xs group cursor-pointer"
+              title="Voltar para o sistema SharkConsig"
+            >
+              <ArrowLeft className="w-4 h-4 text-emerald-600 group-hover:-translate-x-0.5 transition-transform" />
+              <span className="hidden sm:inline">Voltar ao</span>
+              <span className="font-extrabold text-slate-900">SharkConsig</span>
+            </Link>
             <button
               onClick={() => {
                 setSelectedJob(null)
                 setIsCandidaturaModalOpen(true)
               }}
-              className="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wider hover:bg-slate-100 hover:text-slate-900 transition-all cursor-pointer"
+              className="hidden md:inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold uppercase tracking-wider hover:bg-slate-100 hover:text-slate-900 transition-all cursor-pointer"
             >
               <Briefcase className="w-3.5 h-3.5 text-slate-500" />
               Trabalhe Conosco
             </button>
             <button
               onClick={() => setIsSimulacaoModalOpen(true)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-black uppercase tracking-wider shadow-md hover:shadow-lg hover:from-emerald-500 hover:to-teal-500 active:scale-95 transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-black uppercase tracking-wider shadow-md hover:shadow-lg hover:from-emerald-500 hover:to-teal-500 active:scale-95 transition-all cursor-pointer"
             >
               <Calculator className="w-4 h-4" />
               Simular Crédito
@@ -864,6 +874,23 @@ export default function AcertoFacilPublicPage() {
           </div>
         </div>
       </footer>
+
+      {/* Botão Flutuante Fixo (Acompanha a rolagem da página) para retornar ao SharkConsig */}
+      <Link
+        href="/"
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-full bg-slate-900/95 hover:bg-slate-950 text-white shadow-2xl border border-slate-700 hover:border-emerald-500 backdrop-blur-md transition-all duration-300 hover:scale-105 active:scale-95 group cursor-pointer"
+        title="Voltar para o sistema SharkConsig"
+      >
+        <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-white transition-colors shrink-0">
+          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+        </div>
+        <div className="flex flex-col text-left leading-tight pr-1">
+          <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Sistema Interno</span>
+          <span className="text-xs font-extrabold tracking-tight text-white flex items-center gap-1">
+            Voltar ao <span className="text-emerald-400 font-black">SharkConsig</span>
+          </span>
+        </div>
+      </Link>
 
       {/* MODAL PÚBLICA DE SIMULAÇÃO DE CRÉDITO */}
       {isSimulacaoModalOpen && (
