@@ -41,7 +41,8 @@ import {
   Zap,
   CalendarDays,
   Gift,
-  Phone
+  Phone,
+  Clock
 } from "lucide-react"
 import { HexColorPicker } from "react-colorful"
 import { motion, AnimatePresence } from "motion/react"
@@ -59,6 +60,15 @@ import {
   updateTelefoneEmpresa, 
   deleteTelefoneEmpresa 
 } from "@/lib/telefones-empresa"
+import { 
+  ProximaAcaoConfig, 
+  ETAPAS_KANBAN_OPCOES, 
+  fetchProximasAcoes, 
+  createProximaAcao, 
+  updateProximaAcao, 
+  deleteProximaAcao, 
+  formatSlaPrazoAmigavel 
+} from "@/lib/kanban-proximas-acoes"
 
 interface GenericConfig {
   id: string
@@ -223,6 +233,22 @@ export default function SettingsPage() {
   const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false)
   const [editingPhone, setEditingPhone] = useState<TelefoneEmpresa | null>(null)
   const [phoneForm, setPhoneForm] = useState({ numero: "", descricao: "", ativo: true })
+  
+  // Próximas Ações e Vencimentos do Kanban State
+  const [isProximasAcoesExpanded, setIsProximasAcoesExpanded] = useState(false)
+  const [proximasAcoesList, setProximasAcoesList] = useState<ProximaAcaoConfig[]>([])
+  const [isProximaAcaoModalOpen, setIsProximaAcaoModalOpen] = useState(false)
+  const [editingProximaAcao, setEditingProximaAcao] = useState<ProximaAcaoConfig | null>(null)
+  const [proximaAcaoForm, setProximaAcaoForm] = useState({
+    titulo: "",
+    descricao: "",
+    etapa_kanban: "TODAS",
+    sla_valor: 2,
+    sla_unidade: "horas" as "minutos" | "horas" | "dias",
+    apenas_dias_uteis: true,
+    ativo: true,
+    ordem: 0
+  })
 
   // Controle de Horários do Sistema State
   const [systemUsers, setSystemUsers] = useState<UsuarioAPI[]>([])
@@ -326,7 +352,7 @@ export default function SettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteData, setDeleteData] = useState<{
     id: string,
-    type: 'status' | 'convenio' | 'banco' | 'operacao' | 'produto' | 'meta_anual' | 'meta' | 'faixa_meta' | 'banner' | 'telefone_empresa',
+    type: 'status' | 'convenio' | 'banco' | 'operacao' | 'produto' | 'meta_anual' | 'meta' | 'faixa_meta' | 'banner' | 'telefone_empresa' | 'proxima_acao',
     label: string,
     year?: number
   } | null>(null)
@@ -673,6 +699,11 @@ export default function SettingsPage() {
         setTelefonesList(phones)
       }
     })
+    fetchProximasAcoes().then(data => {
+      if (data && data.length > 0) {
+        setProximasAcoesList(data)
+      }
+    })
     // Garantir que as seções comecem recolhidas
     setIsMetasPremiosExpanded(false)
     setExpandedYearId(null)
@@ -955,6 +986,11 @@ export default function SettingsPage() {
         await deleteTelefoneEmpresa(supabase, id)
         setTelefonesList(prev => prev.filter(item => item.id !== id))
         toast.success("Telefone excluído com sucesso!")
+      } else if (type === 'proxima_acao') {
+        await deleteProximaAcao(id)
+        const updated = await fetchProximasAcoes()
+        setProximasAcoesList(updated)
+        toast.success("Próxima ação excluída com sucesso!")
       } else {
         let table = ""
         if (type === 'status') table = 'status_chamados'
@@ -1327,6 +1363,121 @@ export default function SettingsPage() {
       id: phone.id,
       type: 'telefone_empresa',
       label: `Telefone (${phone.numero})`
+    })
+    setIsDeleteDialogOpen(true)
+  }
+
+  // Handlers para Próximas Ações e Vencimentos do Kanban
+  const handleOpenProximaAcaoModal = (item?: ProximaAcaoConfig) => {
+    if (item) {
+      setEditingProximaAcao(item)
+      let valor = item.sla_minutos
+      let unidade: "minutos" | "horas" | "dias" = "minutos"
+      if (item.sla_minutos >= 1440 && item.sla_minutos % 1440 === 0) {
+        valor = item.sla_minutos / 1440
+        unidade = "dias"
+      } else if (item.sla_minutos >= 60 && item.sla_minutos % 60 === 0) {
+        valor = item.sla_minutos / 60
+        unidade = "horas"
+      }
+
+      setProximaAcaoForm({
+        titulo: item.titulo,
+        descricao: item.descricao || "",
+        etapa_kanban: item.etapa_kanban || "TODAS",
+        sla_valor: valor,
+        sla_unidade: unidade,
+        apenas_dias_uteis: item.apenas_dias_uteis !== false,
+        ativo: item.ativo !== false,
+        ordem: item.ordem || 0
+      })
+    } else {
+      setEditingProximaAcao(null)
+      setProximaAcaoForm({
+        titulo: "",
+        descricao: "",
+        etapa_kanban: "TODAS",
+        sla_valor: 2,
+        sla_unidade: "horas",
+        apenas_dias_uteis: true,
+        ativo: true,
+        ordem: (proximasAcoesList.length || 0) + 1
+      })
+    }
+    setIsProximaAcaoModalOpen(true)
+  }
+
+  const handleSaveProximaAcao = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!proximaAcaoForm.titulo.trim()) {
+      toast.error("Informe o título da próxima ação")
+      return
+    }
+
+    let minutosCalculados = Number(proximaAcaoForm.sla_valor) || 60
+    if (proximaAcaoForm.sla_unidade === "horas") {
+      minutosCalculados *= 60
+    } else if (proximaAcaoForm.sla_unidade === "dias") {
+      minutosCalculados *= 1440
+    }
+
+    try {
+      setIsSubmitting(true)
+      if (editingProximaAcao) {
+        await updateProximaAcao(editingProximaAcao.id, {
+          titulo: proximaAcaoForm.titulo.trim(),
+          descricao: proximaAcaoForm.descricao.trim(),
+          etapa_kanban: proximaAcaoForm.etapa_kanban,
+          sla_minutos: minutosCalculados,
+          apenas_dias_uteis: proximaAcaoForm.apenas_dias_uteis,
+          ativo: proximaAcaoForm.ativo,
+          ordem: Number(proximaAcaoForm.ordem) || 0
+        })
+        toast.success("Próxima ação atualizada com sucesso!")
+      } else {
+        await createProximaAcao({
+          titulo: proximaAcaoForm.titulo.trim(),
+          descricao: proximaAcaoForm.descricao.trim(),
+          etapa_kanban: proximaAcaoForm.etapa_kanban,
+          sla_minutos: minutosCalculados,
+          apenas_dias_uteis: proximaAcaoForm.apenas_dias_uteis,
+          ativo: proximaAcaoForm.ativo,
+          ordem: Number(proximaAcaoForm.ordem) || (proximasAcoesList.length + 1)
+        })
+        toast.success("Próxima ação cadastrada com sucesso!")
+      }
+      const updated = await fetchProximasAcoes()
+      setProximasAcoesList(updated)
+      setIsProximaAcaoModalOpen(false)
+      setEditingProximaAcao(null)
+    } catch (err) {
+      console.error("Erro ao salvar próxima ação:", err)
+      toast.error("Erro ao salvar próxima ação")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleToggleProximaAcaoStatus = async (id: string) => {
+    try {
+      const target = proximasAcoesList.find(x => x.id === id)
+      if (!target) return
+      const novoStatus = target.ativo === false
+      await updateProximaAcao(id, { ativo: novoStatus })
+      const updated = await fetchProximasAcoes()
+      setProximasAcoesList(updated)
+      toast.success(novoStatus ? "Ação ativada!" : "Ação inativada!")
+    } catch (err) {
+      console.error("Erro ao alterar status da ação:", err)
+      toast.error("Erro ao alterar status da ação")
+    }
+  }
+
+  const handleDeleteProximaAcao = (item: ProximaAcaoConfig) => {
+    setDeleteData({
+      id: item.id,
+      type: 'proxima_acao',
+      label: `Próxima Ação (${item.titulo})`
     })
     setIsDeleteDialogOpen(true)
   }
@@ -2264,6 +2415,152 @@ export default function SettingsPage() {
                                     className="h-8 w-8 text-slate-400 hover:text-rose-500 cursor-pointer" 
                                     onClick={() => handleDeletePhone(tel)}
                                     title="Excluir telefone"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </Card>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </section>
+        )}
+
+        {/* PRÓXIMAS AÇÕES E VENCIMENTOS DO KANBAN */}
+        {!isApenasRH && (
+          <section className="space-y-6 pb-20">
+            <div 
+              className="flex items-center justify-between cursor-pointer group select-none"
+              onClick={() => setIsProximasAcoesExpanded(!isProximasAcoesExpanded)}
+            >
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="w-1 h-4 bg-primary rounded-full transition-transform group-hover:scale-y-125" />
+                  <h2 className="text-[12px] lg:text-[14px] font-bold text-slate-800 uppercase tracking-widest flex items-center gap-3">
+                    PRÓXIMAS AÇÕES E VENCIMENTOS DO KANBAN
+                    {isProximasAcoesExpanded ? <ChevronUp className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" /> : <ChevronDown className="w-4 h-4 text-slate-300 transition-colors group-hover:text-primary" />}
+                  </h2>
+                </div>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-3">
+                  Gerenciamento de etapas, SLAs e regras de próxima ação do pipeline
+                </p>
+              </div>
+              
+              <Button 
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleOpenProximaAcaoModal()
+                }} 
+                className="bg-[#171717] hover:bg-[#171717]/90 text-white gap-2 shadow-lg shadow-slate-200 h-9 w-[170px] rounded-lg relative z-10 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="text-[10.5px] font-bold uppercase tracking-widest">Nova Ação</span>
+              </Button>
+            </div>
+
+            <AnimatePresence initial={false}>
+              {isProximasAcoesExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  className="overflow-hidden space-y-6"
+                >
+                  <Card className="card-shadow border border-slate-200 overflow-hidden rounded-2xl bg-white">
+                    <Table>
+                      <TableHeader className="bg-slate-50/50">
+                        <TableRow className="hover:bg-transparent border-slate-100">
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 pl-8">Ação / Título</TableHead>
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Etapa Vinculada</TableHead>
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4">Prazo / SLA</TableHead>
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Dias Úteis</TableHead>
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-center">Status</TableHead>
+                          <TableHead className="text-[10px] font-bold text-slate-400 uppercase tracking-widest py-4 text-right pr-8">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {proximasAcoesList.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="h-32 text-center">
+                              <div className="flex flex-col items-center justify-center gap-2">
+                                <Zap className="w-8 h-8 text-slate-200" />
+                                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhuma próxima ação cadastrada</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          proximasAcoesList.map((acao) => (
+                            <TableRow key={acao.id} className="hover:bg-slate-50/50 transition-colors group border-slate-100">
+                              <TableCell className="font-bold text-slate-800 text-[12px] py-4 pl-8">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                                    <Zap className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <span className="block">{acao.titulo}</span>
+                                    {acao.descricao && (
+                                      <span className="text-[10px] font-normal text-slate-400 line-clamp-1">{acao.descricao}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-slate-600 text-[12px] py-4">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  {acao.etapa_kanban}
+                                </span>
+                              </TableCell>
+                              <TableCell className="font-semibold text-slate-700 text-[12px] py-4">
+                                <span className="inline-flex items-center gap-1">
+                                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                  {formatSlaPrazoAmigavel(acao.sla_minutos)}
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 text-center">
+                                <span className={cn(
+                                  "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider",
+                                  acao.apenas_dias_uteis ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-slate-100 text-slate-600"
+                                )}>
+                                  {acao.apenas_dias_uteis ? "Sim (Comercial)" : "Não (Corrido)"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="py-4 text-center">
+                                <button 
+                                  onClick={() => handleToggleProximaAcaoStatus(acao.id)}
+                                  className={cn(
+                                    "px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all cursor-pointer",
+                                    acao.ativo !== false 
+                                      ? "bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100" 
+                                      : "bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-100"
+                                  )}
+                                  title="Clique para alternar o status"
+                                >
+                                  {acao.ativo !== false ? "ATIVO" : "INATIVO"}
+                                </button>
+                              </TableCell>
+                              <TableCell className="py-4 text-right pr-8">
+                                <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-slate-400 hover:text-primary cursor-pointer" 
+                                    onClick={() => handleOpenProximaAcaoModal(acao)}
+                                    title="Editar ação"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-slate-400 hover:text-rose-500 cursor-pointer" 
+                                    onClick={() => handleDeleteProximaAcao(acao)}
+                                    title="Excluir ação"
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </Button>
@@ -3559,6 +3856,151 @@ export default function SettingsPage() {
                 onClick={() => {
                   setIsPhoneModalOpen(false)
                   setEditingPhone(null)
+                }}
+                className="h-9 px-4 text-[10px] font-bold uppercase tracking-wider rounded-lg border-slate-200 cursor-pointer"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="h-9 px-5 bg-[#171717] hover:bg-[#171717]/90 text-white text-[10.5px] font-bold uppercase tracking-wider rounded-lg gap-2 shadow-sm cursor-pointer"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Salvar</span>
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Nova / Editar Próxima Ação */}
+      <Dialog open={isProximaAcaoModalOpen} onOpenChange={setIsProximaAcaoModalOpen}>
+        <DialogContent className="sm:max-w-[550px] p-6 bg-white rounded-2xl shadow-2xl border-none">
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+              <Zap className="w-4 h-4 text-amber-500" />
+              <span>{editingProximaAcao ? "Editar Próxima Ação" : "Nova Próxima Ação do Kanban"}</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveProximaAcao} className="space-y-4 pt-4">
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Ação *</Label>
+              <Input
+                placeholder="Ex: Enviar Régua de Retomada 1"
+                value={proximaAcaoForm.titulo}
+                onChange={(e) => setProximaAcaoForm(prev => ({ ...prev, titulo: e.target.value }))}
+                className="h-10 text-[12px] bg-slate-50 border-slate-200"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Descrição / Instruções</Label>
+              <Input
+                placeholder="Ex: Primeiro contato da cadência de retomada via WhatsApp"
+                value={proximaAcaoForm.descricao}
+                onChange={(e) => setProximaAcaoForm(prev => ({ ...prev, descricao: e.target.value }))}
+                className="h-10 text-[12px] bg-slate-50 border-slate-200"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Etapa do Kanban</Label>
+                <select
+                  value={proximaAcaoForm.etapa_kanban}
+                  onChange={(e) => setProximaAcaoForm(prev => ({ ...prev, etapa_kanban: e.target.value }))}
+                  className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-[12px] font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                >
+                  {ETAPAS_KANBAN_OPCOES.map((et) => (
+                    <option key={et} value={et}>{et}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Prazo SLA de Vencimento</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={proximaAcaoForm.sla_valor}
+                    onChange={(e) => setProximaAcaoForm(prev => ({ ...prev, sla_valor: Math.max(1, parseInt(e.target.value) || 1) }))}
+                    className="h-10 text-[12px] bg-slate-50 border-slate-200 w-24"
+                    required
+                  />
+                  <select
+                    value={proximaAcaoForm.sla_unidade}
+                    onChange={(e) => setProximaAcaoForm(prev => ({ ...prev, sla_unidade: e.target.value as any }))}
+                    className="flex-1 h-10 px-3 bg-slate-50 border border-slate-200 rounded-lg text-[12px] font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                  >
+                    <option value="minutos">Minutos</option>
+                    <option value="horas">Horas</option>
+                    <option value="dias">Dias</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <div>
+                <Label className="text-[12px] font-bold text-slate-700 block">Apenas Horário Comercial (Dias Úteis)</Label>
+                <p className="text-[10px] text-slate-400">Contabilizar apenas de Seg a Sex das 08h às 18h</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProximaAcaoForm(prev => ({ ...prev, apenas_dias_uteis: !prev.apenas_dias_uteis }))}
+                className={cn(
+                  "relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer",
+                  proximaAcaoForm.apenas_dias_uteis ? "bg-emerald-500" : "bg-slate-300"
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                    proximaAcaoForm.apenas_dias_uteis ? "translate-x-6" : "translate-x-1"
+                  )}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+              <div>
+                <Label className="text-[12px] font-bold text-slate-700 block">Status da Ação</Label>
+                <p className="text-[10px] text-slate-400">Define se esta ação está disponível para o Kanban</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProximaAcaoForm(prev => ({ ...prev, ativo: !prev.ativo }))}
+                className={cn(
+                  "relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer",
+                  proximaAcaoForm.ativo ? "bg-emerald-500" : "bg-slate-300"
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                    proximaAcaoForm.ativo ? "translate-x-6" : "translate-x-1"
+                  )}
+                />
+              </button>
+            </div>
+
+            <DialogFooter className="pt-4 border-t border-slate-100 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsProximaAcaoModalOpen(false)
+                  setEditingProximaAcao(null)
                 }}
                 className="h-9 px-4 text-[10px] font-bold uppercase tracking-wider rounded-lg border-slate-200 cursor-pointer"
               >

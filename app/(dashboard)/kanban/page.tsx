@@ -58,6 +58,12 @@ import { format, formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { cn, formatShortName } from "@/lib/utils"
 import { ClientDetailsModal, type LeadContactInfo } from "@/components/clients/client-details-modal"
+import { 
+  fetchProximasAcoes, 
+  getLocalProximasAcoes,
+  ProximaAcaoConfig, 
+  calcularVencimentoComSla 
+} from "@/lib/kanban-proximas-acoes"
 
 // Definição das Etapas do Kanban Comercial
 export type KanbanStage = 
@@ -1247,6 +1253,17 @@ export default function KanbanPage() {
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false)
   const sortDropdownRef = useRef<HTMLDivElement>(null)
 
+  // Próximas Ações e Regras de Vencimento dinâmicas
+  const [proximasAcoesConfig, setProximasAcoesConfig] = useState<ProximaAcaoConfig[]>(() => getLocalProximasAcoes())
+
+  useEffect(() => {
+    fetchProximasAcoes().then(data => {
+      if (data && data.length > 0) {
+        setProximasAcoesConfig(data)
+      }
+    })
+  }, [])
+
   const cltCollaborators = useMemo(() => {
     const pipelineUserIds = new Set<string>()
     const pipelineUserNames = new Set<string>()
@@ -2423,12 +2440,24 @@ export default function KanbanPage() {
           scheduleSilentRefresh()
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "kanban_proximas_acoes" },
+        () => {
+          fetchProximasAcoes().then(data => setProximasAcoesConfig(data))
+        }
+      )
       .subscribe()
 
     // 2. Sincronização ao retornar ou focar na aba (ex: após abrir chamado em outra tela)
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === "visible") {
         scheduleSilentRefresh()
+        fetchProximasAcoes().then(data => {
+          if (data && data.length > 0) {
+            setProximasAcoesConfig(data)
+          }
+        })
       }
     }
     window.addEventListener("focus", handleVisibilityOrFocus)
@@ -2895,15 +2924,22 @@ export default function KanbanPage() {
         return
       }
 
-      // Próxima ação padrão da nova etapa (sem siglas)
-      let proximaAcaoPadrao = ""
-      if (destinoEtapa === "ENTRADA DO SITE") proximaAcaoPadrao = "Fazer primeiro contato com lead do site"
-      else if (destinoEtapa === "EM RETOMADA" || destinoEtapa === "EM ABORDAGEM") proximaAcaoPadrao = "Enviar Régua de Retomada 1"
-      else if (destinoEtapa === "EM NEGOCIAÇÃO") proximaAcaoPadrao = "Enviar simulação e recolher documentos"
-      else if (destinoEtapa === "EM REATIVAÇÃO") proximaAcaoPadrao = "Resgatar oportunidade esfriada"
-      else if (destinoEtapa === "SEM INTERESSE") proximaAcaoPadrao = "Cadência de Longo Prazo / Nutrição"
-      else if (destinoEtapa === "FECHADO") proximaAcaoPadrao = "Proposta Digitada e Formalizada"
-      else if (destinoEtapa === "PERDIDO") proximaAcaoPadrao = "Atendimento Encerrado"
+      // Próxima ação e vencimento padrão da nova etapa (obtidos dinamicamente das configurações)
+      const acaoConfig = proximasAcoesConfig.find(a => a.ativo && (a.etapa_kanban === destinoEtapa || (destinoEtapa === "ENTRADA DO SITE" && a.etapa_kanban === "EM ABORDAGEM")))
+      let proximaAcaoPadrao = acaoConfig?.titulo || ""
+      if (!proximaAcaoPadrao) {
+        if (destinoEtapa === "ENTRADA DO SITE") proximaAcaoPadrao = "Fazer primeiro contato com lead do site"
+        else if (destinoEtapa === "EM RETOMADA" || destinoEtapa === "EM ABORDAGEM") proximaAcaoPadrao = "Enviar Régua de Retomada 1"
+        else if (destinoEtapa === "EM NEGOCIAÇÃO") proximaAcaoPadrao = "Enviar simulação e recolher documentos"
+        else if (destinoEtapa === "EM REATIVAÇÃO") proximaAcaoPadrao = "Resgatar oportunidade esfriada"
+        else if (destinoEtapa === "SEM INTERESSE") proximaAcaoPadrao = "Cadência de Longo Prazo / Nutrição"
+        else if (destinoEtapa === "FECHADO") proximaAcaoPadrao = "Proposta Digitada e Formalizada"
+        else if (destinoEtapa === "PERDIDO") proximaAcaoPadrao = "Atendimento Encerrado"
+      }
+
+      const vencimentoCalculado = acaoConfig 
+        ? calcularVencimentoComSla(acaoConfig.sla_minutos, acaoConfig.apenas_dias_uteis).toISOString()
+        : new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
 
       const isSaindoDeSemInteresse = destinoEtapa !== "SEM INTERESSE"
       const cleanObs = (ticket.descricao || "")
@@ -2930,7 +2966,7 @@ export default function KanbanPage() {
         ...meta,
         kanban_stage: destinoEtapa,
         proxima_acao: proximaAcaoPadrao,
-        vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        vencimento_acao: vencimentoCalculado,
         alerta_atrasado: false,
         historico_kanban: novoHistorico
       }
@@ -4698,15 +4734,24 @@ export default function KanbanPage() {
     const isAltoValor = valorTotal >= 20000
 
     // Próxima Ação e Vencimento
-    const rawProximaAcao = meta.proxima_acao || (
-      ticket.status === "EM ABORDAGEM" ? "Realizar Primeiro Contato Imediato" :
-      ticket.status === "EM RETOMADA" ? "Enviar Régua de Retomada 1 via WhatsApp" :
-      ticket.status === "EM NEGOCIAÇÃO" ? "Enviar simulação ajustada e esclarecer dúvidas" :
-      ticket.status === "EM REATIVAÇÃO" ? "Resgatar contato esfriado após 48h úteis" :
-      ticket.status === "SEM INTERESSE" ? "Programar cadência longa / nutrição" :
-      ticket.status === "FECHADO" ? "Proposta Digitada no Sistema" :
-      "Finalização registrada por inviabilidade"
-    )
+    const etapaCard = inferKanbanStage(ticket, meta)
+    const acaoFallbackConfig = proximasAcoesConfig.find(a => a.ativo && (
+      a.etapa_kanban === etapaCard || 
+      a.etapa_kanban === ticket.status ||
+      (etapaCard === "ENTRADA DO SITE" && a.etapa_kanban === "EM ABORDAGEM")
+    ))
+    const isCustomAgendado = Boolean(meta.proxima_acao && /^\[(?:Agendad|Ação Especial|Retorno|Alerta)/i.test(meta.proxima_acao))
+    const rawProximaAcao = isCustomAgendado
+      ? meta.proxima_acao!
+      : (acaoFallbackConfig?.titulo || meta.proxima_acao || (
+          etapaCard === "EM ABORDAGEM" ? "Realizar Primeiro Contato Imediato" :
+          etapaCard === "EM RETOMADA" ? "Enviar Régua de Retomada 1 via WhatsApp" :
+          etapaCard === "EM NEGOCIAÇÃO" ? "Enviar simulação ajustada e esclarecer dúvidas" :
+          etapaCard === "EM REATIVAÇÃO" ? "Resgatar contato esfriado após 48h úteis" :
+          etapaCard === "SEM INTERESSE" ? "Programar cadência longa / nutrição" :
+          etapaCard === "FECHADO" ? "Proposta Digitada no Sistema" :
+          "Finalização registrada por inviabilidade"
+        ))
     const proximaAcaoTexto = rawProximaAcao.replace(/^\[[^\]]+\]\s*/, "")
 
     const vencimentoLabel = meta.vencimento_acao 
@@ -5423,15 +5468,24 @@ export default function KanbanPage() {
     const isAltoValor = valorTotal >= 20000
     const isAcaoEspecial = Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"
 
-    const rawProximaAcao = meta.proxima_acao || (
-      ticket.status === "EM ABORDAGEM" ? "Realizar Primeiro Contato Imediato" :
-      ticket.status === "EM RETOMADA" ? "Enviar Régua de Retomada 1 via WhatsApp" :
-      ticket.status === "EM NEGOCIAÇÃO" ? "Enviar simulação ajustada e esclarecer dúvidas" :
-      ticket.status === "EM REATIVAÇÃO" ? "Resgatar contato esfriado após 48h úteis" :
-      ticket.status === "SEM INTERESSE" ? "Programar cadência longa / nutrição" :
-      ticket.status === "FECHADO" ? "Proposta Digitada no Sistema" :
-      "Finalização registrada por inviabilidade"
-    )
+    const etapaRow = inferKanbanStage(ticket, meta)
+    const acaoRowConfig = proximasAcoesConfig.find(a => a.ativo && (
+      a.etapa_kanban === etapaRow || 
+      a.etapa_kanban === ticket.status ||
+      (etapaRow === "ENTRADA DO SITE" && a.etapa_kanban === "EM ABORDAGEM")
+    ))
+    const isRowCustomAgendado = Boolean(meta.proxima_acao && /^\[(?:Agendad|Ação Especial|Retorno|Alerta)/i.test(meta.proxima_acao))
+    const rawProximaAcao = isRowCustomAgendado
+      ? meta.proxima_acao!
+      : (acaoRowConfig?.titulo || meta.proxima_acao || (
+          etapaRow === "EM ABORDAGEM" ? "Realizar Primeiro Contato Imediato" :
+          etapaRow === "EM RETOMADA" ? "Enviar Régua de Retomada 1 via WhatsApp" :
+          etapaRow === "EM NEGOCIAÇÃO" ? "Enviar simulação ajustada e esclarecer dúvidas" :
+          etapaRow === "EM REATIVAÇÃO" ? "Resgatar contato esfriado após 48h úteis" :
+          etapaRow === "SEM INTERESSE" ? "Programar cadência longa / nutrição" :
+          etapaRow === "FECHADO" ? "Proposta Digitada no Sistema" :
+          "Finalização registrada por inviabilidade"
+        ))
     const proximaAcaoTexto = rawProximaAcao.replace(/^\[[^\]]+\]\s*/, "")
 
     const vencimentoLabel = meta.vencimento_acao 
