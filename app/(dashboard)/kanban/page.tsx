@@ -102,21 +102,6 @@ const KANBAN_COLUMNS: KanbanColumnConfig[] = [
     descriptionOperador: "Executar tentativas planejadas (RT1 a RT6) para quem não respondeu.",
     descriptionGestor: "Disciplina de execução e cumprimento da sequência planejada."
   },
-  ...(process.env.NODE_ENV !== "production" ? [{
-    id: "ENTRADA DO SITE" as KanbanStage,
-    title: "Entrada do Site",
-    subtitle: "Leads do Site Institucional",
-    code: "SITE",
-    color: "emerald",
-    headerBg: "bg-emerald-100 border-emerald-300 text-slate-900",
-    borderTop: "border-t-emerald-600",
-    badgeClass: "bg-emerald-200 text-emerald-900 border-emerald-400",
-    bgColumn: "bg-emerald-50/70",
-    borderColumn: "border-emerald-300",
-    cardBorder: "border border-slate-200 hover:border-slate-300",
-    descriptionOperador: "Leads originados do simulador do site institucional Acerto Fácil.",
-    descriptionGestor: "Volume de conversão de novos contatos gerados via portal público."
-  }] : []),
   {
     id: "EM NEGOCIAÇÃO",
     title: "Em negociação",
@@ -205,6 +190,11 @@ interface TicketMetadata {
   acao_especial_motivo?: string
   acao_especial_status?: "pendente" | "aprovado" | "concluido"
   acao_especial_destinatario?: string
+  acao_especial_solicitante?: string
+  acao_especial_etapa_origem?: string
+  acao_especial_atendida?: boolean
+  acao_especial_atendido_por?: string
+  acao_especial_atendido_em?: string
   conflito_titularidade?: boolean
   conflito_responsavel_nome?: string
   prioridade?: "NORMAL" | "ALTA" | "URGENTE"
@@ -288,6 +278,7 @@ interface UserSummary {
   equipe?: string
   avatar_url?: string
   status?: string
+  regime_contratacao?: string
 }
 
 // Auxiliar para ler e gravar metadados dentro de ticket.descricao
@@ -1063,6 +1054,59 @@ export default function KanbanPage() {
 
   const [tickets, setTickets] = useState<TicketItem[]>([])
   const [usersList, setUsersList] = useState<UserSummary[]>([])
+  const [selectedCollaboratorIds, setSelectedCollaboratorIds] = useState<string[]>([])
+  const [collaboratorDropdownOpen, setCollaboratorDropdownOpen] = useState(false)
+  const collaboratorDropdownRef = useRef<HTMLDivElement>(null)
+  const [stageDropdownOpen, setStageDropdownOpen] = useState(false)
+  const stageDropdownRef = useRef<HTMLDivElement>(null)
+  const [sortDropdownOpen, setSortDropdownOpen] = useState(false)
+  const sortDropdownRef = useRef<HTMLDivElement>(null)
+
+  const cltCollaborators = useMemo(() => {
+    const pipelineUserIds = new Set<string>()
+    const pipelineUserNames = new Set<string>()
+
+    tickets.forEach(t => {
+      const meta = parseMetadata(t.descricao)
+      const uId = String(t.user_id || meta.user_id || (meta as any).operador_id || "").trim().toLowerCase()
+      const uNome = String(t.user_nome || meta.user_nome || (meta as any).operador_nome || "").trim().toLowerCase()
+      if (uId) pipelineUserIds.add(uId)
+      if (uNome) pipelineUserNames.add(uNome)
+    })
+
+    return usersList
+      .filter(u => {
+        const isAtivo = !u.status || u.status.toUpperCase() === "ATIVO"
+        const isCLT = (u.regime_contratacao || "").trim().toUpperCase() === "CLT"
+        if (!isAtivo || !isCLT) return false
+
+        const uId = u.id.trim().toLowerCase()
+        const uNome = u.nome.trim().toLowerCase()
+        return pipelineUserIds.has(uId) || pipelineUserNames.has(uNome)
+      })
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+  }, [usersList, tickets])
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (collaboratorDropdownRef.current && !collaboratorDropdownRef.current.contains(e.target as Node)) {
+        setCollaboratorDropdownOpen(false)
+      }
+      if (stageDropdownRef.current && !stageDropdownRef.current.contains(e.target as Node)) {
+        setStageDropdownOpen(false)
+      }
+      if (sortDropdownRef.current && !sortDropdownRef.current.contains(e.target as Node)) {
+        setSortDropdownOpen(false)
+      }
+    }
+    if (collaboratorDropdownOpen || stageDropdownOpen || sortDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [collaboratorDropdownOpen, stageDropdownOpen, sortDropdownOpen])
+
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
@@ -1806,7 +1850,8 @@ export default function KanbanPage() {
               role: u.role,
               equipe: u.equipe,
               avatar_url: u.avatar_url,
-              status: u.status ? String(u.status).trim().toUpperCase() : "ATIVO"
+              status: u.status ? String(u.status).trim().toUpperCase() : "ATIVO",
+              regime_contratacao: u.regime_contratacao ? String(u.regime_contratacao).trim().toUpperCase() : ""
             })))
           }
         }
@@ -2282,7 +2327,7 @@ export default function KanbanPage() {
     filteredTickets.forEach(t => {
       const meta = parseMetadata(t.descricao)
       let stage = inferKanbanStage(t, meta)
-      if (stage === "EM ABORDAGEM") stage = "EM RETOMADA"
+      if (stage === "EM ABORDAGEM" || (stage as string) === "ENTRADA DO SITE") stage = "EM RETOMADA"
       if (map[stage]) {
         map[stage].push(t)
       } else {
@@ -3000,6 +3045,9 @@ export default function KanbanPage() {
         acao_especial_status: "pendente",
         acao_especial_motivo: textoAcao,
         acao_especial_destinatario: destinatarioFinal,
+        acao_especial_solicitante: perfil?.nome || user?.user_metadata?.nome || user?.email || "Colaborador",
+        acao_especial_etapa_origem: atendimentoModalTicket.status || currentMeta.kanban_stage || "EM RETOMADA",
+        acao_especial_atendida: false,
         observacoes_historico: updatedHistoricoObs,
         observacao_data: nowIso
       }
@@ -3070,6 +3118,125 @@ export default function KanbanPage() {
     } catch (err: any) {
       console.error("Erro ao solicitar ação especial:", err?.message || err)
       toast.error("Erro ao solicitar ação especial.")
+    } finally {
+      setIsSubmittingAcaoEspecial(false)
+    }
+  }
+
+  // Conclusão / Atendimento da Ação Especial (Muda status, retorna o cartão à etapa de origem e atualiza para verde 'Ação solicitada por {nome}')
+  const handleAtenderAcaoEspecial = async () => {
+    if (!atendimentoModalTicket || !user) return
+    setIsSubmittingAcaoEspecial(true)
+    const nowIso = new Date().toISOString()
+    try {
+      const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+      const solicitante = currentMeta.acao_especial_solicitante || (() => {
+        const obsLista = Array.isArray(currentMeta.observacoes_historico) ? currentMeta.observacoes_historico : []
+        for (const item of obsLista.slice().reverse()) {
+          const txt = String(item?.texto || "")
+          if (txt.includes("SOLICITAÇÃO DE AÇÃO ESPECIAL")) {
+            return item?.autor || null
+          }
+        }
+        return atendimentoModalTicket.responsavel_nome || atendimentoModalTicket.user_nome || "Colaborador"
+      })()
+
+      const etapaRetorno = (currentMeta.acao_especial_etapa_origem as KanbanStage) || (atendimentoModalTicket.status as KanbanStage) || currentMeta.kanban_stage || "EM RETOMADA"
+      const quemAtendeu = perfil?.nome || user?.user_metadata?.nome || user?.email || "Supervisão"
+      const registroAtendimentoTexto = `✅ AÇÃO ESPECIAL ATENDIDA por ${quemAtendeu}: Solicitação de ${solicitante} atendida e cartão retornado para a etapa "${etapaRetorno}".`
+
+      const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
+      if (Array.isArray(currentMeta.observacoes_historico)) {
+        historicoExistente.push(...currentMeta.observacoes_historico)
+      }
+      const novaObs = {
+        texto: registroAtendimentoTexto,
+        data: nowIso,
+        autor: quemAtendeu
+      }
+      const updatedHistorico = [...historicoExistente, novaObs]
+      const observacoesAcumuladas = updatedHistorico.slice().reverse().map(i => i.texto.trim()).filter(Boolean).join("\n\n")
+
+      const updatedMeta: TicketMetadata = {
+        ...currentMeta,
+        acao_especial: false,
+        acao_especial_status: "concluido",
+        acao_especial_atendida: true,
+        acao_especial_atendido_por: quemAtendeu,
+        acao_especial_atendido_em: nowIso,
+        acao_especial_solicitante: solicitante,
+        kanban_stage: etapaRetorno,
+        observacoes_historico: updatedHistorico,
+        observacao_data: nowIso
+      }
+
+      if (atendimentoModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(atendimentoModalTicket.id)) {
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
+
+        const { error } = await supabase
+          .from("kanban_fichas")
+          .update({
+            etapa: etapaRetorno,
+            observacoes: observacoesAcumuladas,
+            metadata: metaParaSalvar,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+        if (error) throw error
+      } else {
+        const newDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+        const { error } = await supabase
+          .from("chamados")
+          .update({
+            status: etapaRetorno,
+            descricao: newDesc,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+        if (error) throw error
+
+        const numId = parseInt(atendimentoModalTicket.id, 10)
+        if (!isNaN(numId)) {
+          await supabase.from("mensagens_chamado").insert({
+            chamado_id: numId,
+            user_id: user.id,
+            user_nome: quemAtendeu,
+            user_role: perfil?.role || "Supervisor",
+            user_avatar: perfil?.avatar_url || null,
+            content: `✅ Ação Especial atendida por ${quemAtendeu}. Cartão de atendimento retornado para a etapa "${etapaRetorno}".`,
+            action: "acao_especial_concluida"
+          })
+        }
+      }
+
+      const newDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+      atendimentoModalTicket.descricao = newDesc
+      atendimentoModalTicket.status = etapaRetorno
+
+      setAtendimentoModalTicket(prev => prev ? {
+        ...prev,
+        status: etapaRetorno,
+        descricao: newDesc
+      } : null)
+
+      setTickets(prev => prev.map(t => {
+        if (t.id === atendimentoModalTicket.id) {
+          return {
+            ...t,
+            status: etapaRetorno,
+            descricao: newDesc
+          }
+        }
+        return t
+      }))
+
+      toast.success("Ação Especial atendida com sucesso! Cartão retornado para a coluna original.")
+      fetchChamados(true)
+    } catch (err: any) {
+      console.error("Erro ao atender ação especial:", err?.message || err)
+      toast.error("Erro ao marcar ação especial como atendida.")
     } finally {
       setIsSubmittingAcaoEspecial(false)
     }
@@ -4204,33 +4371,19 @@ export default function KanbanPage() {
     }
   }
 
-  // Categorização da Minha Fila em AGORA, VENCIDAS, FUTURAS, AÇÃO ESPECIAL e ENTRADA DO SITE
+  // Categorização da Minha Fila em AGORA, VENCIDAS, FUTURAS e AÇÃO ESPECIAL
   const filaCategorias = useMemo(() => {
     const now = new Date()
     const vencidas: Array<{ ticket: TicketItem; atrasoTexto: string }> = []
     const agora: TicketItem[] = []
     const futuras: TicketItem[] = []
     const acaoEspecial: TicketItem[] = []
-    const entradaSite: TicketItem[] = []
 
     const leadsAtivos = filteredTickets.filter(t => t.status !== "FECHADO" && t.status !== "PERDIDO")
 
     leadsAtivos.forEach(ticket => {
       const meta = parseMetadata(ticket.descricao)
       const isAcaoEspecial = Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"
-      const orig = ((ticket as any).origem || "").toUpperCase()
-      const tipo = (ticket.tipo_solicitacao || "").toUpperCase()
-      const isEntradaSite = 
-        ticket.status === "ENTRADA DO SITE" || 
-        orig.includes("SITE") || 
-        tipo.includes("SITE") || 
-        meta.kanban_stage === "ENTRADA DO SITE" ||
-        (ticket.descricao && ticket.descricao.includes("Origem: Site Institucional"))
-
-      if (isEntradaSite) {
-        entradaSite.push(ticket)
-        return
-      }
 
       const dateStr = meta.regua_proximo_vencimento || meta.vencimento_acao || meta.agendamento_data
 
@@ -4272,9 +4425,8 @@ export default function KanbanPage() {
     const valorVencidas = calcValor(vencidas.map(i => i.ticket))
     const valorFuturas = calcValor(futuras)
     const valorAcaoEspecial = calcValor(acaoEspecial)
-    const valorEntradaSite = calcValor(entradaSite)
 
-    return { agora, vencidas, futuras, acaoEspecial, entradaSite, valorAgora, valorVencidas, valorFuturas, valorAcaoEspecial, valorEntradaSite }
+    return { agora, vencidas, futuras, acaoEspecial, valorAgora, valorVencidas, valorFuturas, valorAcaoEspecial }
   }, [filteredTickets])
 
   // Função reutilizável para renderizar exatamente o mesmo Cartão de Tarefa em ambas as visões
@@ -4326,14 +4478,31 @@ export default function KanbanPage() {
       return null
     })()
 
+    const acaoSolicitante = meta.acao_especial_solicitante || (() => {
+      const obsLista = Array.isArray(meta.observacoes_historico) ? meta.observacoes_historico : []
+      for (const item of obsLista.slice().reverse()) {
+        const txt = String(item?.texto || "")
+        if (txt.includes("SOLICITAÇÃO DE AÇÃO ESPECIAL") && item?.autor) {
+          return item.autor
+        }
+      }
+      return ticket.responsavel_nome || ticket.corretor_nome || ticket.user_nome || "Colaborador"
+    })()
+
+    const isAcaoAtendida = Boolean(
+      meta.acao_especial_atendida ||
+      (!meta.acao_especial && meta.acao_especial_status === "concluido" && (meta.acao_especial_solicitante || acaoDestinatario))
+    )
+
     const temAcaoEspecial = Boolean(
-      acaoDestinatario && (
+      isAcaoAtendida ||
+      (acaoDestinatario && (
         meta.acao_especial || 
         meta.acao_especial_status === "pendente" || 
         isMinhaFilaAcaoEspecial ||
         (Array.isArray(meta.observacoes_historico) && meta.observacoes_historico.some((o: any) => String(o?.texto || "").includes("SOLICITAÇÃO DE AÇÃO ESPECIAL"))) ||
         (ticket.descricao || "").includes("SOLICITAÇÃO DE AÇÃO ESPECIAL")
-      )
+      ))
     )
 
     return (
@@ -4352,7 +4521,7 @@ export default function KanbanPage() {
         onClick={() => handleCardClick(ticket)}
         className={cn(
           "bg-white rounded-lg p-3 shadow-xs hover:shadow-xl hover:shadow-slate-900/15 hover:scale-[1.01] hover:-translate-y-0.5 transition-all duration-200 ease-out transform space-y-2.5 relative group hover:z-50 has-[.group\\/concorrencia:hover]:z-[100]",
-          (!isMinhaFilaAcaoEspecial && (Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"))
+          (!isMinhaFilaAcaoEspecial && !isAcaoAtendida && (Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"))
             ? "border-2 border-amber-500 hover:border-amber-600 ring-2 ring-amber-400/30 shadow-xs"
             : (customBorderClass ? customBorderClass : "border border-slate-200 hover:border-slate-300"),
           isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
@@ -4370,13 +4539,24 @@ export default function KanbanPage() {
           </div>
         )}
 
-        {/* Linha indicando para qual colaborador/usuário foi solicitada a ação especial */}
+        {/* Linha indicando para quem foi solicitada a ação especial ou por quem foi solicitada quando atendida */}
         {temAcaoEspecial && (
-          <div className="bg-amber-50 border border-amber-300/90 text-amber-900 px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1.5 shadow-2xs">
-            <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-            <span className="truncate">
-              Ação solicitada para <span className="font-extrabold text-amber-950">{acaoDestinatario}</span>
-            </span>
+          <div className="bg-amber-50 border border-amber-300/90 px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1.5 shadow-2xs">
+            {isAcaoAtendida ? (
+              <>
+                <Zap className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate text-emerald-700">
+                  Ação solicitada por <span className="font-extrabold text-emerald-800">{acaoSolicitante}</span>
+                </span>
+              </>
+            ) : (
+              <>
+                <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span className="truncate text-amber-900">
+                  Ação solicitada para <span className="font-extrabold text-amber-950">{acaoDestinatario}</span>
+                </span>
+              </>
+            )}
           </div>
         )}
 
@@ -4792,12 +4972,31 @@ export default function KanbanPage() {
     })
   }, [listSortBy])
 
-  // Filtro de tickets na Lista por termo de busca
+  // Filtro de tickets na Lista por termo de busca e colaborador CLT
   const filterTicketsBySearch = useCallback((list: TicketItem[]) => {
+    let result = list
+
+    // Filtro por Colaborador CLT (pode selecionar um ou vários)
+    if (selectedCollaboratorIds.length > 0) {
+      result = result.filter(t => {
+        const meta = parseMetadata(t.descricao)
+        const tId = String(t.user_id || meta.user_id || (meta as any).operador_id || "").trim().toLowerCase()
+        const tNome = String(t.user_nome || meta.user_nome || (meta as any).operador_nome || "").trim().toLowerCase()
+
+        return selectedCollaboratorIds.some(selectedId => {
+          const selNorm = selectedId.trim().toLowerCase()
+          if (tId && tId === selNorm) return true
+          const selectedUser = usersList.find(u => u.id === selectedId)
+          if (selectedUser && tNome && selectedUser.nome.trim().toLowerCase() === tNome) return true
+          return false
+        })
+      })
+    }
+
     const q = listSearch.trim().toLowerCase()
-    if (!q) return list
+    if (!q) return result
     const qDigits = q.replace(/\D/g, "")
-    return list.filter(t => {
+    return result.filter(t => {
       const nome = (t.cliente_nome || "").toLowerCase()
       const cpf = (t.cliente_cpf || "").replace(/\D/g, "")
       const meta = parseMetadata(t.descricao)
@@ -4823,7 +5022,7 @@ export default function KanbanPage() {
         (qDigits && (cpf.includes(qDigits) || matchesPhone))
       )
     })
-  }, [listSearch])
+  }, [listSearch, selectedCollaboratorIds, usersList])
 
   // Seções sequenciais de etapas para o Modo Lista
   const listSections = useMemo(() => {
@@ -5454,10 +5653,10 @@ export default function KanbanPage() {
 
         {/* Barra de Filtros e Totais (Disponível tanto na visualização Quadro quanto Lista) */}
         <div className="bg-white border border-slate-200/90 rounded-xl p-2.5 sm:p-3 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 shrink-0">
-          <div className="flex items-center gap-2 flex-1 max-w-md">
-            <div className="relative w-full">
+          <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+            <div className="relative flex-1 min-w-[180px] sm:min-w-[240px] max-w-md">
               <Input
-                placeholder="Filtrar por nome, CPF ou telefone..."
+                placeholder="Filtrar Atendimento por Nome, CPF ou Telefone..."
                 value={listSearch}
                 onChange={(e) => setListSearch(e.target.value)}
                 className="h-8.5 pr-8 pl-3 text-xs bg-slate-50 border-slate-300 rounded-lg text-slate-900 placeholder:text-slate-500"
@@ -5472,52 +5671,364 @@ export default function KanbanPage() {
                 </button>
               )}
             </div>
-          </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Filtro por Etapa */}
-            <div className="flex items-center gap-1.5 text-xs text-slate-600">
-              <Filter className="w-3.5 h-3.5 text-slate-400" />
-              <span className="font-bold text-slate-700 hidden sm:inline">Etapa:</span>
-              <select
-                value={listFilterStage}
-                onChange={(e) => setListFilterStage(e.target.value)}
-                className="h-8.5 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+            {/* Campo de seleção para filtrar por colaborador CLT (ao lado direito) */}
+            <div className="relative shrink-0" ref={collaboratorDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setCollaboratorDropdownOpen(prev => !prev)}
+                className={cn(
+                  "h-8.5 px-3 rounded-lg text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap",
+                  selectedCollaboratorIds.length > 0
+                    ? "bg-sky-50 border-sky-400 text-sky-900 shadow-2xs"
+                    : "bg-slate-50 hover:bg-slate-100 border-slate-300 text-slate-700"
+                )}
+                title="Filtrar por Colaborador"
               >
-                <option value="ALL">Todas as etapas ({totalListLeads})</option>
-                {listSections.map(sec => (
-                  <option key={sec.id} value={sec.id}>
-                    {sec.title} ({sec.tickets.length})
-                  </option>
-                ))}
-              </select>
+                <Users className={cn("w-3.5 h-3.5", selectedCollaboratorIds.length > 0 ? "text-sky-600" : "text-slate-500")} />
+                <span className="truncate max-w-[130px] sm:max-w-[160px]">
+                  {selectedCollaboratorIds.length === 0
+                    ? "Colaborador"
+                    : selectedCollaboratorIds.length === 1
+                    ? (cltCollaborators.find(c => c.id === selectedCollaboratorIds[0])?.nome?.split(' ').slice(0, 2).join(' ') || "1 Selecionado")
+                    : `${selectedCollaboratorIds.length} Colaboradores`}
+                </span>
+                {selectedCollaboratorIds.length > 0 ? (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedCollaboratorIds([])
+                    }}
+                    className="w-4 h-4 rounded-full bg-sky-200/70 hover:bg-sky-300 text-sky-800 flex items-center justify-center text-[10px] ml-0.5"
+                    title="Limpar filtro de colaborador"
+                  >
+                    ×
+                  </span>
+                ) : (
+                  <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 transition-transform", collaboratorDropdownOpen && "rotate-180")} />
+                )}
+              </button>
+
+              {/* Menu de seleção suspenso */}
+              {collaboratorDropdownOpen && (
+                <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-72 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 text-slate-900 text-xs animate-in fade-in-0 zoom-in-95">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 px-1">
+                    <span className="font-bold text-[11px] text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-slate-500" /> COLABORADORES
+                    </span>
+                    {selectedCollaboratorIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCollaboratorIds([])}
+                        className="text-[10.5px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                      >
+                        Limpar ({selectedCollaboratorIds.length})
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto space-y-0.5 pr-0.5">
+                    {/* Opção Todos os colaboradores */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCollaboratorIds([])}
+                      className={cn(
+                        "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
+                        selectedCollaboratorIds.length === 0
+                          ? "bg-sky-50 text-sky-900 font-bold"
+                          : "text-slate-700 hover:bg-slate-50 font-medium"
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className={cn(
+                          "w-4 h-4 rounded border flex items-center justify-center text-[10px]",
+                          selectedCollaboratorIds.length === 0 ? "border-sky-600 bg-sky-600 text-white" : "border-slate-300 bg-white"
+                        )}>
+                          {selectedCollaboratorIds.length === 0 && <Check className="w-3 h-3 stroke-[3]" />}
+                        </span>
+                        Todos os Colaboradores
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        ({cltCollaborators.length})
+                      </span>
+                    </button>
+
+                    <div className="my-1 border-t border-slate-100" />
+
+                    {/* Lista dos Colaboradores CLT Ativos com atendimento no pipeline */}
+                    {cltCollaborators.length === 0 ? (
+                      <p className="text-[11px] text-slate-400 py-2 text-center">Nenhum colaborador com atendimento no pipeline</p>
+                    ) : (
+                      cltCollaborators.map(c => {
+                        const isSelected = selectedCollaboratorIds.includes(c.id)
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCollaboratorIds(prev =>
+                                prev.includes(c.id)
+                                  ? prev.filter(id => id !== c.id)
+                                  : [...prev, c.id]
+                              )
+                            }}
+                            className={cn(
+                              "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
+                              isSelected
+                                ? "bg-sky-50 text-sky-900 font-bold"
+                                : "text-slate-700 hover:bg-slate-50 font-medium"
+                            )}
+                          >
+                            <span className="flex items-center gap-2 truncate pr-2">
+                              <span className={cn(
+                                "w-4 h-4 rounded border flex items-center justify-center shrink-0 text-[10px]",
+                                isSelected ? "border-sky-600 bg-sky-600 text-white" : "border-slate-300 bg-white"
+                              )}>
+                                {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                              </span>
+                              <span className="truncate">{c.nome}</span>
+                            </span>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Filtro por Etapa */}
+            <div className="relative shrink-0" ref={stageDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setStageDropdownOpen(prev => !prev)}
+                className={cn(
+                  "h-8.5 px-3 rounded-lg text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap",
+                  listFilterStage !== "ALL"
+                    ? "bg-sky-50 border-sky-400 text-sky-900 shadow-2xs"
+                    : "bg-slate-50 hover:bg-slate-100 border-slate-300 text-slate-700"
+                )}
+                title="Filtrar por Etapa"
+              >
+                <Filter className={cn("w-3.5 h-3.5", listFilterStage !== "ALL" ? "text-sky-600" : "text-slate-500")} />
+                <span className="truncate max-w-[130px] sm:max-w-[180px]">
+                  {listFilterStage === "ALL"
+                    ? "Etapa"
+                    : (listSections.find(s => s.id === listFilterStage)?.title || "Etapa")}
+                </span>
+                {listFilterStage !== "ALL" ? (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setListFilterStage("ALL")
+                    }}
+                    className="w-4 h-4 rounded-full bg-sky-200/70 hover:bg-sky-300 text-sky-800 flex items-center justify-center text-[10px] ml-0.5"
+                    title="Limpar filtro de etapa"
+                  >
+                    ×
+                  </span>
+                ) : (
+                  <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 transition-transform", stageDropdownOpen && "rotate-180")} />
+                )}
+              </button>
+
+              {/* Menu suspenso de Etapas */}
+              {stageDropdownOpen && (
+                <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-72 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 text-slate-900 text-xs animate-in fade-in-0 zoom-in-95">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 px-1">
+                    <span className="font-bold text-[11px] text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Filter className="w-3.5 h-3.5 text-slate-500" /> ETAPAS
+                    </span>
+                    {listFilterStage !== "ALL" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setListFilterStage("ALL")
+                          setStageDropdownOpen(false)
+                        }}
+                        className="text-[10.5px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto space-y-0.5 pr-0.5">
+                    {/* Opção Todas as etapas */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setListFilterStage("ALL")
+                        setStageDropdownOpen(false)
+                      }}
+                      className={cn(
+                        "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
+                        listFilterStage === "ALL"
+                          ? "bg-sky-50 text-sky-900 font-bold"
+                          : "text-slate-700 hover:bg-slate-50 font-medium"
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className={cn(
+                          "w-4 h-4 rounded border flex items-center justify-center text-[10px]",
+                          listFilterStage === "ALL" ? "border-sky-600 bg-sky-600 text-white" : "border-slate-300 bg-white"
+                        )}>
+                          {listFilterStage === "ALL" && <Check className="w-3 h-3 stroke-[3]" />}
+                        </span>
+                        Todas as etapas
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        ({totalListLeads})
+                      </span>
+                    </button>
+
+                    <div className="my-1 border-t border-slate-100" />
+
+                    {/* Lista das etapas individuais */}
+                    {listSections.map(sec => {
+                      const isSelected = listFilterStage === sec.id
+                      return (
+                        <button
+                          key={sec.id}
+                          type="button"
+                          onClick={() => {
+                            setListFilterStage(sec.id)
+                            setStageDropdownOpen(false)
+                          }}
+                          className={cn(
+                            "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
+                            isSelected
+                              ? "bg-sky-50 text-sky-900 font-bold"
+                              : "text-slate-700 hover:bg-slate-50 font-medium"
+                          )}
+                        >
+                          <span className="flex items-center gap-2 truncate pr-2">
+                            <span className={cn(
+                              "w-4 h-4 rounded border flex items-center justify-center shrink-0 text-[10px]",
+                              isSelected ? "border-sky-600 bg-sky-600 text-white" : "border-slate-300 bg-white"
+                            )}>
+                              {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                            </span>
+                            <span className="truncate">{sec.title}</span>
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-normal shrink-0">
+                            ({sec.tickets.length})
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Ordenação */}
-            <div className="flex items-center gap-1.5 text-xs text-slate-600">
-              <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
-              <span className="font-bold text-slate-700 hidden sm:inline">Ordenar:</span>
-              <select
-                value={listSortBy}
-                onChange={(e) => setListSortBy(e.target.value as "vencimento" | "valor" | "nome")}
-                className="h-8.5 px-2.5 py-1 text-xs font-semibold bg-white border border-slate-300 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
+            <div className="relative shrink-0" ref={sortDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setSortDropdownOpen(prev => !prev)}
+                className={cn(
+                  "h-8.5 px-3 rounded-lg text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap",
+                  listSortBy !== "vencimento"
+                    ? "bg-sky-50 border-sky-400 text-sky-900 shadow-2xs"
+                    : "bg-slate-50 hover:bg-slate-100 border-slate-300 text-slate-700"
+                )}
+                title="Ordenar Lista"
               >
-                <option value="vencimento">⏱️ Vencimento (Urgência)</option>
-                <option value="valor">💰 Maior Valor de Operação</option>
-                <option value="nome">🔤 Nome do Cliente (A-Z)</option>
-              </select>
-            </div>
+                <ArrowUpDown className={cn("w-3.5 h-3.5", listSortBy !== "vencimento" ? "text-sky-600" : "text-slate-500")} />
+                <span className="truncate max-w-[130px] sm:max-w-[180px]">
+                  {listSortBy === "vencimento"
+                    ? "Ordenar"
+                    : listSortBy === "valor"
+                    ? "Maior Valor"
+                    : "Nome (A-Z)"}
+                </span>
+                {listSortBy !== "vencimento" ? (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setListSortBy("vencimento")
+                    }}
+                    className="w-4 h-4 rounded-full bg-sky-200/70 hover:bg-sky-300 text-sky-800 flex items-center justify-center text-[10px] ml-0.5"
+                    title="Restaurar ordenação padrão"
+                  >
+                    ×
+                  </span>
+                ) : (
+                  <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 transition-transform", sortDropdownOpen && "rotate-180")} />
+                )}
+              </button>
 
-            {/* Totais Gerais */}
-            <div className="flex items-center gap-2 pl-2 sm:border-l border-slate-200 text-xs">
-              <span className="font-medium text-slate-600">
-                <strong className="text-slate-900 font-bold">{totalListLeads}</strong> leads
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="font-medium text-slate-600">
-                Total: <strong className="text-slate-950 font-black">{totalListValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
-              </span>
+              {/* Menu suspenso de Ordenação */}
+              {sortDropdownOpen && (
+                <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-64 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 text-slate-900 text-xs animate-in fade-in-0 zoom-in-95">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 px-1">
+                    <span className="font-bold text-[11px] text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" /> ORDENAÇÃO
+                    </span>
+                    {listSortBy !== "vencimento" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setListSortBy("vencimento")
+                          setSortDropdownOpen(false)
+                        }}
+                        className="text-[10.5px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                      >
+                        Padrão
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-0.5">
+                    {[
+                      { id: "vencimento", label: "⏱️ Vencimento (Urgência)" },
+                      { id: "valor", label: "💰 Maior Valor de Operação" },
+                      { id: "nome", label: "🔤 Nome do Cliente (A-Z)" },
+                    ].map(opt => {
+                      const isSelected = listSortBy === opt.id
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => {
+                            setListSortBy(opt.id as "vencimento" | "valor" | "nome")
+                            setSortDropdownOpen(false)
+                          }}
+                          className={cn(
+                            "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
+                            isSelected
+                              ? "bg-sky-50 text-sky-900 font-bold"
+                              : "text-slate-700 hover:bg-slate-50 font-medium"
+                          )}
+                        >
+                          <span className="flex items-center gap-2 truncate pr-2">
+                            <span className={cn(
+                              "w-4 h-4 rounded border flex items-center justify-center shrink-0 text-[10px]",
+                              isSelected ? "border-sky-600 bg-sky-600 text-white" : "border-slate-300 bg-white"
+                            )}>
+                              {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                            </span>
+                            <span className="truncate">{opt.label}</span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
+          </div>
+
+          {/* Totais Gerais */}
+          <div className="flex items-center gap-2 shrink-0 text-sm pl-2 sm:border-l border-slate-200 self-end md:self-center">
+            <span className="font-medium text-slate-600">
+              <strong className="text-slate-900 font-bold">{totalListLeads}</strong> leads
+            </span>
+            <span className="text-slate-300">•</span>
+            <span className="font-medium text-slate-600">
+              Total: <strong className="text-slate-950 font-black">{totalListValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
+            </span>
           </div>
         </div>
 
@@ -5725,58 +6236,6 @@ export default function KanbanPage() {
                     </div>
                   )
                 })()}
-
-                {/* Coluna 5: ENTRADA DO SITE (Visível exclusivamente em desenvolvimento para Administrador e Desenvolvedor) */}
-                {process.env.NODE_ENV !== "production" && 
-                 (isAdmin || isDeveloper || perfil?.role === "Administrador" || perfil?.role === "Desenvolvedor") && 
-                 (listFilterStage === "ALL" || listFilterStage === "ENTRADA DO SITE" || (listFilterStage as string) === "entrada_site") && (() => {
-                  const ticketsSite = sortTickets(filterTicketsBySearch(filaCategorias.entradaSite || []))
-                  const valorSite = ticketsSite.reduce((acc, t) => {
-                    const opData = getValorOperacaoDeAbertura(t)
-                    const opNum = parseValorToNumber(opData.valor)
-                    return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-                  }, 0)
-                  return (
-                    <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-300/80 shadow-2xs overflow-hidden bg-emerald-50/70">
-                      {/* Cabeçalho da Coluna Entrada do Site */}
-                      <div className="p-3.5 border-b border-emerald-200/70 bg-emerald-50/70 border-t-4 border-t-emerald-600 rounded-t-xl shrink-0">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
-                            <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span>Entrada do Site</span>
-                          </h2>
-                          <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
-                            {ticketsSite.length}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 font-medium line-clamp-1 mb-2">
-                          Leads gerados no site institucional
-                        </p>
-
-                        {/* Totais Acumulados */}
-                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
-                          <span className="font-semibold text-slate-800">
-                            {ticketsSite.length} {ticketsSite.length === 1 ? "lead" : "leads"}
-                          </span>
-                          <span className="font-extrabold text-slate-950">
-                            {valorSite.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Lista de Cards da Coluna Entrada do Site */}
-                      <div className="p-2.5 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar bg-emerald-50/70">
-                        {ticketsSite.length === 0 ? (
-                          <div className="py-12 text-center text-xs text-emerald-900/60 font-medium">
-                            Nenhum lead novo do site
-                          </div>
-                        ) : (
-                          ticketsSite.map(ticket => renderTicketCard(ticket, undefined, false))
-                        )}
-                      </div>
-                    </div>
-                  )
-                })()}
               </div>
         )}
 
@@ -5785,14 +6244,7 @@ export default function KanbanPage() {
           <div className="flex-1 overflow-x-auto pb-1 min-h-0 h-full">
             <div className="flex items-stretch gap-3.5 sm:gap-4 w-full min-w-max h-full">
                 {KANBAN_COLUMNS
-                  .filter(col => {
-                    if (col.id === "ENTRADA DO SITE") {
-                      if (process.env.NODE_ENV === "production") return false
-                      const canSee = Boolean(isAdmin || isDeveloper || perfil?.role === "Administrador" || perfil?.role === "Desenvolvedor")
-                      if (!canSee) return false
-                    }
-                    return listFilterStage === "ALL" || col.id === listFilterStage
-                  })
+                  .filter(col => listFilterStage === "ALL" || col.id === listFilterStage)
                   .map(col => {
                     let colTickets = groupedColumns[col.id] || []
                     colTickets = filterTicketsBySearch(colTickets)
@@ -6322,16 +6774,53 @@ export default function KanbanPage() {
                               : "INFORMAÇÕES DO CLIENTE")}
                       </Button>
 
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => setIsAcaoEspecialModalOpen(true)}
-                        className="text-xs h-7.5 bg-amber-500 hover:bg-amber-600 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer w-full sm:w-auto justify-center border border-amber-600/30"
-                        title="Solicitar Ação Especial"
-                      >
-                        <Zap className="w-3.5 h-3.5" />
-                        SOLICITAR AÇÃO ESPECIAL
-                      </Button>
+                      {(() => {
+                        const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+                        const isAcaoEspecialPendente = Boolean(currentMeta.acao_especial || currentMeta.acao_especial_status === "pendente")
+                        const roleNorm = (perfil?.role || perfil?.funcao || userRole || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                        const canAtenderAcaoEspecial = Boolean(
+                          isAdmin ||
+                          isGestor ||
+                          isDeveloper ||
+                          roleNorm.includes("admin") ||
+                          roleNorm.includes("supervisor") ||
+                          roleNorm.includes("operacion") ||
+                          roleNorm.includes("monitor") ||
+                          (currentMeta.acao_especial_destinatario && (
+                            (perfil?.nome || "").toLowerCase().trim() === currentMeta.acao_especial_destinatario.toLowerCase().trim() ||
+                            (user?.user_metadata?.nome || "").toLowerCase().trim() === currentMeta.acao_especial_destinatario.toLowerCase().trim()
+                          ))
+                        )
+
+                        if (isAcaoEspecialPendente && canAtenderAcaoEspecial) {
+                          return (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={handleAtenderAcaoEspecial}
+                              disabled={isSubmittingAcaoEspecial}
+                              className="text-xs h-7.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer w-full sm:w-auto justify-center border border-emerald-700/30"
+                              title="Marcar Ação Especial como atendida e retornar cartão para a coluna de origem"
+                            >
+                              {isSubmittingAcaoEspecial ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                              AÇÃO ESPECIAL ATENDIDA
+                            </Button>
+                          )
+                        }
+
+                        return (
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => setIsAcaoEspecialModalOpen(true)}
+                            className="text-xs h-7.5 bg-amber-500 hover:bg-amber-600 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer w-full sm:w-auto justify-center border border-amber-600/30"
+                            title="Solicitar Ação Especial"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                            SOLICITAR AÇÃO ESPECIAL
+                          </Button>
+                        )
+                      })()}
                     </div>
                   </div>
 

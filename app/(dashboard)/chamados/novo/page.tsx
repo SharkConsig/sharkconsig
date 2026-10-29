@@ -1171,11 +1171,6 @@ export function NewTicketForm({
                                   >
                                     <div className="flex items-center gap-2 truncate">
                                       <span>{tel.numero}</span>
-                                      {tel.descricao && (
-                                        <span className="text-[10px] text-slate-400 font-normal truncate">
-                                          • {tel.descricao}
-                                        </span>
-                                      )}
                                     </div>
                                     {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
                                   </button>
