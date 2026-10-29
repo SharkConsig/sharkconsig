@@ -89,7 +89,7 @@ interface KanbanColumnConfig {
 const KANBAN_COLUMNS: KanbanColumnConfig[] = [
   {
     id: "EM RETOMADA",
-    title: "Em retomada",
+    title: "Em interação ou retomada",
     subtitle: "Réguas de Contato",
     code: "RT1 - RT6",
     color: "amber",
@@ -150,7 +150,7 @@ const KANBAN_COLUMNS: KanbanColumnConfig[] = [
   {
     id: "FECHADO",
     title: "Fechado",
-    subtitle: "Venda Concluída",
+    subtitle: "Proposta Digitada no Banco",
     code: "GOL",
     color: "emerald",
     headerBg: "bg-emerald-100 border-emerald-300 text-slate-900",
@@ -268,6 +268,11 @@ interface TicketItem {
     autor?: string
     motivo?: string
   }>
+  proposta_info?: {
+    ade?: string
+    data_digitacao?: string
+    status?: string
+  }
 }
 
 interface UserSummary {
@@ -850,7 +855,97 @@ function isUserObservation(text?: string | null): boolean {
   return true
 }
 
-function inferKanbanStage(ticket: TicketItem, meta: TicketMetadata): KanbanStage {
+// Verifica se a proposta bancária pertence especificamente ao mesmo usuário/operador do cartão do atendimento
+function matchesProposalUser(p: any, t: TicketItem): boolean {
+  if (!p || !t) return false
+
+  // Se o id_lead coincidir diretamente com o ID da ficha/chamado
+  if (p.id_lead && String(p.id_lead).trim() === String(t.id).trim()) {
+    return true
+  }
+
+  const meta = parseMetadata(t.descricao)
+
+  // IDs associados ao cartão do atendimento
+  const cardUserIds = [
+    t.user_id,
+    (t as any).operador_id,
+    meta.operador_id,
+    meta.corretor_id,
+    meta.user_id
+  ].map(id => String(id || "").trim().toLowerCase()).filter(Boolean)
+
+  // Nomes associados ao cartão do atendimento
+  const cardUserNames = [
+    t.user_nome,
+    (t as any).operador_nome,
+    (t as any).responsavel_nome,
+    meta.operador_nome,
+    meta.corretor_nome,
+    meta.user_nome
+  ].map(name => String(name || "").trim().toLowerCase()).filter(Boolean)
+
+  // IDs associados à proposta
+  const propUserIds = [
+    p.corretor_id,
+    p.estagiario_colaborador_id,
+    p.user_id
+  ].map(id => String(id || "").trim().toLowerCase()).filter(Boolean)
+
+  // Nomes associados à proposta
+  const propUserNames = [
+    p.nome_corretor,
+    p.corretor,
+    p.estagiario_colaborador_nome
+  ].map(name => String(name || "").trim().toLowerCase()).filter(Boolean)
+
+  // 1. Verificação por ID do operador
+  const matchId = propUserIds.some(pId => cardUserIds.includes(pId))
+  if (matchId) return true
+
+  // 2. Verificação por Nome do operador
+  const matchName = propUserNames.some(pName => 
+    cardUserNames.some(cName => cName === pName || cName.includes(pName) || pName.includes(cName))
+  )
+  if (matchName) return true
+
+  return false
+}
+
+function inferKanbanStage(
+  ticket: TicketItem, 
+  meta: TicketMetadata,
+  propInfo?: { ade?: string; data_digitacao?: string; status?: string }
+): KanbanStage {
+  const prop = propInfo || ticket.proposta_info
+  const pStatus = (prop?.status || "").toUpperCase().trim()
+  const hasDigitacao = Boolean(
+    (prop?.ade && prop.ade.trim()) && 
+    (prop?.data_digitacao && prop.data_digitacao.trim())
+  )
+
+  // 1. Proposta digitada no banco deste operador que foi cancelada no banco vai automaticamente para PERDIDO
+  if (hasDigitacao && (pStatus === "CANCELADO" || pStatus === "CANCELADOS" || pStatus.includes("CANCELAD"))) {
+    return "PERDIDO"
+  }
+
+  // 2. Proposta digitada no banco deste operador (com ADE e DATA DE DIGITAÇÃO) entra na coluna FECHADO
+  if (hasDigitacao) {
+    return "FECHADO"
+  }
+
+  // 3. Cadência esgotada (RTs e REs) entra na coluna PERDIDO
+  const isCadenciaEsgotada = Boolean(
+    meta.regua_etapa === "ENCERRADO" ||
+    meta.proxima_acao?.toLowerCase().includes("esgotad") ||
+    (ticket as any).motivo_perda?.toLowerCase().includes("esgotad") ||
+    (ticket.descricao || "").toLowerCase().includes("cadência de retomada esgotada") ||
+    (ticket.descricao || "").toLowerCase().includes("cadencia de retomada esgotada")
+  )
+  if (isCadenciaEsgotada) {
+    return "PERDIDO"
+  }
+
   if (meta.kanban_stage) {
     if (meta.kanban_stage === "EM ABORDAGEM") return "EM RETOMADA"
     return meta.kanban_stage
@@ -868,6 +963,95 @@ function inferKanbanStage(ticket: TicketItem, meta: TicketMetadata): KanbanStage
   if (s.includes("PROPOSTA") || s.includes("NEGOCIA") || s.includes("APROVAD") || s.includes("PENDENTE DOCUMENTAÇÃO") || s.includes("AGUARDANDO OPERACIONAL")) return "EM NEGOCIAÇÃO"
   if (s.includes("RETOMADA") || s.includes("SEM INTERAÇÃO") || s.includes("REENVIO") || s.includes("FUTURO") || s.includes("ABORDAGEM")) return "EM RETOMADA"
   return "EM RETOMADA"
+}
+
+// Determina a etiqueta superior de status para os cartões nas etapas FECHADO e PERDIDO (com primeira letra maiúscula e restantes minúsculas)
+function getCardTopBadge(
+  ticket: TicketItem, 
+  stage: string, 
+  propInfo?: { ade?: string; data_digitacao?: string; status?: string }
+): {
+  label: string
+  sub?: string
+  bgClass: string
+  borderClass: string
+  textClass: string
+  icon: React.ReactNode
+} | null {
+  const meta = parseMetadata(ticket.descricao)
+  const prop = propInfo || ticket.proposta_info
+  const pStatus = (prop?.status || "").toUpperCase().trim()
+
+  const isPropostaCancelada = Boolean(
+    pStatus === "CANCELADO" || 
+    pStatus === "CANCELADOS" || 
+    pStatus.includes("CANCELAD") ||
+    ticket.status === "CANCELADO" ||
+    (ticket as any).motivo_perda?.toLowerCase().includes("cancelad")
+  )
+
+  const isCadenciaEsgotada = Boolean(
+    meta.regua_etapa === "ENCERRADO" ||
+    meta.proxima_acao?.toLowerCase().includes("esgotad") ||
+    (ticket as any).motivo_perda?.toLowerCase().includes("esgotad") ||
+    (ticket.descricao || "").toLowerCase().includes("cadência de retomada esgotada") ||
+    (ticket.descricao || "").toLowerCase().includes("cadencia de retomada esgotada")
+  )
+
+  if (stage === "FECHADO") {
+    const isPago = Boolean(
+      pStatus.includes("PAGO") || 
+      pStatus.includes("PÓS-VENDA") || 
+      pStatus.includes("POS-VENDA") ||
+      meta.proposta_status?.toUpperCase().includes("PAGO")
+    )
+
+    if (isPago) {
+      return {
+        label: "Pago ao cliente",
+        sub: prop?.ade ? `ADE: ${prop.ade}` : undefined,
+        bgClass: "bg-emerald-100/90",
+        borderClass: "border-emerald-300",
+        textClass: "text-emerald-900",
+        icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+      }
+    }
+
+    return {
+      label: "Proposta em andamento",
+      sub: prop?.ade ? `ADE: ${prop.ade}` : undefined,
+      bgClass: "bg-amber-100/90",
+      borderClass: "border-amber-300",
+      textClass: "text-amber-950",
+      icon: <Clock className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+    }
+  }
+
+  if (stage === "PERDIDO") {
+    if (isPropostaCancelada) {
+      return {
+        label: "Proposta cancelada",
+        sub: prop?.ade ? `ADE: ${prop.ade}` : undefined,
+        bgClass: "bg-rose-100/90",
+        borderClass: "border-rose-300",
+        textClass: "text-rose-950",
+        icon: <XCircle className="w-3.5 h-3.5 text-rose-700 shrink-0" />
+      }
+    }
+
+    if (isCadenciaEsgotada) {
+      return {
+        label: "Cadência esgotada",
+        sub: undefined,
+        bgClass: "bg-rose-100/90",
+        borderClass: "border-rose-300",
+        textClass: "text-rose-950",
+        icon: <AlertCircle className="w-3.5 h-3.5 text-rose-700 shrink-0" />
+      }
+    }
+  }
+
+  return null
 }
 
 // Formatação do CPF mascarado: ***.123.456-**
@@ -1053,6 +1237,7 @@ export default function KanbanPage() {
   }
 
   const [tickets, setTickets] = useState<TicketItem[]>([])
+  const [propostasPorCpf, setPropostasPorCpf] = useState<Record<string, { ade?: string; data_digitacao?: string; status?: string }>>({})
   const [usersList, setUsersList] = useState<UserSummary[]>([])
   const [selectedCollaboratorIds, setSelectedCollaboratorIds] = useState<string[]>([])
   const [collaboratorDropdownOpen, setCollaboratorDropdownOpen] = useState(false)
@@ -2119,6 +2304,59 @@ export default function KanbanPage() {
         } catch (err) {
           console.error("Erro ao verificar operadores em concorrência:", err)
         }
+
+        // Buscar propostas digitadas no banco vinculadas aos CPFs (validação por ADE e DATA DE DIGITAÇÃO isolada por operador)
+        try {
+          const { data: propostasExistentes } = await supabase
+            .from("propostas")
+            .select("id, id_lead, cliente_cpf, ade, data_digitacao, status, corretor_id, corretor, nome_corretor, estagiario_colaborador_id, estagiario_colaborador_nome")
+            .in("cliente_cpf", cpfs)
+            .order("updated_at", { ascending: false })
+
+          if (propostasExistentes && propostasExistentes.length > 0) {
+            const mapPropsByTicketId: Record<string, { ade?: string; data_digitacao?: string; status?: string }> = {}
+
+            // Atualiza os tickets com o status e informações da proposta bancária estritamente pertencente a este operador
+            setTickets(prev => prev.map(t => {
+              const cCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+              const matchingProp = propostasExistentes.find((p: any) => {
+                const pCpf = (p.cliente_cpf || "").replace(/\D/g, "")
+                const sameCpf = cCpf && pCpf && cCpf === pCpf
+                const sameLead = p.id_lead && String(p.id_lead).trim() === String(t.id).trim()
+                if (!sameCpf && !sameLead) return false
+
+                return matchesProposalUser(p, t)
+              })
+
+              if (matchingProp) {
+                const info = {
+                  ade: matchingProp.ade ? String(matchingProp.ade).trim() : undefined,
+                  data_digitacao: matchingProp.data_digitacao ? String(matchingProp.data_digitacao).trim() : undefined,
+                  status: matchingProp.status ? String(matchingProp.status).trim() : undefined
+                }
+                mapPropsByTicketId[t.id] = info
+                const meta = parseMetadata(t.descricao)
+                const inferred = inferKanbanStage(t, meta, info)
+                return {
+                  ...t,
+                  status: inferred,
+                  proposta_info: info
+                }
+              } else {
+                const meta = parseMetadata(t.descricao)
+                const inferred = inferKanbanStage(t, meta, undefined)
+                return {
+                  ...t,
+                  status: inferred,
+                  proposta_info: undefined
+                }
+              }
+            }))
+            setPropostasPorCpf(mapPropsByTicketId)
+          }
+        } catch (propErr) {
+          console.warn("Aviso ao carregar propostas para o Kanban:", propErr)
+        }
       }
     } catch (err) {
       console.error("Erro ao carregar fichas para o Kanban:", err)
@@ -2155,7 +2393,7 @@ export default function KanbanPage() {
       }, 300)
     }
 
-    // 1. Canal Supabase Realtime para kanban_fichas e chamados (INSERT, UPDATE e DELETE)
+    // 1. Canal Supabase Realtime para kanban_fichas, chamados e propostas (INSERT, UPDATE e DELETE)
     const channelName = `kanban_sync_${Math.random().toString(36).substring(2, 9)}`
     const channel = supabase
       .channel(channelName)
@@ -2174,6 +2412,13 @@ export default function KanbanPage() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "chamados" },
+        () => {
+          scheduleSilentRefresh()
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "propostas" },
         () => {
           scheduleSilentRefresh()
         }
@@ -2326,7 +2571,8 @@ export default function KanbanPage() {
 
     filteredTickets.forEach(t => {
       const meta = parseMetadata(t.descricao)
-      let stage = inferKanbanStage(t, meta)
+      const prop = propostasPorCpf[t.id] || t.proposta_info
+      let stage = inferKanbanStage(t, meta, prop)
       if (stage === "EM ABORDAGEM" || (stage as string) === "ENTRADA DO SITE") stage = "EM RETOMADA"
       if (map[stage]) {
         map[stage].push(t)
@@ -2336,7 +2582,7 @@ export default function KanbanPage() {
     })
 
     return map
-  }, [filteredTickets])
+  }, [filteredTickets, propostasPorCpf])
 
   // Totais Gerais para o Dashboard superior
   const metrics = useMemo(() => {
@@ -4379,7 +4625,12 @@ export default function KanbanPage() {
     const futuras: TicketItem[] = []
     const acaoEspecial: TicketItem[] = []
 
-    const leadsAtivos = filteredTickets.filter(t => t.status !== "FECHADO" && t.status !== "PERDIDO")
+    const leadsAtivos = filteredTickets.filter(t => {
+      const meta = parseMetadata(t.descricao)
+      const prop = propostasPorCpf[t.id] || t.proposta_info
+      const stage = inferKanbanStage(t, meta, prop)
+      return stage !== "FECHADO" && stage !== "PERDIDO" && t.status !== "FECHADO" && t.status !== "PERDIDO"
+    })
 
     leadsAtivos.forEach(ticket => {
       const meta = parseMetadata(ticket.descricao)
@@ -4427,7 +4678,7 @@ export default function KanbanPage() {
     const valorAcaoEspecial = calcValor(acaoEspecial)
 
     return { agora, vencidas, futuras, acaoEspecial, valorAgora, valorVencidas, valorFuturas, valorAcaoEspecial }
-  }, [filteredTickets])
+  }, [filteredTickets, propostasPorCpf])
 
   // Função reutilizável para renderizar exatamente o mesmo Cartão de Tarefa em ambas as visões
   const renderTicketCard = (
@@ -4528,6 +4779,34 @@ export default function KanbanPage() {
           draggedTicket?.id === ticket.id && "opacity-40 scale-95 border-dashed border-indigo-400"
         )}
       >
+        {/* ETIQUETA NO TOPO DO CARTÃO (FECHADO / PERDIDO) */}
+        {(() => {
+          const prop = propostasPorCpf[ticket.id] || ticket.proposta_info
+          const currentStage = inferKanbanStage(ticket, meta, prop)
+          const topBadge = getCardTopBadge(ticket, currentStage, prop)
+
+          if (!topBadge) return null
+
+          return (
+            <div className={cn(
+              "w-full px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center justify-between shadow-2xs border -mt-0.5 mb-1",
+              topBadge.bgClass,
+              topBadge.borderClass,
+              topBadge.textClass
+            )}>
+              <span className="flex items-center gap-1.5 truncate text-[11px]">
+                {topBadge.icon}
+                <span className="truncate">{topBadge.label}</span>
+              </span>
+              {topBadge.sub && (
+                <span className="text-[11px] font-bold opacity-90 shrink-0 ml-1">
+                  {topBadge.sub}
+                </span>
+              )}
+            </div>
+          )
+        })()}
+
         {/* Indicação destacada de tempo de atraso (quando na aba Vencidas) */}
         {atrasoCustomTexto && (
           <div className="bg-rose-50 border border-rose-200 text-rose-800 px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center justify-between">
@@ -4544,9 +4823,9 @@ export default function KanbanPage() {
           <div className="bg-amber-50 border border-amber-300/90 px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1.5 shadow-2xs">
             {isAcaoAtendida ? (
               <>
-                <Zap className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span className="truncate text-emerald-700">
-                  Ação solicitada por <span className="font-extrabold text-emerald-800">{acaoSolicitante}</span>
+                <Zap className="w-3.5 h-3.5 text-[#0491d3] shrink-0" />
+                <span className="truncate text-[#0491d3]">
+                  Ação atendida por <span className="font-extrabold text-[#0491d3]">{meta.acao_especial_atendido_por || acaoSolicitante}</span>
                 </span>
               </>
             ) : (
@@ -4566,11 +4845,6 @@ export default function KanbanPage() {
             {meta.alerta_atrasado && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-rose-100 text-rose-800 border border-rose-200 animate-pulse text-[12px]">
                 🔴 ATRASADO
-              </span>
-            )}
-            {!isMinhaFilaAcaoEspecial && Boolean(meta.acao_especial || meta.acao_especial_status === "pendente") && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800 border border-amber-200 text-[10px] whitespace-nowrap">
-                🟡 AÇÃO ESPECIAL
               </span>
             )}
             {/* ETIQUETA VISUAL NO CARTÃO DO PIPELINE: ATENDIDO POR 1 OU MAIS USUÁRIOS */}
@@ -5219,6 +5493,24 @@ export default function KanbanPage() {
                 Ação Especial {meta.acao_especial_destinatario ? `(${meta.acao_especial_destinatario})` : ""}
               </span>
             )}
+            {(() => {
+              const prop = propostasPorCpf[ticket.id] || ticket.proposta_info
+              const currentStage = inferKanbanStage(ticket, meta, prop)
+              const topBadge = getCardTopBadge(ticket, currentStage, prop)
+              if (!topBadge) return null
+              return (
+                <span className={cn(
+                  "inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md border shadow-2xs tracking-tight",
+                  topBadge.bgClass,
+                  topBadge.borderClass,
+                  topBadge.textClass
+                )}>
+                  {topBadge.icon}
+                  <span>{topBadge.label}</span>
+                  {topBadge.sub && <span className="opacity-90 font-bold">({topBadge.sub})</span>}
+                </span>
+              )
+            })()}
           </div>
 
           {/* CPF e Telefone com toggles e botões de cópia */}
@@ -6799,7 +7091,7 @@ export default function KanbanPage() {
                               size="sm"
                               onClick={handleAtenderAcaoEspecial}
                               disabled={isSubmittingAcaoEspecial}
-                              className="text-xs h-7.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer w-full sm:w-auto justify-center border border-emerald-700/30"
+                              className="text-xs h-7.5 bg-[#0491d3] hover:bg-[#037cb5] text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer w-full sm:w-auto justify-center border border-[#0491d3]/40"
                               title="Marcar Ação Especial como atendida e retornar cartão para a coluna de origem"
                             >
                               {isSubmittingAcaoEspecial ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
