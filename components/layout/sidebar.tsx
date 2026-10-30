@@ -414,9 +414,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           return true
         }
 
-        // KANBAN: visível para todos os usuários autorizados, EXCETO Corretor PJ
+        // KANBAN: visível para todos os usuários autorizados, EXCETO Corretor PJ (com liberação exclusiva para Thiago Mello Couto)
         if (item.href === "/kanban") {
-          if (isCorretorPJ) return false
+          const uNomeNorm = (perfil?.nome || user?.email || "")
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+          const isThiago = uNomeNorm.includes("thiago mello") || uNomeNorm.includes("thiago couto") || (uNomeNorm.includes("thiago") && uNomeNorm.includes("mello"))
+          if (isCorretorPJ && !isThiago) return false
           return true
         }
 

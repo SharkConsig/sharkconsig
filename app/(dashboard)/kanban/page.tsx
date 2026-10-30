@@ -1214,7 +1214,27 @@ export default function KanbanPage() {
     ""
   ).toUpperCase().trim()
 
-  // Corretor PJ não tem acesso ao Kanban (Desenvolvedor mesmo sendo PJ continua com acesso normal)
+  const currentUserNameNorm = (perfil?.nome || user?.user_metadata?.nome || user?.email || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+  const isThiagoMelloUser = currentUserNameNorm.includes("thiago mello") || currentUserNameNorm.includes("thiago couto") || (currentUserNameNorm.includes("thiago") && currentUserNameNorm.includes("mello"))
+
+  const isOperacionalUser = Boolean(
+    userRole === "Operacional" || perfil?.role === "Operacional"
+  )
+
+  // Apenas Administrador, Desenvolvedor, Operacional e o próprio Thiago Mello Couto podem visualizar atendimentos dele
+  const canViewThiagoTickets = Boolean(
+    isThiagoMelloUser ||
+    isAdmin ||
+    isAdminUser ||
+    isDeveloper ||
+    isDevUser ||
+    isOperacionalUser
+  )
+
+  // Corretor PJ não tem acesso ao Kanban (Desenvolvedor continua normal; Thiago Mello Couto liberado exclusivamente)
   const isCorretorPJ = Boolean(
     !isDevUser &&
     !isAdminUser &&
@@ -1222,8 +1242,26 @@ export default function KanbanPage() {
     regimeUpper === "PJ"
   )
 
-  // Módulo liberado para todos os usuários autorizados (Desenvolvedor mesmo PJ, Administrador, Supervisor, Operacional, Monitoramento, Corretor CLT, Estágio, RH)
-  const canAccessKanban = !isCorretorPJ
+  // Módulo liberado para todos os usuários autorizados; para Corretores PJ, SOMENTE para Thiago Mello Couto
+  const canAccessKanban = !isCorretorPJ || isThiagoMelloUser
+
+  // Identificar se o cartão pertence ao Corretor PJ Thiago Mello Couto
+  const isThiagoTicket = useCallback((ticket: TicketItem, meta?: TicketMetadata) => {
+    const m = meta || parseMetadata(ticket.descricao)
+    const names = [
+      ticket.user_nome,
+      (ticket as any).operador_nome,
+      (ticket as any).corretor_nome,
+      m.user_nome,
+      (m as any).operador_nome,
+      (m as any).corretor_nome
+    ]
+    return names.some(n => {
+      if (!n) return false
+      const s = String(n).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      return s.includes("thiago mello") || s.includes("thiago couto") || (s.includes("thiago") && s.includes("mello"))
+    })
+  }, [])
 
   // Visão Ativa do Módulo Kanban: "MINHA_FILA" (padrão inicial) ou "KANBAN"
   const [activeView, setActiveView] = useState<"MINHA_FILA" | "KANBAN">("MINHA_FILA")
@@ -1281,11 +1319,12 @@ export default function KanbanPage() {
       )
 
       if (matched) {
-        // Remove dessa lista APENAS os 'Corretores' do regime 'PJ'
+        // Remove dessa lista os Corretores PJ (permitindo apenas Thiago Mello Couto para quem possui autorização de visualização)
         const roleStr = String(matched.role || matched.funcao || "").trim().toUpperCase()
         const regimeStr = String(matched.regime_contratacao || "").trim().toUpperCase()
         const isCorretorPJ = roleStr.includes("CORRETOR") && regimeStr === "PJ"
-        if (isCorretorPJ) return
+        const isMatchedThiago = String(matched.nome || "").toLowerCase().includes("thiago mello") || String(matched.nome || "").toLowerCase().includes("thiago couto")
+        if (isCorretorPJ && (!isMatchedThiago || !canViewThiagoTickets)) return
 
         map.set(matched.id, matched)
       } else {
@@ -1294,7 +1333,8 @@ export default function KanbanPage() {
         const metaRegime = String((meta as any).regime_contratacao || "").trim().toUpperCase()
         const metaEquipe = String(t.equipe || (meta as any).equipe || "").trim().toUpperCase()
         const isCorretorPJ = (metaRole.includes("CORRETOR") || metaEquipe.includes("PJ")) && (metaRegime === "PJ" || metaEquipe.includes("PJ"))
-        if (isCorretorPJ) return
+        const isRawThiago = rawNome.toLowerCase().includes("thiago mello") || rawNome.toLowerCase().includes("thiago couto")
+        if (isCorretorPJ && (!isRawThiago || !canViewThiagoTickets)) return
 
         const key = rawId || rawNome.toLowerCase()
         if (!map.has(key)) {
@@ -2138,7 +2178,9 @@ export default function KanbanPage() {
           .range(from, from + PAGE_SIZE - 1)
 
         if (!isGestor && user) {
-          if (userRole === "Estágio" || userRole === "Estagio") {
+          if (isThiagoMelloUser) {
+            query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
+          } else if (userRole === "Estágio" || userRole === "Estagio") {
             query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
           } else if (userRole === "Corretor") {
             if (myEstagiariosIdsList.length > 0) {
@@ -2247,43 +2289,59 @@ export default function KanbanPage() {
       // Filtro de segurança: Estagiário vê seus próprios atendimentos; Corretor vê os seus e os de estagiários apadrinhados
       let ticketsFinal = formatted
       if (!isGestor && user) {
-        const uId = String(user.id).trim().toLowerCase()
-        const uNome = (perfil?.nome || user.email || "").trim().toLowerCase()
-        const isEstagiarioUser = userRole === "Estágio" || userRole === "Estagio"
-        const allowedIds = isEstagiarioUser ? [uId] : [uId, ...myEstagiariosIdsList.map(id => String(id).trim().toLowerCase())]
+        if (isThiagoMelloUser) {
+          ticketsFinal = formatted.filter(t => {
+            const meta = parseMetadata(t.descricao)
+            return isThiagoTicket(t, meta)
+          })
+        } else {
+          const uId = String(user.id).trim().toLowerCase()
+          const uNome = (perfil?.nome || user.email || "").trim().toLowerCase()
+          const isEstagiarioUser = userRole === "Estágio" || userRole === "Estagio"
+          const allowedIds = isEstagiarioUser ? [uId] : [uId, ...myEstagiariosIdsList.map(id => String(id).trim().toLowerCase())]
 
-        ticketsFinal = formatted.filter(t => {
-          const meta = parseMetadata(t.descricao)
-          const tUserId = String(t.user_id || "").trim().toLowerCase()
-          const tUserNome = String(t.user_nome || "").trim().toLowerCase()
-          const metaCorretorId = String((meta as any).corretor_id || "").trim().toLowerCase()
-          const metaOperadorId = String((meta as any).operador_id || "").trim().toLowerCase()
-          const metaPadrinhoId = String((meta as any).padrinho_id || "").trim().toLowerCase()
-          const metaUserNome = String((meta as any).user_nome || (meta as any).operador_nome || (meta as any).corretor_nome || "").trim().toLowerCase()
+          ticketsFinal = formatted.filter(t => {
+            const meta = parseMetadata(t.descricao)
+            if (!canViewThiagoTickets && isThiagoTicket(t, meta)) return false
 
-          const isOwn = (
-            (tUserId && tUserId === uId) ||
-            (metaCorretorId && metaCorretorId === uId) ||
-            (metaOperadorId && metaOperadorId === uId) ||
-            (uNome && tUserNome && (tUserNome === uNome || tUserNome.includes(uNome) || uNome.includes(tUserNome))) ||
-            (uNome && metaUserNome && (metaUserNome === uNome || metaUserNome.includes(uNome) || uNome.includes(metaUserNome)))
-          )
-          if (isOwn) return true
+            const tUserId = String(t.user_id || "").trim().toLowerCase()
+            const tUserNome = String(t.user_nome || "").trim().toLowerCase()
+            const metaCorretorId = String((meta as any).corretor_id || "").trim().toLowerCase()
+            const metaOperadorId = String((meta as any).operador_id || "").trim().toLowerCase()
+            const metaPadrinhoId = String((meta as any).padrinho_id || "").trim().toLowerCase()
+            const metaUserNome = String((meta as any).user_nome || (meta as any).operador_nome || (meta as any).corretor_nome || "").trim().toLowerCase()
 
-          // Corretores também visualizam atendimentos de seus estagiários apadrinhados
-          if (!isEstagiarioUser) {
-            const isEstagiarioApadrinhado = (
-              (tUserId && allowedIds.includes(tUserId)) ||
-              (metaOperadorId && allowedIds.includes(metaOperadorId)) ||
-              (metaPadrinhoId && metaPadrinhoId === uId) ||
+            const isOwn = (
+              (tUserId && tUserId === uId) ||
               (metaCorretorId && metaCorretorId === uId) ||
-              (meta.enviado_para_corretor === true && (meta.corretor_id === user.id || meta.corretor_nome === perfil?.nome))
+              (metaOperadorId && metaOperadorId === uId) ||
+              (uNome && tUserNome && (tUserNome === uNome || tUserNome.includes(uNome) || uNome.includes(tUserNome))) ||
+              (uNome && metaUserNome && (metaUserNome === uNome || metaUserNome.includes(uNome) || uNome.includes(metaUserNome)))
             )
-            if (isEstagiarioApadrinhado) return true
-          }
+            if (isOwn) return true
 
-          return false
-        })
+            // Corretores também visualizam atendimentos de seus estagiários apadrinhados
+            if (!isEstagiarioUser) {
+              const isEstagiarioApadrinhado = (
+                (tUserId && allowedIds.includes(tUserId)) ||
+                (metaOperadorId && allowedIds.includes(metaOperadorId)) ||
+                (metaPadrinhoId && metaPadrinhoId === uId) ||
+                (metaCorretorId && metaCorretorId === uId) ||
+                (meta.enviado_para_corretor === true && (meta.corretor_id === user.id || meta.corretor_nome === perfil?.nome))
+              )
+              if (isEstagiarioApadrinhado) return true
+            }
+
+            return false
+          })
+        }
+      }
+
+      // Regra de privacidade de Thiago Mello Couto:
+      // Apenas Administrador, Desenvolvedor e Operacional podem visualizar os atendimentos do Thiago Mello Couto.
+      // Supervisão, Monitoramento, Recursos Humanos e qualquer outro Corretor/Estagiário NÃO podem visualizá-lo.
+      if (!canViewThiagoTickets) {
+        ticketsFinal = ticketsFinal.filter(t => !isThiagoTicket(t))
       }
 
       setTickets(ticketsFinal)
@@ -2600,36 +2658,46 @@ export default function KanbanPage() {
         return false
       }
 
-      // Regras de visibilidade: Estágio vê exclusivamente os seus; Corretor vê os seus e os de estagiários apadrinhados
+      // Bloqueio de privacidade de Thiago Mello Couto:
+      // Somente Administrador, Desenvolvedor e Operacional podem ver atendimentos do Thiago Mello Couto
+      if (!canViewThiagoTickets && isThiagoTicket(t, meta)) {
+        return false
+      }
+
+      // Regras de visibilidade: Thiago vê estritamente os seus; Estágio vê exclusivamente os seus; Corretor vê os seus e os de estagiários apadrinhados
       if (!isGestor && user) {
-        const uId = String(user.id).trim().toLowerCase()
-        const uNome = (perfil?.nome || user.email || "").trim().toLowerCase()
-        const isEstagiarioUser = userRole === "Estágio" || userRole === "Estagio"
-        const tUserId = String(t.user_id || "").trim().toLowerCase()
-        const tUserNome = String(t.user_nome || "").trim().toLowerCase()
-        const metaCorretorId = String((meta as any).corretor_id || "").trim().toLowerCase()
-        const metaOperadorId = String((meta as any).operador_id || "").trim().toLowerCase()
-        const metaPadrinhoId = String((meta as any).padrinho_id || "").trim().toLowerCase()
-        const metaUserNome = String((meta as any).user_nome || (meta as any).operador_nome || (meta as any).corretor_nome || "").trim().toLowerCase()
-
-        const isOwn = (
-          (tUserId && tUserId === uId) ||
-          (metaCorretorId && metaCorretorId === uId) ||
-          (metaOperadorId && metaOperadorId === uId) ||
-          (uNome && tUserNome && (tUserNome === uNome || tUserNome.includes(uNome) || uNome.includes(tUserNome))) ||
-          (uNome && metaUserNome && (metaUserNome === uNome || metaUserNome.includes(uNome) || uNome.includes(metaUserNome)))
-        )
-
-        if (isOwn) {
-          // Atendimento próprio permitido
-        } else if (!isEstagiarioUser && (
-          (metaPadrinhoId && metaPadrinhoId === uId) ||
-          (metaCorretorId && metaCorretorId === uId) ||
-          (meta.enviado_para_corretor === true && (meta.corretor_id === user.id || meta.corretor_nome === perfil?.nome))
-        )) {
-          // Atendimento de estagiário apadrinhado permitido para o corretor
+        if (isThiagoMelloUser) {
+          if (!isThiagoTicket(t, meta)) return false
         } else {
-          return false
+          const uId = String(user.id).trim().toLowerCase()
+          const uNome = (perfil?.nome || user.email || "").trim().toLowerCase()
+          const isEstagiarioUser = userRole === "Estágio" || userRole === "Estagio"
+          const tUserId = String(t.user_id || "").trim().toLowerCase()
+          const tUserNome = String(t.user_nome || "").trim().toLowerCase()
+          const metaCorretorId = String((meta as any).corretor_id || "").trim().toLowerCase()
+          const metaOperadorId = String((meta as any).operador_id || "").trim().toLowerCase()
+          const metaPadrinhoId = String((meta as any).padrinho_id || "").trim().toLowerCase()
+          const metaUserNome = String((meta as any).user_nome || (meta as any).operador_nome || (meta as any).corretor_nome || "").trim().toLowerCase()
+
+          const isOwn = (
+            (tUserId && tUserId === uId) ||
+            (metaCorretorId && metaCorretorId === uId) ||
+            (metaOperadorId && metaOperadorId === uId) ||
+            (uNome && tUserNome && (tUserNome === uNome || tUserNome.includes(uNome) || uNome.includes(tUserNome))) ||
+            (uNome && metaUserNome && (metaUserNome === uNome || metaUserNome.includes(uNome) || uNome.includes(metaUserNome)))
+          )
+
+          if (isOwn) {
+            // Atendimento próprio permitido
+          } else if (!isEstagiarioUser && (
+            (metaPadrinhoId && metaPadrinhoId === uId) ||
+            (metaCorretorId && metaCorretorId === uId) ||
+            (meta.enviado_para_corretor === true && (meta.corretor_id === user.id || meta.corretor_nome === perfil?.nome))
+          )) {
+            // Atendimento de estagiário apadrinhado permitido para o corretor
+          } else {
+            return false
+          }
         }
       }
 
