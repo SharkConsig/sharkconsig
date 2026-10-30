@@ -6582,16 +6582,46 @@ export default function KanbanPage() {
         </div>
 
         {/* Visão 1: Minha Fila (4 Colunas Simultâneas: Agora, Vencidas, Futuras e Ação Especial) em Modo Quadro */}
-        {activeView === "MINHA_FILA" && displayMode === "QUADRO" && (
-          <div className="flex-1 flex flex-col md:flex-row gap-3.5 sm:gap-4 h-full min-h-0 overflow-x-auto overflow-y-hidden">
+        {activeView === "MINHA_FILA" && displayMode === "QUADRO" && (() => {
+          const ticketsAgoraAll = filterTicketsBySearch(filaCategorias.agora)
+          const valorAgoraAll = ticketsAgoraAll.reduce((acc, t) => {
+            const opData = getValorOperacaoDeAbertura(t)
+            const opNum = parseValorToNumber(opData.valor)
+            return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+          }, 0)
+
+          const filteredVencidasAll = filaCategorias.vencidas.filter(item => filterTicketsBySearch([item.ticket]).length > 0)
+          const valorVencidasAll = filteredVencidasAll.reduce((acc, i) => {
+            const opData = getValorOperacaoDeAbertura(i.ticket)
+            const opNum = parseValorToNumber(opData.valor)
+            return acc + (opNum > 0 ? opNum : Number(i.ticket.valor_operacao || i.ticket.margem || 0))
+          }, 0)
+
+          const ticketsFuturasAll = filterTicketsBySearch(filaCategorias.futuras)
+          const valorFuturasAll = ticketsFuturasAll.reduce((acc, t) => {
+            const opData = getValorOperacaoDeAbertura(t)
+            const opNum = parseValorToNumber(opData.valor)
+            return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+          }, 0)
+
+          const ticketsAcaoAll = filterTicketsBySearch(filaCategorias.acaoEspecial)
+          const valorAcaoAll = ticketsAcaoAll.reduce((acc, t) => {
+            const opData = getValorOperacaoDeAbertura(t)
+            const opNum = parseValorToNumber(opData.valor)
+            return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+          }, 0)
+
+          const totalMinhaFilaLeads = ticketsAgoraAll.length + filteredVencidasAll.length + ticketsFuturasAll.length + ticketsAcaoAll.length
+          const totalMinhaFilaValor = valorAgoraAll + valorVencidasAll + valorFuturasAll + valorAcaoAll
+
+          return (
+            <div className="flex-1 flex flex-col md:flex-row gap-3.5 sm:gap-4 h-full min-h-0 overflow-x-auto overflow-y-hidden">
                 {/* Coluna 1: AGORA */}
                 {(listFilterStage === "ALL" || listFilterStage === "agora") && (() => {
-                  const ticketsAgora = sortTickets(filterTicketsBySearch(filaCategorias.agora))
-                  const valorAgora = ticketsAgora.reduce((acc, t) => {
-                    const opData = getValorOperacaoDeAbertura(t)
-                    const opNum = parseValorToNumber(opData.valor)
-                    return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-                  }, 0)
+                  const ticketsAgora = sortTickets(ticketsAgoraAll)
+                  const valorAgora = valorAgoraAll
+                  const pctAgoraLeads = totalMinhaFilaLeads > 0 ? ((ticketsAgora.length / totalMinhaFilaLeads) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
+                  const pctAgoraValor = totalMinhaFilaValor > 0 ? ((valorAgora / totalMinhaFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-200/80 shadow-2xs overflow-hidden bg-emerald-50/70">
                       {/* Cabeçalho da Coluna Agora */}
@@ -6610,12 +6640,12 @@ export default function KanbanPage() {
                         </p>
 
                         {/* Totais Acumulados para Gestão e Operação */}
-                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
-                          <span className="font-semibold text-slate-800">
-                            {ticketsAgora.length} {ticketsAgora.length === 1 ? "lead" : "leads"}
+                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px] gap-1">
+                          <span className="font-semibold text-slate-800 whitespace-nowrap">
+                            {ticketsAgora.length} {ticketsAgora.length === 1 ? "lead" : "leads"} <span className="font-bold text-slate-600">({pctAgoraLeads})</span>
                           </span>
-                          <span className="font-extrabold text-slate-950">
-                            {valorAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
+                            {valorAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} <span className="font-bold text-slate-600">({pctAgoraValor})</span>
                           </span>
                         </div>
                       </div>
@@ -6636,14 +6666,10 @@ export default function KanbanPage() {
 
                 {/* Coluna 2: VENCIDAS */}
                 {(listFilterStage === "ALL" || listFilterStage === "vencidas") && (() => {
-                  const filteredVencidas = filaCategorias.vencidas.filter(item => {
-                    return filterTicketsBySearch([item.ticket]).length > 0
-                  })
-                  const valorVencidas = filteredVencidas.reduce((acc, i) => {
-                    const opData = getValorOperacaoDeAbertura(i.ticket)
-                    const opNum = parseValorToNumber(opData.valor)
-                    return acc + (opNum > 0 ? opNum : Number(i.ticket.valor_operacao || i.ticket.margem || 0))
-                  }, 0)
+                  const filteredVencidas = filteredVencidasAll
+                  const valorVencidas = valorVencidasAll
+                  const pctVencidasLeads = totalMinhaFilaLeads > 0 ? ((filteredVencidas.length / totalMinhaFilaLeads) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
+                  const pctVencidasValor = totalMinhaFilaValor > 0 ? ((valorVencidas / totalMinhaFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-rose-200/80 shadow-2xs overflow-hidden bg-rose-50/70">
                       {/* Cabeçalho da Coluna Vencidas */}
@@ -6662,12 +6688,12 @@ export default function KanbanPage() {
                         </p>
 
                         {/* Totais Acumulados para Gestão e Operação */}
-                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
-                          <span className="font-semibold text-slate-800">
-                            {filteredVencidas.length} {filteredVencidas.length === 1 ? "lead" : "leads"}
+                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px] gap-1">
+                          <span className="font-semibold text-slate-800 whitespace-nowrap">
+                            {filteredVencidas.length} {filteredVencidas.length === 1 ? "lead" : "leads"} <span className="font-bold text-slate-600">({pctVencidasLeads})</span>
                           </span>
-                          <span className="font-extrabold text-slate-950">
-                            {valorVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
+                            {valorVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} <span className="font-bold text-slate-600">({pctVencidasValor})</span>
                           </span>
                         </div>
                       </div>
@@ -6688,12 +6714,10 @@ export default function KanbanPage() {
 
                 {/* Coluna 3: FUTURAS */}
                 {(listFilterStage === "ALL" || listFilterStage === "futuras") && (() => {
-                  const ticketsFuturas = sortTickets(filterTicketsBySearch(filaCategorias.futuras))
-                  const valorFuturas = ticketsFuturas.reduce((acc, t) => {
-                    const opData = getValorOperacaoDeAbertura(t)
-                    const opNum = parseValorToNumber(opData.valor)
-                    return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-                  }, 0)
+                  const ticketsFuturas = sortTickets(ticketsFuturasAll)
+                  const valorFuturas = valorFuturasAll
+                  const pctFuturasLeads = totalMinhaFilaLeads > 0 ? ((ticketsFuturas.length / totalMinhaFilaLeads) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
+                  const pctFuturasValor = totalMinhaFilaValor > 0 ? ((valorFuturas / totalMinhaFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-indigo-200/80 shadow-2xs overflow-hidden bg-indigo-50/70">
                       {/* Cabeçalho da Coluna Futuras */}
@@ -6712,12 +6736,12 @@ export default function KanbanPage() {
                         </p>
 
                         {/* Totais Acumulados para Gestão e Operação */}
-                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
-                          <span className="font-semibold text-slate-800">
-                            {ticketsFuturas.length} {ticketsFuturas.length === 1 ? "lead" : "leads"}
+                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px] gap-1">
+                          <span className="font-semibold text-slate-800 whitespace-nowrap">
+                            {ticketsFuturas.length} {ticketsFuturas.length === 1 ? "lead" : "leads"} <span className="font-bold text-slate-600">({pctFuturasLeads})</span>
                           </span>
-                          <span className="font-extrabold text-slate-950">
-                            {valorFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
+                            {valorFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} <span className="font-bold text-slate-600">({pctFuturasValor})</span>
                           </span>
                         </div>
                       </div>
@@ -6738,12 +6762,10 @@ export default function KanbanPage() {
 
                 {/* Coluna 4: AÇÃO ESPECIAL */}
                 {(listFilterStage === "ALL" || listFilterStage === "acao_especial") && (() => {
-                  const ticketsAcao = sortTickets(filterTicketsBySearch(filaCategorias.acaoEspecial))
-                  const valorAcao = ticketsAcao.reduce((acc, t) => {
-                    const opData = getValorOperacaoDeAbertura(t)
-                    const opNum = parseValorToNumber(opData.valor)
-                    return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-                  }, 0)
+                  const ticketsAcao = sortTickets(ticketsAcaoAll)
+                  const valorAcao = valorAcaoAll
+                  const pctAcaoLeads = totalMinhaFilaLeads > 0 ? ((ticketsAcao.length / totalMinhaFilaLeads) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
+                  const pctAcaoValor = totalMinhaFilaValor > 0 ? ((valorAcao / totalMinhaFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-amber-300/80 shadow-2xs overflow-hidden bg-amber-50/70">
                       {/* Cabeçalho da Coluna Ação Especial */}
@@ -6762,12 +6784,12 @@ export default function KanbanPage() {
                         </p>
 
                         {/* Totais Acumulados para Gestão e Operação */}
-                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
-                          <span className="font-semibold text-slate-800">
-                            {ticketsAcao.length} {ticketsAcao.length === 1 ? "lead" : "leads"}
+                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px] gap-1">
+                          <span className="font-semibold text-slate-800 whitespace-nowrap">
+                            {ticketsAcao.length} {ticketsAcao.length === 1 ? "lead" : "leads"} <span className="font-bold text-slate-600">({pctAcaoLeads})</span>
                           </span>
-                          <span className="font-extrabold text-slate-950">
-                            {valorAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
+                            {valorAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} <span className="font-bold text-slate-600">({pctAcaoValor})</span>
                           </span>
                         </div>
                       </div>
@@ -6786,12 +6808,27 @@ export default function KanbanPage() {
                   )
                 })()}
               </div>
-        )}
+          )
+        })()}
 
         {/* Visão 2: Quadro das Colunas do Kanban em Modo Quadro */}
-        {activeView === "KANBAN" && displayMode === "QUADRO" && (
-          <div className="flex-1 overflow-x-auto pb-1 min-h-0 h-full">
-            <div className="flex items-stretch gap-3.5 sm:gap-4 w-full min-w-max h-full">
+        {activeView === "KANBAN" && displayMode === "QUADRO" && (() => {
+          let kanbanAllColumnsTotalLeads = 0
+          let kanbanAllColumnsTotalValor = 0
+
+          KANBAN_COLUMNS.forEach(col => {
+            const rawCol = filterTicketsBySearch(groupedColumns[col.id] || [])
+            kanbanAllColumnsTotalLeads += rawCol.length
+            kanbanAllColumnsTotalValor += rawCol.reduce((acc, t) => {
+              const opData = getValorOperacaoDeAbertura(t)
+              const opNum = parseValorToNumber(opData.valor)
+              return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+            }, 0)
+          })
+
+          return (
+            <div className="flex-1 overflow-x-auto pb-1 min-h-0 h-full">
+              <div className="flex items-stretch gap-3.5 sm:gap-4 w-full min-w-max h-full">
                 {KANBAN_COLUMNS
                   .filter(col => listFilterStage === "ALL" || col.id === listFilterStage)
                   .map(col => {
@@ -6804,161 +6841,176 @@ export default function KanbanPage() {
                       return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
                     }, 0)
 
-                  return (
-                    <div
-                      key={col.id}
-                      onDragOver={(e) => {
-                        e.preventDefault()
-                        e.dataTransfer.dropEffect = "move"
-                        if (dragOverColumnId !== col.id) {
-                          setDragOverColumnId(col.id)
-                        }
-                      }}
-                      onDragLeave={(e) => {
-                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    const pctLeads = kanbanAllColumnsTotalLeads > 0
+                      ? ((colTickets.length / kanbanAllColumnsTotalLeads) * 100).toFixed(1).replace(".", ",") + "%"
+                      : "0%"
+                    const pctValor = kanbanAllColumnsTotalValor > 0
+                      ? ((totalColValor / kanbanAllColumnsTotalValor) * 100).toFixed(1).replace(".", ",") + "%"
+                      : "0%"
+
+                    return (
+                      <div
+                        key={col.id}
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          e.dataTransfer.dropEffect = "move"
+                          if (dragOverColumnId !== col.id) {
+                            setDragOverColumnId(col.id)
+                          }
+                        }}
+                        onDragLeave={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                            setDragOverColumnId(null)
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
                           setDragOverColumnId(null)
-                        }
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault()
-                        setDragOverColumnId(null)
-                        const ticketId = e.dataTransfer.getData("text/plain")
-                        const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
-                        if (ticketToMove) {
-                          executarMoverEtapa(ticketToMove, col.id)
-                        }
-                        setDraggedTicket(null)
-                      }}
-                      className={cn(
-                        "flex-1 min-w-[260px] rounded-xl flex flex-col h-full min-h-0 shadow-xs transition-colors border",
-                        col.bgColumn,
-                        col.borderColumn,
-                        dragOverColumnId === col.id && "ring-2 ring-indigo-500 brightness-95"
-                      )}
-                    >
-                  {/* Cabeçalho da Coluna */}
-                  <div className={cn("p-3.5 border-b rounded-t-xl border-t-4 shadow-xs", col.borderTop, col.headerBg)}>
-                    <div className="flex items-center justify-between mb-0.5">
-                      <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
-                        <span>{col.title ? col.title.charAt(0).toUpperCase() + col.title.slice(1).toLowerCase() : col.title}</span>
-                      </h2>
-                      <span className={cn("text-[11px] font-black px-2 py-0.5 rounded-full border", col.badgeClass)}>
-                        {colTickets.length}
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-slate-700 font-medium line-clamp-1 mb-2">
-                      {col.subtitle}
-                    </p>
-
-                    {/* Totais Acumulados para Gestão e Operação */}
-                    <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px]">
-                      <span className="font-semibold text-slate-800">
-                        {colTickets.length} {colTickets.length === 1 ? "lead" : "leads"}
-                      </span>
-                      <span className="font-extrabold text-slate-950">
-                        {totalColValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Lista de Cartões (Scroll Vertical) */}
-                  <div className={cn("p-2 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar rounded-b-xl", col.bgColumn)}>
-                    {colTickets.length === 0 ? (
-                      <div className="py-8 text-center text-xs text-slate-600 font-semibold">
-                        Nenhum lead nesta etapa
-                      </div>
-                    ) : (
-                      colTickets.map(ticket => renderTicketCard(ticket, undefined, true, col.cardBorder))
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-        )}
-
-        {/* Visão Alternativa: Modo Lista (Linhas sequenciais de etapas) */}
-        {displayMode === "LISTA" && (
-          <div className="flex-1 flex flex-col min-h-0 space-y-2.5 overflow-hidden">
-            {/* Lista Sequencial de Seções de Etapas */}
-            <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-1">
-              {filteredListSections.map(sec => {
-                const isCollapsed = collapsedSections[sec.id] !== undefined ? Boolean(collapsedSections[sec.id]) : true
-                const count = sec.displayTickets.length
-                const valor = sec.displayValor
-                const IconComponent = sec.icon || Kanban
-
-                return (
-                  <div
-                    key={sec.id}
-                    className="bg-white border border-slate-200/90 rounded-xl overflow-hidden shadow-2xs"
-                  >
-                    {/* Cabeçalho da Etapa / Seção (Linha expansível) */}
-                    <div
-                      onClick={() => toggleSectionCollapse(sec.id)}
-                      className={cn(
-                        "p-3 sm:px-4 flex items-center justify-between gap-3 cursor-pointer select-none transition-colors border-b",
-                        sec.headerBg,
-                        sec.borderLeft,
-                        isCollapsed ? "border-b-transparent" : "border-b-slate-200/80"
-                      )}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={cn("p-1.5 rounded-lg bg-white/90 border border-slate-200 shadow-2xs shrink-0", sec.iconColor)}>
-                          <IconComponent className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-extrabold text-sm text-slate-900 tracking-tight truncate">
-                              {sec.title}
-                            </h3>
-                            <span className={cn("text-[10.5px] font-black px-2 py-0.5 rounded-full border shadow-2xs", sec.badgeClass)}>
-                              {count} {count === 1 ? "lead" : "leads"}
-                            </span>
-                          </div>
-                          {sec.subtitle && (
-                            <p className="text-[11px] text-slate-600 font-medium truncate mt-0.5">
-                              {sec.subtitle}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 shrink-0">
-                        <div className="text-right hidden sm:block">
-                          <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
-                            Total da Etapa
-                          </p>
-                          <p className="text-xs font-black text-slate-900">
-                            {valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                          </p>
-                        </div>
-                        <div className="p-1 rounded-lg text-slate-400 hover:text-slate-700 transition-transform">
-                          <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isCollapsed && "-rotate-90")} />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Itens Sequenciais da Etapa */}
-                    {!isCollapsed && (
-                      <div className="p-2 sm:p-3 space-y-2 bg-slate-50/40">
-                        {count === 0 ? (
-                          <div className="py-8 text-center text-xs text-slate-400 font-medium">
-                            Nenhum lead nesta etapa
-                          </div>
-                        ) : (
-                          sec.displayTickets.map(ticket => renderTicketListItem(ticket))
+                          const ticketId = e.dataTransfer.getData("text/plain")
+                          const ticketToMove = draggedTicket || tickets.find(t => t.id === ticketId)
+                          if (ticketToMove) {
+                            executarMoverEtapa(ticketToMove, col.id)
+                          }
+                          setDraggedTicket(null)
+                        }}
+                        className={cn(
+                          "flex-1 min-w-[260px] rounded-xl flex flex-col h-full min-h-0 shadow-xs transition-colors border",
+                          col.bgColumn,
+                          col.borderColumn,
+                          dragOverColumnId === col.id && "ring-2 ring-indigo-500 brightness-95"
                         )}
+                      >
+                    {/* Cabeçalho da Coluna */}
+                    <div className={cn("p-3.5 border-b rounded-t-xl border-t-4 shadow-xs", col.borderTop, col.headerBg)}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <h2 className="font-extrabold text-sm text-slate-900 tracking-tight flex items-center gap-1.5">
+                          <span>{col.title ? col.title.charAt(0).toUpperCase() + col.title.slice(1).toLowerCase() : col.title}</span>
+                        </h2>
+                        <span className={cn("text-[11px] font-black px-2 py-0.5 rounded-full border", col.badgeClass)}>
+                          {colTickets.length}
+                        </span>
                       </div>
-                    )}
+
+                      <p className="text-[11px] text-slate-700 font-medium line-clamp-1 mb-2">
+                        {col.subtitle}
+                      </p>
+
+                      {/* Totais Acumulados para Gestão e Operação */}
+                      <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px] gap-1">
+                        <span className="font-semibold text-slate-800 whitespace-nowrap">
+                          {colTickets.length} {colTickets.length === 1 ? "lead" : "leads"} <span className="font-bold text-slate-600">({pctLeads})</span>
+                        </span>
+                        <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
+                          {totalColValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} <span className="font-bold text-slate-600">({pctValor})</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Lista de Cartões (Scroll Vertical) */}
+                    <div className={cn("p-2 space-y-2.5 overflow-y-auto flex-1 custom-scrollbar rounded-b-xl", col.bgColumn)}>
+                      {colTickets.length === 0 ? (
+                        <div className="py-8 text-center text-xs text-slate-600 font-semibold">
+                          Nenhum lead nesta etapa
+                        </div>
+                      ) : (
+                        colTickets.map(ticket => renderTicketCard(ticket, undefined, true, col.cardBorder))
+                      )}
+                    </div>
                   </div>
                 )
               })}
             </div>
           </div>
-        )}
+          )
+        })()}
+
+        {/* Visão Alternativa: Modo Lista (Linhas sequenciais de etapas) */}
+        {displayMode === "LISTA" && (() => {
+          const allListLeads = filteredListSections.reduce((acc, s) => acc + s.displayTickets.length, 0)
+          const allListValor = filteredListSections.reduce((acc, s) => acc + s.displayValor, 0)
+
+          return (
+            <div className="flex-1 flex flex-col min-h-0 space-y-2.5 overflow-hidden">
+              {/* Lista Sequencial de Seções de Etapas */}
+              <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-1">
+                {filteredListSections.map(sec => {
+                  const isCollapsed = collapsedSections[sec.id] !== undefined ? Boolean(collapsedSections[sec.id]) : true
+                  const count = sec.displayTickets.length
+                  const valor = sec.displayValor
+                  const IconComponent = sec.icon || Kanban
+                  const pctLeads = allListLeads > 0 ? ((count / allListLeads) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
+                  const pctValor = allListValor > 0 ? ((valor / allListValor) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
+
+                  return (
+                    <div
+                      key={sec.id}
+                      className="bg-white border border-slate-200/90 rounded-xl overflow-hidden shadow-2xs"
+                    >
+                      {/* Cabeçalho da Etapa / Seção (Linha expansível) */}
+                      <div
+                        onClick={() => toggleSectionCollapse(sec.id)}
+                        className={cn(
+                          "p-3 sm:px-4 flex items-center justify-between gap-3 cursor-pointer select-none transition-colors border-b",
+                          sec.headerBg,
+                          sec.borderLeft,
+                          isCollapsed ? "border-b-transparent" : "border-b-slate-200/80"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={cn("p-1.5 rounded-lg bg-white/90 border border-slate-200 shadow-2xs shrink-0", sec.iconColor)}>
+                            <IconComponent className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-extrabold text-sm text-slate-900 tracking-tight truncate">
+                                {sec.title}
+                              </h3>
+                              <span className={cn("text-[10.5px] font-black px-2 py-0.5 rounded-full border shadow-2xs", sec.badgeClass)}>
+                                {count} {count === 1 ? "lead" : "leads"} <span className="opacity-80 font-bold ml-1">({pctLeads})</span>
+                              </span>
+                            </div>
+                            {sec.subtitle && (
+                              <p className="text-[11px] text-slate-600 font-medium truncate mt-0.5">
+                                {sec.subtitle}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="text-right hidden sm:block">
+                            <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
+                              Total da Etapa
+                            </p>
+                            <p className="text-xs font-black text-slate-900">
+                              {valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} <span className="text-[10.5px] font-bold text-slate-500 ml-1">({pctValor})</span>
+                            </p>
+                          </div>
+                          <div className="p-1 rounded-lg text-slate-400 hover:text-slate-700 transition-transform">
+                            <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isCollapsed && "-rotate-90")} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Itens Sequenciais da Etapa */}
+                      {!isCollapsed && (
+                        <div className="p-2 sm:p-3 space-y-2 bg-slate-50/40">
+                          {count === 0 ? (
+                            <div className="py-8 text-center text-xs text-slate-400 font-medium">
+                              Nenhum lead nesta etapa
+                            </div>
+                          ) : (
+                            sec.displayTickets.map(ticket => renderTicketListItem(ticket))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
   </main>
 
       {/* MODAL 1: ATENDIMENTO (Corretor / Estagiário) */}
