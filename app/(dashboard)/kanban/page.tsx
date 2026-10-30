@@ -1265,27 +1265,50 @@ export default function KanbanPage() {
   }, [])
 
   const cltCollaborators = useMemo(() => {
-    const pipelineUserIds = new Set<string>()
-    const pipelineUserNames = new Set<string>()
+    const map = new Map<string, UserSummary>()
 
     tickets.forEach(t => {
       const meta = parseMetadata(t.descricao)
-      const uId = String(t.user_id || meta.user_id || (meta as any).operador_id || "").trim().toLowerCase()
-      const uNome = String(t.user_nome || meta.user_nome || (meta as any).operador_nome || "").trim().toLowerCase()
-      if (uId) pipelineUserIds.add(uId)
-      if (uNome) pipelineUserNames.add(uNome)
+      const rawId = String(t.user_id || meta.user_id || (meta as any).operador_id || "").trim()
+      const rawNome = String(t.user_nome || meta.user_nome || (meta as any).operador_nome || "").trim()
+
+      if (!rawId && !rawNome) return
+
+      // Tenta localizar cadastro completo do usuário em usersList
+      const matched = usersList.find(u => 
+        (rawId && u.id.toLowerCase() === rawId.toLowerCase()) ||
+        (rawNome && u.nome.trim().toLowerCase() === rawNome.toLowerCase())
+      )
+
+      if (matched) {
+        // Remove dessa lista APENAS os 'Corretores' do regime 'PJ'
+        const roleStr = String(matched.role || matched.funcao || "").trim().toUpperCase()
+        const regimeStr = String(matched.regime_contratacao || "").trim().toUpperCase()
+        const isCorretorPJ = roleStr.includes("CORRETOR") && regimeStr === "PJ"
+        if (isCorretorPJ) return
+
+        map.set(matched.id, matched)
+      } else {
+        // Se tem chamado no pipeline mas não está em usersList, valida se não é Corretor PJ por metadados
+        const metaRole = String((meta as any).operador_role || (meta as any).user_role || "").trim().toUpperCase()
+        const metaRegime = String((meta as any).regime_contratacao || "").trim().toUpperCase()
+        const metaEquipe = String(t.equipe || (meta as any).equipe || "").trim().toUpperCase()
+        const isCorretorPJ = (metaRole.includes("CORRETOR") || metaEquipe.includes("PJ")) && (metaRegime === "PJ" || metaEquipe.includes("PJ"))
+        if (isCorretorPJ) return
+
+        const key = rawId || rawNome.toLowerCase()
+        if (!map.has(key)) {
+          map.set(key, {
+            id: rawId || key,
+            nome: rawNome || "Colaborador",
+            role: "Colaborador",
+            status: "ATIVO"
+          })
+        }
+      }
     })
 
-    return usersList
-      .filter(u => {
-        const isAtivo = !u.status || u.status.toUpperCase() === "ATIVO"
-        const isCLT = (u.regime_contratacao || "").trim().toUpperCase() === "CLT"
-        if (!isAtivo || !isCLT) return false
-
-        const uId = u.id.trim().toLowerCase()
-        const uNome = u.nome.trim().toLowerCase()
-        return pipelineUserIds.has(uId) || pipelineUserNames.has(uNome)
-      })
+    return Array.from(map.values())
       .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
   }, [usersList, tickets])
 
@@ -5305,8 +5328,10 @@ export default function KanbanPage() {
         return selectedCollaboratorIds.some(selectedId => {
           const selNorm = selectedId.trim().toLowerCase()
           if (tId && tId === selNorm) return true
-          const selectedUser = usersList.find(u => u.id === selectedId)
+          if (tNome && tNome === selNorm) return true
+          const selectedUser = usersList.find(u => u.id === selectedId) || cltCollaborators.find(c => c.id === selectedId)
           if (selectedUser && tNome && selectedUser.nome.trim().toLowerCase() === tNome) return true
+          if (selectedUser && tId && selectedUser.id.trim().toLowerCase() === tId) return true
           return false
         })
       })
@@ -5341,7 +5366,7 @@ export default function KanbanPage() {
         (qDigits && (cpf.includes(qDigits) || matchesPhone))
       )
     })
-  }, [listSearch, selectedCollaboratorIds, usersList])
+  }, [listSearch, selectedCollaboratorIds, usersList, cltCollaborators])
 
   // Seções sequenciais de etapas para o Modo Lista
   const listSections = useMemo(() => {

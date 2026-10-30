@@ -1,0 +1,5520 @@
+"use client"
+
+import { useEffect, useState, useMemo, useCallback, Fragment } from "react"
+import { useRouter } from "next/navigation"
+import Image from "next/image"
+import { format } from "date-fns"
+import { Header } from "@/components/layout/header"
+import { 
+  TrendingUp,
+  Gift,
+  Users,
+  Trophy,
+  CheckCircle2,
+  Clock,
+  Target,
+  Zap,
+  Loader2,
+  Percent,
+  MessageSquare,
+  BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  BookOpen,
+  Compass,
+  Award,
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+  GraduationCap,
+  Briefcase,
+  Check,
+  Star,
+  ClipboardCheck,
+  FileSpreadsheet,
+  X,
+  AlertTriangle,
+  ShieldCheck
+} from "lucide-react"
+
+import { useAuth } from "@/context/auth-context"
+import { cn, withRetry, formatName } from "@/lib/utils"
+import { motion, AnimatePresence } from "motion/react"
+import { supabase, isSupabaseConfigured } from "@/lib/supabase"
+import { useSidebar } from "@/context/sidebar-context"
+import { Card, CardContent } from "@/components/ui/card"
+import { DashboardCard, Gauge, formatCurrency } from "@/components/dashboard/dashboard-shared"
+import { AdminDashboard } from "@/components/dashboard/admin-dashboard"
+import { HRDashboard } from "@/components/dashboard/hr-dashboard"
+import { RankingContractsModal, RankingContractModalParams } from "@/components/dashboard/ranking-contracts-modal"
+
+const parseDateSafe = (dateVal?: string | Date | null) => {
+  if (!dateVal) return null
+  if (dateVal instanceof Date) return dateVal
+  if (typeof dateVal === 'string') {
+    const trimmed = dateVal.trim()
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const [y, m, d] = trimmed.split('-').map(Number)
+      return new Date(y, m - 1, d, 12, 0, 0)
+    }
+    const parsed = new Date(trimmed.replace(' ', 'T'))
+    if (!isNaN(parsed.getTime())) return parsed
+  }
+  const d = new Date(dateVal)
+  return isNaN(d.getTime()) ? null : d
+}
+
+interface ProposalSummary {
+  id_lead: string
+  nome_cliente: string
+  valor_producao: string | number
+  valor_operacao?: string | number
+  updated_at: string
+  data_pago_cliente?: string
+  status?: string
+}
+
+interface InternProposalDetail {
+  id: number
+  status: string
+  valor_producao: string | number
+  estagiario_colaborador_id: string | null
+  nome_cliente: string | null
+  banco: string | null
+  convenio: string | null
+  tipo_operacao: string | null
+}
+
+interface InternCollaboration {
+  estagiario_id: string
+  nome: string
+  supervisor?: string
+  totalPaid: number
+  countPaid: number
+  totalInProcess: number
+  countInProcess: number
+  totalToday: number
+  countToday: number
+  isPJ?: boolean
+  approvedTicketsCount: number
+  operationsPaid?: Record<string, { total: number; count: number }>
+  operationsInProcess?: Record<string, { total: number; count: number }>
+  operationsToday?: Record<string, { total: number; count: number }>
+}
+
+interface RankingItem {
+  corretor_id: string
+  nome: string
+  totalPaid: number
+  totalInProcess: number
+  totalToday: number
+  countPaid: number
+  countInProcess: number
+  countToday: number
+  funcao?: string
+  colaboracoes?: {
+    propria: {
+      totalPaid: number
+      countPaid: number
+      totalInProcess: number
+      countInProcess: number
+      totalToday: number
+      countToday: number
+    }
+    estagiarios: InternCollaboration[]
+  }
+}
+
+interface TicketStats {
+  total: number
+  notApproved: number
+  approved: number
+  inNegotiation: number
+  aberto: number
+  aguardandoOperacional: number
+  byStatus: { name: string; value: number; color: string }[]
+  byMainStatus: { name: string; value: number; color: string }[]
+  byOrigin: { name: string; value: number; totalValue?: number; approved?: number }[]
+  byConvenio: { name: string; value: number; totalValue?: number; approved?: number }[]
+  byBroker: { id?: string; name: string; supervisor?: string; value: number; approved?: number; negotiation?: number; totalValue?: number }[]
+  abertoValue?: number
+  aguardandoOperacionalValue?: number
+  inNegotiationValue?: number
+  approvedValue?: number
+  notApprovedValue?: number
+  totalValue?: number
+}
+
+interface Campaign {
+  id: string
+  nome: string
+  publico_estimado: number
+  created_at: string
+  filtros: {
+    convenio?: string
+    distribuicao?: string[]
+    corretores_selecionados?: string[]
+    [key: string]: unknown
+  }
+}
+
+const APROVADOS_LABELS = [
+  'GOV SP - NOVO APROVADO', 
+  'GOV SP - CARTÃO BENEFICIO APROVADO', 
+  'CLT - CARTÃO APROVADO', 
+  'CLT - CARTÃO BENEFICIO', 
+  'CARTÃO BENEFICIO APROVADO', 
+  'CLIENTE APROVADO CARTÃO', 
+  'AUMENTO SIAPE - AGUARDANDO DIGITAÇÃO', 
+  'MARGEM 40% - APROVADO', 
+  'COMPRA DE DIVIDA CARTÃO - APROVADO', 
+  'PREF SAO PAULO - CARTÃO BENEFICIO APROVADO', 
+  'PREF SAO PAULO - NOVO APROVADO', 
+  'PREF SAO PAULO - CARTÃO CONSIGNADO APROVADO', 
+  'GOV PR - NOVO APROVADO', 
+  'GOV PR - BENEFICIO APROVADO',
+  'CONCLUIDO',
+  'CONCLUÍDO',
+  'PREF SANTO ANDRE - NOVO APROVADO',
+  'PREF SANTO ANDRE - CARTAO APROVADO',
+  'GOV PI - CARTÃO BENEFICIO APROVADO',
+  'GOV PI - CARTÃO CONSIGNADO APROVADO',
+  'GOV RR - CARTÃO CONSIGNADO APROVADO',
+  'GOV SP - CARTÃO CONSIGNADO APROVADO',
+  'GOV RJ - SAQUE APROVADO',
+  'GOV MG - NOVO APROVADO',
+  'PREF CONTAGEM - CARTAO APROVADO',
+  'PREF CONTAGEM - NOVO APROVADO',
+  'GOV PI - NOVO APROVADO',
+  'GOV MA - CARTÃO BENEFICIO APROVADO',
+  'GOV MA - CARTÃO CONSIGNADO APROVADO',
+  'GOV MA - NOVO APROVADO',
+  'CLIENTE APROVADO - PORTABILIDADE',
+  'PREF PORTO VELHO - CARTÃO APROVADO',
+  'PREF NATAL - CARTÃO APROVADO',
+  'GOV BA - NOVO APROVADO',
+  'SAQUE COMPLEMENTAR - GOV SP'
+]
+
+const NAO_APROVADOS_LABELS = [
+  'CLIENTE IMPOSSIBILITADO', 
+  'GOV SP - NÃO APROVADO', 
+  'ATIVOS - Zerado', 
+  'SIAPE - ACOMPANHAR VIRADA', 
+  'MARGEM 40%', 
+  'CLT - Zerado',
+  'CLT - Negativo', 
+  'ATIVOS - Negativo', 
+  'COMPRA DE DIVIDA CARTÃO - NÃO APROVADO', 
+  'PREF SAO PAULO - NÃO APROVADO', 
+  'GOV PR - NOVO NÃO ARPROVADO',
+  'REPROVADO',
+  'CANCELADO',
+  'NÃO APROVADO',
+  'NÃO APROVADOS'
+]
+
+const normalizeStatus = (s: string) => {
+  if (!s) return "";
+  return s.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const parseDescriptionMetadata = (desc: string) => {
+  try {
+    const match = desc?.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/);
+    if (match && match[1]) {
+      return JSON.parse(match[1]);
+    }
+  } catch (e) {
+    console.error("Error parsing metadata in list:", e);
+  }
+  return null;
+};
+
+const getValorOperacaoDeAbertura = (ticket: any) => {
+  const desc = ticket.descricao || ticket.description || ticket.content || "";
+  const meta = parseDescriptionMetadata(desc);
+  const conv = ticket.convenio?.toUpperCase() || "";
+  const isSantoAndre = conv.includes("SANTO ANDRÉ") || conv.includes("SANTO ANDRE");
+  
+  // 1. If we have a selected type in metadata
+  const selectedType = meta?.selected_operation_type;
+  if (selectedType) {
+    if (selectedType === 'margem') {
+      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" };
+    }
+    if (selectedType === 'liquida5') {
+      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" };
+    }
+    if (selectedType === 'beneficio5') {
+      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" };
+    }
+  }
+
+  // 2. Fallback to check if valor_operacao is directly in the DB column
+  if (ticket.valor_operacao !== null && ticket.valor_operacao !== undefined && ticket.valor_operacao !== 0) {
+    const valStr = "R$ " + Number(ticket.valor_operacao).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return { valor: valStr, label: "Valor Operação", color: "text-slate-900" };
+  }
+
+  // 3. Fallback to original description text selection
+  let textSelectedType: 'margem' | 'liquida5' | 'beneficio5' | null = null;
+  if (desc.includes("MARGEM 35%") || desc.includes("MARGEM LÍQUIDA EMPRÉSTIMO")) {
+    textSelectedType = 'margem';
+  } else if (desc.includes("LÍQUIDA 5%") || desc.includes("MARGEM LÍQUIDA CARTÃO")) {
+    textSelectedType = 'liquida5';
+  } else if (desc.includes("BENEFÍCIO 5%") || desc.includes("CARTÃO BENEFÍCIO") || desc.includes("CARTÃO CONSIGINADO") || desc.includes("CARTAO CONSIGINADO") || desc.includes("CARTÃO")) {
+    textSelectedType = 'beneficio5';
+  }
+
+  if (textSelectedType) {
+    if (textSelectedType === 'margem') {
+      if (meta && meta.valor_operacao_margem) return { valor: meta.valor_operacao_margem, label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" };
+      const mVal = ticket.margem || 0;
+      const opVal = mVal / 0.028;
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
+        color: "text-amber-600" 
+      };
+    }
+    if (textSelectedType === 'liquida5') {
+      if (meta && meta.valor_operacao_liquida5) return { valor: meta.valor_operacao_liquida5, label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" };
+      const mVal = ticket.margem_liquida_5 || 0;
+      const opVal = mVal / 0.053;
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", 
+        color: "text-emerald-600" 
+      };
+    }
+    if (textSelectedType === 'beneficio5') {
+      if (meta && meta.valor_operacao_beneficio5) return { valor: meta.valor_operacao_beneficio5, label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" };
+      const mVal = ticket.margem_beneficio_5 || 0;
+      const opVal = mVal / 0.053;
+      return { 
+        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+        label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
+        color: "text-blue-600" 
+      };
+    }
+  }
+
+  // 4. Check meta fields without selection
+  if (meta) {
+    if (meta.margem && meta.margem !== "" && meta.margem !== "R$ 0,00") {
+      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" };
+    }
+    if (meta.liquida5 && meta.liquida5 !== "" && meta.liquida5 !== "R$ 0,00") {
+      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" };
+    }
+    if (meta.beneficio5 && meta.beneficio5 !== "" && meta.beneficio5 !== "R$ 0,00") {
+      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" };
+    }
+  }
+
+  // 5. Final database fallbacks
+  if (typeof ticket.margem === 'number' && ticket.margem !== 0) {
+    const opVal = ticket.margem / 0.028;
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
+      color: "text-amber-600" 
+    };
+  }
+  if (typeof ticket.margem_liquida_5 === 'number' && ticket.margem_liquida_5 !== 0) {
+    const opVal = ticket.margem_liquida_5 / 0.053;
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", 
+      color: "text-emerald-600" 
+    };
+  }
+  if (typeof ticket.margem_beneficio_5 === 'number' && ticket.margem_beneficio_5 !== 0) {
+    const opVal = ticket.margem_beneficio_5 / 0.053;
+    return { 
+      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
+      label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
+      color: "text-blue-600" 
+    };
+  }
+
+  return { valor: "R$ 0,00", label: "Valor Operação", color: "text-slate-400" };
+};
+
+const parseValorToNumber = (valStr: string) => {
+  if (!valStr) return 0;
+  const clean = valStr.replace("R$", "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const num = parseFloat(clean);
+  return isNaN(num) ? 0 : num;
+};
+
+const NEGOCIACAO_LABELS = [
+  'PROPOSTA ENVIADA',
+  'CLIENTE SEM INTERAÇÃO',
+  'EM NEGOCIAÇÃO',
+  'CLIENTE SEM INTERESSE'
+]
+
+interface AdminStats {
+  monthlyGoal: number
+  monthlyProduced: number
+  annualGoal: number
+  annualProduced: number
+  dailyGoal: number
+  dailyProduced: number
+  inProcessValue: number
+  inProcessCount: number
+  pendingActionsValue: number
+  pendingActionsCount: number
+  createdTodayValue: number
+  createdTodayCount: number
+  createdWeekValue: number
+  createdWeekCount: number
+  createdMonthValue: number
+  createdMonthCount: number
+  brokerRankings: {
+    corretor_id: string
+    name: string
+    team: string
+    supervisor: string
+    totalPaid: number
+    totalInProcess: number
+    totalToday: number
+    countPaid: number
+    countInProcess: number
+    countToday: number
+  }[]
+  ticketStats?: TicketStats
+}
+
+const parseCurrency = (val: string | number | null | undefined) => {
+  if (!val) return 0
+  const valStr = val.toString()
+  const clean = valStr.replace(/[^\d,.-]/g, '')
+  if (clean.includes('.') && clean.includes(',')) {
+    return parseFloat(clean.replace(/\./g, '').replace(',', '.'))
+  } else if (clean.includes(',')) {
+    return parseFloat(clean.replace(',', '.'))
+  }
+  return parseFloat(clean)
+}
+
+export const getRemainingBusinessDays = () => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const today = now.getDate()
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  
+  // Cálculo da Páscoa (Algoritmo de Meeus/Jones/Butcher)
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const easterMonth = Math.floor((h + l - 7 * m + 114) / 31) - 1 // 0-indexed (2=Março, 3=Abril)
+  const easterDay = ((h + l - 7 * m + 114) % 31) + 1
+  const easterDate = new Date(year, easterMonth, easterDay)
+
+  const addDays = (base: Date, days: number) => {
+    const res = new Date(base)
+    res.setDate(res.getDate() + days)
+    return { month: res.getMonth(), day: res.getDate() }
+  }
+
+  // Feriados móveis nacionais
+  const carnavalSegunda = addDays(easterDate, -48)
+  const carnavalTerca = addDays(easterDate, -47)
+  const sextaFeiraSanta = addDays(easterDate, -2)
+  const corpusChristi = addDays(easterDate, 60)
+
+  // Feriados Nacionais Fixos do Brasil
+  const fixedHolidays = [
+    { month: 0, day: 1 },   // 01/01 - Confraternização Universal
+    { month: 3, day: 21 },  // 21/04 - Tiradentes
+    { month: 4, day: 1 },   // 01/05 - Dia do Trabalho
+    { month: 8, day: 7 },   // 07/09 - Independência do Brasil
+    { month: 9, day: 12 },  // 12/10 - Nossa Senhora Aparecida
+    { month: 10, day: 2 },  // 02/11 - Finados
+    { month: 10, day: 15 }, // 15/11 - Proclamação da República
+    { month: 10, day: 20 }, // 20/11 - Consciência Negra
+    { month: 11, day: 25 }, // 25/12 - Natal
+  ]
+
+  const allHolidays = [
+    ...fixedHolidays,
+    carnavalSegunda,
+    carnavalTerca,
+    sextaFeiraSanta,
+    corpusChristi
+  ]
+
+  let count = 0
+  for (let d = today; d <= lastDay; d++) {
+    const date = new Date(year, month, d)
+    const dayOfWeek = date.getDay()
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      const isHoliday = allHolidays.some(h => h.month === month && h.day === d)
+      if (!isHoliday) count++
+    }
+  }
+  return count || 1
+}
+
+interface User {
+  id: string
+  nome: string
+  funcao: string
+  supervisor_id: string
+  supervisor_nome?: string
+  equipe?: string
+  status?: string
+}
+
+interface Interview {
+  id: string
+  name: string
+  phone: string
+  date: string
+  time: string
+  fase: string
+  plataforma: string
+  area: string
+  notes: string
+  tipo?: string
+}
+
+const isUserAdminRole = (u?: User | null) => {
+  if (!u) return false
+  const r = (u.role || "").trim().toLowerCase()
+  const f = (u.funcao || "").trim().toLowerCase()
+  const email = (u.email || "").trim().toLowerCase()
+  return r === 'administrador' || r === 'admin' || r === 'desenvolvedor' || f === 'administrador' || f === 'admin' || f === 'desenvolvedor' || ['souendrionovo@gmail.com', 'acertofacilpromotoradecredito@gmail.com'].includes(email)
+}
+
+export default function DashboardPage() {
+  const router = useRouter()
+  const { user, perfil, isCorretor, isAdmin, isOperational, isDeveloper, isRecursosHumanos } = useAuth()
+  const userRoleNormalized = (perfil?.role || perfil?.funcao || "").trim().toLowerCase()
+  const isUserMonitoramento = userRoleNormalized === 'monitoramento'
+  const isUserSupervisor = userRoleNormalized === 'supervisor'
+  const isUserOperacional = userRoleNormalized === 'operacional' || userRoleNormalized === 'administrativo'
+  const isUserAdmin = isAdmin || userRoleNormalized === 'administrador' || userRoleNormalized === 'admin' || userRoleNormalized === 'desenvolvedor' || (perfil?.funcao || "").trim().toLowerCase() === 'administrador'
+  const isSupervisor = perfil?.role === 'Supervisor' || perfil?.role === 'Operacional' || perfil?.role === 'Administrativo' || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor' || perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO' || isAdmin || isDeveloper
+  const isEstagio = perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
+  const isPJ = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj' || perfil?.role?.toLowerCase() === 'pj' || perfil?.id === '77af8a7b-7cc2-43dd-b24d-b8a1e92c4639'
+  const { isCollapsed } = useSidebar()
+  const [mounted, setMounted] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [userProposals, setUserProposals] = useState<ProposalSummary[]>([])
+  const [rankings, setRankings] = useState<RankingItem[]>([])
+  const [estagioRankingGroup, setEstagioRankingGroup] = useState<RankingItem | null>(null)
+  const [expandedSupervisorIds, setExpandedSupervisorIds] = useState<Record<string, boolean>>({})
+  const [teamProduced, setTeamProduced] = useState(0)
+  const [teamMTDProduced, setTeamMTDProduced] = useState(0)
+  const [monthlyMTDProduced, setMonthlyMTDProduced] = useState(0)
+  
+  const [teamDailyProduced, setTeamDailyProduced] = useState(0)
+  const [teamDailyCreatedValue, setTeamDailyCreatedValue] = useState(0)
+  const [teamDailyCreatedCount, setTeamDailyCreatedCount] = useState(0)
+  const [teamWeeklyCreatedValue, setTeamWeeklyCreatedValue] = useState(0)
+  const [teamWeeklyCreatedCount, setTeamWeeklyCreatedCount] = useState(0)
+  const [teamMonthlyCreatedValue, setTeamMonthlyCreatedValue] = useState(0)
+  const [teamMonthlyCreatedCount, setTeamMonthlyCreatedCount] = useState(0)
+  const [teamInProcessValue, setTeamInProcessValue] = useState(0)
+  const [teamInProcessCount, setTeamInProcessCount] = useState(0)
+  const [teamPendingInconsistencyValue, setTeamPendingInconsistencyValue] = useState(0)
+  const [internAdvancedCount, setInternAdvancedCount] = useState(0)
+  const [internPaidCount, setInternPaidCount] = useState(0)
+  const [internTotalMovedValue, setInternTotalMovedValue] = useState(0)
+  const [internPaidProposals, setInternPaidProposals] = useState<InternProposalDetail[]>([])
+  const [isInternProposalsModalOpen, setIsInternProposalsModalOpen] = useState(false)
+  const [banners, setBanners] = useState<{image_url: string, title: string | null}[]>([])
+  const [currentBanner, setCurrentBanner] = useState(0)
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null)
+  const [ticketStats, setTicketStats] = useState<TicketStats | null>(null)
+  const [startDate, setStartDate] = useState<string>(() => {
+    const now = new Date()
+    return format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd")
+  })
+  const [endDate, setEndDate] = useState<string>(() => {
+    const now = new Date()
+    return format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd")
+  })
+  const [tempStartDate, setTempStartDate] = useState<string>(() => {
+    const now = new Date()
+    return format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd")
+  })
+  const [tempEndDate, setTempEndDate] = useState<string>(() => {
+    const now = new Date()
+    return format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd")
+  })
+  const [activeTab, setActiveTab] = useState<'propostas' | 'chamados' | 'propostas_comerciais'>('propostas')
+  const [dashboardPeriod, setDashboardPeriod] = useState<'dia' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado'>('mes')
+  const [rankingModalParams, setRankingModalParams] = useState<RankingContractModalParams | null>(null)
+
+  const handleOpenRankingModal = (params: RankingContractModalParams) => {
+    setRankingModalParams(params)
+  }
+
+  const handleDashboardPeriodChange = (period: 'dia' | 'semana' | 'mes' | 'trimestre' | 'ano' | 'personalizado') => {
+    setDashboardPeriod(period)
+    const now = new Date()
+    
+    if (period === 'dia') {
+      const todayStr = format(now, "yyyy-MM-dd")
+      setStartDate(todayStr)
+      setEndDate(todayStr)
+      setTempStartDate(todayStr)
+      setTempEndDate(todayStr)
+    } else if (period === 'semana') {
+      const dayOfWeek = now.getDay()
+      const diffToMonday = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1)
+      const monday = new Date(now.setDate(diffToMonday))
+      const monStr = format(monday, "yyyy-MM-dd")
+      const todayStr = format(new Date(), "yyyy-MM-dd")
+      setStartDate(monStr)
+      setEndDate(todayStr)
+      setTempStartDate(monStr)
+      setTempEndDate(todayStr)
+    } else if (period === 'mes') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      const firstStr = format(firstDay, "yyyy-MM-dd")
+      const lastStr = format(lastDay, "yyyy-MM-dd")
+      setStartDate(firstStr)
+      setEndDate(lastStr)
+      setTempStartDate(firstStr)
+      setTempEndDate(lastStr)
+    } else if (period === 'trimestre') {
+      const quarterMonth = Math.floor(now.getMonth() / 3) * 3
+      const firstDay = new Date(now.getFullYear(), quarterMonth, 1)
+      const lastDay = new Date(now.getFullYear(), quarterMonth + 3, 0)
+      const firstStr = format(firstDay, "yyyy-MM-dd")
+      const lastStr = format(lastDay, "yyyy-MM-dd")
+      setStartDate(firstStr)
+      setEndDate(lastStr)
+      setTempStartDate(firstStr)
+      setTempEndDate(lastStr)
+    } else if (period === 'ano') {
+      const firstDay = new Date(now.getFullYear(), 0, 1)
+      const lastDay = new Date(now.getFullYear(), 11, 31)
+      const firstStr = format(firstDay, "yyyy-MM-dd")
+      const lastStr = format(lastDay, "yyyy-MM-dd")
+      setStartDate(firstStr)
+      setEndDate(lastStr)
+      setTempStartDate(firstStr)
+      setTempEndDate(lastStr)
+    }
+  }
+  const [teamPendingInconsistencyCount, setTeamPendingInconsistencyCount] = useState(0)
+  const [opInProcessValue, setOpInProcessValue] = useState(0)
+  const [opInProcessCount, setOpInProcessCount] = useState(0)
+  const [interviews, setInterviews] = useState<Interview[]>([])
+  const [dashboardInterviewTab, setDashboardInterviewTab] = useState<"ENTREVISTAS" | "LIGAÇÕES">("ENTREVISTAS")
+  const [dashboardCampaigns, setDashboardCampaigns] = useState<Campaign[]>([])
+  const [monthlyGoal, setMonthlyGoal] = useState<number>(47000)
+  const [teamGoal, setTeamGoal] = useState<number>(448000)
+  
+  const fetchDashboardData = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      console.error("Dashboard: Supabase não está configurado. Verifique as chaves em Settings -> Secrets.")
+      setIsLoading(false)
+      return
+    }
+    setIsLoading(true)
+
+    // Accumulators for team/admin stats
+    let teamTotal = 0
+    let teamMTDTotal = 0
+    let userMTDTotal = 0
+    let teamDailyTotal = 0
+    let teamInProcessValueCalc = 0
+    let teamInProcessCountCalc = 0
+    let opInProcessValueCalc = 0
+    let opInProcessCountCalc = 0
+    let teamPendingInconsistencyValueCalc = 0
+    let teamPendingInconsistencyCountCalc = 0
+    let teamCreatedTodayValue = 0
+    let teamCreatedTodayCount = 0
+    let teamCreatedWeekValue = 0
+    let teamCreatedWeekCount = 0
+    let teamCreatedMonthValue = 0
+    let teamCreatedMonthCount = 0
+
+    // Helper to fetch all records beyond the 1000 limit
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fetchAll = async (baseQuery: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let all: any[] = []
+      let from = 0
+      const step = 1000
+      let finished = false
+      
+      while (!finished) {
+        // PostgrestFilterBuilder doesn't have .clone(), but .range() returns a new instance
+        // so we can use baseQuery as a template for each iteration.
+        const { data, error } = await withRetry(() => baseQuery.range(from, from + step - 1))
+        if (error) {
+          console.warn("[fetchAll Error]:", error?.message || error)
+          throw error
+        }
+        if (!data || data.length === 0) {
+          finished = true
+        } else {
+          all = [...all, ...data]
+          if (data.length < step) {
+            finished = true
+          } else {
+            from += step
+          }
+        }
+      }
+      return all
+    }
+
+    try {
+      const startOfToday = new Date()
+      startOfToday.setHours(0, 0, 0, 0)
+
+      const startOfMonth = new Date()
+      startOfMonth.setHours(0, 0, 0, 0)
+      startOfMonth.setDate(1)
+
+      // Custom range for Supervisor and Admin and Operational and Recursos Humanos and Estagio
+      const customStart = (isSupervisor || isAdmin || isOperational || isRecursosHumanos || isEstagio) && startDate ? new Date(startDate + 'T00:00:00') : null
+      const customEnd = (isSupervisor || isAdmin || isOperational || isRecursosHumanos || isEstagio) && endDate ? new Date(endDate + 'T23:59:59') : null
+
+      const startOfWeek = new Date()
+      startOfWeek.setHours(0, 0, 0, 0)
+      const day = startOfWeek.getDay()
+      const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Monday
+      startOfWeek.setDate(diff)
+
+      // O card 'CONTRATOS DIGITADOS' não deve alterar de acordo com a aplicação do filtro por período.
+      // Definimos o refDate como a data física real atual (now) para mostrar sempre os valores do dia/semana/mês em exercício.
+      const refDate = new Date()
+
+      const targetDayStart = new Date(refDate)
+      targetDayStart.setHours(0, 0, 0, 0)
+      const targetDayEnd = new Date(refDate)
+      targetDayEnd.setHours(23, 59, 59, 999)
+
+      const targetWeekStart = new Date(refDate)
+      targetWeekStart.setHours(0, 0, 0, 0)
+      const dayNum = targetWeekStart.getDay()
+      const diffToMonday = targetWeekStart.getDate() - dayNum + (dayNum === 0 ? -6 : 1)
+      targetWeekStart.setDate(diffToMonday)
+      const targetWeekEnd = new Date(targetWeekStart)
+      targetWeekEnd.setDate(targetWeekStart.getDate() + 6)
+      targetWeekEnd.setHours(23, 59, 59, 999)
+
+      const targetMonthStart = new Date(refDate.getFullYear(), refDate.getMonth(), 1, 0, 0, 0, 0)
+      const targetMonthEnd = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0, 23, 59, 59, 999)
+
+      // Fetch Banners for everyone first
+      const { data: bannerData } = await withRetry(() => 
+        supabase
+          .from('dashboard_banners')
+          .select('image_url, title')
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+      )
+      setBanners((bannerData || []).filter(b => typeof b.image_url === 'string' && (b.image_url.startsWith('http://') || b.image_url.startsWith('https://') || b.image_url.startsWith('/'))))
+
+      // Fetch dynamic goal configs from DB for the current month and year
+      try {
+        const now = new Date()
+        const currentYear = now.getFullYear()
+        const currentMonth = now.getMonth() + 1 // 1-12
+
+        // Default initial structures based on user role fallbacks
+        let calculatedMonthlyGoal = (isSupervisor || isOperational || isAdmin || isDeveloper) ? 448000 : 47000
+        let calculatedTeamGoal = 448000
+
+        const { data: goalsConfigs, error: goalsError } = await withRetry(() => 
+          supabase
+            .from('metas_config')
+            .select('*')
+            .eq('ano', currentYear)
+            .eq('mes', currentMonth)
+        )
+
+        if (!goalsError && goalsConfigs && goalsConfigs.length > 0) {
+          const targetSupervisorId = isSupervisor ? perfil?.id : perfil?.supervisor_id
+
+          if (isUserSupervisor) {
+            // Se for supervisor, a meta principal é a meta de time da sua própria equipe
+            let teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time' && g.alvo_id === perfil?.id)
+            if (!teamGoalConfig) {
+              teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time')
+            }
+            if (teamGoalConfig) {
+              calculatedMonthlyGoal = teamGoalConfig.valor_mensal
+            }
+          } else if (isUserMonitoramento) {
+            // Monitoramento busca meta própria ou meta de time
+            let monGoalConfig = goalsConfigs.find(g => g.alvo_id === perfil?.id)
+            if (!monGoalConfig) {
+              monGoalConfig = goalsConfigs.find(g => g.tipo === 'time')
+            }
+            if (monGoalConfig) {
+              calculatedMonthlyGoal = monGoalConfig.valor_mensal
+            }
+          } else if (isSupervisor || isOperational || isAdmin || isDeveloper) {
+            // Se for operacional, admin ou dev
+            let teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time' && g.alvo_id === targetSupervisorId)
+            if (!teamGoalConfig) {
+              teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time')
+            }
+            if (teamGoalConfig) {
+              calculatedMonthlyGoal = teamGoalConfig.valor_mensal
+            }
+          } else {
+            // Se for corretor/estagiário/processo seletivo
+            // A meta mensal individual deles ("monthlyGoal") vem da configuração individual (tipo === 'corretor' e alvo_id === perfil?.id)
+            const indGoalConfig = goalsConfigs.find(g => g.tipo === 'corretor' && g.alvo_id === perfil?.id)
+            if (indGoalConfig) {
+              calculatedMonthlyGoal = indGoalConfig.valor_mensal
+            }
+
+            // A meta de time deles ("teamGoal") vem da meta de time do supervisor deles (tipo === 'time' e alvo_id === supervisor_id)
+            let teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time' && g.alvo_id === targetSupervisorId)
+            if (!teamGoalConfig) {
+              // Se o corretor não tiver o supervisor_id correspondente ou o supervisor não possuir uma meta específica,
+              // então busca a primeira meta de time disponível de fallback
+              teamGoalConfig = goalsConfigs.find(g => g.tipo === 'time')
+            }
+            if (teamGoalConfig) {
+              calculatedTeamGoal = teamGoalConfig.valor_mensal
+            }
+          }
+        }
+
+        setMonthlyGoal(calculatedMonthlyGoal)
+        setTeamGoal(calculatedTeamGoal)
+      } catch (metaErr) {
+        console.warn("Could not fetch goals configs from DB, using fallback:", metaErr)
+      }
+
+      // Fetch distributed campaigns for the dashboard
+      try {
+        const { data: campaignData, error: campaignError } = await withRetry(() => 
+          supabase
+            .from('campanhas')
+            .select('*')
+            .order('created_at', { ascending: false })
+        )
+
+        if (!campaignError && campaignData) {
+          // A campaign is only visible here if it has at least one distribution entry
+          // We use a more robust check for distribution
+          let filteredCampaigns = campaignData.filter(c => {
+            const f = c.filtros
+            const distribution = f?.distribuicao || []
+            const brokers = f?.corretores_selecionados || []
+            return (Array.isArray(distribution) && distribution.length > 0) || 
+                   (Array.isArray(brokers) && brokers.length > 0)
+          })
+          
+          if (!isAdmin && perfil) {
+            const userId = perfil.id
+            const supervisorId = perfil.supervisor_id
+            
+            filteredCampaigns = filteredCampaigns.filter(c => {
+              const f = c.filtros
+              const distribution = f?.distribuicao || []
+              const brokers = f?.corretores_selecionados || []
+              
+              const isSelectedBroker = Array.isArray(brokers) && brokers.includes(userId);
+              const isSelectedSupervisor = Array.isArray(distribution) && distribution.includes(userId);
+              const isUnderSelectedSupervisor = !!(supervisorId && Array.isArray(distribution) && distribution.includes(supervisorId));
+
+              if (Array.isArray(brokers) && brokers.length > 0) {
+                return isSelectedBroker || isSelectedSupervisor;
+              }
+              
+              return isSelectedSupervisor || isUnderSelectedSupervisor;
+            })
+          }
+          
+          setDashboardCampaigns(filteredCampaigns.slice(0, 3))
+        }
+      } catch (err) {
+        console.warn("Could not fetch dashboard campaigns:", err)
+      }
+
+      const paidStatuses = [
+        "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", 
+        "PÓS-VENDA REALIZADA"
+      ]
+      const inProcessStatuses = [
+        "ANDAMENTO / AGUARDANDO PAGAMENTO", 
+        "COM INCONSISTÊNCIA NO BANCO", 
+        "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL"
+      ]
+
+      const opStatuses = [
+        'AGUARDANDO DIGITAÇÃO OPERACIONAL',
+        'COM INCONSISTÊNCIA / AGUARDANDO OPERACIONAL',
+        'COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL'
+      ]
+
+      // Fetch users early to locate Jorge and team
+      const usersRes = await withRetry(async () => {
+        const res = await fetch('/api/usuarios')
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+        return res.json()
+      })
+      const allUsers: User[] = usersRes || []
+
+      const targetCorretorId = perfil?.id
+
+      // 1. Fetch user's paid proposals
+      const filterStartISO = customStart ? customStart.toISOString() : startOfMonth.toISOString()
+
+      let userPaidQuery = supabase
+        .from("propostas")
+        .select("id_lead, nome_cliente, valor_producao, valor_operacao, updated_at, data_pago_cliente, status, corretor_id, estagiario_colaborador_id")
+        .in("status", paidStatuses)
+        .gte("updated_at", filterStartISO)
+      
+      if (customEnd) {
+        userPaidQuery = userPaidQuery.lte("updated_at", customEnd.toISOString())
+      }
+
+      if (isCorretor && targetCorretorId && typeof targetCorretorId === 'string' && targetCorretorId.trim() !== '') {
+        userPaidQuery = userPaidQuery.or(`corretor_id.eq.${targetCorretorId},estagiario_colaborador_id.eq.${targetCorretorId}`)
+      }
+
+      let userPaid: any[] = []
+      try {
+        userPaid = await fetchAll(userPaidQuery)
+      } catch (uErr: any) {
+        console.warn("Could not fetch user paid proposals:", uErr?.message || uErr)
+        userPaid = []
+      }
+
+      setUserProposals(userPaid || [])
+
+      // For intern, fetch their associated proposals to calculate custom dashboard metrics
+      if (isEstagio) {
+        try {
+          const targetInternId = perfil?.id
+          const { data: internProposals, error: internPropsError } = await withRetry(() =>
+            supabase
+              .from("propostas")
+              .select("id, status, valor_producao, estagiario_colaborador_id, corretor_id, nome_cliente, banco, convenio, tipo_operacao, created_at, updated_at, data_pago_cliente")
+              .or(`estagiario_colaborador_id.eq.${targetInternId},corretor_id.eq.${targetInternId}`)
+          )
+
+          if (internProposals && !internPropsError) {
+            let paidCount = 0
+            let totalMoved = 0
+            const matchedProps: InternProposalDetail[] = []
+
+            internProposals.forEach(p => {
+              const updatedDate = new Date(p.updated_at)
+              const effectivePaymentDate = p.data_pago_cliente ? (parseDateSafe(p.data_pago_cliente) || updatedDate) : updatedDate
+
+              let isPaidInRange = true
+              if (customStart || customEnd) {
+                if (customStart && effectivePaymentDate < customStart) isPaidInRange = false
+                if (customEnd && effectivePaymentDate > customEnd) isPaidInRange = false
+              } else {
+                isPaidInRange = effectivePaymentDate >= startOfMonth
+              }
+
+              if ((p.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA" || p.status === "PÓS-VENDA REALIZADA") && isPaidInRange) {
+                paidCount++
+                const moneyVal = parseCurrency(p.valor_producao)
+                if (!isNaN(moneyVal)) {
+                  totalMoved += moneyVal
+                }
+                matchedProps.push(p)
+              }
+            })
+
+            setInternPaidCount(paidCount)
+            setInternTotalMovedValue(totalMoved)
+            setInternPaidProposals(matchedProps)
+          } else {
+            setInternPaidCount(0)
+            setInternTotalMovedValue(0)
+            setInternPaidProposals([])
+          }
+
+          const ticketsStart = customStart || targetMonthStart
+          const ticketsEnd = customEnd || targetMonthEnd
+
+          // Fetch only approved tickets/chamados in the period
+          const { data: monthTickets, error: monthTicketsError } = await withRetry(() =>
+            supabase
+              .from("chamados")
+              .select("status, created_at, user_id")
+              .eq("user_id", targetInternId)
+              .gte("created_at", ticketsStart.toISOString())
+              .lte("created_at", ticketsEnd.toISOString())
+          )
+
+          let approvedCount = 0
+          if (monthTickets && !monthTicketsError) {
+            monthTickets.forEach(ticket => {
+              const ticketStatusUpper = (ticket.status || 'ABERTO').toUpperCase()
+              const ticketStatusNormalized = normalizeStatus(ticket.status || 'ABERTO')
+              
+              const isApproved = APROVADOS_LABELS.some(label => {
+                const u = label.toUpperCase()
+                const ua = normalizeStatus(u)
+                return ticketStatusUpper === u || ticketStatusNormalized === ua
+              })
+              
+              if (isApproved) {
+                approvedCount++
+              }
+            })
+          }
+          setInternAdvancedCount(approvedCount)
+
+        } catch (e) {
+          console.error("Error fetching intern metrics:", e)
+          setInternPaidCount(0)
+          setInternTotalMovedValue(0)
+          setInternAdvancedCount(0)
+          setInternPaidProposals([])
+        }
+      }
+
+      // 2. Fetch team and their proposals
+        // Identify target team
+        const targetSupervisorId = isSupervisor ? perfil?.id : perfil?.supervisor_id
+        
+        const now = new Date()
+        const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+        
+        let sortedRankings: RankingItem[] = []
+
+        const isPrivilegedStatsUser = isUserAdmin || isAdmin || isOperational || isUserOperacional || isDeveloper || isRecursosHumanos
+
+        if (targetSupervisorId || isPrivilegedStatsUser || isUserMonitoramento) {
+          const team = isPrivilegedStatsUser
+            ? allUsers.filter((u: User) => {
+                const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
+                const func = (u.funcao || "").trim().toLowerCase()
+                const isAllowedFuncao = ['corretor', 'supervisor', 'estágio', 'estagio', 'processo seletivo', 'gerente', 'administrador', 'admin', 'desenvolvedor', 'operacional'].includes(func) || isUserAdminRole(u)
+                return (isAllowedFuncao || isPJ) && u.status?.toUpperCase() !== 'INATIVO'
+              })
+            : isUserMonitoramento
+            ? allUsers.filter((u: User) => {
+                const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
+                if (isPJ) return false
+                if (isUserAdminRole(u)) return false
+                if (u.id === perfil?.id) return true
+                const func = (u.funcao || "").trim().toLowerCase()
+                return ['corretor', 'estágio', 'estagio', 'processo seletivo'].includes(func) && u.status?.toUpperCase() !== 'INATIVO'
+              })
+            : allUsers.filter((u: User) => {
+                const isPJ = (u.regime_contratacao || "").trim().toLowerCase() === 'pj' || (u.funcao || "").trim().toLowerCase() === 'pj'
+                // Corretores PJ não contabilizam para a equipe do supervisor
+                if (isPJ) return false
+                // Administrador NÃO conta para a meta do supervisor
+                if (isUserAdminRole(u)) return false
+                return (u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId) && u.status?.toUpperCase() !== 'INATIVO'
+              })
+          const validTeamIds = team.map((m: User) => m.id).filter(id => Boolean(id && typeof id === 'string' && id.trim() !== ''))
+          const teamIds = validTeamIds
+
+          // Ensure we always fetch at least the full current month for MTD calculations, and the week and month of the selected filter to avoid missing entries
+          const datesToCompare = [startOfCurrentMonth, targetMonthStart, targetWeekStart]
+          if (customStart) datesToCompare.push(customStart)
+          const queryStartDate = new Date(Math.min(...datesToCompare.map(d => d.getTime())))
+          const queryStart = queryStartDate.toISOString()
+          
+          const activeStatuses = Array.from(new Set([...inProcessStatuses, ...opStatuses]))
+          const activeStatusList = activeStatuses.map(s => `"${s}"`).join(",")
+
+          // Fetch proposals for the team (or all if admin/operational/monitoramento) with graceful fallback if intervention columns do not exist yet in DB
+          let teamProposals: any[] = []
+          try {
+            let teamProposalsQuery = supabase
+              .from("propostas")
+              .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome, intervencao_operacional, intervencao_operacional_id, intervencao_operacional_nome, intervencao_motivo")
+
+            if (!isPrivilegedStatsUser && !isUserMonitoramento && validTeamIds.length > 0) {
+              teamProposalsQuery = teamProposalsQuery.or(`corretor_id.in.(${validTeamIds.join(",")}),estagiario_colaborador_id.in.(${validTeamIds.join(",")}),intervencao_operacional_id.in.(${validTeamIds.join(",")})`)
+            }
+
+            teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte.${queryStart},created_at.gte.${queryStart},status.in.(${activeStatusList})`)
+            teamProposals = await fetchAll(teamProposalsQuery)
+          } catch (colErr: any) {
+            console.warn("Error fetching team proposals with interventions, trying fallback:", colErr?.message || colErr)
+            try {
+              let fallbackQuery = supabase
+                .from("propostas")
+                .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome")
+
+              if (!isPrivilegedStatsUser && !isUserMonitoramento && validTeamIds.length > 0) {
+                fallbackQuery = fallbackQuery.or(`corretor_id.in.(${validTeamIds.join(",")}),estagiario_colaborador_id.in.(${validTeamIds.join(",")})`)
+              }
+
+              fallbackQuery = fallbackQuery.or(`updated_at.gte.${queryStart},created_at.gte.${queryStart},status.in.(${activeStatusList})`)
+              teamProposals = await fetchAll(fallbackQuery)
+            } catch (fallbackErr: any) {
+              console.warn("Fallback query also failed, using simplified query:", fallbackErr?.message || fallbackErr)
+              try {
+                let simpleQuery = supabase
+                  .from("propostas")
+                  .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente")
+                  .gte("updated_at", queryStart)
+                teamProposals = await fetchAll(simpleQuery)
+              } catch (simpleErr) {
+                console.error("Simple proposals fetch also failed:", simpleErr)
+                teamProposals = []
+              }
+            }
+          }
+
+        // Fetch approved tickets for selected period (or current month fallback) to populate intern/PJ ranking columns
+        const approvedTicketsStart = customStart || targetMonthStart
+        const approvedTicketsEnd = customEnd || targetMonthEnd
+
+        const { data: monthApprovedTicketsRes, error: monthApprovedTicketsError } = await withRetry(() =>
+          supabase
+            .from("chamados")
+            .select("status, created_at, user_id")
+            .gte("created_at", approvedTicketsStart.toISOString())
+            .lte("created_at", approvedTicketsEnd.toISOString())
+        )
+
+        const approvedTicketsByUser: Record<string, number> = {}
+        if (monthApprovedTicketsRes && !monthApprovedTicketsError) {
+          monthApprovedTicketsRes.forEach(ticket => {
+            if (!ticket.user_id) return
+            const ticketStatusUpper = (ticket.status || 'ABERTO').toUpperCase()
+            const ticketStatusNormalized = normalizeStatus(ticket.status || 'ABERTO')
+            
+            const isApproved = APROVADOS_LABELS.some(label => {
+              const u = label.toUpperCase()
+              const ua = normalizeStatus(u)
+              return ticketStatusUpper === u || ticketStatusNormalized === ua
+            })
+            
+            if (isApproved) {
+              approvedTicketsByUser[ticket.user_id] = (approvedTicketsByUser[ticket.user_id] || 0) + 1
+            }
+          })
+        }
+
+        const brokerMetrics: Record<string, { 
+          totalPaid: number, 
+          countPaid: number, 
+          totalInProcess: number, 
+          countInProcess: number,
+          totalToday: number,
+          countToday: number 
+        }> = {}
+
+        const brokerOperations: Record<string, {
+          paid: Record<string, { total: number, count: number }>,
+          inProcess: Record<string, { total: number, count: number }>,
+          today: Record<string, { total: number, count: number }>
+        }> = {}
+
+        const brokerColaboracoes: Record<string, {
+          propria: {
+            totalPaid: number, countPaid: number, totalInProcess: number, countInProcess: number, totalToday: number, countToday: number
+          },
+          estagiarios: Record<string, {
+            estagiario_id: string,
+            nome: string,
+            totalPaid: number, countPaid: number, totalInProcess: number, countInProcess: number, totalToday: number, countToday: number
+          }>
+        }> = {}
+
+        // Helper to check for PJ regime or funcao
+        const checkUserPJ = (u?: User | null) => {
+          if (!u) return false;
+          const regime = (u.regime_contratacao || "").trim().toLowerCase();
+          const func = (u.funcao || "").trim().toLowerCase();
+          const role = (u.role || "").trim().toLowerCase();
+          if (func === 'desenvolvedor' || func === 'developer') return false;
+          return regime === 'pj' || func === 'pj' || role === 'pj' || func.includes('corretor pj') || role.includes('corretor pj');
+        }
+
+        const rawBrokerMetrics: Record<string, { totalPaid: number, countPaid: number, totalInProcess: number, countInProcess: number, totalToday: number, countToday: number }> = {}
+
+        // Initialize everyone stable with 0
+        allUsers.forEach((u: User) => {
+          brokerMetrics[u.id] = { 
+            totalPaid: 0, 
+            countPaid: 0, 
+            totalInProcess: 0, 
+            countInProcess: 0,
+            totalToday: 0, 
+            countToday: 0 
+          }
+          rawBrokerMetrics[u.id] = { 
+            totalPaid: 0, 
+            countPaid: 0, 
+            totalInProcess: 0, 
+            countInProcess: 0,
+            totalToday: 0, 
+            countToday: 0 
+          }
+          brokerColaboracoes[u.id] = {
+            propria: {
+              totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0
+            },
+            estagiarios: {}
+          }
+        })
+
+        teamProposals?.forEach((curr: { 
+          corretor_id: string, 
+          valor_producao: string | number, 
+          valor_operacao?: string | number,
+          tipo_operacao?: string,
+          updated_at: string, 
+          created_at: string, 
+          status: string, 
+          data_pago_cliente?: string,
+          estagiario_colaborador_id?: string,
+          estagiario_colaborador_nome?: string,
+          intervencao_operacional?: boolean,
+          intervencao_operacional_id?: string,
+          intervencao_operacional_nome?: string,
+          intervencao_motivo?: string
+        }) => {
+          const numericVal = isNaN(parseCurrency(curr.valor_producao)) ? 0 : parseCurrency(curr.valor_producao)
+          const rawOpVal = (curr.valor_operacao !== null && curr.valor_operacao !== undefined && curr.valor_operacao !== "") ? curr.valor_operacao : curr.valor_producao
+          const numericValOp = isNaN(parseCurrency(rawOpVal)) || parseCurrency(rawOpVal) === 0 ? numericVal : parseCurrency(rawOpVal)
+          
+          const rawTypeUpper = (curr.tipo_operacao || "").trim().toUpperCase()
+          let pjCalculatedVal = numericValOp
+          if (rawTypeUpper.includes("CARTAO") || rawTypeUpper.includes("CARTÃO")) {
+            pjCalculatedVal = numericValOp * 0.35
+          } else if (rawTypeUpper.includes("MARGEM") || rawTypeUpper.includes("NOVO")) {
+            pjCalculatedVal = numericValOp * 0.09
+          }
+
+          const brokerId = curr.corretor_id || ""
+
+          const brokerUser = allUsers.find((u: User) => u.id === brokerId)
+          const isIntern = brokerUser?.funcao === 'Estágio' || 
+                           brokerUser?.funcao === 'Estagio' || 
+                           brokerUser?.funcao === 'Processo Seletivo' || 
+                           brokerUser?.funcao === 'PROCESSO SELETIVO'
+          // Lista de beneficiários e divisão percentual da proposta
+          const beneficiaryIds: string[] = []
+          if (brokerId) beneficiaryIds.push(brokerId)
+
+          const hasIntervention = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id && curr.intervencao_operacional_id.trim() !== "")
+          let pctCorretor = 0.5
+          let pctOp1 = 0.5
+          let pctOp2 = 0
+          let op2IntervId: string | null = null
+
+          if (hasIntervention) {
+            const op1Id = curr.intervencao_operacional_id.trim()
+            if (!beneficiaryIds.includes(op1Id)) {
+              beneficiaryIds.push(op1Id)
+            }
+
+            // Identifica se há 2º operador associado à intervenção
+            if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== brokerId && curr.estagiario_colaborador_id.trim() !== op1Id) {
+              op2IntervId = curr.estagiario_colaborador_id.trim()
+            } else if (curr.intervencao_motivo && curr.intervencao_motivo.includes("2º")) {
+              const match = curr.intervencao_motivo.match(/2º [^()]+\(([^)]+)\)/)
+              if (match && match[1]) op2IntervId = match[1].trim()
+            }
+
+            if (op2IntervId && !beneficiaryIds.includes(op2IntervId)) {
+              beneficiaryIds.push(op2IntervId)
+            }
+
+            // Extrai as porcentagens definidas na intervenção: PCT:[c,op1,op2]
+            const pctMatch = curr.intervencao_motivo ? String(curr.intervencao_motivo).match(/PCT:\[([0-9.]+),([0-9.]+)(?:,([0-9.]+))?\]/) : null
+            if (pctMatch) {
+              pctCorretor = (parseFloat(pctMatch[1]) || 50) / 100
+              pctOp1 = (parseFloat(pctMatch[2]) || 50) / 100
+              pctOp2 = (parseFloat(pctMatch[3] || "0") || 0) / 100
+            } else if (op2IntervId) {
+              pctCorretor = 0.34
+              pctOp1 = 0.33
+              pctOp2 = 0.33
+            } else {
+              pctCorretor = 0.5
+              pctOp1 = 0.5
+              pctOp2 = 0
+            }
+          } else {
+            // Com intervenção desativada: proposta pontua 100% exclusivamente para o Corretor Titular.
+            // Se houver estagiário regular da proposta cadastrado fora de intervenção, inclui para acompanhamento
+            if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== brokerId) {
+              beneficiaryIds.push(curr.estagiario_colaborador_id.trim())
+            }
+          }
+
+          const getInterventionFactor = (userId: string): number => {
+            if (!hasIntervention) return 1.0
+            const op1Id = curr.intervencao_operacional_id?.trim()
+            if (userId === brokerId) return pctCorretor
+            if (op1Id && userId === op1Id) return pctOp1
+            if (op2IntervId && userId === op2IntervId) return pctOp2
+            return 0
+          }
+          const targetBrokerIdForColabs = brokerId
+          
+          const createdDate = parseDateSafe(curr.created_at) || new Date(curr.created_at)
+          const updatedDate = parseDateSafe(curr.updated_at) || new Date(curr.updated_at)
+          
+          // Use data_pago_cliente if available, otherwise fall back to updated_at for payment date
+          const effectivePaymentDate = curr.data_pago_cliente ? (parseDateSafe(curr.data_pago_cliente) || updatedDate) : updatedDate
+          
+          const isPaid = paidStatuses.includes(curr.status)
+          const isInProcess = inProcessStatuses.includes(curr.status)
+          const isOpInProcess = opStatuses.includes(curr.status)
+          const isCancelled = curr.status === "CANCELADO"
+
+          // Check if it's a retroactive payment (paid in a month prior to the current visible month)
+          // We use startOfMonth as the threshold for current month activity
+          const isRetroactivePayment = isPaid && (effectivePaymentDate < startOfMonth)
+          
+          // Fix range logic: allow filtering even if only one date is provided
+          let isPaidInRange = true
+          if (customStart || customEnd) {
+            if (customStart && effectivePaymentDate < customStart) isPaidInRange = false
+            if (customEnd && effectivePaymentDate > customEnd) isPaidInRange = false
+          } else {
+            isPaidInRange = effectivePaymentDate >= startOfMonth
+          }
+
+          const isTodayCreated = createdDate >= targetDayStart && createdDate <= targetDayEnd
+          const isThisWeekCreated = createdDate >= targetWeekStart && createdDate <= targetWeekEnd
+          const isThisMonthCreated = createdDate >= targetMonthStart && createdDate <= targetMonthEnd
+          
+          const isTodayPaid = isPaid && (effectivePaymentDate >= targetDayStart && effectivePaymentDate <= targetDayEnd) && isPaidInRange
+          const isMTDPaid = effectivePaymentDate >= startOfCurrentMonth && effectivePaymentDate <= endOfCurrentMonth
+
+          const isDigitadaHoje = isTodayCreated && !isCancelled && !isRetroactivePayment && !isPaid
+          const isEffectiveInProcess = isInProcess || isDigitadaHoje
+
+          const rawType = (curr.tipo_operacao || "").trim().toUpperCase()
+          const cleanType = rawType || "OUTROS"
+
+          // For cards/goals: If PJ, apply percentage calculation (35% Cartão, 9% Margem)
+          const isPJBrokerCard = checkUserPJ(brokerUser) || (curr.estagiario_colaborador_id ? checkUserPJ(allUsers.find((u: User) => u.id === curr.estagiario_colaborador_id)) : false)
+          const cardVal = isPJBrokerCard ? pjCalculatedVal : numericVal
+          const contractProductionVal = numericVal > 0 ? numericVal : (numericValOp || 0)
+
+          const isBrokerAdmin = isUserAdminRole(brokerUser)
+
+          // Regras de contabilização para a meta do usuário logado:
+          let countsForTeam = false
+          if (isUserAdmin || isUserOperacional || isAdmin || isOperational || isDeveloper || isRecursosHumanos) {
+            // Operacional e Administrador: todos os contratos pagos digitados na empresa inteira por qualquer usuário (incluindo Admin e PJ)
+            countsForTeam = true
+          } else if (isUserMonitoramento) {
+            // Monitoramento:
+            // - Contratos digitados pelo próprio Monitoramento;
+            // - Contratos digitados por todos os Corretores CLT, Estagiários e colaboradores em Processo Seletivo.
+            // - Contratos digitados pelo Administrador NÃO.
+            // - Corretores PJ NÃO.
+            if (!isBrokerAdmin && !isPJBrokerCard) {
+              const brokerFunc = (brokerUser?.funcao || "").trim().toLowerCase()
+              const isAllowedForMonitoramento = brokerId === perfil?.id || 
+                ['corretor', 'estágio', 'estagio', 'processo seletivo'].includes(brokerFunc) ||
+                (curr.estagiario_colaborador_id && teamIds.includes(curr.estagiario_colaborador_id))
+              if (isAllowedForMonitoramento) {
+                countsForTeam = true
+              }
+            }
+          } else {
+            // Supervisão (Supervisor):
+            // - Contratos digitados pelo próprio Supervisor;
+            // - Contratos digitados por todos os Corretores CLT, Estagiários e colaboradores em Processo Seletivo vinculados ao supervisor;
+            // - Contratos em que um membro da sua equipe foi indicado como colaborador/estagiário;
+            // - Contratos digitados pelo Administrador NÃO.
+            // - Corretores PJ NÃO.
+            if (!isBrokerAdmin && !isPJBrokerCard) {
+              const belongsToTeam = teamIds.includes(brokerId) || (curr.estagiario_colaborador_id && teamIds.includes(curr.estagiario_colaborador_id))
+              if (belongsToTeam) {
+                countsForTeam = true
+              }
+            }
+          }
+
+          if (countsForTeam) {
+            if (isPaid && isMTDPaid) {
+              teamMTDTotal += cardVal
+            }
+
+            if (isPaid && isPaidInRange) {
+              teamTotal += cardVal
+              if (isTodayPaid) teamDailyTotal += cardVal
+            }
+
+            if (isEffectiveInProcess) {
+              teamInProcessValueCalc += contractProductionVal
+              teamInProcessCountCalc += 1
+              if (curr.status === "COM INCONSISTÊNCIA NO BANCO" || curr.status === "COM INCONSISTÊNCIA NO BANCO / AGUARDANDO OPERACIONAL") {
+                teamPendingInconsistencyValueCalc += contractProductionVal
+                teamPendingInconsistencyCountCalc += 1
+              }
+            }
+
+            if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
+              teamCreatedTodayValue += contractProductionVal
+              teamCreatedTodayCount += 1
+            }
+
+            if (isThisWeekCreated && !isCancelled && !isRetroactivePayment) {
+              teamCreatedWeekValue += contractProductionVal
+              teamCreatedWeekCount += 1
+            }
+
+            if (isThisMonthCreated && !isCancelled && !isRetroactivePayment) {
+              teamCreatedMonthValue += contractProductionVal
+              teamCreatedMonthCount += 1
+            }
+          }
+
+          if (isPaid && isMTDPaid) {
+            const isMatchUser = beneficiaryIds.includes(perfil?.id || '')
+            if (isMatchUser) {
+              const fraction = getInterventionFactor(perfil?.id || '')
+              userMTDTotal += (cardVal * fraction)
+            }
+          }
+
+          if (isPaid && isPaidInRange) {
+            beneficiaryIds.forEach((bId) => {
+              if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
+              const bUser = allUsers.find((u: User) => u.id === bId)
+              const bIsPJ = checkUserPJ(bUser)
+              const factor = getInterventionFactor(bId)
+              if (factor <= 0) return
+              const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
+              const bRawVal = (bIsPJ ? (numericVal > 0 ? numericVal : numericValOp) : numericVal) * factor
+
+              if (brokerMetrics[bId]) {
+                brokerMetrics[bId].totalPaid += bVal
+                brokerMetrics[bId].countPaid += 1
+              }
+              if (rawBrokerMetrics[bId]) {
+                rawBrokerMetrics[bId].totalPaid += bRawVal
+                rawBrokerMetrics[bId].countPaid += 1
+              }
+
+              if (!brokerOperations[bId]) {
+                brokerOperations[bId] = { paid: {}, inProcess: {}, today: {} }
+              }
+              if (!brokerOperations[bId].paid[cleanType]) {
+                brokerOperations[bId].paid[cleanType] = { total: 0, count: 0 }
+              }
+              brokerOperations[bId].paid[cleanType].total += bRawVal
+              brokerOperations[bId].paid[cleanType].count += 1
+            })
+          }
+
+          if (isEffectiveInProcess) {
+            beneficiaryIds.forEach((bId) => {
+              if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
+              const bUser = allUsers.find((u: User) => u.id === bId)
+              const bIsPJ = checkUserPJ(bUser)
+              const factor = getInterventionFactor(bId)
+              if (factor <= 0) return
+              const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
+              const bRawVal = (bIsPJ ? (numericVal > 0 ? numericVal : numericValOp) : numericVal) * factor
+
+              if (brokerMetrics[bId]) {
+                brokerMetrics[bId].totalInProcess += bVal
+                brokerMetrics[bId].countInProcess += 1
+              }
+              if (rawBrokerMetrics[bId]) {
+                rawBrokerMetrics[bId].totalInProcess += bRawVal
+                rawBrokerMetrics[bId].countInProcess += 1
+              }
+
+              if (!brokerOperations[bId]) {
+                brokerOperations[bId] = { paid: {}, inProcess: {}, today: {} }
+              }
+              if (!brokerOperations[bId].inProcess[cleanType]) {
+                brokerOperations[bId].inProcess[cleanType] = { total: 0, count: 0 }
+              }
+              brokerOperations[bId].inProcess[cleanType].total += bRawVal
+              brokerOperations[bId].inProcess[cleanType].count += 1
+            })
+          }
+
+          if (isOpInProcess) {
+            opInProcessValueCalc += cardVal
+            opInProcessCountCalc += 1
+          }
+
+          if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
+            beneficiaryIds.forEach((bId) => {
+              if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
+              const bUser = allUsers.find((u: User) => u.id === bId)
+              const bIsPJ = checkUserPJ(bUser)
+              const factor = getInterventionFactor(bId)
+              if (factor <= 0) return
+              const bVal = (bIsPJ ? pjCalculatedVal : numericVal) * factor
+              const bRawVal = (bIsPJ ? (numericVal > 0 ? numericVal : numericValOp) : numericVal) * factor
+
+              if (brokerMetrics[bId]) {
+                brokerMetrics[bId].totalToday += bVal
+                brokerMetrics[bId].countToday += 1
+              }
+              if (rawBrokerMetrics[bId]) {
+                rawBrokerMetrics[bId].totalToday += bRawVal
+                rawBrokerMetrics[bId].countToday += 1
+              }
+
+              if (!brokerOperations[bId]) {
+                brokerOperations[bId] = { paid: {}, inProcess: {}, today: {} }
+              }
+              if (!brokerOperations[bId].today[cleanType]) {
+                brokerOperations[bId].today[cleanType] = { total: 0, count: 0 }
+              }
+              brokerOperations[bId].today[cleanType].total += bRawVal
+              brokerOperations[bId].today[cleanType].count += 1
+            })
+          }
+
+          if (isThisWeekCreated && !isCancelled && !isRetroactivePayment) {
+            // Already updated if countsForTeam is true
+          }
+
+          if (isThisMonthCreated && !isCancelled && !isRetroactivePayment) {
+            // Already updated if countsForTeam is true
+          }
+
+          // Accumulate Intern Collaborations & Self-Production (propria)
+          if (brokerColaboracoes[targetBrokerIdForColabs] && (!((isUserSupervisor || isUserMonitoramento) && !countsForTeam))) {
+            const estId = isIntern ? brokerId : curr.estagiario_colaborador_id
+            const estNome = isIntern ? (brokerUser?.nome || "Estagiário") : curr.estagiario_colaborador_nome
+            
+            if (estId && estId.trim() !== "") {
+              const estUser = allUsers.find((u: User) => u.id === estId)
+              const estIsPJ = checkUserPJ(estUser)
+              const valForEst = estIsPJ ? (numericVal > 0 ? numericVal : numericValOp) : numericVal
+
+              if (!brokerColaboracoes[targetBrokerIdForColabs].estagiarios[estId]) {
+                brokerColaboracoes[targetBrokerIdForColabs].estagiarios[estId] = {
+                  estagiario_id: estId,
+                  nome: estNome || "Estagiário",
+                  totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0
+                }
+              }
+              const est = brokerColaboracoes[targetBrokerIdForColabs].estagiarios[estId]
+              if (isPaid && isPaidInRange) {
+                est.totalPaid += valForEst
+                est.countPaid += 1
+              }
+              if (isEffectiveInProcess) {
+                est.totalInProcess += valForEst
+                est.countInProcess += 1
+              }
+              if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
+                est.totalToday += valForEst
+                est.countToday += 1
+              }
+            } else {
+              const propUser = allUsers.find((u: User) => u.id === targetBrokerIdForColabs)
+              const propIsPJ = checkUserPJ(propUser)
+              const valForProp = propIsPJ ? (numericVal > 0 ? numericVal : numericValOp) : numericVal
+
+              const prop = brokerColaboracoes[targetBrokerIdForColabs].propria
+              if (isPaid && isPaidInRange) {
+                prop.totalPaid += valForProp
+                prop.countPaid += 1
+              }
+              if (isEffectiveInProcess) {
+                prop.totalInProcess += valForProp
+                prop.countInProcess += 1
+              }
+              if (isTodayCreated && !isCancelled && !isRetroactivePayment) {
+                prop.totalToday += valForProp
+                prop.countToday += 1
+              }
+            }
+          }
+        })
+
+        setTeamProduced(teamTotal)
+        setTeamMTDProduced(teamMTDTotal)
+        setMonthlyMTDProduced(userMTDTotal)
+        setTeamDailyProduced(teamDailyTotal)
+        setTeamDailyCreatedValue(teamCreatedTodayValue)
+        setTeamDailyCreatedCount(teamCreatedTodayCount)
+        setTeamWeeklyCreatedValue(teamCreatedWeekValue)
+        setTeamWeeklyCreatedCount(teamCreatedWeekCount)
+        setTeamMonthlyCreatedValue(teamCreatedMonthValue)
+        setTeamMonthlyCreatedCount(teamCreatedMonthCount)
+        setTeamInProcessValue(teamInProcessValueCalc)
+        setTeamInProcessCount(teamInProcessCountCalc)
+        setTeamPendingInconsistencyValue(teamPendingInconsistencyValueCalc)
+        setTeamPendingInconsistencyCount(teamPendingInconsistencyCountCalc)
+        setOpInProcessValue(opInProcessValueCalc)
+        setOpInProcessCount(opInProcessCountCalc)
+
+        // Helper to check for PJ regime or funcao
+        const isUserPJ = (u: User) => {
+          const regime = (u.regime_contratacao || "").trim().toLowerCase();
+          const func = (u.funcao || "").trim().toLowerCase();
+          const role = (u.role || "").trim().toLowerCase();
+          if (func === 'desenvolvedor' || func === 'developer') return false;
+          return regime === 'pj' || func === 'pj' || role === 'pj' || func.includes('corretor pj') || role.includes('corretor pj');
+        }
+
+        // Helper to check for Intern regime or funcao
+        const isUserEstagio = (u: User) => {
+          const func = (u.funcao || "").trim().toLowerCase();
+          const regime = (u.regime_contratacao || "").trim().toLowerCase();
+          if (func === 'desenvolvedor' || func === 'developer') return false;
+          return func === 'estágio' || func === 'estagio' || func === 'processo seletivo' || func === 'processo seletivo' || regime === 'estágio' || regime === 'estagio';
+        }
+
+        // Form rankings for supervisor, group interns and PJs together, CLT and Supervisors individually
+        const individualCompetitors = team.filter((m: User) => {
+          if (m.status?.toUpperCase() === 'INATIVO') return false;
+          const func = (m.funcao || "").trim().toLowerCase();
+          if (func === 'desenvolvedor' || func === 'developer') return false;
+          return !isUserPJ(m) && !isUserEstagio(m);
+        });
+
+        const groupedUsers = team.filter((m: User) => {
+          if (m.status?.toUpperCase() === 'INATIVO') return false;
+          const func = (m.funcao || "").trim().toLowerCase();
+          if (func === 'desenvolvedor' || func === 'developer') return false;
+          return isUserPJ(m) || isUserEstagio(m);
+        });
+
+        // Sum up total metrics for the group
+        let groupTotalPaid = 0;
+        let groupCountPaid = 0;
+        let groupTotalInProcess = 0;
+        let groupCountInProcess = 0;
+        let groupTotalToday = 0;
+        let groupCountToday = 0;
+
+        groupedUsers.forEach((u: User) => {
+          const m = rawBrokerMetrics[u.id] || { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 };
+          groupTotalPaid += m.totalPaid;
+          groupCountPaid += m.countPaid;
+          groupTotalInProcess += m.totalInProcess;
+          groupCountInProcess += m.countInProcess;
+          groupTotalToday += m.totalToday;
+          groupCountToday += m.countToday;
+        });
+
+        const groupMembersDetailList = groupedUsers.map((m: User) => {
+          let metrics = rawBrokerMetrics[m.id] || { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 };
+          let approvedCount = approvedTicketsByUser[m.id] || 0
+          let opsPaid = brokerOperations[m.id]?.paid || {}
+          let opsInProcess = brokerOperations[m.id]?.inProcess || {}
+          let opsToday = brokerOperations[m.id]?.today || {}
+
+          const supervisorName = m.supervisor_nome || 
+                                 (allUsers as User[]).find((u: User) => u.id === m.supervisor_id)?.nome || 
+                                 'NÃO INFORMADO';
+          return {
+            estagiario_id: m.id,
+            nome: m.nome,
+            supervisor: supervisorName,
+            totalPaid: metrics.totalPaid,
+            countPaid: metrics.countPaid,
+            totalInProcess: metrics.totalInProcess,
+            countInProcess: metrics.countInProcess,
+            totalToday: metrics.totalToday,
+            countToday: metrics.countToday,
+            isPJ: isUserPJ(m),
+            approvedTicketsCount: approvedCount,
+            operationsPaid: opsPaid,
+            operationsInProcess: opsInProcess,
+            operationsToday: opsToday
+          };
+        });
+
+        // Sort inside group by totalPaid descending, then totalInProcess descending, then totalToday descending
+        groupMembersDetailList.sort((a, b) => {
+          if (b.totalPaid !== a.totalPaid) {
+            return b.totalPaid - a.totalPaid;
+          }
+          if (b.totalInProcess !== a.totalInProcess) {
+            return b.totalInProcess - a.totalInProcess;
+          }
+          return b.totalToday - a.totalToday;
+        });
+
+        let groupApprovedTickets = 0;
+        groupMembersDetailList.forEach((est: InternCollaboration) => {
+          groupApprovedTickets += (est.approvedTicketsCount || 0);
+        });
+
+        const groupRankingItem: RankingItem = {
+          corretor_id: "ESTAGIL_AND_PJ",
+          nome: "ESTÁGIO & PJ",
+          funcao: "grupo_estagio_pj",
+          totalPaid: groupTotalPaid,
+          countPaid: groupCountPaid,
+          totalInProcess: groupTotalInProcess,
+          countInProcess: groupCountInProcess,
+          totalToday: groupTotalToday,
+          countToday: groupCountToday,
+          approvedTicketsCount: groupApprovedTickets,
+          colaboracoes: {
+            propria: { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 },
+            estagiarios: groupMembersDetailList
+          }
+        };
+
+        // Calcula a soma de todos os contratos dos estagiários para atribuir à Supervisora no Ranking de Vendas
+        const estagiariosListOnly = groupMembersDetailList.filter((e) => !e.isPJ)
+        let estagiariosTotalPaid = 0
+        let estagiariosCountPaid = 0
+        let estagiariosTotalInProcess = 0
+        let estagiariosCountInProcess = 0
+        let estagiariosTotalToday = 0
+        let estagiariosCountToday = 0
+        let estagiariosApprovedTickets = 0
+
+        estagiariosListOnly.forEach((est) => {
+          estagiariosTotalPaid += (est.totalPaid || 0)
+          estagiariosCountPaid += (est.countPaid || 0)
+          estagiariosTotalInProcess += (est.totalInProcess || 0)
+          estagiariosCountInProcess += (est.countInProcess || 0)
+          estagiariosTotalToday += (est.totalToday || 0)
+          estagiariosCountToday += (est.countToday || 0)
+          estagiariosApprovedTickets += (est.approvedTicketsCount || 0)
+        })
+
+        sortedRankings = individualCompetitors.map((m: User) => {
+          const userFunc = (m.funcao || "").trim().toLowerCase()
+          const userRole = (m.role || "").trim().toLowerCase()
+          const isSupervisorUser = userFunc === "supervisor" || userRole === "supervisor"
+
+          if (isSupervisorUser) {
+            return {
+              corretor_id: m.id,
+              nome: m.nome,
+              funcao: m.funcao || "Supervisor",
+              totalPaid: estagiariosTotalPaid,
+              countPaid: estagiariosCountPaid,
+              totalInProcess: estagiariosTotalInProcess,
+              countInProcess: estagiariosCountInProcess,
+              totalToday: estagiariosTotalToday,
+              countToday: estagiariosCountToday,
+              approvedTicketsCount: estagiariosApprovedTickets,
+              colaboracoes: {
+                propria: { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 },
+                estagiarios: estagiariosListOnly
+              }
+            }
+          }
+
+          return {
+            corretor_id: m.id,
+            nome: m.nome,
+            funcao: m.funcao || "",
+            totalPaid: rawBrokerMetrics[m.id]?.totalPaid || 0,
+            countPaid: rawBrokerMetrics[m.id]?.countPaid || 0,
+            totalInProcess: rawBrokerMetrics[m.id]?.totalInProcess || 0,
+            countInProcess: rawBrokerMetrics[m.id]?.countInProcess || 0,
+            totalToday: rawBrokerMetrics[m.id]?.totalToday || 0,
+            countToday: rawBrokerMetrics[m.id]?.countToday || 0,
+            approvedTicketsCount: approvedTicketsByUser[m.id] || 0,
+            colaboracoes: {
+              propria: { totalPaid: 0, countPaid: 0, totalInProcess: 0, countInProcess: 0, totalToday: 0, countToday: 0 },
+              estagiarios: []
+            }
+          }
+        });
+
+        if (groupedUsers.length > 0) {
+          setEstagioRankingGroup(groupRankingItem);
+        } else {
+          setEstagioRankingGroup(null);
+        }
+
+        sortedRankings.sort((a: RankingItem, b: RankingItem) => {
+          if (b.totalPaid !== a.totalPaid) {
+            return b.totalPaid - a.totalPaid
+          }
+          if (b.totalInProcess !== a.totalInProcess) {
+            return b.totalInProcess - a.totalInProcess
+          }
+          return b.totalToday - a.totalToday
+        });
+
+        setRankings(sortedRankings)
+      } else {
+        let allPaid: any[] = []
+        try {
+          let rankingQuery = supabase
+            .from("propostas")
+            .select("corretor_id, valor_producao, updated_at, data_pago_cliente, intervencao_operacional, intervencao_operacional_id, estagiario_colaborador_id, intervencao_motivo")
+            .in("status", paidStatuses)
+            .gte("updated_at", filterStartISO)
+          
+          if (customEnd) {
+            rankingQuery = rankingQuery.lte("updated_at", customEnd.toISOString())
+          }
+
+          allPaid = await fetchAll(rankingQuery)
+        } catch (rErr: any) {
+          console.warn("Error in rankingQuery, trying fallback:", rErr?.message || rErr)
+          try {
+            let fallbackRanking = supabase
+              .from("propostas")
+              .select("corretor_id, valor_producao, updated_at, data_pago_cliente")
+              .in("status", paidStatuses)
+              .gte("updated_at", filterStartISO)
+            
+            if (customEnd) {
+              fallbackRanking = fallbackRanking.lte("updated_at", customEnd.toISOString())
+            }
+
+            allPaid = await fetchAll(fallbackRanking)
+          } catch (fallbackRankErr) {
+            console.error("Fallback ranking query failed:", fallbackRankErr)
+            allPaid = []
+          }
+        }
+        const aggregated = allPaid.reduce((acc: Record<string, number>, curr) => {
+          const val = parseCurrency(curr.valor_producao)
+          const id = curr.corretor_id || "unknown"
+          const hasInterv = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
+
+          let pC = 0.5
+          let pOp1 = 0.5
+          let pOp2 = 0
+          let op2IntervId: string | null = null
+
+          if (hasInterv) {
+            const op1Id = curr.intervencao_operacional_id?.trim() || ""
+            if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== id && curr.estagiario_colaborador_id.trim() !== op1Id) {
+              op2IntervId = curr.estagiario_colaborador_id.trim()
+            } else if (curr.intervencao_motivo && curr.intervencao_motivo.includes("2º")) {
+              const match = curr.intervencao_motivo.match(/2º [^()]+\(([^)]+)\)/)
+              if (match && match[1]) op2IntervId = match[1].trim()
+            }
+
+            const pctMatch = curr.intervencao_motivo ? String(curr.intervencao_motivo).match(/PCT:\[([0-9.]+),([0-9.]+)(?:,([0-9.]+))?\]/) : null
+            if (pctMatch) {
+              pC = (parseFloat(pctMatch[1]) || 50) / 100
+              pOp1 = (parseFloat(pctMatch[2]) || 50) / 100
+              pOp2 = (parseFloat(pctMatch[3] || "0") || 0) / 100
+            } else if (op2IntervId) {
+              pC = 0.34
+              pOp1 = 0.33
+              pOp2 = 0.33
+            } else {
+              pC = 0.5
+              pOp1 = 0.5
+              pOp2 = 0
+            }
+          }
+
+          const factor = hasInterv ? pC : 1.0
+
+          const userInList = allUsers.find((u: User) => u.id === id)
+          if (userInList?.status?.toUpperCase() === 'INATIVO') {
+            return acc
+          }
+
+          const isUserIntern = userInList?.funcao === 'Estágio' ||
+                               userInList?.funcao === 'Estagio' ||
+                               userInList?.funcao === 'Processo Seletivo' ||
+                               userInList?.funcao === 'PROCESSO SELETIVO'
+
+          // For Corretor ranking (when not admin/supervisor), check range here too if needed
+          // but normally the query handles it. Let's respect data_pago_cliente if it ever gets used here.
+          const effectiveDate = curr.data_pago_cliente ? (parseDateSafe(curr.data_pago_cliente) || new Date(curr.updated_at)) : new Date(curr.updated_at)
+          
+          let inRange = true
+          if (customStart && effectiveDate < customStart) inRange = false
+          if (customEnd && effectiveDate > customEnd) inRange = false
+          if (!customStart && !customEnd && effectiveDate < startOfMonth) inRange = false
+
+          if (inRange) {
+            const numVal = isNaN(val) ? 0 : val
+            if (!isUserIntern) {
+              acc[id] = (acc[id] || 0) + (numVal * factor)
+            }
+            // Se houve intervenção operacional, atribui a porcentagem ao 1º operador
+            if (hasInterv && curr.intervencao_operacional_id && pOp1 > 0) {
+              const opId = curr.intervencao_operacional_id.trim()
+              acc[opId] = (acc[opId] || 0) + (numVal * pOp1)
+            }
+            // Se houver 2º operador na intervenção, atribui a porcentagem ao 2º operador
+            if (hasInterv && pOp2 > 0 && op2IntervId) {
+              acc[op2IntervId] = (acc[op2IntervId] || 0) + (numVal * pOp2)
+            }
+          }
+          return acc
+        }, {})
+
+        sortedRankings = Object.entries(aggregated)
+          .map(([corretor_id, total]) => {
+            const userInList = allUsers.find((u: User) => u.id === corretor_id)
+            return { 
+              corretor_id, 
+              nome: userInList?.nome || `Ranking ${corretor_id.substring(0, 4)}`, 
+              totalPaid: total as number,
+              countPaid: 0,
+              totalInProcess: 0,
+              countInProcess: 0,
+              totalToday: 0,
+              countToday: 0
+            }
+          })
+          .sort((a, b) => b.totalPaid - a.totalPaid)
+        
+        setRankings(sortedRankings)
+      }
+
+      // 3. Ticket Stats (Chamados) - FETCH FOR EVERYONE
+      let finalTicketStats: any = null
+      try {
+        interface Ticket {
+          id?: string
+          status?: string
+          status_chamados?: { id: number; nome: string; cor?: string }
+          origem?: string
+          convenio?: string
+          cliente_cpf?: string
+          corretor_id?: string
+          user_id?: string
+          user_nome?: string
+          created_at?: string
+        }
+        
+        let ticketsQuery = supabase.from('chamados').select(`
+          *,
+          status_chamados:status_id (*)
+        `)
+        
+        // Filter by role - Show complete data (unfiltered) for Admin, Developer, Supervisor, Monitoramento, and Operacional
+        const userRole = perfil?.role?.toUpperCase() || "";
+        const showCompleteData = isAdmin || isDeveloper || userRole === 'SUPERVISOR' || userRole === 'MONITORAMENTO' || userRole === 'OPERACIONAL';
+
+        if (!showCompleteData) {
+          if (isSupervisor) {
+            // Get team members again to be sure or reuse teamIds if we were in that block
+            const targetSupervisorId = perfil?.id
+            const team = allUsers.filter((u: User) => 
+              u.supervisor_id === targetSupervisorId || u.id === targetSupervisorId
+            )
+            const teamIds = team.map((m: User) => m.id)
+            ticketsQuery = ticketsQuery.in('user_id', teamIds)
+          } else if (isCorretor) {
+            ticketsQuery = ticketsQuery.eq('user_id', perfil?.id)
+          }
+        }
+
+        if (startDate) ticketsQuery = ticketsQuery.gte('created_at', startDate + 'T00:00:00')
+        if (endDate) ticketsQuery = ticketsQuery.lte('created_at', endDate + 'T23:59:59')
+        
+        const allTickets = (await fetchAll(ticketsQuery)) as Ticket[]
+        
+        const ticketSummary = allTickets.reduce((acc, ticket) => {
+          acc.total++
+          const ticketStatusStr = ticket.status_chamados?.nome || ticket.status || 'ABERTO'
+          const status = ticketStatusStr
+          const ticketStatusUpper = ticketStatusStr.toUpperCase()
+          const ticketStatusNormalized = normalizeStatus(ticketStatusStr)
+
+          acc.byStatus[status] = (acc.byStatus[status] || 0) + 1
+          
+          const opData = getValorOperacaoDeAbertura(ticket)
+          const opValue = parseValorToNumber(opData.valor)
+          acc.totalValue += opValue
+
+          // Check if it's Approved
+          const isApproved = APROVADOS_LABELS.some(label => {
+            const u = label.toUpperCase()
+            const ua = normalizeStatus(u)
+            return ticketStatusUpper === u || ticketStatusNormalized === ua
+          })
+          if (isApproved) {
+            acc.approved++
+            acc.approvedValue += opValue
+          }
+
+          // Check if it's Not Approved
+          const isNotApproved = NAO_APROVADOS_LABELS.some(label => {
+            const u = label.toUpperCase()
+            const ua = normalizeStatus(u)
+            return ticketStatusUpper === u || ticketStatusNormalized === ua
+          })
+          if (isNotApproved) {
+            acc.notApproved++
+            acc.notApprovedValue += opValue
+          }
+
+          // Check if it's in Negotiation
+          const isInNegotiation = NEGOCIACAO_LABELS.some(label => {
+            const u = normalizeStatus(label)
+            return ticketStatusNormalized.includes(u)
+          })
+          if (isInNegotiation) {
+            acc.inNegotiation++
+            acc.inNegotiationValue += opValue
+          }
+
+          // Check if it's Aberto
+          if (ticketStatusUpper === 'ABERTO' || ticketStatusUpper === 'ABERTOS') {
+            acc.aberto++
+            acc.abertoValue += opValue
+          }
+
+          // Check if it's Aguardando Operacional
+          if (ticketStatusUpper === 'AGUARDANDO OPERACIONAL') {
+            acc.aguardandoOperacional++
+            acc.aguardandoOperacionalValue += opValue
+          }
+
+          const origin = ticket.origem || 'NÃO INFORMADO'
+          if (!acc.byOrigin[origin]) {
+            acc.byOrigin[origin] = { count: 0, totalValue: 0, approved: 0 }
+          }
+          acc.byOrigin[origin].count++
+          acc.byOrigin[origin].totalValue += opValue
+          if (isApproved) acc.byOrigin[origin].approved++
+
+          // Convênio Stats
+          const convention = (ticket.convenio || 'NÃO INFORMADO').toUpperCase()
+          let convCategory = 'OUTROS'
+          if (convention.includes('SIAPE') || convention.includes('FEDERAL')) convCategory = 'SIAPE/FEDERAL'
+          else if (convention.includes('GOVERNO SP') || convention.includes('GOV SP')) convCategory = 'GOVERNO SP'
+          else if (convention.includes('PREFEITURA SP') || convention.includes('PREF SAO PAULO') || convention.includes('PREF SÃO PAULO')) convCategory = 'PREFEITURA SP'
+          else if (convention.includes('PIAUÍ') || convention.includes('PIAUI')) convCategory = 'PREFEITURA PIAUÍ'
+          else if (convention.includes('MARANHÃO') || convention.includes('MARANHAO')) convCategory = 'PREFEITURA MARANHÃO'
+          else if (convention.includes('GOVBR') || convention.includes('GOVERNO BR') || convention.includes('RORAIMA')) convCategory = 'GOVERNO RORAIMA'
+          else if (convention.includes('RIO DE JANEIRO') || convention.includes('RJ')) convCategory = 'GOVERNO RIO DE JANEIRO'
+          else if (convention.includes('SANTO ANDRÉ') || convention.includes('SANTO ANDRE')) convCategory = 'PREFEITURA SANTO ANDRÉ'
+          else if (convention.includes('CONTAGEM')) convCategory = 'PREFEITURA CONTAGEM'
+          else if (convention.includes('MINAS GERAIS') || convention.includes('MG')) convCategory = 'GOVERNO MINAS GERAIS'
+          else if (convention.includes('MATO GROSSO DO SUL') || convention.includes('MS')) convCategory = 'GOVERNO MATO GROSSO DO SUL'
+          else if (convention.includes('PONTA GROSSA')) convCategory = 'PREFEITURA PONTA GROSSA'
+          
+          if (!acc.byConvenio[convCategory]) {
+            acc.byConvenio[convCategory] = { count: 0, totalValue: 0, approved: 0 }
+          }
+          acc.byConvenio[convCategory].count++
+          acc.byConvenio[convCategory].totalValue += opValue
+          if (isApproved) acc.byConvenio[convCategory].approved++
+
+          // Broker Stats - Use user_id and user_nome from ticket table
+          const bId = ticket.user_id || ticket.corretor_id || 'NÃO ATRIBUÍDO'
+          const bNameFromTicket = ticket.user_nome
+          
+          if (!acc.byBrokerRaw[bId]) {
+            acc.byBrokerRaw[bId] = {
+              name: bNameFromTicket || 'SEM CORRETOR',
+              count: 0,
+              approved: 0,
+              negotiation: 0,
+              totalValue: 0
+            }
+          } else if (bNameFromTicket && acc.byBrokerRaw[bId].name === 'SEM CORRETOR') {
+            acc.byBrokerRaw[bId].name = bNameFromTicket
+          }
+          acc.byBrokerRaw[bId].count++
+          acc.byBrokerRaw[bId].totalValue += opValue
+          if (isApproved) acc.byBrokerRaw[bId].approved++
+          if (isInNegotiation) acc.byBrokerRaw[bId].negotiation++
+
+          return acc
+        }, { 
+          total: 0, 
+          notApproved: 0, 
+          approved: 0,
+          inNegotiation: 0,
+          aberto: 0,
+          aguardandoOperacional: 0,
+          totalValue: 0,
+          notApprovedValue: 0,
+          approvedValue: 0,
+          inNegotiationValue: 0,
+          abertoValue: 0,
+          aguardandoOperacionalValue: 0,
+          byStatus: {} as Record<string, number>, 
+          byOrigin: {} as Record<string, { count: number; totalValue: number; approved: number }>,
+          byConvenio: {} as Record<string, { count: number; totalValue: number; approved: number }>,
+          byBrokerRaw: {} as Record<string, { name: string; count: number; approved: number; negotiation: number; totalValue: number }>
+        })
+
+        const byBroker = Object.entries(ticketSummary.byBrokerRaw)
+          .map(([id, data]) => {
+            // Try to find in allUsers for a more updated name
+            const userInList = (allUsers as User[]).find((u) => u.id === id)
+            const finalName = userInList?.nome || data.name || (id === 'NÃO ATRIBUÍDO' ? 'SEM CORRETOR' : `Cod: ${id.substring(0, 5)}`)
+            const supervisorName = userInList?.supervisor_nome || 'NÃO INFORMADO'
+            
+            return {
+              id,
+              name: finalName,
+              supervisor: supervisorName,
+              value: data.count,
+              approved: data.approved,
+              negotiation: data.negotiation,
+              totalValue: data.totalValue
+            }
+          })
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 15) // Show more brokers
+
+        const byMainStatus = [
+          { name: 'Aberto', value: ticketSummary.aberto, color: '#FE9A00' },
+          { name: 'Aguardando Operacional', value: ticketSummary.aguardandoOperacional, color: '#FF6A03' },
+          { name: 'Aprovado', value: ticketSummary.approved, color: '#10b981' },
+          { name: 'Proposta Enviada / Em Negociação', value: ticketSummary.inNegotiation, color: '#06BADC' },
+          { name: 'Não Aprovado', value: ticketSummary.notApproved, color: '#ef4444' }
+        ].filter(item => item.value > 0)
+
+        const statusColors: Record<string, string> = {
+          'ABERTO': '#FE9A00',
+          'AGUARDANDO OPERACIONAL': '#FF6A03',
+          'EM NEGOCIAÇÃO': '#06BADC',
+          'EM NEGOCIACAO': '#06BADC',
+          'PROPOSTA ENVIADA': '#06BADC',
+          'CONCLUÍDO': '#10b981',
+          'CANCELADO': '#ef4444',
+          'REPROVADO': '#ef4444'
+        }
+
+        const byStatus = Object.entries(ticketSummary.byStatus).map(([name, value]) => ({
+          name,
+          value: value as number,
+          color: statusColors[name.toUpperCase()] || '#cbd5e1'
+        }))
+
+        const byOrigin = Object.entries(ticketSummary.byOrigin)
+          .map(([name, data]) => ({
+            name,
+            value: data.count,
+            totalValue: data.totalValue,
+            approved: data.approved
+          }))
+          .sort((a, b) => b.value - a.value)
+
+        const convenioOrder = [
+          'SIAPE/FEDERAL', 
+          'GOVERNO SP', 
+          'PREFEITURA SP', 
+          'PREFEITURA PIAUÍ', 
+          'PREFEITURA MARANHÃO', 
+          'GOVERNO RORAIMA', 
+          'GOVERNO RIO DE JANEIRO',
+          'PREFEITURA SANTO ANDRÉ',
+          'PREFEITURA CONTAGEM',
+          'GOVERNO MINAS GERAIS',
+          'GOVERNO MATO GROSSO DO SUL',
+          'PREFEITURA PONTA GROSSA',
+          'OUTROS'
+        ]
+        const byConvenio = convenioOrder
+          .map(name => ({
+            name,
+            value: ticketSummary.byConvenio[name]?.count || 0,
+            totalValue: ticketSummary.byConvenio[name]?.totalValue || 0,
+            approved: ticketSummary.byConvenio[name]?.approved || 0
+          }))
+          .sort((a, b) => b.value - a.value)
+
+        // Pre-initialize and populate partnership statistics (Sales Cells)
+        const groups: Record<string, {
+          corretorName: string;
+          estagiarios: Record<string, { count: number; value: number }>;
+          totalCount: number;
+          totalValue: number;
+        }> = {};
+
+        const activeSdrs = (allUsers as any[]).filter((u: any) => 
+          (u.funcao?.toLowerCase() === 'estágio' || u.funcao?.toLowerCase() === 'estagio') && 
+          u.status === 'ATIVO'
+        );
+
+        activeSdrs.forEach((sdr: any) => {
+          if (sdr.padrinho_id) {
+            const closer = (allUsers as any[]).find((u: any) => u.id === sdr.padrinho_id);
+            if (closer && closer.status === 'ATIVO') {
+              if (!groups[closer.id]) {
+                groups[closer.id] = {
+                  corretorName: closer.nome,
+                  estagiarios: {},
+                  totalCount: 0,
+                  totalValue: 0
+                };
+              }
+              groups[closer.id].estagiarios[sdr.nome] = { count: 0, value: 0 };
+            }
+          }
+        });
+
+        let partnershipTotalCount = 0;
+        let partnershipTotalValue = 0;
+
+        allTickets.forEach((t: any) => {
+          const meta = parseDescriptionMetadata(t.descricao || "");
+          if (meta?.enviado_para_corretor) {
+            const corretorId = meta.corretor_id;
+            const corretorName = meta.corretor_nome || "Não Identificado";
+            const estagiarioName = meta.estagiario_nome || "Não Identificado";
+            const value = parseValorToNumber(getValorOperacaoDeAbertura(t).valor);
+
+            partnershipTotalCount += 1;
+            partnershipTotalValue += value;
+
+            let groupKey = corretorId && groups[corretorId] ? corretorId : null;
+            if (!groupKey) {
+              const foundKey = Object.keys(groups).find(k => groups[k].corretorName === corretorName);
+              if (foundKey) {
+                groupKey = foundKey;
+              }
+            }
+
+            if (!groupKey) {
+              const key = corretorId || corretorName;
+              groups[key] = {
+                corretorName,
+                estagiarios: {},
+                totalCount: 0,
+                totalValue: 0
+              };
+              groupKey = key;
+            }
+
+            const g = groups[groupKey];
+            g.totalCount += 1;
+            g.totalValue += value;
+
+            let estKey = estagiarioName;
+            if (!g.estagiarios[estKey]) {
+              g.estagiarios[estKey] = { count: 0, value: 0 };
+            }
+            g.estagiarios[estKey].count += 1;
+            g.estagiarios[estKey].value += value;
+          }
+        });
+
+        const partnershipStats = {
+          totalCount: partnershipTotalCount,
+          totalValue: partnershipTotalValue,
+          groups: Object.values(groups).sort((a: any, b: any) => b.totalValue - a.totalValue)
+        };
+
+        finalTicketStats = {
+          total: ticketSummary.total,
+          notApproved: ticketSummary.notApproved,
+          approved: ticketSummary.approved,
+          inNegotiation: ticketSummary.inNegotiation,
+          aberto: ticketSummary.aberto,
+          aguardandoOperacional: ticketSummary.aguardandoOperacional,
+          totalValue: ticketSummary.totalValue,
+          notApprovedValue: ticketSummary.notApprovedValue,
+          approvedValue: ticketSummary.approvedValue,
+          inNegotiationValue: ticketSummary.inNegotiationValue,
+          abertoValue: ticketSummary.abertoValue,
+          aguardandoOperacionalValue: ticketSummary.aguardandoOperacionalValue,
+          byStatus,
+          byOrigin,
+          byConvenio,
+          byBroker,
+          byMainStatus,
+          partnershipStats
+        }
+        
+        setTicketStats(finalTicketStats)
+      } catch (chamadosErr: any) {
+        console.warn("Tickets stats (chamados) error or restricted access:", chamadosErr?.message || chamadosErr)
+      }
+
+      // 4. Fetch Admin specific stats - Only if Admin, Developer, Recursos Humanos, Supervisor, Monitoramento, or Operacional
+      try {
+        const userRoleForStats = (perfil?.role || perfil?.funcao || "").trim().toUpperCase();
+        const showCompleteStats = isUserAdmin || isAdmin || isDeveloper || isRecursosHumanos || userRoleForStats === 'SUPERVISOR' || userRoleForStats === 'MONITORAMENTO' || userRoleForStats === 'OPERACIONAL' || userRoleForStats === 'ADMINISTRADOR';
+
+        if (showCompleteStats) {
+          const now = new Date()
+          const targetYear = startDate 
+            ? new Date(startDate + 'T00:00:00').getFullYear() 
+            : (endDate ? new Date(endDate + 'T00:00:00').getFullYear() : now.getFullYear())
+          const targetMonth = startDate 
+            ? new Date(startDate + 'T00:00:00').getMonth() + 1 
+            : (endDate ? new Date(endDate + 'T00:00:00').getMonth() + 1 : now.getMonth() + 1)
+          const startOfYearDate = new Date(targetYear, 0, 1)
+          const startOfYearISO = startOfYearDate.toISOString()
+
+          // Fetch annual produced - ignore date filters completely (from Jan 1st of targetYear onwards)
+          // Since it only shows the accumulated production from start of year to today, we do not filter by custom date range
+          const annualQuery = supabase
+            .from('propostas')
+            .select('valor_producao, updated_at, data_pago_cliente')
+            .in('status', paidStatuses)
+            .or(`updated_at.gte.${startOfYearISO},data_pago_cliente.gte.${startOfYearISO}`)
+          
+          const annualProposals = await fetchAll(annualQuery)
+
+          // Jan-Mar 2026 pre-system production value: R$ 1.463.607,97
+          const baseAccumulatedPast = targetYear === 2026 ? 1463607.97 : 0
+
+          const annualProducedValue = baseAccumulatedPast + (annualProposals || []).reduce((acc, p) => {
+            const val = parseCurrency(p.valor_producao)
+            const pDate = p.data_pago_cliente ? (parseDateSafe(p.data_pago_cliente) || new Date(p.updated_at)) : new Date(p.updated_at)
+            
+            // Only count if it is within the target year (e.g. 2026)
+            if (pDate.getFullYear() === targetYear) {
+              // If we are in 2026, we ignore any database contracts paid before April 1st, 2026 to avoid double-counting
+              if (targetYear === 2026 && pDate < new Date('2026-04-01T00:00:00')) {
+                return acc
+              }
+              return acc + (isNaN(val) ? 0 : val)
+            }
+            return acc
+          }, 0)
+          
+          const { data: goalsData } = await supabase
+            .from('metas_config')
+            .select('*')
+            .eq('ano', targetYear)
+
+          const annualGoalConfig = goalsData?.find(g => g.tipo === 'empresa' && g.mes === 0)
+          const annualGoalValue = annualGoalConfig?.valor_mensal || 0
+          const monthlyTeamConfigs = goalsData?.filter(g => g.tipo === 'time' && g.mes === targetMonth) || []
+          const monthlyGoalValue = monthlyTeamConfigs.length > 0 
+            ? monthlyTeamConfigs.reduce((sum, g) => sum + (g.valor_mensal || 0), 0)
+            : (annualGoalValue / 12)
+
+          setAdminStats({
+            monthlyGoal: monthlyGoalValue,
+            monthlyProduced: teamTotal,
+            annualGoal: annualGoalValue,
+            annualProduced: annualProducedValue,
+            dailyGoal: monthlyGoalValue / getRemainingBusinessDays(),
+            dailyProduced: teamDailyTotal,
+            inProcessValue: teamInProcessValueCalc,
+            inProcessCount: teamInProcessCountCalc,
+            pendingActionsValue: teamPendingInconsistencyValueCalc,
+            pendingActionsCount: teamPendingInconsistencyCountCalc,
+            createdTodayValue: teamCreatedTodayValue,
+            createdTodayCount: teamCreatedTodayCount,
+            createdWeekValue: teamCreatedWeekValue,
+            createdWeekCount: teamCreatedWeekCount,
+            createdMonthValue: teamCreatedMonthValue,
+            createdMonthCount: teamCreatedMonthCount,
+            brokerRankings: sortedRankings.map(r => {
+              const userData = allUsers.find((u: User) => u.id === r.corretor_id)
+              const supervisorName = userData?.supervisor_nome || 
+                                   allUsers.find((u: User) => u.id === userData?.supervisor_id)?.nome || 
+                                   "SharkConsig"
+              return {
+                corretor_id: r.corretor_id,
+                name: userData?.nome || r.nome,
+                team: userData?.equipe || "Shark",
+                supervisor: supervisorName,
+                funcao: userData?.funcao || r.funcao || "",
+                totalPaid: r.totalPaid,
+                totalInProcess: r.totalInProcess,
+                totalToday: r.totalToday,
+                countPaid: r.countPaid,
+                countInProcess: r.countInProcess,
+                countToday: r.countToday,
+                approvedTicketsCount: r.approvedTicketsCount || 0,
+                colaboracoes: r.colaboracoes
+              }
+            }),
+            ticketStats: finalTicketStats
+          })
+        }
+      } catch (err: any) {
+        const errMsg = err?.message || err?.details || (typeof err === 'object' ? JSON.stringify(err) : String(err))
+        console.error("Error fetching admin dashboard stats:", errMsg, err)
+      }
+
+      // Fetch today's interviews & ligações for Dashboard Card
+      try {
+        const dForCard = new Date()
+        const yrForCard = dForCard.getFullYear()
+        const mthForCard = String(dForCard.getMonth() + 1).padStart(2, '0')
+        const dayForCard = String(dForCard.getDate()).padStart(2, '0')
+        const todayDateStrForCard = `${yrForCard}-${mthForCard}-${dayForCard}`
+
+        const { data: interviewData, error: interviewError } = await supabase
+          .from('hr_interviews')
+          .select('*')
+          .eq('date', todayDateStrForCard)
+
+        if (!interviewError && interviewData) {
+          const mappedData: Interview[] = (interviewData as {
+            id: string
+            name: string
+            phone?: string
+            date: string
+            time: string
+            fase: string
+            plataforma: string
+            area: string
+            notes?: string
+            tipo?: string
+          }[]).map((item) => ({
+            id: item.id,
+            name: item.name,
+            phone: item.phone || "",
+            date: item.date,
+            time: item.time,
+            fase: item.fase,
+            plataforma: item.plataforma,
+            area: item.area,
+            notes: item.notes || "",
+            tipo: item.tipo || "ENTREVISTAS"
+          }))
+          setInterviews(mappedData)
+        } else {
+          setInterviews([])
+        }
+      } catch (err) {
+        console.error("Error fetching interviews for dashboard:", err)
+      }
+
+    } catch (error: any) {
+      console.error("Erro dashboard:", error?.message || error?.details || error, error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [perfil?.id, perfil?.role, perfil?.funcao, perfil?.supervisor_id, isRecursosHumanos, isCorretor, isAdmin, isOperational, isDeveloper, isSupervisor, startDate, endDate])
+
+  useEffect(() => {
+    setMounted(true)
+    if (perfil?.id) {
+      fetchDashboardData()
+    }
+
+    // Subscrever a mudanças nos banners para atualização em tempo real
+    const channel = supabase
+      .channel('banners-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'dashboard_banners'
+        },
+        () => {
+          fetchDashboardData()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [perfil?.id, fetchDashboardData])
+  
+  useEffect(() => {
+    if (startDate) setTempStartDate(startDate)
+    if (endDate) setTempEndDate(endDate)
+  }, [startDate, endDate])
+
+  useEffect(() => {
+    if (banners.length <= 1) {
+      setCurrentBanner(0)
+      return
+    }
+    
+    const timer = setInterval(() => {
+      setCurrentBanner(prev => (prev + 1) % banners.length)
+    }, 8000)
+    
+    return () => clearInterval(timer)
+  }, [banners.length])
+
+  const monthlyProduced = useMemo(() => {
+    if (!startDate && !endDate && monthlyMTDProduced > 0) {
+      return monthlyMTDProduced
+    }
+
+    // Respect custom filter if applied, otherwise use current month
+    const startThreshold = startDate 
+      ? (parseDateSafe(startDate + 'T00:00:00') || new Date(startDate + 'T00:00:00')) 
+      : new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    
+    startThreshold.setHours(0, 0, 0, 0)
+
+    const endThreshold = endDate 
+      ? (parseDateSafe(endDate + 'T23:59:59') || new Date(endDate + 'T23:59:59')) 
+      : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59, 999)
+
+    const paidStatuses = [
+      "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", 
+      "PÓS-VENDA REALIZADA"
+    ]
+
+    const isPJUser = (perfil?.regime_contratacao || "").trim().toLowerCase() === 'pj' || (perfil?.funcao || "").trim().toLowerCase() === 'pj'
+
+    return userProposals
+      .filter(p => {
+        if (p.status && !paidStatuses.includes(p.status)) return false
+        const pDate = p.data_pago_cliente 
+          ? (parseDateSafe(p.data_pago_cliente) || parseDateSafe(p.updated_at))
+          : parseDateSafe(p.updated_at)
+        if (!pDate) return false
+        let inRange = pDate >= startThreshold && pDate <= endThreshold
+        return inRange
+      })
+      .reduce((acc, p) => {
+        const rawVal = isPJUser ? ((p as any).valor_operacao || p.valor_producao) : p.valor_producao
+        const val = parseCurrency(rawVal)
+        return acc + (isNaN(val) ? 0 : val)
+      }, 0)
+  }, [userProposals, startDate, endDate, perfil, monthlyMTDProduced])
+
+  const dailyProduced = useMemo(() => {
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+    const endOfToday = new Date()
+    endOfToday.setHours(23, 59, 59, 999)
+
+    const paidStatuses = [
+      "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", 
+      "PÓS-VENDA REALIZADA"
+    ]
+    
+    return userProposals
+      .filter(p => {
+        const isPaid = paidStatuses.includes(p.status)
+        if (!isPaid) return false
+        const pDate = p.data_pago_cliente ? parseDateSafe(p.data_pago_cliente) : parseDateSafe(p.updated_at)
+        return pDate ? (pDate >= startOfToday && pDate <= endOfToday) : false
+      })
+      .reduce((acc, p) => {
+        const val = parseCurrency(p.valor_producao)
+        return acc + (isNaN(val) ? 0 : val)
+      }, 0)
+  }, [userProposals])
+
+  const recentPayments = useMemo(() => {
+    return [...userProposals]
+      .sort((a, b) => {
+        const dateA = a.data_pago_cliente ? (parseDateSafe(a.data_pago_cliente) || parseDateSafe(a.updated_at) || new Date(0)) : (parseDateSafe(a.updated_at) || new Date(0))
+        const dateB = b.data_pago_cliente ? (parseDateSafe(b.data_pago_cliente) || parseDateSafe(b.updated_at) || new Date(0)) : (parseDateSafe(b.updated_at) || new Date(0))
+        return dateB.getTime() - dateA.getTime()
+      })
+      .slice(0, 3)
+  }, [userProposals])
+
+
+  
+  const prizeTiers = useMemo(() => [
+    { goal: 47000, prize: 400 },
+    { goal: 63000, prize: 650 },
+    { goal: 84000, prize: 1500 },
+    { goal: 100000, prize: 2250 },
+    { goal: 125000, prize: 3500 },
+    { goal: 150000, prize: 7000 },
+    { goal: 180000, prize: 10000 },
+    { goal: 200000, prize: 25000 },
+  ], [])
+
+  const userRank = rankings.findIndex(r => r.corretor_id === perfil?.id) + 1
+
+  const missingForNextRank = useMemo(() => {
+    if (userRank > 1 && rankings.length >= userRank) {
+      const nextRankIndex = userRank - 2; // Index of the person just ahead of the user
+      const userIndex = userRank - 1; // Index of the user
+      if (nextRankIndex >= 0) {
+        const nextRankTotal = rankings[nextRankIndex].totalPaid;
+        const userTotal = rankings[userIndex].totalPaid;
+        const missing = nextRankTotal - userTotal;
+        return missing > 0 ? missing : 0;
+      }
+    }
+    return 0;
+  }, [userRank, rankings]);
+
+  const displayRankings = useMemo(() => {
+    if (rankings.length === 0) return [];
+    
+    // Convert current user ID to check matches
+    const userRankIndex = rankings.findIndex(r => r.corretor_id === perfil?.id);
+    
+    if (userRankIndex === -1) {
+      // Check if user is in ESTAGIL_AND_PJ group
+      const groupItem = estagioRankingGroup;
+      const userInGroup = groupItem?.colaboracoes?.estagiarios?.find((item: InternCollaboration) => item.estagiario_id === perfil?.id);
+      
+      if (userInGroup) {
+        const groupPosition = (groupItem?.colaboracoes?.estagiarios?.indexOf(userInGroup) ?? 0) + 1;
+        return [
+          { ...rankings[0], position: 1, isUser: false },
+          {
+            corretor_id: perfil?.id || 'group-user',
+            nome: perfil?.nome || 'Você',
+            totalPaid: userInGroup.totalPaid,
+            countPaid: userInGroup.countPaid,
+            totalInProcess: userInGroup.totalInProcess,
+            countInProcess: userInGroup.countInProcess,
+            totalToday: userInGroup.totalToday,
+            countToday: userInGroup.countToday,
+            position: groupPosition,
+            isUser: true
+          }
+        ];
+      }
+
+      // User has no sales, show 1st place as anonymized, and user at bottom with 0
+      const list = [
+        { ...rankings[0], position: 1, isUser: false }
+      ];
+      list.push({
+        corretor_id: perfil?.id || "user-none",
+        nome: perfil?.nome || "Você",
+        totalPaid: 0,
+        countPaid: 0,
+        totalInProcess: 0,
+        countInProcess: 0,
+        totalToday: 0,
+        countToday: 0,
+        position: rankings.length + 1,
+        isUser: true
+      });
+      return list;
+    } else if (userRankIndex === 0) {
+      // User is in 1st place, only need to show user
+      return [
+        { ...rankings[0], position: 1, isUser: true }
+      ];
+    } else {
+      // User is 2nd or below, show 1st place anonymized and show user under
+      return [
+        { ...rankings[0], position: 1, isUser: false },
+        { ...rankings[userRankIndex], position: userRankIndex + 1, isUser: true }
+      ];
+    }
+  }, [rankings, perfil, estagioRankingGroup]);
+
+  const userRankingPaid = useMemo(() => {
+    const userRankItem = displayRankings.find(r => r.isUser)
+    if (userRankItem && typeof userRankItem.totalPaid === 'number' && userRankItem.totalPaid > 0) {
+      return userRankItem.totalPaid
+    }
+    const mainRankItem = rankings.find(r => r.corretor_id === perfil?.id)
+    if (mainRankItem && typeof mainRankItem.totalPaid === 'number' && mainRankItem.totalPaid > 0) {
+      return mainRankItem.totalPaid
+    }
+    return 0
+  }, [displayRankings, rankings, perfil])
+
+  const effectiveMonthlyProduced = userRankingPaid > 0 ? userRankingPaid : monthlyProduced
+  const displayMonthlyProduced = (isSupervisor || isOperational || isAdmin) ? teamProduced : effectiveMonthlyProduced
+  const displayDailyProduced = (isSupervisor || isOperational || isAdmin) ? teamDailyProduced : dailyProduced
+
+  const currentPrize = useMemo(() => {
+    const achieved = [...prizeTiers].reverse().find(tier => effectiveMonthlyProduced >= tier.goal)
+    return achieved ? achieved.prize : 0
+  }, [effectiveMonthlyProduced, prizeTiers])
+
+  const nextPrizeTier = useMemo(() => {
+    return prizeTiers.find(tier => effectiveMonthlyProduced < tier.goal)
+  }, [effectiveMonthlyProduced, prizeTiers])
+
+  const progressPercent = Math.round((displayMonthlyProduced / monthlyGoal) * 100)
+  const remainingValue = Math.max(0, monthlyGoal - displayMonthlyProduced)
+  
+  const remainingBusinessDays = getRemainingBusinessDays()
+  const dailyGoal = remainingBusinessDays > 0 ? remainingValue / remainingBusinessDays : 0
+  
+  const [celTrigger, setCelTrigger] = useState(0)
+
+  useEffect(() => {
+    const handleUpdate = () => setCelTrigger(prev => prev + 1)
+    window.addEventListener("storage", handleUpdate)
+    window.addEventListener("shark_hr_celebration_updated", handleUpdate)
+    return () => {
+      window.removeEventListener("storage", handleUpdate)
+      window.removeEventListener("shark_hr_celebration_updated", handleUpdate)
+    }
+  }, [])
+
+  const headerContent = useMemo(() => {
+    if (typeof window === 'undefined') return { greeting: "Olá", phrase: "Sua jornada para o topo começa agora", isCelebration: false }
+    
+    let defaultGreeting = "Olá"
+    let defaultPhrase = "Sua jornada para o topo começa agora"
+
+    const hour = new Date().toLocaleTimeString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      hour: 'numeric',
+      hour12: false,
+    })
+    const h = parseInt(hour)
+    if (h >= 0 && h < 12) {
+      defaultGreeting = "Bom dia"
+      defaultPhrase = "Sua jornada para o topo começa agora"
+    } else if (h >= 12 && h < 18) {
+      defaultGreeting = "Boa tarde"
+      defaultPhrase = "Foco total para transformar a tarde em resultados"
+    } else {
+      defaultGreeting = "Boa noite"
+      defaultPhrase = "Dia produtivo! Organize-se para vencer amanhã"
+    }
+
+    return { greeting: defaultGreeting, phrase: defaultPhrase, isCelebration: false }
+  }, [perfil, user, celTrigger])
+
+  if (!mounted) return null
+
+  if (isRecursosHumanos || perfil?.role === 'Recursos Humanos') {
+    return (
+      <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+        <Header title="DASHBOARD" />
+        <div className={cn(
+          "p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
+          isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
+        )}>
+          <HRDashboard 
+            stats={adminStats} 
+            isLoading={isLoading} 
+            startDate={startDate}
+            endDate={endDate}
+            setStartDate={setStartDate}
+            setEndDate={setEndDate}
+            estagioRankingGroup={estagioRankingGroup}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex-1 flex flex-col bg-[#F8FAFC]">
+      <Header title="DASHBOARD" />
+      
+      <div className={cn(
+        "p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
+        isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
+      )}>
+        {(isUserAdmin || isAdmin || isDeveloper) && adminStats && (
+          <AdminDashboard 
+            perfil={perfil} 
+            isLoading={isLoading} 
+            remainingBusinessDays={remainingBusinessDays} 
+            headerContent={headerContent} 
+            stats={adminStats}
+            startDate={startDate}
+            endDate={endDate}
+            setStartDate={setStartDate}
+            setEndDate={setEndDate}
+            estagioRankingGroup={estagioRankingGroup}
+          />
+        )}
+        
+        {(!isUserAdmin && !isAdmin && !isDeveloper) && (
+          <>
+            {/* Header Section */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+              <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+              >
+                <h1 className="text-4xl font-black text-[#1C2643] tracking-tighter">
+                  {headerContent.greeting}, {perfil?.nome?.split(' ')[0] || 'Shark'}!
+                </h1>
+                <p className="text-[12px] font-bold text-[#718198] uppercase tracking-[0.25em] mt-2 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  {headerContent.phrase}
+                </p>
+              </motion.div>
+              
+              {!isEstagio && !isPJ && (
+                <motion.div 
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="flex items-center gap-5 self-start md:self-center relative group"
+                >
+                  <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0">
+                     <Clock className="w-7 h-7 text-amber-500" />
+                  </div>
+                  <div className="relative z-10">
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Prazo Para Bater a Meta</p>
+                     <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-black text-[#1C2643]">{remainingBusinessDays.toString().padStart(2, '0')}</span>
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dias Restantes</span>
+                     </div>
+                     <p className="text-[11px] font-medium text-slate-500 mt-1 max-w-[200px] leading-tight">
+                        <span className="text-amber-600 font-bold italic">Sua corrida rumo à meta.</span> Aproveite cada dia útil para transformar esforço em resultado.
+                     </p>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+
+            {isPJ ? (
+              <AdminDashboard 
+                perfil={perfil} 
+                isLoading={isLoading} 
+                remainingBusinessDays={remainingBusinessDays} 
+                headerContent={headerContent} 
+                stats={adminStats}
+                startDate={startDate}
+                endDate={endDate}
+                setStartDate={setStartDate}
+                setEndDate={setEndDate}
+                estagioRankingGroup={estagioRankingGroup}
+                onlyFinanceiro={true}
+                filterUserId={perfil?.id}
+              />
+            ) : (
+              <>
+                {isSupervisor && (
+              <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 gap-1.5 self-start mb-8 w-fit">
+                <button
+                  onClick={() => setActiveTab('propostas')}
+                  className={cn(
+                    "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+                    activeTab === 'propostas' 
+                      ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                      : "text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  METAS E PRODUÇÃO
+                </button>
+                <button
+                  onClick={() => setActiveTab('chamados')}
+                  className={cn(
+                    "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+                    activeTab === 'chamados' 
+                      ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                      : "text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  CHAMADOS
+                </button>
+                <button
+                  onClick={() => setActiveTab('propostas_comerciais')}
+                  className={cn(
+                    "px-6 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2 cursor-pointer",
+                    activeTab === 'propostas_comerciais' 
+                      ? "bg-white text-[#1C2643] shadow-md shadow-[#1C2643]/5" 
+                      : "text-slate-400 hover:text-slate-600"
+                  )}
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  PROPOSTAS COMERCIAIS
+                </button>
+              </div>
+            )}
+
+            {activeTab === 'propostas' ? (
+              isEstagio ? (
+                <motion.div 
+                  key="estagio-propostas"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-8"
+                >
+                  {/* Photo & Main Motivation Group */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                    {/* CARTÃO DA FOTO DO COLABORADOR */}
+                    <div className="lg:col-span-3 relative overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-lg shadow-[#1C2643]/5 h-[375px] w-full shrink-0">
+                      {perfil?.foto_campanha_url || perfil?.avatar_url ? (
+                        <Image 
+                          src={perfil?.foto_campanha_url || perfil?.avatar_url || ""} 
+                          alt={perfil?.nome || "Colaborador"} 
+                          fill 
+                          className="object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 bg-[#1C2643]/5 flex flex-col items-center justify-center text-[#1C2643]">
+                          <Users className="w-12 h-12 opacity-35" />
+                          <span className="text-[8.5px] font-black text-slate-400 mt-2 uppercase tracking-widest text-center px-3">Sem foto cadastrada</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Banner Column */}
+                    <div className="lg:col-span-9">
+                      {/* Hero Header Card / Banner */}
+                      <div className="relative overflow-hidden bg-[#1C2643] text-white rounded-[32px] p-8 sm:p-10 shadow-xl border border-[#1C2643]/10">
+                        <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-[0.03] pointer-events-none flex items-center justify-center">
+                          <Trophy className="w-64 h-64 text-amber-400" />
+                        </div>
+                        <div className="relative z-10 max-w-3xl font-medium">
+                          <span className="bg-amber-400 text-[#1C2643] text-[10px] font-black uppercase tracking-widest px-3.5 py-1.5 rounded-full inline-block mb-4">
+                            Jornada do Futuro Shark
+                          </span>
+                          <h2 className="text-3xl sm:text-4xl font-black tracking-tight mb-4 text-white">
+                            Formando os Líderes de Amanhã
+                          </h2>
+                          <p className="text-[14px] text-slate-350 leading-relaxed mb-6">
+                            Tubarões não nascem prontos; eles são moldados na consistência, no estudo e na persistência. Este período de estágio é a sua maior oportunidade de dominar o mercado, aperfeiçoar sua retórica de vendas e entender a fundo a engrenagem do crédito consignado. Cada dia é um aprendizado valioso.
+                          </p>
+                          <div className="flex flex-wrap gap-4 items-center">
+                            <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
+                              <BookOpen className="w-4 h-4 text-amber-400" />
+                              <span className="text-xs font-bold text-slate-200">Domínio Técnico</span>
+                            </div>
+                            <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
+                              <Compass className="w-4 h-4 text-[#00C896]" />
+                              <span className="text-xs font-bold text-slate-200">Forte Conexão</span>
+                            </div>
+                            <div className="flex items-center gap-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/10">
+                              <Award className="w-4 h-4 text-blue-400" />
+                              <span className="text-xs font-bold text-slate-200">Mentalidade Vencedora</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Seu Atendimento em Destaque Header */}
+                  <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 border-t border-slate-100 pt-8 mt-4 animate-fade-in">
+                    <div className="flex-1">
+                      <h3 className="text-xl font-extrabold text-[#1C2643] tracking-tight">
+                        Seu Atendimento em Destaque
+                      </h3>
+                      <p className="text-[13px] font-medium text-slate-500 mt-1">
+                        Acompanhe sua contribuição na jornada de atendimento e o seu desenvolvimento ao longo do período.
+                      </p>
+                    </div>
+                    
+                    <div className="w-full xl:w-auto shrink-0">
+                      <DashboardCard className="shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3.5 !p-[18px] sm:!p-5 !rounded-[24px] bg-white border border-slate-200 w-full xl:min-w-[340px]">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
+                            <Calendar className="w-4 h-4 text-amber-500 fill-amber-500" />
+                          </div>
+                          <p className="text-[11px] font-black text-[#1C2643] uppercase tracking-widest">Filtrar por Período</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Início</span>
+                            <input 
+                              type="date" 
+                              value={tempStartDate}
+                              onChange={(e) => setTempStartDate(e.target.value)}
+                              className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                            />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 ml-0.5">Fim</span>
+                            <input 
+                              type="date" 
+                              value={tempEndDate}
+                              onChange={(e) => setTempEndDate(e.target.value)}
+                              className="w-full text-[11px] font-bold text-[#1C2643] bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-1.5 mt-1">
+                          <button 
+                            onClick={() => {
+                              setStartDate(tempStartDate);
+                              setEndDate(tempEndDate);
+                            }}
+                            disabled={!tempStartDate && !tempEndDate}
+                            className="px-2.5 py-2 bg-[#1C2643] text-white text-[10px] font-black rounded-lg hover:bg-[#1C2643]/90 transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none shadow-sm flex items-center justify-center h-8 cursor-pointer"
+                          >
+                            FILTRAR
+                          </button>
+                          <button 
+                            onClick={() => {
+                              const todayStr = format(new Date(), "yyyy-MM-dd");
+                              setTempStartDate(todayStr);
+                              setTempEndDate(todayStr);
+                              setStartDate(todayStr);
+                              setEndDate(todayStr);
+                            }}
+                            className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8 cursor-pointer"
+                          >
+                            HOJE
+                          </button>
+                          <button 
+                            onClick={() => {
+                              const now = new Date();
+                              const firstDay = format(new Date(now.getFullYear(), now.getMonth(), 1), "yyyy-MM-dd");
+                              const lastDay = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), "yyyy-MM-dd");
+                              setTempStartDate(firstDay);
+                              setTempEndDate(lastDay);
+                              setStartDate(firstDay);
+                              setEndDate(lastDay);
+                            }}
+                            className="px-2.5 py-2 bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-black rounded-lg hover:bg-slate-100 transition-all active:scale-95 shadow-sm flex items-center justify-center h-8 cursor-pointer"
+                          >
+                            MÊS
+                          </button>
+                        </div>
+                      </DashboardCard>
+                    </div>
+                  </div>
+
+                  {/* 3 Metrics Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Card 1: Clientes que Avançaram */}
+                    <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100">
+                          <TrendingUp className="w-6 h-6 text-emerald-600" />
+                        </div>
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block">Clientes que Avançaram</span>
+                        <h4 className="text-4xl font-black text-[#1C2643] mt-2 tracking-tight">{internAdvancedCount}</h4>
+                        <p className="text-[13px] font-medium text-slate-500 mt-2 leading-relaxed">
+                          Atendimentos realizados por você que seguiram para análise especializada.
+                        </p>
+                      </div>
+                    </DashboardCard>
+
+                    {/* Card 2: Conexões Concretizadas */}
+                    <DashboardCard 
+                      className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group cursor-pointer hover:border-blue-300 transition-all active:scale-[0.98] hover:shadow-xl hover:shadow-blue-500/5 duration-300"
+                      onClick={() => setIsInternProposalsModalOpen(true)}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center shrink-0 border border-blue-100">
+                          <ClipboardCheck className="w-6 h-6 text-blue-600" />
+                        </div>
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">Conexões Concretizadas</span>
+                        <h4 className="text-4xl font-black text-[#1C2643] mt-2 tracking-tight">
+                          {internPaidCount} <span className="text-sm font-bold text-slate-500 tracking-normal block sm:inline">casos consolidados</span>
+                        </h4>
+                        <p className="text-[13px] font-medium text-slate-500 mt-2 leading-relaxed">
+                          A qualidade do seu contato inicial permitiu que o especialista finalizasse o atendimento com êxito.
+                        </p>
+                      </div>
+                    </DashboardCard>
+
+                    {/* Card 3: Valor Movimentado */}
+                    <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-4 bg-white border border-slate-200 rounded-[28px] p-6 relative overflow-hidden group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="w-12 h-12 bg-violet-50 rounded-2xl flex items-center justify-center shrink-0 border border-violet-100">
+                          <span className="text-xl font-black text-violet-600 font-mono">$</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-black text-violet-600 uppercase tracking-widest block">Valor Movimentado</span>
+                        <h4 className="text-3xl font-black text-[#1C2643] mt-2.5 tracking-tight">{formatCurrency(internTotalMovedValue)}</h4>
+                        <p className="text-[13px] font-medium text-slate-500 mt-2 leading-relaxed">
+                          Volume associado aos atendimentos finalizados com sucesso.
+                        </p>
+                      </div>
+                    </DashboardCard>
+                  </div>
+
+
+
+                  {/* Campaigns & Code of Ethics Grid */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <div className="lg:col-span-5 bg-white rounded-[28px] p-6 border border-slate-200 shadow-sm space-y-4">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-10 h-10 bg-[#1C2643] rounded-xl flex items-center justify-center">
+                          <Target className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-[14px] font-black text-[#1C2643] tracking-tight leading-none">
+                            Minhas Campanhas Ativas
+                          </p>
+                          <p className="text-[11px] font-bold text-slate-400 mt-1">Desenvolva suas habilidades de comunicação praticando com bases de leads</p>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        {dashboardCampaigns.length > 0 ? (
+                           dashboardCampaigns.map((campaign) => (
+                            <div 
+                              key={campaign.id} 
+                              onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
+                              className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200 hover:border-[#1C2643]/35 hover:bg-white transition-all cursor-pointer group"
+                            >
+                              <div className="flex flex-col">
+                                <span className="text-[11px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-amber-600 transition-colors">
+                                  {campaign.nome}
+                                </span>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                  {campaign.filtros?.convenio || 'Geral'}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-[11px] font-black text-[#1C2643]">
+                                  {campaign.publico_estimado?.toLocaleString('pt-BR')} Leads
+                                </p>
+                                <p className="text-[9px] font-bold text-slate-400">
+                                  {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-8 opacity-40">
+                            <Target className="w-8 h-8 mb-2" />
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="lg:col-span-7 bg-amber-50 rounded-[28px] p-6 border border-amber-100 shadow-sm flex flex-col justify-between">
+                      <div className="space-y-4">
+                        <span className="text-[10px] font-black text-amber-700 bg-white px-3 py-1 rounded-full border border-amber-200 inline-block uppercase tracking-wider">
+                          Suporte & Mentoria
+                        </span>
+                        <h3 className="text-lg font-black text-[#1C2643] tracking-tight">O Jeito SharkConsig</h3>
+                        <p className="text-xs text-slate-700 leading-relaxed font-semibold space-y-2">
+                          <span className="block">1. <strong className="font-black text-[#1C2643]">Transparência Total</strong>: Explicamos todas as simulações com clareza.</span>
+                          <span className="block">2. <strong className="font-black text-[#1C2643]">Confiança & Ética</strong>: Respeitamos cada cliente e suas decisões.</span>
+                          <span className="block">3. <strong className="font-black text-[#1C2643]">Suporte no Cardume</strong>: Em caso de dificuldades técnicas ou dúvidas, seu supervisor de equipe está de prontidão para ajudar. Use nossa mentoria!</span>
+                        </p>
+                      </div>
+                      <div className="mt-8 pt-4 border-t border-amber-200/60 flex items-center justify-between">
+                        <span className="text-[10px] font-black text-amber-800 tracking-wider font-mono">#SOMOSTUBAROES</span>
+                        <div className="relative w-16 h-4 opacity-40">
+                          <Image src="/logo.png" alt="SharkConsig" fill className="object-contain" referrerPolicy="no-referrer" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Alerta inferior */}
+                  <div className="bg-[#FAFAFA] border border-slate-200 rounded-[24px] p-5 flex items-center gap-4 shadow-sm">
+                    <div className="w-11 h-11 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0 border border-amber-100">
+                      <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
+                    </div>
+                    <p className="text-[13px] font-bold text-slate-700 leading-tight">
+                      Continue registrando bons atendimentos e fortalecendo a sua experiência profissional.
+                    </p>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div 
+                  key="propostas"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={cn("transition-opacity duration-500", isLoading ? "opacity-50 pointer-events-none" : "opacity-100")}
+                >
+                  {isSupervisor && (
+                    <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all mb-6">
+                      <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+                        <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+                          {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
+                            <button
+                              key={period}
+                              onClick={() => handleDashboardPeriodChange(period)}
+                              className={cn(
+                                "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                                dashboardPeriod === period
+                                  ? "bg-white text-[#1C2643] shadow-sm font-extrabold"
+                                  : "text-slate-500 hover:text-slate-700"
+                              )}
+                            >
+                              {period === 'mes' ? 'Mês' : period === 'trimestre' ? 'Trimestre' : period}
+                            </button>
+                          ))}
+                        </div>
+
+                        {dashboardPeriod === 'personalizado' && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mt-1 self-end"
+                          >
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
+                              <input 
+                                type="date" 
+                                value={tempStartDate}
+                                onChange={(e) => setTempStartDate(e.target.value)}
+                                className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+                              <input 
+                                type="date" 
+                                value={tempEndDate}
+                                onChange={(e) => setTempEndDate(e.target.value)}
+                                className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                              />
+                            </div>
+                            <button
+                              onClick={() => {
+                                setStartDate(tempStartDate);
+                                setEndDate(tempEndDate);
+                              }}
+                              className="px-2.5 py-1 bg-[#1C2643] text-white text-[9px] font-black rounded-md hover:bg-[#1C2643]/90 transition-all active:scale-95 cursor-pointer"
+                            >
+                              FILTRAR
+                            </button>
+                          </motion.div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className={cn(
+                    "grid grid-cols-1 gap-4",
+                    isSupervisor ? "lg:grid-cols-12" : "sm:grid-cols-2 lg:grid-cols-4"
+                  )}>
+            {/* SECTION 1: O CORAÇÃO DO DASHBOARD (Meta Individual e Foto do Colaborador) */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              className={cn(
+                "grid grid-cols-1 gap-4 items-stretch",
+                isSupervisor 
+                  ? "lg:col-span-8 md:grid-cols-12" 
+                  : "col-span-1 sm:col-span-2 lg:col-span-3 lg:row-span-2 md:grid-cols-12"
+              )}
+            >
+              {/* CARTÃO DA FOTO DO COLABORADOR */}
+              <div className="md:col-span-5 relative overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-lg shadow-[#1C2643]/5 min-h-[250px] md:min-h-0">
+                {perfil?.foto_campanha_url || perfil?.avatar_url ? (
+                  <Image 
+                    src={perfil?.foto_campanha_url || perfil?.avatar_url || ""} 
+                    alt={perfil.nome || "Colaborador"} 
+                    fill 
+                    className="object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-[#1C2643]/5 flex flex-col items-center justify-center text-[#1C2643]">
+                    <Users className="w-12 h-12 opacity-35" />
+                    <span className="text-[8.5px] font-black text-slate-400 mt-2 uppercase tracking-widest text-center px-3">Sem foto cadastrada</span>
+                  </div>
+                )}
+              </div>
+
+              {/* CARD DE METAS ORIGINAL */}
+              <DashboardCard className="md:col-span-7 flex flex-col shadow-lg shadow-[#1C2643]/5 overflow-hidden group !p-5 !rounded-[24px]">
+                <div className="relative z-10 flex flex-col h-full">
+                  <div className="flex items-center justify-between mb-2">
+                     <p className="text-[9.5px] font-black text-[#718198] uppercase tracking-widest">
+                       {(isOperational || isDeveloper) ? "META MENSAL DA EMPRESA" : "Sua Meta Mensal"}
+                     </p>
+                     <div className="bg-[#1C2643]/5 p-2 rounded-xl">
+                        <Target className="w-4 h-4 text-[#1C2643]" />
+                     </div>
+                  </div>
+                  <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[28px] font-black text-[#1C2643] tracking-tighter mb-4 break-words">{formatCurrency(monthlyGoal)}</p>
+                  
+                  <div className="flex-1 flex flex-col items-center justify-center py-3.5 relative">
+                     <div className="w-full max-w-[336px]">
+                       <Gauge value={progressPercent} producedValue={displayMonthlyProduced} />
+                     </div>
+                     <div className="mt-2.5 flex flex-col items-center justify-center">
+                        {isLoading ? (
+                          <Loader2 className="w-6 h-6 animate-spin text-[#1C2643]" />
+                        ) : (
+                          <p className="text-4xl sm:text-5xl lg:text-[61px] font-black text-[#1C2643] tracking-tighter leading-none">{progressPercent}%</p>
+                        )}
+                        <p className="text-[14.4px] font-bold text-[#718198] uppercase tracking-widest mt-2">Atingido</p>
+                     </div>
+                  </div>
+
+                  <div className="space-y-4 mt-auto">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full border border-emerald-100">
+                        <TrendingUp className="w-3.5 h-3.5" />
+                        <span className="text-[9px] font-black uppercase tracking-widest text-center">
+                          {progressPercent >= 100 ? "META ALCANÇADA! PARABÉNS!" : "Você está no caminho!"}
+                        </span>
+                      </div>
+                      <p className="text-[11px] sm:text-[12px] font-bold text-slate-500 mt-1.5 text-center shrink-0">
+                        {remainingValue > 0 ? (
+                          <>Faltam <span className="text-[#1C2643] font-black">{formatCurrency(remainingValue)}</span> para a meta</>
+                        ) : (
+                          <span className="text-emerald-600 font-black">Você superou sua meta este mês!</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </DashboardCard>
+            </motion.div>
+
+            {/* SECTION 2: O FOCO DO DIA E RECOMPENSAS */}
+            <div className={cn(
+              "grid grid-cols-1 gap-4",
+              isOperational
+                ? "lg:col-span-4 lg:row-span-1 md:grid-cols-2 lg:grid-cols-1"
+                : (isSupervisor ? "lg:col-span-4 lg:row-span-1 md:grid-cols-2 lg:grid-cols-1" : "col-span-1 sm:col-span-2 lg:col-span-1")
+            )}>
+              {isSupervisor ? (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.05 }}>
+                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 bg-[#1C2643] text-white border-[#1C2643] !p-[18px] sm:!p-5 !rounded-[24px]">
+                    <div className="flex flex-col min-w-0 overflow-hidden">
+                       <div className="flex items-center gap-1.5 mb-1.5">
+                         <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+                         <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest leading-tight">
+                           CONTRATOS DIGITADOS
+                         </p>
+                       </div>
+                       <div className="mt-1.5 space-y-2.5">
+                         <div>
+                           <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
+                           <div className="flex items-baseline gap-1.5">
+                             <p className="text-xl sm:text-2xl font-black text-amber-400 tracking-tighter leading-none">
+                               {formatCurrency(teamDailyCreatedValue)}
+                             </p>
+                             <span className="text-[9px] font-bold text-white/60 uppercase">{teamDailyCreatedCount} CONTRATOS</span>
+                           </div>
+                         </div>
+                         <div>
+                           <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
+                           <div className="flex items-baseline gap-1.5">
+                             <p className="text-lg font-black text-white tracking-tighter leading-none">
+                               {formatCurrency(teamWeeklyCreatedValue)}
+                             </p>
+                             <span className="text-[9px] font-bold text-white/60 uppercase">{teamWeeklyCreatedCount} CONTRATOS</span>
+                           </div>
+                         </div>
+                         <div>
+                           <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
+                           <div className="flex items-baseline gap-1.5">
+                             <p className="text-[14px] font-black text-white tracking-tighter leading-none">
+                               {formatCurrency(teamMonthlyCreatedValue)}
+                             </p>
+                             <span className="text-[9px] font-bold text-white/60 uppercase">{teamMonthlyCreatedCount} CONTRATOS</span>
+                           </div>
+                         </div>
+                       </div>
+                    </div>
+                    <div className="mt-auto pt-2.5 border-t border-white/5">
+                       <div className="flex items-center gap-1.5">
+                         <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                         <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
+                           Atualizado em Tempo Real
+                         </p>
+                       </div>
+                    </div>
+                  </DashboardCard>
+                </motion.div>
+              ) : null}
+
+              {!isSupervisor && (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 !p-[18px] sm:!p-5 !rounded-[24px]">
+                    <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center mb-1.5 shrink-0">
+                      <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
+                    </div>
+                    <div className="flex flex-col min-w-0 overflow-hidden">
+                       <p className="text-[9px] font-bold text-[#718198] uppercase tracking-widest">{startDate || endDate ? "Média Diária" : "Meta de Hoje"}</p>
+                       <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[28px] font-black text-[#1C2643] tracking-tighter mt-1 break-words leading-none">{formatCurrency(dailyGoal)}</p>
+                    </div>
+                    <div className="mt-auto pt-3.5">
+                       <div className="flex justify-between items-center mb-1.5">
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
+                          <p className="text-[9.5px] font-black text-[#1C2643]">
+                            {isLoading ? "..." : (
+                              <span className="flex items-center gap-1">
+                                {dailyGoal > 0 ? Math.round((displayDailyProduced / dailyGoal) * 100) : 0}%
+                                <span className="text-slate-400 font-bold">({formatCurrency(displayDailyProduced)})</span>
+                              </span>
+                            )}
+                          </p>
+                       </div>
+                       <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.min(100, dailyGoal > 0 ? (displayDailyProduced / dailyGoal) * 100 : 0)}%` }}
+                            transition={{ duration: 1, delay: 0.5 }}
+                            className="h-full bg-amber-500" 
+                          />
+                       </div>
+                    </div>
+                  </DashboardCard>
+                </motion.div>
+              )}
+
+              {isSupervisor ? (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+                  <div className="bg-white rounded-[24px] p-5 border border-slate-200 shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 h-full min-h-[290px] justify-between">
+                     <div className="flex items-center gap-2.5 mb-1.5">
+                        <div className="w-8 h-8 bg-[#1C2643] rounded-lg flex items-center justify-center">
+                           <Target className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                           <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none">
+                             ACESSAR CAMPANHA
+                           </p>
+                        </div>
+                     </div>
+                     <div className="space-y-2.5 flex-1 flex flex-col justify-center">
+                        {dashboardCampaigns.length > 0 ? (
+                          dashboardCampaigns.map((campaign) => (
+                            <div 
+                              key={campaign.id} 
+                              onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
+                              className="flex items-center justify-between p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200 hover:border-primary/30 hover:bg-white transition-all cursor-pointer group"
+                            >
+                              <div className="flex flex-col">
+                                <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-primary transition-colors">
+                                  {campaign.nome}
+                                </span>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                                  {campaign.filtros?.convenio || 'Geral'}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-[9.5px] font-black text-[#1C2643]">
+                                  {campaign.publico_estimado?.toLocaleString('pt-BR')} Leads
+                                </p>
+                                <p className="text-[8px] font-bold text-slate-400">
+                                  {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
+                                </p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex flex-col items-center justify-center py-6 opacity-40">
+                            <Target className="w-6.5 h-6.5 mb-1.5" />
+                            <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
+                          </div>
+                        )}
+                     </div>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.2 }}>
+                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 bg-[#1C2643] text-white border-[#1C2643] !p-[18px] sm:!p-5 !rounded-[24px]">
+                    <div className="flex flex-col min-w-0 overflow-hidden">
+                       <div className="flex items-center gap-1.5 mb-1.5">
+                         {isOperational ? (
+                           <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+                         ) : (
+                           <Gift className="w-3.5 h-3.5 text-amber-400" />
+                         )}
+                         <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest leading-tight">
+                           {isOperational ? "CONTRATOS DIGITADOS" : "PRÊMIO ALCANÇADO ATÉ AGORA:"}
+                         </p>
+                       </div>
+                       <div className="mt-1.5 space-y-2.5">
+                         {isOperational ? (
+                           <>
+                             <div>
+                               <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Hoje</p>
+                               <div className="flex items-baseline gap-1.5">
+                                 <p className="text-xl sm:text-2xl font-black text-amber-400 tracking-tighter leading-none">
+                                   {formatCurrency(teamDailyCreatedValue)}
+                                 </p>
+                                 <span className="text-[9px] font-bold text-white/60 uppercase">{teamDailyCreatedCount} CONTRATOS</span>
+                               </div>
+                             </div>
+                             <div>
+                               <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Esta Semana</p>
+                               <div className="flex items-baseline gap-1.5">
+                                 <p className="text-lg font-black text-white tracking-tighter leading-none">
+                                   {formatCurrency(teamWeeklyCreatedValue)}
+                                 </p>
+                                 <span className="text-[9px] font-bold text-white/60 uppercase">{teamWeeklyCreatedCount} CONTRATOS</span>
+                               </div>
+                             </div>
+                             <div>
+                               <p className="text-[8px] font-bold text-white/40 uppercase tracking-widest">Este Mês</p>
+                               <div className="flex items-baseline gap-1.5">
+                                 <p className="text-[14px] font-black text-white tracking-tighter leading-none">
+                                   {formatCurrency(teamMonthlyCreatedValue)}
+                                 </p>
+                                 <span className="text-[9px] font-bold text-white/60 uppercase">{teamMonthlyCreatedCount} CONTRATOS</span>
+                               </div>
+                             </div>
+                           </>
+                         ) : (
+                           <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[38px] font-black text-amber-400 tracking-tighter mt-1 break-words leading-none">
+                             {formatCurrency(currentPrize)}
+                           </p>
+                         )}
+                       </div>
+                    </div>
+                    <div className="mt-auto pt-2.5 border-t border-white/5">
+                       {isOperational ? (
+                         <div className="flex items-center gap-1.5">
+                           <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                           <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
+                             Atualizado em Tempo Real
+                           </p>
+                         </div>
+                       ) : nextPrizeTier ? (
+                         <>
+                           <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest leading-tight">
+                             Próximo Prêmio: {formatCurrency(nextPrizeTier.prize)}
+                           </p>
+                           <p className="text-[7px] font-bold text-white/30 uppercase tracking-widest mt-0.5 shrink-0">
+                             Faltam {formatCurrency(nextPrizeTier.goal - monthlyProduced)} em produção
+                           </p>
+                         </>
+                       ) : (
+                         <p className="text-[8px] font-bold text-amber-400 uppercase tracking-widest leading-tight">
+                           VOCÊ ATINGIU O TOPO DAS PREMIAÇÕES!
+                         </p>
+                       )}
+                    </div>
+                  </DashboardCard>
+                </motion.div>
+              )}
+
+              {!isSupervisor && (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}>
+                  <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 !p-[18px] sm:!p-5 !rounded-[24px]">
+                    <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center mb-1.5 shrink-0">
+                      <Users className="w-5 h-5 text-[#1C2643]" />
+                    </div>
+                    <div className="flex flex-col min-w-0 overflow-hidden flex-1">
+                       <p className="text-[11px] font-bold text-[#718198] uppercase tracking-widest leading-tight">Meta Mensal do Time</p>
+                       <p className="text-[14px] font-black text-[#1C2643] mt-1.5 leading-none">
+                         {formatCurrency(teamGoal)}
+                       </p>
+                       {!isCorretor && (
+                         <p className="text-xl sm:text-2xl lg:text-[38px] xl:text-[56px] font-black text-[#1C2643] tracking-tighter mt-auto break-words leading-none pb-2">
+                           {Math.round((teamProduced / teamGoal) * 100)}%
+                         </p>
+                       )}
+                    </div>
+                  </DashboardCard>
+                </motion.div>
+              )}
+            </div>
+
+            {/* NEW SECTION: APPOINTMENTS OF THE DAY (Interviews & Calls) */}
+            {isRecursosHumanos && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                transition={{ delay: 0.35 }}
+                className="lg:col-span-8"
+                id="dashboard-appointments-card"
+              >
+                <Card className="border border-slate-200 bg-white rounded-[28px] shadow-sm">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 w-full">
+                      {/* Left section: icon, stats and toggle */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-6 shrink-0 md:border-r border-slate-100 pr-6">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 shrink-0 border border-amber-100 shadow-sm">
+                            <Clock className="w-6 h-6 animate-pulse" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider">
+                                Agenda de Hoje
+                              </span>
+                            </div>
+                            <p className="text-2xl font-black text-[#1C2643] tracking-tighter mt-1">
+                              {interviews.filter(i => {
+                                const itemTipo = i.tipo || "ENTREVISTAS"
+                                if (dashboardInterviewTab === "ENTREVISTAS") {
+                                  return itemTipo === "ENTREVISTAS" || i.fase === "Entrevista"
+                                }
+                                return itemTipo === "LIGAÇÕES" && i.fase !== "Entrevista"
+                              }).length} agendadas
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Cute tabs for the card */}
+                        <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => setDashboardInterviewTab("ENTREVISTAS")}
+                            className={cn(
+                              "px-4 py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-xl cursor-pointer",
+                              dashboardInterviewTab === "ENTREVISTAS"
+                                ? "bg-[#1C2643] text-white shadow-md shadow-[#1C2643]/10"
+                                : "text-slate-500 hover:text-slate-800"
+                            )}
+                          >
+                            ENTREVISTAS
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDashboardInterviewTab("LIGAÇÕES")}
+                            className={cn(
+                              "px-4 py-2 text-[9px] font-black uppercase tracking-widest transition-all rounded-xl cursor-pointer",
+                              dashboardInterviewTab === "LIGAÇÕES"
+                                ? "bg-[#1C2643] text-white shadow-md shadow-[#1C2643]/10"
+                                : "text-slate-500 hover:text-slate-800"
+                            )}
+                          >
+                            LIGAÇÕES
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Right section: Scheduled Categories Quantities (CLT, ESTÁGIO, PJ) */}
+                      <div className="flex-1 min-w-0 w-full">
+                        {(() => {
+                          const activeInterviews = interviews.filter(i => {
+                            const itemTipo = i.tipo || "ENTREVISTAS"
+                            if (dashboardInterviewTab === "ENTREVISTAS") {
+                              return itemTipo === "ENTREVISTAS" || i.fase === "Entrevista"
+                            }
+                            return itemTipo === "LIGAÇÕES" && i.fase !== "Entrevista"
+                          });
+                          
+                          let cltCount = 0;
+                          let estagioCount = 0;
+                          let pjCount = 0;
+
+                          activeInterviews.forEach(i => {
+                            const areaLower = (i.area || "").toLowerCase().trim();
+                            if (areaLower === "estágio" || areaLower === "estagio") {
+                              estagioCount++;
+                            } else if (areaLower === "não estudas" || areaLower === "nao estudas" || areaLower === "pj") {
+                              pjCount++;
+                            } else if (areaLower === "comercial" || areaLower === "operacional" || areaLower === "não estudam" || areaLower === "nao estudam") {
+                              cltCount++;
+                            } else {
+                              // Fallback default categorization to CLT if area is specified but unmapped,
+                              // or count it as unmapped, but let's default to CLT for other standard office areas
+                              cltCount++;
+                            }
+                          });
+
+                          return (
+                            <div className="grid grid-cols-3 gap-3 md:gap-4 w-full">
+                              {/* CLT block */}
+                              <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100 mb-1 pointer-events-none">
+                                  CLT
+                                </span>
+                                <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                                  {cltCount}
+                                </span>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                                  {cltCount === 1 ? "vaga" : "vagas"}
+                                </span>
+                              </div>
+
+                              {/* ESTÁGIO block */}
+                              <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 mb-1 pointer-events-none">
+                                  ESTÁGIO
+                                </span>
+                                <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                                  {estagioCount}
+                                </span>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                                  {estagioCount === 1 ? "vaga" : "vagas"}
+                                </span>
+                              </div>
+
+                              {/* PJ block */}
+                              <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 md:p-4 flex flex-col items-center justify-center text-center shadow-sm hover:border-[#1C2643]/20 transition-all">
+                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 mb-1 pointer-events-none">
+                                  PJ
+                                </span>
+                                <span className="text-2xl md:text-3xl font-black text-[#1C2643] tracking-tighter">
+                                  {pjCount}
+                                </span>
+                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+                                  {pjCount === 1 ? "vaga" : "vagas"}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* SECTION 3 & 4: MAPA DE OPORTUNIDADES & RANKING */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }} 
+              animate={{ opacity: 1, y: 0 }} 
+              transition={{ delay: 0.4 }} 
+              className={cn(
+                isOperational
+                  ? "lg:col-span-12"
+                  : (isSupervisor ? "lg:col-span-12" : "col-span-1 sm:col-span-2 lg:col-span-2")
+              )}
+            >
+              <div className="grid grid-cols-1 gap-4 h-full md:grid-cols-2">
+                 {/* Meta de Hoje */}
+                 {isSupervisor && (
+                   <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
+                     <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 !p-[18px] sm:!p-5 !rounded-[24px]">
+                       <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center mb-1.5 shrink-0">
+                         <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
+                       </div>
+                       <div className="flex flex-col min-w-0 overflow-hidden">
+                          <p className="text-[9px] font-bold text-[#718198] uppercase tracking-widest">Meta de Hoje</p>
+                          <p className="text-lg sm:text-xl lg:text-[22px] xl:text-[28px] font-black text-[#1C2643] tracking-tighter mt-1 break-words leading-none">{formatCurrency(dailyGoal)}</p>
+                       </div>
+                       <div className="mt-auto pt-3.5">
+                          <div className="flex justify-between items-center mb-1.5">
+                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PAGO HOJE</p>
+                             <p className="text-[10.5px] font-black text-[#1C2643]">
+                               {isLoading ? "..." : (
+                                 <span className="flex items-center gap-1">
+                                   {dailyGoal > 0 ? Math.round((displayDailyProduced / dailyGoal) * 100) : 0}%
+                                   <span className="text-slate-400 font-bold">({formatCurrency(displayDailyProduced)})</span>
+                                 </span>
+                               )}
+                             </p>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                             <motion.div 
+                               initial={{ width: 0 }}
+                               animate={{ width: `${Math.min(100, dailyGoal > 0 ? (displayDailyProduced / dailyGoal) * 100 : 0)}%` }}
+                               transition={{ duration: 1, delay: 0.5 }}
+                               className="h-full bg-amber-500" 
+                             />
+                          </div>
+                       </div>
+                     </DashboardCard>
+                   </motion.div>
+                 )}
+
+                 {/* Pagos recentemente */}
+                 <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2 mb-1.5">
+                       <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+                          <CheckCircle2 className="w-5 h-5 text-white" />
+                       </div>
+                       <div>
+                          <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none">
+                            {isSupervisor ? "TOTAL DE CONTRATOS EM ANDAMENTO" : "Pagos recentemente"}
+                          </p>
+                       </div>
+                    </div>
+                    {isSupervisor ? (
+                      <div className="flex flex-col justify-center py-6 gap-1.5">
+                        <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest text-center">Valor Total em Andamento</p>
+                        <p className="text-2xl sm:text-3xl lg:text-4xl font-black text-orange-600 tracking-tighter text-center leading-none">
+                          {formatCurrency(teamInProcessValue)}
+                        </p>
+                        <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col items-center gap-1.5">
+                          <span className="text-[11.5px] font-bold text-[#1C2643]">
+                            {teamInProcessCount} {teamInProcessCount === 1 ? 'Contrato' : 'Contratos'}
+                          </span>
+                          <p className="text-[11px] sm:text-[12px] font-bold text-slate-500 mt-6 text-center shrink-0">
+                             Você tem <span className="text-[#1C2643] font-black">{formatCurrency(teamPendingInconsistencyValue)}</span> ({teamPendingInconsistencyCount} {teamPendingInconsistencyCount === 1 ? 'pendência' : 'pendências'}) pendentes de atuação
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                         {recentPayments.length > 0 ? (
+                           recentPayments.map((p) => (
+                             <div key={p.id_lead} className="flex items-center justify-between p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                               <div className="flex flex-col">
+                                 <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight">{p.nome_cliente}</span>
+                                 <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">ID: {p.id_lead}</span>
+                               </div>
+                                 <div className="text-right">
+                                 <p className="text-[9.5px] font-black text-emerald-600">
+                                   {formatCurrency(parseCurrency(p.valor_producao))}
+                                 </p>
+                                 <p className="text-[8px] font-bold text-slate-400">{new Date(p.updated_at).toLocaleDateString()} {new Date(p.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                               </div>
+                             </div>
+                           ))
+                         ) : (
+                           <div className="flex flex-col items-center justify-center py-8 opacity-30">
+                             <CheckCircle2 className="w-6.5 h-6.5 mb-1.5" />
+                              <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhum pagamento registrado</p>
+                            </div>
+                          )}
+                       </div>
+                     )}
+                  </div>
+
+                   {/* ACESSAR CAMPANHA (Anterior Mapa de oportunidades) */}
+                   {!isSupervisor && (
+                    <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm space-y-3">
+                       <div className="flex items-center gap-2.5 mb-1.5">
+                          <div className="w-8 h-8 bg-[#1C2643] rounded-lg flex items-center justify-center">
+                             <Target className="w-5 h-5 text-white" />
+                          </div>
+                          <div>
+                             <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none">
+                               {isOperational ? "CONTRATOS EM ANDAMENTO (OPERACIONAL)" : "ACESSAR CAMPANHA"}
+                             </p>
+                          </div>
+                       </div>
+                       {isOperational ? (
+                         <div className="flex flex-col justify-center py-6 gap-1.5">
+                           <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-widest text-center">Valor Total Operacional</p>
+                           <p className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#1C2643] tracking-tighter text-center leading-none">
+                             {formatCurrency(opInProcessValue)}
+                           </p>
+                           <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col items-center gap-1.5">
+                             <span className="text-[11.5px] font-bold text-[#1C2643]">
+                               {opInProcessCount} {opInProcessCount === 1 ? 'Contrato' : 'Contratos'}
+                             </span>
+                           </div>
+                         </div>
+                       ) : (
+                         <div className="space-y-2.5">
+                            {dashboardCampaigns.length > 0 ? (
+                              dashboardCampaigns.map((campaign) => (
+                                <div 
+                                  key={campaign.id} 
+                                  onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
+                                  className="flex items-center justify-between p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200 hover:border-primary/30 hover:bg-white transition-all cursor-pointer group"
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-primary transition-colors">
+                                      {campaign.nome}
+                                    </span>
+                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                                      {campaign.filtros?.convenio || 'Geral'}
+                                    </span>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-[9.5px] font-black text-[#1C2643]">
+                                      {campaign.publico_estimado?.toLocaleString('pt-BR')} Leads
+                                    </p>
+                                    <p className="text-[8px] font-bold text-slate-400">
+                                      {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
+                                    </p>
+                                  </div>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="flex flex-col items-center justify-center py-6 opacity-40">
+                                <Target className="w-6.5 h-6.5 mb-1.5" />
+                                <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
+                              </div>
+                            )}
+                         </div>
+                       )}
+                    </div>
+                   )}
+              </div>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }} 
+              animate={{ opacity: 1, x: 0 }} 
+              transition={{ delay: 0.5 }} 
+              className={cn(
+                isSupervisor ? "lg:col-span-12" : "col-span-1 sm:col-span-2 lg:col-span-2"
+              )}
+            >
+              <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px]">
+                <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-50">
+                   <h3 className="text-lg font-black text-[#1C2643] tracking-tight">Ranking de Vendas</h3>
+                   <div className="flex items-center gap-3">
+                     <Trophy className="w-5 h-5 text-amber-500 fill-amber-500" />
+                   </div>
+                </div>
+
+                <div className="flex-1 flex flex-col">
+                  {isLoading && rankings.length === 0 ? (
+                    <div className="flex items-center justify-center h-full py-16">
+                       <Loader2 className="w-6 h-6 animate-spin text-[#1C2643]" />
+                    </div>
+                  ) : rankings.length > 0 ? (
+                    <div>
+                      {isSupervisor ? (
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50/50 border-b border-slate-200">
+                              <th className="px-3 py-2.5 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                              <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
+                              <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                              <th className="px-3 py-2.5 text-[8.5px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                              <th className="px-3 py-2.5 text-[8.5px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {rankings.map((rank, idx) => {
+                              const isUser = rank.corretor_id === perfil?.id
+                              const position = idx + 1
+                              const isSupervisorRow = rank.funcao?.toLowerCase() === 'supervisor'
+                              const isGroupRow = rank.corretor_id === 'ESTAGIL_AND_PJ'
+                              const isExpanded = !!expandedSupervisorIds[rank.corretor_id]
+                              return (
+                                <Fragment key={rank.corretor_id}>
+                                  <tr 
+                                    onClick={isGroupRow ? () => {
+                                      setExpandedSupervisorIds(prev => ({
+                                        ...prev,
+                                        [rank.corretor_id]: !prev[rank.corretor_id]
+                                      }))
+                                    } : undefined}
+                                    className={cn(
+                                      "transition-colors",
+                                      isUser ? "bg-[#1C2643]/5" : "hover:bg-slate-50/80",
+                                      isGroupRow && "cursor-pointer"
+                                    )}
+                                  >
+                                    <td className="px-3 py-3">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className={cn(
+                                          "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
+                                          position === 1 ? "bg-amber-100 text-amber-600" : 
+                                          position === 2 ? "bg-slate-100 text-slate-600" :
+                                          position === 3 ? "bg-orange-100 text-orange-600" :
+                                          "bg-slate-50 text-slate-400"
+                                        )}>
+                                          {position}º
+                                        </div>
+                                        <div className="flex items-center gap-1.5 min-w-[100px]">
+                                          <span className={cn(
+                                            "text-[12.5px] font-black tracking-tight",
+                                            isUser ? "text-[#1C2643]" : "text-slate-600"
+                                          )}>
+                                            {formatName(rank.nome)} {isUser && !isSupervisorRow && "(Você)"}
+                                          </span>
+                                          {isGroupRow && (
+                                            isExpanded ? (
+                                              <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                            ) : (
+                                              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                            )
+                                          )}
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-3 text-right bg-slate-50/50">
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-black text-[#1C2643]">{rank.approvedTicketsCount || 0}</span>
+                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                          {(rank.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className={cn(
+                                      "px-3 py-3 text-right transition-colors",
+                                      isUser ? "bg-emerald-100/70" : "bg-emerald-100/25"
+                                    )}>
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(rank.totalPaid)}</span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: rank.corretor_id,
+                                              personName: rank.nome,
+                                              category: 'paid',
+                                              categoryLabel: 'Produção (Pagos)',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
+                                          {rank.countPaid} {rank.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                                        </button>
+                                      </div>
+                                    </td>
+                                    <td className={cn(
+                                      "px-3 py-3 text-right transition-colors",
+                                      isUser ? "bg-orange-100/70" : "bg-orange-100/25"
+                                    )}>
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(rank.totalInProcess)}</span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: rank.corretor_id,
+                                              personName: rank.nome,
+                                              category: 'in_process',
+                                              categoryLabel: 'Em Andamento',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
+                                          {rank.countInProcess} {rank.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                                        </button>
+                                      </div>
+                                    </td>
+                                    <td className={cn(
+                                      "px-3 py-3 text-right transition-colors",
+                                      isUser ? "bg-blue-100/70" : "bg-blue-100/25"
+                                    )}>
+                                      <div className="flex flex-col items-end">
+                                        <span className={cn(
+                                          "text-[11.5px] font-bold",
+                                          rank.totalToday > 0 ? "text-emerald-600" : "text-slate-400"
+                                        )}>
+                                          {formatCurrency(rank.totalToday)}
+                                        </span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: rank.corretor_id,
+                                              personName: rank.nome,
+                                              category: 'today',
+                                              categoryLabel: 'Digitadas Hoje',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
+                                          {rank.countToday} {rank.countToday === 1 ? 'Contrato' : 'Contratos'}
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+
+                                  {isGroupRow && isExpanded && (
+                                    <tr className="bg-slate-50/50">
+                                      <td colSpan={5} className="p-3 border-t border-b border-dashed border-slate-200">
+                                        <div className="space-y-3.5 pl-4 select-none">
+                                          <div className="flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+                                            <Users className="w-3.5 h-3.5 text-[#1C2643]" />
+                                            <h4 className="text-[9px] font-black text-[#1C2643] uppercase tracking-wider">
+                                              Detalhamento do Grupo (Estágio & PJ)
+                                            </h4>
+                                          </div>
+                                          
+                                          {(!rank.colaboracoes?.estagiarios || rank.colaboracoes.estagiarios.length === 0) ? (
+                                            <p className="text-[9px] font-bold text-slate-400 italic">Nenhum colaborador estágio ou PJ ativo neste período.</p>
+                                          ) : (
+                                            <div className="space-y-1.5">
+                                              {rank.colaboracoes.estagiarios.map((est, idx) => (
+                                                <div key={est.estagiario_id} className="grid grid-cols-5 gap-2 text-slate-600 bg-emerald-50/30 p-2 border border-slate-50 shadow-sm rounded-xl hover:bg-emerald-50/50 transition-colors">
+                                                  <div className="font-extrabold text-[9px] text-[#1C2643] truncate flex flex-col justify-center min-w-0">
+                                                    <div className="flex items-center gap-1">
+                                                      <span className="text-[8.5px] font-black text-[#1C2643]/70 bg-slate-100 border border-slate-200 rounded px-1 shrink-0 min-w-[16px] text-center mr-0.5">
+                                                        {idx + 1}º
+                                                      </span>
+                                                      {est.isPJ ? (
+                                                        <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                                      ) : (
+                                                        <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                                      )}
+                                                      <span className="truncate">{formatName(est.nome)}</span>
+                                                      <span className="text-[7.5px] text-slate-400 ml-1 shrink-0">
+                                                        ({est.isPJ ? "PJ" : "ESTÁGIO"})
+                                                      </span>
+                                                    </div>
+                                                    {est.supervisor && (
+                                                      <span className="text-[7.5px] font-bold text-slate-400 mt-0.5 pl-[36px] block shrink-0">
+                                                        SUP: {est.supervisor}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                  <div className="text-right">
+                                                    <div className="text-[9.5px] text-[#1C2643] font-extrabold">{est.approvedTicketsCount || 0}</div>
+                                                    <div className="text-[7.5px] text-slate-400 font-bold uppercase">Chamados</div>
+                                                  </div>
+                                                  <div className="text-right flex flex-col items-end">
+                                                    <div className="text-[9.5px] text-emerald-600 font-extrabold">{formatCurrency(est.totalPaid)}</div>
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenRankingModal({
+                                                          personId: est.estagiario_id,
+                                                          personName: est.nome,
+                                                          category: 'paid',
+                                                          categoryLabel: 'Produção (Pagos)',
+                                                          startDate,
+                                                          endDate
+                                                        });
+                                                      }}
+                                                      className="text-[7.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase transition-colors"
+                                                      title="Clique para ver contratos"
+                                                    >
+                                                      {est.countPaid} PG
+                                                    </button>
+                                                  </div>
+                                                  <div className="text-right flex flex-col items-end">
+                                                    <div className="text-[9.5px] text-orange-600 font-extrabold">{formatCurrency(est.totalInProcess)}</div>
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenRankingModal({
+                                                          personId: est.estagiario_id,
+                                                          personName: est.nome,
+                                                          category: 'in_process',
+                                                          categoryLabel: 'Em Andamento',
+                                                          startDate,
+                                                          endDate
+                                                        });
+                                                      }}
+                                                      className="text-[7.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase transition-colors"
+                                                      title="Clique para ver contratos"
+                                                    >
+                                                      {est.countInProcess} AND
+                                                    </button>
+                                                  </div>
+                                                  <div className="text-right flex flex-col items-end">
+                                                    <div className="text-[9.5px] text-blue-600 font-extrabold">{formatCurrency(est.totalToday)}</div>
+                                                    <button
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenRankingModal({
+                                                          personId: est.estagiario_id,
+                                                          personName: est.nome,
+                                                          category: 'today',
+                                                          categoryLabel: 'Digitadas Hoje',
+                                                          startDate,
+                                                          endDate
+                                                        });
+                                                      }}
+                                                      className="text-[7.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase transition-colors"
+                                                      title="Clique para ver contratos"
+                                                    >
+                                                      {est.countToday} DIG
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2.5">
+                          {displayRankings.map((rank, idx) => {
+                            const isUser = rank.isUser
+                            const position = rank.position
+                            
+                            return (
+                              <div 
+                                key={idx} 
+                                className={cn(
+                                  "flex sm:items-center justify-between border transition-all duration-300 rounded-xl",
+                                  isUser 
+                                    ? "bg-[#1C2643] text-white border-[#1C2643] shadow-md shadow-[#1C2643]/20 scale-[1.01] py-4.5 px-4 sm:py-5 sm:px-5 w-full" 
+                                    : "bg-slate-50 border-slate-200 text-[#1C2643] p-3"
+                                )}
+                              >
+                                <div className="flex items-center gap-3 sm:gap-4.5 min-w-0 w-full">
+                                  <div className={cn(
+                                    "rounded-full flex items-center justify-center font-black shrink-0 shadow-sm",
+                                    isUser 
+                                      ? "w-11 h-11 text-base sm:w-16 sm:h-16 sm:text-xl bg-white text-[#1C2643]" 
+                                      : "w-6.5 h-6.5 text-[10px] bg-white border border-slate-200 text-[#718198]"
+                                  )}>
+                                    {position}º
+                                  </div>
+                                  <div className="flex flex-col min-w-0">
+                                    <p className={cn(
+                                      "font-black tracking-tight line-clamp-1 leading-tight",
+                                      isUser ? "text-[16px] sm:text-[21px] text-white" : "text-[11px] text-[#1C2643]"
+                                    )}>
+                                      {isUser ? (rank.nome?.split(" ")[0] || "") : `Ranking ${position}º`}
+                                    </p>
+                                    
+                                    {isUser && (
+                                      <>
+                                        <p className="text-[9px] sm:text-[11px] uppercase font-black tracking-widest text-slate-300 mt-0.5 leading-tight">
+                                          Sua Produção
+                                        </p>
+                                        <p className="font-black text-amber-400 text-[18px] sm:text-[26px] leading-tight font-sans tracking-tight mt-0.5 sm:mt-1">
+                                          {formatCurrency(rank.totalPaid)}
+                                        </p>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full py-8 opacity-40">
+                       <Trophy className="w-10 h-10 mb-3" />
+                       <p className="text-xs font-bold uppercase tracking-widest text-[#1C2643]">Sem rankings ainda</p>
+                    </div>
+                  )}
+                </div>
+
+                {!(perfil?.role?.toLowerCase() === 'monitoramento' || perfil?.role?.toLowerCase() === 'operacional') && (
+                  <div className="mt-5 pt-4 border-t border-slate-50">
+                     <div className="bg-amber-50 p-3 rounded-xl flex items-center gap-3 border border-amber-100">
+                        <div className="w-8.5 h-8.5 bg-white rounded-lg shadow-sm flex items-center justify-center shrink-0">
+                           <Target className="w-4 h-4 text-amber-500" />
+                        </div>
+                        <p className="text-[12px] font-bold text-[#1C2643] leading-tight flex-1">
+                           {userRank === 1 ? (
+                             <span className="text-emerald-600 font-black tracking-tight">PARABÉNS! VOCÊ É O NÚMERO 1! CONTINUE LIDERANDO!</span>
+                           ) : userRank > 1 ? (
+                             <>Você está na <span className="text-amber-600 font-black">{userRank}ª posição</span>. Falta <span className="text-[#1C2643] font-black">{formatCurrency(missingForNextRank)}</span> para chegar na {userRank - 1}ª posição!</>
+                           ) : (
+                             <>Comece a produzir para entrar no <span className="font-black">Ranking</span></>
+                           )}
+                        </p>
+                     </div>
+                  </div>
+                )}
+              </DashboardCard>
+            </motion.div>
+
+            {(isSupervisor || isOperational) && estagioRankingGroup && estagioRankingGroup.colaboracoes?.estagiarios && estagioRankingGroup.colaboracoes.estagiarios.length > 0 && (() => {
+              const estagiariosList = estagioRankingGroup.colaboracoes.estagiarios.filter(e => !e.isPJ)
+              const colaboradoresPJList = estagioRankingGroup.colaboracoes.estagiarios.filter(e => e.isPJ)
+
+              return (
+                <div className="lg:col-span-12 space-y-6 mt-6" id="estagio-pj-ranking-card">
+                  {/* RANKING ESTAGIÁRIOS */}
+                  {estagiariosList.length > 0 && (
+                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.55 }}>
+                      <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px]">
+                        <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-50">
+                          <div className="flex items-center gap-2">
+                            <GraduationCap className="w-5 h-5 text-emerald-500" />
+                            <h3 className="text-lg font-black text-[#1C2643] tracking-tight uppercase">Ranking Estagiários</h3>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 flex flex-col overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50/50 border-b border-slate-200">
+                                <th className="px-3 py-2.5 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                                <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
+                                <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                                <th className="px-3 py-2.5 text-[8.5px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                                <th className="px-3 py-2.5 text-[8.5px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {estagiariosList.map((est, idx) => {
+                                const position = idx + 1
+                                return (
+                                  <tr key={est.estagiario_id} className="hover:bg-slate-50/80 transition-colors">
+                                    <td className="px-3 py-3">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className={cn(
+                                          "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
+                                          position === 1 ? "bg-amber-100 text-amber-600" : 
+                                          position === 2 ? "bg-slate-100 text-slate-600" :
+                                          position === 3 ? "bg-orange-100 text-orange-600" :
+                                          "bg-slate-50 text-slate-400"
+                                        )}>
+                                          {position}º
+                                        </div>
+                                        <div className="flex flex-col min-w-[100px]">
+                                          <div className="flex items-center gap-1.5">
+                                            <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                            <span className="text-[12.5px] font-black tracking-tight text-[#1C2643]">
+                                              {formatName(est.nome)}
+                                            </span>
+                                            <span className="text-[9px] font-black text-slate-400">
+                                              (ESTÁGIO)
+                                            </span>
+                                          </div>
+                                          {est.supervisor && (
+                                            <span className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                              SUPERVISOR: {formatName(est.supervisor)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-3 text-right bg-slate-50/50">
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-black text-[#1C2643]">{est.approvedTicketsCount || 0}</span>
+                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                          {(est.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-3 text-right bg-emerald-100/25">
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'paid',
+                                              categoryLabel: 'Produção (Pagos)',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
+                                          {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                                        </button>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-3 text-right bg-orange-100/25">
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'in_process',
+                                              categoryLabel: 'Em Andamento',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
+                                          {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                                        </button>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-3 text-right bg-blue-100/25">
+                                      <div className="flex flex-col items-end">
+                                        <span className={cn(
+                                          "text-[11.5px] font-bold",
+                                          est.totalToday > 0 ? "text-emerald-600" : "text-slate-400"
+                                        )}>
+                                          {formatCurrency(est.totalToday)}
+                                        </span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'today',
+                                              categoryLabel: 'Digitadas Hoje',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
+                                          {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </DashboardCard>
+                    </motion.div>
+                  )}
+
+                  {/* RANKING COLABORADORES PJ */}
+                  {(isUserAdmin || isAdmin || isDeveloper || isOperational || isUserOperacional) && colaboradoresPJList.length > 0 && (
+                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.6 }}>
+                      <DashboardCard className="h-full shadow-lg shadow-[#1C2643]/5 flex flex-col bg-white !p-4.5 sm:!p-5 !rounded-[24px]">
+                        <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-50">
+                          <div className="flex items-center gap-2">
+                            <Briefcase className="w-5 h-5 text-blue-500" />
+                            <h3 className="text-lg font-black text-[#1C2643] tracking-tight uppercase">Ranking Colaboradores PJ</h3>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 flex flex-col overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50/50 border-b border-slate-200">
+                                <th className="px-3 py-2.5 text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Posição e Nome</th>
+                                <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-500 uppercase tracking-widest text-right bg-slate-50">Clientes Aprovados</th>
+                                <th className="px-3 py-2.5 text-[8.5px] font-black text-emerald-600 uppercase tracking-widest text-right bg-emerald-100/50">Produção (Pagos)</th>
+                                <th className="px-3 py-2.5 text-[8.5px] font-black text-orange-600 uppercase tracking-widest text-right bg-orange-100/50">Em Andamento</th>
+                                <th className="px-3 py-2.5 text-[8.5px] font-black text-blue-600 uppercase tracking-widest text-right bg-blue-100/50">Digitadas Hoje</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {colaboradoresPJList.map((est, idx) => {
+                                const position = idx + 1
+                                return (
+                                  <tr key={est.estagiario_id} className="hover:bg-slate-50/80 transition-colors">
+                                    <td className="px-3 py-3">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className={cn(
+                                          "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
+                                          position === 1 ? "bg-amber-100 text-amber-600" : 
+                                          position === 2 ? "bg-slate-100 text-slate-600" :
+                                          position === 3 ? "bg-orange-100 text-orange-600" :
+                                          "bg-slate-50 text-slate-400"
+                                        )}>
+                                          {position}º
+                                        </div>
+                                        <div className="flex flex-col min-w-[100px]">
+                                          <div className="flex items-center gap-1.5">
+                                            <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                            <span className="text-[12.5px] font-black tracking-tight text-[#1C2643]">
+                                              {formatName(est.nome)}
+                                            </span>
+                                            <span className="text-[9px] font-black text-slate-400">
+                                              (PJ)
+                                            </span>
+                                          </div>
+                                          {est.supervisor && (
+                                            <span className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                              SUPERVISOR: {formatName(est.supervisor)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-3 text-right bg-slate-50/50">
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-black text-[#1C2643]">{est.approvedTicketsCount || 0}</span>
+                                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-tighter">
+                                          {(est.approvedTicketsCount || 0) === 1 ? 'Chamado' : 'Chamados'}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-3 text-right bg-emerald-100/25">
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-black text-[#1C2643]">{formatCurrency(est.totalPaid)}</span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'paid',
+                                              categoryLabel: 'Produção (Pagos)',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-emerald-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
+                                          {est.countPaid} {est.countPaid === 1 ? 'Contrato' : 'Contratos'}
+                                        </button>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-3 text-right bg-orange-100/25">
+                                      <div className="flex flex-col items-end">
+                                        <span className="text-[11.5px] font-bold text-orange-600">{formatCurrency(est.totalInProcess)}</span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'in_process',
+                                              categoryLabel: 'Em Andamento',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-orange-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
+                                          {est.countInProcess} {est.countInProcess === 1 ? 'Contrato' : 'Contratos'}
+                                        </button>
+                                      </div>
+                                    </td>
+                                    <td className="px-3 py-3 text-right bg-blue-100/25">
+                                      <div className="flex flex-col items-end">
+                                        <span className={cn(
+                                          "text-[11.5px] font-bold",
+                                          est.totalToday > 0 ? "text-emerald-600" : "text-slate-400"
+                                        )}>
+                                          {formatCurrency(est.totalToday)}
+                                        </span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenRankingModal({
+                                              personId: est.estagiario_id,
+                                              personName: est.nome,
+                                              category: 'today',
+                                              categoryLabel: 'Digitadas Hoje',
+                                              startDate,
+                                              endDate
+                                            });
+                                          }}
+                                          className="text-[8.5px] font-bold text-slate-500 hover:text-blue-700 hover:underline cursor-pointer uppercase tracking-tighter transition-colors"
+                                          title="Clique para ver contratos"
+                                        >
+                                          {est.countToday} {est.countToday === 1 ? 'Contrato' : 'Contratos'}
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </DashboardCard>
+                    </motion.div>
+                  )}
+                </div>
+              )
+            })()}
+
+            {/* SECTION 5: CAMPANHA DINÂMICA OU MODO TUBARÃO */}
+            {!isSupervisor && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                transition={{ delay: 0.6 }} 
+                className="col-span-1 sm:col-span-2 lg:col-span-4"
+              >
+                {banners.length > 0 ? (
+                  <DashboardCard className="relative overflow-hidden text-white w-full aspect-video flex flex-col p-3 sm:p-4 border-none bg-transparent group">
+                    <div className="w-full h-full relative">
+                      <AnimatePresence mode="wait">
+                        <motion.div
+                          key={currentBanner}
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -20 }}
+                          transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
+                          className="absolute inset-0 w-full h-full font-sans"
+                        >
+                          <Image 
+                            src={banners[currentBanner].image_url} 
+                            alt={banners[currentBanner].title || "Campanha SharkConsig"} 
+                            fill
+                            priority
+                            referrerPolicy="no-referrer"
+                            className="object-cover rounded-[32px] sm:rounded-[40px] shadow-2xl"
+                          />
+                        </motion.div>
+                      </AnimatePresence>
+
+                      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/60 via-black/20 to-transparent pointer-events-none rounded-b-[32px] sm:rounded-b-[40px]" />
+
+                      {banners.length > 1 && (
+                        <>
+                          {/* Navigation Arrows */}
+                          <button
+                            onClick={() => setCurrentBanner(prev => (prev - 1 + banners.length) % banners.length)}
+                            className="absolute left-6 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300 hover:bg-black/60 hover:scale-105 active:scale-95 z-20 cursor-pointer shadow-lg"
+                            aria-label="Campanha anterior"
+                          >
+                            <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+                          </button>
+                          <button
+                            onClick={() => setCurrentBanner(prev => (prev + 1) % banners.length)}
+                            className="absolute right-6 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300 hover:bg-black/60 hover:scale-105 active:scale-95 z-20 cursor-pointer shadow-lg"
+                            aria-label="Próxima campanha"
+                          >
+                            <ChevronRight className="w-5 h-5 stroke-[2.5]" />
+                          </button>
+
+                          {/* Slide Indicator Dots */}
+                          <div className="absolute bottom-8 left-8 flex items-center gap-2 z-10">
+                            {banners.map((_, idx) => (
+                              <button
+                                key={idx}
+                                onClick={() => setCurrentBanner(idx)}
+                                className={cn(
+                                  "h-1.5 rounded-full transition-all duration-500",
+                                  idx === currentBanner 
+                                    ? "bg-white w-10 shadow-[0_0_10px_rgba(255,255,255,0.5)]" 
+                                    : "bg-white/30 w-3 hover:bg-white/50"
+                                )}
+                                title={`Ver banner ${idx + 1}`}
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </DashboardCard>
+                ) : (
+                  <DashboardCard className="relative overflow-hidden w-full aspect-video bg-transparent flex flex-col p-3 sm:p-4 border-none">
+                    <div className="flex-1 flex items-center justify-center p-8">
+                       <img 
+                         src="/logo.png" 
+                         alt="SharkConsig" 
+                         className="w-48 opacity-5 grayscale"
+                       />
+                    </div>
+                  </DashboardCard>
+                )}
+              </motion.div>
+            )}
+            </div>
+          </motion.div>
+        )) : activeTab === 'propostas_comerciais' && isSupervisor ? (
+          <AdminDashboard 
+            perfil={perfil} 
+            isLoading={isLoading} 
+            remainingBusinessDays={remainingBusinessDays} 
+            headerContent={headerContent} 
+            stats={adminStats}
+            startDate={startDate}
+            endDate={endDate}
+            setStartDate={setStartDate}
+            setEndDate={setEndDate}
+            estagioRankingGroup={estagioRankingGroup}
+            onlyPropostasComerciais={true}
+          />
+        ) : (
+          (isAdmin || isSupervisor) && activeTab === 'chamados' && (
+            <motion.div 
+              key="chamados"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all mb-6">
+                <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
+                  <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+                    {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
+                      <button
+                        key={period}
+                        onClick={() => handleDashboardPeriodChange(period)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                          dashboardPeriod === period
+                            ? "bg-white text-[#1C2643] shadow-sm font-extrabold"
+                            : "text-slate-500 hover:text-slate-700"
+                        )}
+                      >
+                        {period === 'mes' ? 'Mês' : period === 'trimestre' ? 'Trimestre' : period}
+                      </button>
+                    ))}
+                  </div>
+
+                  {dashboardPeriod === 'personalizado' && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 mt-1 self-end"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">De:</span>
+                        <input 
+                          type="date" 
+                          value={tempStartDate}
+                          onChange={(e) => setTempStartDate(e.target.value)}
+                          className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Até:</span>
+                        <input 
+                          type="date" 
+                          value={tempEndDate}
+                          onChange={(e) => setTempEndDate(e.target.value)}
+                          className="text-[10px] font-bold text-[#1C2643] bg-white border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-[#1C2643]/20"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          setStartDate(tempStartDate);
+                          setEndDate(tempEndDate);
+                        }}
+                        className="px-2.5 py-1 bg-[#1C2643] text-white text-[9px] font-black rounded-md hover:bg-[#1C2643]/90 transition-all active:scale-95 cursor-pointer"
+                      >
+                        FILTRAR
+                      </button>
+                    </motion.div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+              <DashboardCard className="p-6 bg-[#FE9A00]/5 border-[#FE9A00]/20 shadow-sm">
+                <p className="text-[10px] font-black text-[#FE9A00] uppercase tracking-[0.2em] mb-1">Aberto</p>
+                <p className="text-3xl font-black text-[#FE9A00] tracking-tighter">{ticketStats?.aberto || 0}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[11px] font-black text-[#FE9A00] uppercase tracking-tighter">
+                    {ticketStats?.total ? Math.round((ticketStats.aberto / ticketStats.total) * 100) : 0}%
+                  </span>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-[#FE9A00]/20">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-[#FE9A00] tracking-tight">{formatCurrency(ticketStats?.abertoValue || 0)}</p>
+                </div>
+              </DashboardCard>
+
+              <DashboardCard className="p-6 bg-[#FF6A03]/5 border-[#FF6A03]/20 shadow-sm">
+                <p className="text-[10px] font-black text-[#FF6A03] uppercase tracking-[0.2em] mb-1">Aguardando Operacional</p>
+                <p className="text-3xl font-black text-[#FF6A03] tracking-tighter">{ticketStats?.aguardandoOperacional || 0}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[11px] font-black text-[#FF6A03] uppercase tracking-tighter">
+                    {ticketStats?.total ? Math.round((ticketStats.aguardandoOperacional / ticketStats.total) * 100) : 0}%
+                  </span>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-[#FF6A03]/20">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-[#FF6A03] tracking-tight">{formatCurrency(ticketStats?.aguardandoOperacionalValue || 0)}</p>
+                </div>
+              </DashboardCard>
+
+              <DashboardCard className="p-6 bg-[#10b981]/5 border-[#10b981]/20 shadow-sm">
+                <p className="text-[10px] font-black text-[#10b981] uppercase tracking-[0.2em] mb-1">Aprovado</p>
+                <p className="text-3xl font-black text-[#10b981] tracking-tighter">{ticketStats?.approved || 0}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[11px] font-black text-[#10b981] uppercase tracking-tighter">
+                    {ticketStats?.total ? Math.round((ticketStats.approved / ticketStats.total) * 100) : 0}%
+                  </span>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-[#10b981]/20">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-[#10b981] tracking-tight">{formatCurrency(ticketStats?.approvedValue || 0)}</p>
+                </div>
+              </DashboardCard>
+
+              <DashboardCard className="p-6 bg-[#06BADC]/5 border-[#06BADC]/20 shadow-sm">
+                <p className="text-[10px] font-black text-[#06BADC] uppercase tracking-[0.2em] mb-1">Proposta Enviada / Em Negociação</p>
+                <p className="text-3xl font-black text-[#06BADC] tracking-tighter">{ticketStats?.inNegotiation || 0}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[11px] font-black text-[#06BADC] uppercase tracking-tighter">
+                    {ticketStats?.total ? Math.round((ticketStats.inNegotiation / ticketStats.total) * 100) : 0}%
+                  </span>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-[#06BADC]/20">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-[#06BADC] tracking-tight">{formatCurrency(ticketStats?.inNegotiationValue || 0)}</p>
+                </div>
+              </DashboardCard>
+
+              <DashboardCard className="p-6 bg-[#ef4444]/5 border-[#ef4444]/20 shadow-sm">
+                <p className="text-[10px] font-black text-[#ef4444] uppercase tracking-[0.2em] mb-1">Não Aprovado</p>
+                <p className="text-3xl font-black text-[#ef4444] tracking-tighter">{ticketStats?.notApproved || 0}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[11px] font-black text-[#ef4444] uppercase tracking-tighter">
+                    {ticketStats?.total ? Math.round((ticketStats.notApproved / ticketStats.total) * 100) : 0}%
+                  </span>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">do Total</p>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-[#ef4444]/20">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-[#ef4444] tracking-tight">{formatCurrency(ticketStats?.notApprovedValue || 0)}</p>
+                </div>
+              </DashboardCard>
+
+              <DashboardCard className="p-6 bg-slate-50/30 border-slate-200 shadow-sm">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Todos</p>
+                <p className="text-3xl font-black text-slate-600 tracking-tighter">{ticketStats?.total || 0}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[11px] font-black text-slate-600 uppercase tracking-tighter">
+                    100%
+                  </span>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest leading-none">Acumulado</p>
+                </div>
+                <div className="mt-2.5 pt-2 border-t border-dashed border-slate-200">
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-none mb-0.5">VALOR TOTAL DAS OPERAÇÕES</p>
+                  <p className="text-sm font-black text-slate-600 tracking-tight">{formatCurrency(ticketStats?.totalValue || 0)}</p>
+                </div>
+              </DashboardCard>
+            </div>
+
+            {/* Ticket Charts for Admin */}
+            {ticketStats && ticketStats.total > 0 && (
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Produção por Corretor - Now at the Top */}
+                <div className="lg:col-span-2">
+                  <DashboardCard className="p-8 bg-white border-slate-100 h-auto flex flex-col">
+                    <div className="flex items-center gap-2 mb-8">
+                      <Users className="w-5 h-5 text-[#1C2643]" />
+                      <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">Produção por Corretor</h3>
+                    </div>
+                    <div className="space-y-4">
+                      {(ticketStats?.byBroker || []).map((item, idx) => {
+                        const percentage = ticketStats.total ? Math.round((item.value / ticketStats.total) * 100) : 0
+                        return (
+                          <div key={idx} className="space-y-1">
+                            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                              <span className="text-slate-500">{item.name}</span>
+                              <span className="text-slate-700">
+                                {item.value} ({percentage}%) <span className="text-orange-600 ml-2">{formatCurrency(item.totalValue || 0)}</span>
+                              </span>
+                            </div>
+                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${percentage}%` }}
+                                transition={{ duration: 1, delay: idx * 0.1 }}
+                                className="h-full bg-orange-500"
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </DashboardCard>
+                </div>
+              </div>
+
+              {/* Card de Parceria Estagiário/Corretor (Células de Vendas) */}
+              <div className="mt-6">
+                <DashboardCard className="p-8 bg-white border-slate-100 h-auto flex flex-col">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                    <div>
+                      <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em] flex items-center gap-2">
+                        <Users className="w-5 h-5 text-[#1C2643]" />
+                        Célula de Vendas (Parceria Estagiário/Corretor)
+                      </h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Métricas de chamados encaminhados e desempenho de cada parceria</p>
+                    </div>
+                    {ticketStats?.partnershipStats && (
+                      <div className="flex items-center gap-4 bg-indigo-50/50 border border-indigo-100/30 rounded-xl px-4 py-2 shrink-0">
+                        <div className="text-right">
+                          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">CHAMADOS</p>
+                          <p className="text-base font-black text-indigo-600">{ticketStats.partnershipStats.totalCount}</p>
+                        </div>
+                        <div className="h-6 w-px bg-indigo-100" />
+                        <div className="text-right">
+                          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">VALOR TOTAL</p>
+                          <p className="text-base font-black text-indigo-600">
+                            {formatCurrency(ticketStats.partnershipStats.totalValue)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {!ticketStats?.partnershipStats || ticketStats.partnershipStats.groups.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <p className="text-[11.5px] font-semibold text-slate-400">Nenhum chamado encaminhado ou em parceria encontrado no filtro atual.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-6">
+                      {ticketStats.partnershipStats.groups.map((group: any) => (
+                        <div key={group.corretorName} className="bg-slate-50/70 border border-slate-100/80 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-200/80 transition-all">
+                          <div>
+                            {/* Corretor Header */}
+                            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                              <div>
+                                <span className="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wider">CORRETOR/SUPERVISOR</span>
+                                <h4 className="text-[12.5px] font-black text-slate-700 leading-tight truncate max-w-[180px]" title={group.corretorName}>
+                                  {group.corretorName}
+                                </h4>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-100 text-indigo-700">
+                                  {group.totalCount} {group.totalCount === 1 ? 'chamado' : 'chamados'}
+                                </span>
+                                <p className="text-[10.5px] font-black text-slate-800 mt-0.5">
+                                  {formatCurrency(group.totalValue)}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Estagiários List */}
+                            <div className="space-y-2 mt-2">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Membros da Célula</span>
+                              {Object.entries(group.estagiarios).map(([estagiarioName, stats]: [string, any]) => (
+                                <div key={estagiarioName} className="flex items-center justify-between bg-white px-3 py-2 rounded-xl border border-slate-100">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                    <span className="text-[11px] font-semibold text-slate-600 truncate max-w-[150px]" title={estagiarioName}>
+                                      {estagiarioName}
+                                    </span>
+                                  </div>
+                                  <div className="text-right shrink-0">
+                                    <span className="text-[10px] font-bold text-slate-500 mr-2">
+                                      {stats.count} un
+                                    </span>
+                                    <span className="text-[11px] font-extrabold text-slate-700">
+                                      {formatCurrency(stats.value)}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </DashboardCard>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                {/* Bar Chart: Origem dos Clientes - Now here */}
+                <DashboardCard className="p-8 bg-white border-slate-100 h-auto flex flex-col">
+                  <div className="flex items-center gap-2 mb-8">
+                    <TrendingUp className="w-5 h-5 text-[#1C2643]" />
+                    <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">Origem dos Clientes</h3>
+                  </div>
+                  <div className="space-y-4">
+                    {ticketStats.byOrigin.slice(0, 8).map((item, idx) => {
+                      const percentage = ticketStats.total ? Math.round((item.value / ticketStats.total) * 100) : 0
+                      return (
+                        <div key={idx} className="space-y-1">
+                          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                            <span className="text-slate-500">{item.name}</span>
+                            <span className="text-slate-700">
+                              {item.value} ({percentage}%) <span className="text-[#1C2643] ml-2">{formatCurrency(item.totalValue || 0)}</span>
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${percentage}%` }}
+                              transition={{ duration: 1, delay: idx * 0.1 }}
+                              className="h-full bg-[#1C2643]"
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </DashboardCard>
+
+                {/* Distribution: Convênio */}
+                <DashboardCard className="p-8 bg-white border-slate-100 h-auto flex flex-col">
+                  <div className="flex items-center gap-2 mb-8">
+                    <BarChart3 className="w-5 h-5 text-[#1C2643]" />
+                    <h3 className="text-sm font-black text-[#1C2643] uppercase tracking-[0.15em]">CHAMADOS POR CONVÊNIO</h3>
+                  </div>
+                  <div className="space-y-4">
+                    {(ticketStats?.byConvenio || []).map((item, idx) => {
+                      const percentage = ticketStats.total ? Math.round((item.value / ticketStats.total) * 100) : 0
+                      return (
+                        <div key={idx} className="space-y-1">
+                          <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+                            <span className="text-slate-500">{item.name}</span>
+                            <span className="text-slate-700">
+                              {item.value} ({percentage}%) <span className="text-blue-600 ml-2">{formatCurrency(item.totalValue || 0)}</span>
+                            </span>
+                          </div>
+                          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${percentage}%` }}
+                              transition={{ duration: 1, delay: idx * 0.1 }}
+                              className="h-full bg-blue-500"
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </DashboardCard>
+              </div>
+
+              {/* DIAGNÓSTICO FINANCEIRO E ESTRATÉGICO FOR TICKETS */}
+              {(() => {
+                const totalValue = ticketStats.totalValue || 0;
+                const totalCount = ticketStats.total || 0;
+
+                // 1. Maior Potencial de Geração de Receita
+                const sortedBrokersByPotential = [...(ticketStats.byBroker || [])].sort((a, b) => (b.totalValue || 0) - (a.totalValue || 0));
+                const sortedOriginsByPotential = [...(ticketStats.byOrigin || [])].sort((a, b) => (b.totalValue || 0) - (a.totalValue || 0));
+                const sortedConveniosByPotential = [...(ticketStats.byConvenio || [])].sort((a, b) => (b.totalValue || 0) - (a.totalValue || 0));
+
+                const topBrokerPotential = sortedBrokersByPotential[0] || null;
+                const topOriginPotential = sortedOriginsByPotential[0] || null;
+                const topConvenioPotential = sortedConveniosByPotential[0] || null;
+
+                interface DiagnosticItem {
+                  name: string;
+                  value: number;
+                  totalValue?: number;
+                  approved?: number;
+                }
+
+                // 2. Produz bastante, mas tem baixo potencial (high count, low average value)
+                const getLowYieldItem = (items: DiagnosticItem[]) => {
+                  if (!items || items.length === 0) return null;
+                  const validItems = items.filter(item => item.value > 0);
+                  if (validItems.length === 0) return null;
+                  const avgCount = validItems.reduce((acc, curr) => acc + curr.value, 0) / validItems.length;
+                  let thresholdItems = validItems.filter(item => item.value >= avgCount);
+                  if (thresholdItems.length === 0) {
+                    thresholdItems = validItems;
+                  }
+                  return [...thresholdItems].sort((a, b) => {
+                    const avgA = (a.totalValue || 0) / a.value;
+                    const avgB = (b.totalValue || 0) / b.value;
+                    return avgA - avgB;
+                  })[0] || null;
+                };
+
+                const lowYieldBroker = getLowYieldItem(ticketStats.byBroker as DiagnosticItem[] || []);
+                const lowYieldOrigin = getLowYieldItem(ticketStats.byOrigin as DiagnosticItem[] || []);
+                const lowYieldConvenio = getLowYieldItem(ticketStats.byConvenio as DiagnosticItem[] || []);
+
+                // 3. Melhor Retorno (highest conversion rate approved / value)
+                const getBestReturnItem = (items: DiagnosticItem[]) => {
+                  if (!items || items.length === 0) return null;
+                  const validItems = items.filter(item => item.value > 0);
+                  if (validItems.length === 0) return null;
+                  const avgCount = validItems.reduce((acc, curr) => acc + curr.value, 0) / validItems.length;
+                  let thresholdItems = validItems.filter(item => item.value >= avgCount);
+                  if (thresholdItems.length === 0) {
+                    thresholdItems = validItems;
+                  }
+                  return [...thresholdItems].sort((a, b) => {
+                    const rateA = (a.approved || 0) / a.value;
+                    const rateB = (b.approved || 0) / b.value;
+                    return rateB - rateA;
+                  })[0] || null;
+                };
+
+                const bestReturnBroker = getBestReturnItem(ticketStats.byBroker as DiagnosticItem[] || []);
+                const bestReturnOrigin = getBestReturnItem(ticketStats.byOrigin as DiagnosticItem[] || []);
+                const bestReturnConvenio = getBestReturnItem(ticketStats.byConvenio as DiagnosticItem[] || []);
+
+                // 4. Sustentação (highest total potential value totalValue)
+                const sustainingBroker = sortedBrokersByPotential[0] || null;
+                const sustainingOrigin = sortedOriginsByPotential[0] || null;
+                const sustainingConvenio = sortedConveniosByPotential[0] || null;
+
+                // 5. Em destaque (highest approved count)
+                const sortedBrokersByApproved = [...(ticketStats.byBroker || [])].sort((a, b) => (b.approved || 0) - (a.approved || 0));
+                const sortedOriginsByApproved = [...(ticketStats.byOrigin || [])].sort((a, b) => (b.approved || 0) - (a.approved || 0));
+                const sortedConveniosByApproved = [...(ticketStats.byConvenio || [])].sort((a, b) => (b.approved || 0) - (a.approved || 0));
+
+                const topApprovedBroker = sortedBrokersByApproved[0] || null;
+                const topApprovedOrigin = sortedOriginsByApproved[0] || null;
+                const topApprovedConvenio = sortedConveniosByApproved[0] || null;
+
+                // 6. Dependência (any single > 40% of totalValue)
+                const brokerShare = sustainingBroker && totalValue > 0 ? ((sustainingBroker.totalValue || 0) / totalValue) * 100 : 0;
+                const originShare = sustainingOrigin && totalValue > 0 ? ((sustainingOrigin.totalValue || 0) / totalValue) * 100 : 0;
+                const convenioShare = sustainingConvenio && totalValue > 0 ? ((sustainingConvenio.totalValue || 0) / totalValue) * 100 : 0;
+
+                let concentrationRisk = null;
+                if (brokerShare > 40) {
+                  concentrationRisk = { type: "Corretor", name: sustainingBroker.name, share: brokerShare };
+                } else if (originShare > 40) {
+                  concentrationRisk = { type: "Origem", name: sustainingOrigin.name, share: originShare };
+                } else if (convenioShare > 40) {
+                  concentrationRisk = { type: "Convênio", name: sustainingConvenio.name, share: convenioShare };
+                }
+
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.2 }}
+                    className="mt-8 pt-8 border-t border-slate-100 space-y-6"
+                  >
+                    <div>
+                      <h3 className="text-lg font-black text-[#1C2643] tracking-tight mt-1 uppercase">DIAGNÓSTICO FINANCEIRO E ESTRATÉGICO</h3>
+                      <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">
+                        Análise de viabilidade, eficiência e dependência dos chamados no período selecionado
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-sans">
+                      {/* CARD 1: MAIOR POTENCIAL */}
+                      <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                        <div>
+                          <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                            <span className="text-[10px] font-black text-amber-500 bg-amber-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                              Maior Receita Potencial
+                            </span>
+                            <Trophy className="w-4 h-4 text-amber-500" />
+                          </div>
+                          
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                            Quem gera maior potencial de receita?
+                          </h4>
+
+                          <div className="space-y-4">
+                            {topBrokerPotential && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Corretor</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {topBrokerPotential.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  Potencial de <span className="text-amber-500 font-extrabold">{formatCurrency(topBrokerPotential.totalValue || 0)}</span>
+                                </p>
+                              </div>
+                            )}
+
+                            {topOriginPotential && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Origem</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {topOriginPotential.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  Potencial de <span className="text-amber-500 font-extrabold">{formatCurrency(topOriginPotential.totalValue || 0)}</span>
+                                </p>
+                              </div>
+                            )}
+
+                            {topConvenioPotential && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Convênio</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {topConvenioPotential.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  Potencial de <span className="text-amber-500 font-extrabold">{formatCurrency(topConvenioPotential.totalValue || 0)}</span>
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 2: BAIXO POTENCIAL / ALTA PRODUÇÃO */}
+                      <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                        <div>
+                          <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                            <span className="text-[10px] font-black text-orange-500 bg-orange-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                              Baixo Potencial Médio
+                            </span>
+                            <Percent className="w-4 h-4 text-orange-500" />
+                          </div>
+                          
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                            Produz bastante, mas com baixo ticket médio?
+                          </h4>
+
+                          <div className="space-y-4">
+                            {lowYieldBroker && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Corretor</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {lowYieldBroker.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  {lowYieldBroker.value} chamados • Médio: <span className="text-orange-600 font-extrabold">{formatCurrency((lowYieldBroker.totalValue || 0) / lowYieldBroker.value)}</span>
+                                </p>
+                              </div>
+                            )}
+
+                            {lowYieldOrigin && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Origem</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {lowYieldOrigin.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  {lowYieldOrigin.value} chamados • Médio: <span className="text-orange-600 font-extrabold">{formatCurrency((lowYieldOrigin.totalValue || 0) / lowYieldOrigin.value)}</span>
+                                </p>
+                              </div>
+                            )}
+
+                            {lowYieldConvenio && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Convênio</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {lowYieldConvenio.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  {lowYieldConvenio.value} chamados • Médio: <span className="text-orange-600 font-extrabold">{formatCurrency((lowYieldConvenio.totalValue || 0) / lowYieldConvenio.value)}</span>
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 3: MELHOR RETORNO */}
+                      <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                        <div>
+                          <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                            <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                              Melhor Conversão
+                            </span>
+                            <Zap className="w-4 h-4 text-emerald-600" />
+                          </div>
+                          
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                            Qual tem melhor taxa de retorno/conversão?
+                          </h4>
+
+                          <div className="space-y-4">
+                            {bestReturnBroker && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Corretor</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {bestReturnBroker.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  Retorno de <span className="text-emerald-600 font-extrabold">{((bestReturnBroker.approved || 0) / bestReturnBroker.value * 100).toFixed(1)}%</span> ({bestReturnBroker.approved || 0}/{bestReturnBroker.value})
+                                </p>
+                              </div>
+                            )}
+
+                            {bestReturnOrigin && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Origem</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {bestReturnOrigin.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  Retorno de <span className="text-emerald-600 font-extrabold">{((bestReturnOrigin.approved || 0) / bestReturnOrigin.value * 100).toFixed(1)}%</span> ({bestReturnOrigin.approved || 0}/{bestReturnOrigin.value})
+                                </p>
+                              </div>
+                            )}
+
+                            {bestReturnConvenio && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Convênio</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {bestReturnConvenio.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  Retorno de <span className="text-emerald-600 font-extrabold">{((bestReturnConvenio.approved || 0) / bestReturnConvenio.value * 100).toFixed(1)}%</span> ({bestReturnConvenio.approved || 0}/{bestReturnConvenio.value})
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 4: SUSTENTAÇÃO */}
+                      <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                        <div>
+                          <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                            <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                              Sustentação
+                            </span>
+                            <Briefcase className="w-4 h-4 text-indigo-600" />
+                          </div>
+                          
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                            Quem sustenta o volume operacional?
+                          </h4>
+
+                          <div className="space-y-4">
+                            {sustainingBroker && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Corretor</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {sustainingBroker.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  {sustainingBroker.value} chamados • <span className="text-indigo-600 font-extrabold">{brokerShare.toFixed(1)}%</span> do volume potencial
+                                </p>
+                              </div>
+                            )}
+
+                            {sustainingOrigin && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Origem</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {sustainingOrigin.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  {sustainingOrigin.value} chamados • <span className="text-indigo-600 font-extrabold">{originShare.toFixed(1)}%</span> do volume potencial
+                                </p>
+                              </div>
+                            )}
+
+                            {sustainingConvenio && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Convênio</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {sustainingConvenio.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  {sustainingConvenio.value} chamados • <span className="text-indigo-600 font-extrabold">{convenioShare.toFixed(1)}%</span> do volume potencial
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 5: DESTAQUE */}
+                      <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                        <div>
+                          <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                            <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase tracking-wider">
+                              Destaque Absoluto
+                            </span>
+                            <TrendingUp className="w-4 h-4 text-blue-600" />
+                          </div>
+                          
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                            Quem está com maior volume de propostas geradas?
+                          </h4>
+
+                          <div className="space-y-4">
+                            {topApprovedBroker && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Corretor</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {topApprovedBroker.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  Converteu <span className="text-emerald-600 font-extrabold">{topApprovedBroker.approved || 0}</span> chamados em propostas
+                                </p>
+                              </div>
+                            )}
+
+                            {topApprovedOrigin && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Origem</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {topApprovedOrigin.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  Converteu <span className="text-emerald-600 font-extrabold">{topApprovedOrigin.approved || 0}</span> chamados em propostas
+                                </p>
+                              </div>
+                            )}
+
+                            {topApprovedConvenio && (
+                              <div>
+                                <p className="text-[10px] font-extrabold text-slate-400 uppercase">Convênio</p>
+                                <p className="text-xs font-black text-[#1C2643] uppercase truncate">
+                                  {topApprovedConvenio.name}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400">
+                                  Converteu <span className="text-emerald-600 font-extrabold">{topApprovedConvenio.approved || 0}</span> chamados em propostas
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 6: DEPENDÊNCIA */}
+                      <div className="bg-white rounded-[24px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                        <div>
+                          <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-50">
+                            <span className={cn(
+                              "text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider",
+                              concentrationRisk 
+                                ? "bg-amber-50 text-amber-600 border border-amber-100" 
+                                : "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                            )}>
+                              {concentrationRisk ? "Atenção Operacional" : "Operação Saudável"}
+                            </span>
+                            {concentrationRisk ? (
+                              <AlertTriangle className="w-4 h-4 text-amber-500" />
+                            ) : (
+                              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                            )}
+                          </div>
+                          
+                          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                            A empresa está dependendo demais de Corretor, Origem ou Convênio?
+                          </h4>
+
+                          <p className="text-xs font-bold text-slate-500 leading-relaxed mb-4">
+                            {concentrationRisk ? (
+                              <>
+                                Detectamos que o {concentrationRisk.type.toLowerCase()} <span className="text-amber-600 font-extrabold uppercase">{concentrationRisk.name}</span> representa <span className="text-[#1C2643] font-extrabold">{concentrationRisk.share.toFixed(1)}%</span> da receita operacional dos chamados. Recomenda-se diversificar canais para atenuar o risco.
+                              </>
+                            ) : (
+                              "Excelente! A distribuição dos chamados está saudável e equilibrada entre corretores, origens e convênios. Nenhuma entidade individual representa mais de 40% do potencial financeiro total da empresa."
+                            )}
+                          </p>
+
+                          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100/50">
+                            <div className="text-[10px] font-black text-[#1C2643] uppercase tracking-wider mb-2.5">
+                              Distribuição de Riscos (% do Potencial Total)
+                            </div>
+                            <div className="space-y-2">
+                              <div>
+                                <div className="flex justify-between text-[9px] font-extrabold text-slate-500 uppercase mb-0.5">
+                                  <span className="truncate max-w-[150px]">Corretor ({sustainingBroker?.name || 'N/A'})</span>
+                                  <span>{brokerShare.toFixed(1)}%</span>
+                                </div>
+                                <div className="w-full bg-slate-200/50 h-1 rounded-full overflow-hidden">
+                                  <div 
+                                    className={cn("h-full rounded-full", brokerShare > 40 ? "bg-amber-500" : "bg-indigo-600")}
+                                    style={{ width: `${Math.min(100, brokerShare)}%` }}
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <div className="flex justify-between text-[9px] font-extrabold text-slate-500 uppercase mb-0.5">
+                                  <span className="truncate max-w-[150px]">Origem ({sustainingOrigin?.name || 'N/A'})</span>
+                                  <span>{originShare.toFixed(1)}%</span>
+                                </div>
+                                <div className="w-full bg-slate-200/50 h-1 rounded-full overflow-hidden">
+                                  <div 
+                                    className={cn("h-full rounded-full", originShare > 40 ? "bg-amber-500" : "bg-indigo-600")}
+                                    style={{ width: `${Math.min(100, originShare)}%` }}
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <div className="flex justify-between text-[9px] font-extrabold text-slate-500 uppercase mb-0.5">
+                                  <span className="truncate max-w-[150px]">Convênio ({sustainingConvenio?.name || 'N/A'})</span>
+                                  <span>{convenioShare.toFixed(1)}%</span>
+                                </div>
+                                <div className="w-full bg-slate-200/50 h-1 rounded-full overflow-hidden">
+                                  <div 
+                                    className={cn("h-full rounded-full", convenioShare > 40 ? "bg-amber-500" : "bg-indigo-600")}
+                                    style={{ width: `${Math.min(100, convenioShare)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })()}
+              </>
+            )}
+
+            {(!ticketStats || ticketStats.total === 0) && (
+              <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
+                <MessageSquare className="w-12 h-12 text-slate-200 mb-4" />
+                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Nenhum chamado encontrado</p>
+              </div>
+            )}
+          </motion.div>
+          )
+        )}
+              </>
+            )}
+          </>
+        )}
+    </div>
+
+    <AnimatePresence>
+      {isInternProposalsModalOpen && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 md:p-10">
+          {/* Backdrop with a clean dark overlay */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsInternProposalsModalOpen(false)}
+            className="absolute inset-0 bg-[#0F172A]/50 backdrop-blur-sm"
+            id="intern-modal-backdrop"
+          />
+
+          {/* Modal Card - Centered and detached from layout headers */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 16 }}
+            transition={{ type: "spring", duration: 0.5 }}
+            className="relative w-full max-w-xl bg-white rounded-[24px] border border-slate-100 shadow-2xl p-5 sm:p-6.5 overflow-hidden flex flex-col max-h-[80vh] z-10"
+            id="intern-modal-card"
+          >
+            {/* Header - Subtitle "Propostas Contabilizadas" removed, sizes/weights reduced by 20% */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
+              <div>
+                <h3 className="text-[14px] font-extrabold text-[#1C2643] uppercase tracking-wider">
+                  Conexões Concretizadas
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsInternProposalsModalOpen(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-[#1C2643] hover:bg-slate-50 transition-colors"
+                id="intern-modal-close-btn"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content / List - Font sizes & weights decreased by 20% */}
+            <div className="flex-1 overflow-y-auto pr-1 space-y-3.5" id="intern-modal-list">
+              {internPaidProposals.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-300 border border-slate-100 mb-2.5">
+                    <ClipboardCheck className="w-5 h-5" />
+                  </div>
+                  <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
+                    Nenhuma proposta encontrada
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3.5">
+                  {internPaidProposals.map((prop, idx) => (
+                    <motion.div
+                      key={prop.id || idx}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className="p-4 rounded-[20px] border border-slate-100 bg-white shadow-sm hover:shadow-md hover:border-slate-200 transition-all duration-300"
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-0.5">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">
+                            CLIENTE
+                          </span>
+                          <h4 className="text-[11px] font-bold text-[#1C2643] uppercase tracking-normal">
+                            {prop.nome_cliente || "Cliente Não Informado"}
+                          </h4>
+                        </div>
+
+                        <div className="space-y-0.5">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">
+                            BANCO / CONVÊNIO
+                          </span>
+                          <p className="text-[10px] font-medium text-slate-600 uppercase">
+                            {prop.banco || "Não Informado"} / {prop.convenio || "Não Informado"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">
+                          OPERAÇÃO
+                        </span>
+                        <span className="text-[9.5px] font-bold text-slate-700 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-lg uppercase tracking-wider">
+                          {prop.tipo_operacao || "Não Informada"}
+                        </span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsInternProposalsModalOpen(false)}
+                className="px-5 py-2.5 bg-[#1C2643] hover:bg-[#28355a] text-[10px] font-bold text-white rounded-lg shadow-md hover:shadow-lg shadow-[#1C2643]/10 uppercase tracking-wider transition-all duration-200"
+                id="intern-modal-close-footer-btn"
+              >
+                Fechar
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+
+    <RankingContractsModal
+      isOpen={!!rankingModalParams}
+      onClose={() => setRankingModalParams(null)}
+      params={rankingModalParams}
+    />
+  </div>
+)
+}
+
+// Components moved to dashboard-shared.tsx or removed

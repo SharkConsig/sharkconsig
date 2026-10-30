@@ -50,8 +50,8 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
   const isEst = isEstagio || userRoleNorm === 'estágio' || userRoleNorm === 'estagio' || userRoleNorm === 'estagiário' || userRoleNorm === 'estagiario'
   const isCorretorCLT = (userRoleNorm === 'corretor' || isCorretor) && !isCorretorPJBlocked
 
-  // Disponível em todas as áreas exceto Kanban para perfis autorizados (inclui Monitoramento e Operacional)
-  const canAccessMaterialApoio = !isKanban && !isCorretorPJBlocked && !isRecursosHumanosBlocked && (
+  // Disponível em todas as áreas (incluindo Kanban) para perfis autorizados (inclui Monitoramento e Operacional)
+  const canAccessMaterialApoio = !isCorretorPJBlocked && !isRecursosHumanosBlocked && (
     isAdm || isDev || isSup || isOperacional || isMonitoramentoUser || isEst || isCorretorCLT
   )
   // Upload e gestão de materiais permitidos para Administrador, Supervisor, Desenvolvedor, Monitoramento e Operacional
@@ -119,157 +119,71 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
 
   const fetchActiveApoios = async () => {
     try {
-      const { data, error } = await supabase
-        .from('mensagens_chamado')
-        .select('id, chamado_id, user_id, user_nome, user_role, content, action, created_at')
-        .in('action', ['pediu_apoio', 'resolveu_apoio'])
-        .order('created_at', { ascending: true })
+      const res = await fetch('/api/apoios?type=active')
+      if (res.ok) {
+        const json = await res.json()
+        const activeList = json.activeList || []
+        const chamadosData = json.chamados || []
+        const userProfiles = json.userProfiles || []
 
-      if (error) {
-        console.error("Erro ao buscar apoios:", error)
+        const chamadosMap = new Map<number, any>()
+        chamadosData.forEach((c: any) => chamadosMap.set(Number(c.id), c))
+
+        const allActive: ApoioRequest[] = activeList.map((msg: any) => ({
+          ...msg,
+          chamados: chamadosMap.get(Number(msg.chamado_id)) || null
+        }))
+
+        // Filtrar apoios: Se o usuário logado for Supervisor (e não Admin/Dev):
+        // - Não pode receber solicitações de corretores PJ
+        // - Recebe apenas solicitações de corretores do regime CLT e Estágio
+        const isSuperOnly = !isAdminUser && (perfil?.role?.toLowerCase() === 'supervisor' || perfil?.role?.toLowerCase() === 'supervisor/coordenador')
+
+        const filteredActive = isSuperOnly
+          ? allActive.filter((msg: any) => {
+              const authorProfile = userProfiles.find((u: any) => 
+                (msg.user_id && u.id === msg.user_id) ||
+                (u.nome && msg.user_nome && u.nome.trim().toLowerCase() === msg.user_nome.trim().toLowerCase()) ||
+                (msg.chamados?.user_id && u.id === msg.chamados.user_id) ||
+                (msg.chamados?.usuario_abertura && (u.id === msg.chamados.usuario_abertura || (u.nome && u.nome.trim().toLowerCase() === msg.chamados.usuario_abertura.trim().toLowerCase())))
+              )
+
+              const authorRegime = (authorProfile?.regime_contratacao || '').trim().toUpperCase()
+              const authorFuncao = (authorProfile?.funcao || '').trim().toUpperCase()
+              const msgRole = (msg.user_role || '').trim().toUpperCase()
+              const chamadoEquipe = (msg.chamados?.equipe || '').trim().toUpperCase()
+
+              const isPJ = authorRegime === 'PJ' || 
+                           authorFuncao === 'PJ' || 
+                           msgRole.includes('PJ') || 
+                           chamadoEquipe.includes('PJ')
+              
+              // Se for PJ, supervisor NÃO pode receber
+              return !isPJ
+            })
+          : allActive
+
+        setActiveApoios(filteredActive)
         return
       }
-
-      const activeMap = new Map()
-      if (data) {
-        for (const msg of data) {
-          if (msg.action === 'pediu_apoio') {
-            activeMap.set(msg.chamado_id, msg)
-          } else if (msg.action === 'resolveu_apoio') {
-            activeMap.delete(msg.chamado_id)
-          }
-        }
-      }
-
-      const activeList = Array.from(activeMap.values())
-      const ticketIds = activeList.map((m: any) => m.chamado_id).filter(Boolean)
-
-      // Buscar dados dos chamados associados
-      const chamadosMap = new Map<number, any>()
-      if (ticketIds.length > 0) {
-        try {
-          const { data: chamadosData } = await supabase
-            .from('chamados')
-            .select('id, cliente_nome, margem, margem_liquida_5, margem_beneficio_5, usuario_abertura, equipe, user_id')
-            .in('id', ticketIds)
-
-          if (chamadosData) {
-            chamadosData.forEach((c: any) => chamadosMap.set(Number(c.id), c))
-          }
-        } catch (cErr) {
-          console.error("Erro ao buscar detalhes dos chamados de apoio:", cErr)
-        }
-      }
-
-      // Buscar perfis de usuários via API para verificação precisa de regime de contratação
-      let userProfiles: any[] = []
-      try {
-        const uRes = await fetch('/api/usuarios')
-        if (uRes.ok) {
-          userProfiles = await uRes.json()
-        }
-      } catch (profileErr) {
-        console.warn("Erro ao buscar usuários para filtrar apoios:", profileErr)
-      }
-
-      const allActive: ApoioRequest[] = activeList.map((msg: any) => ({
-        ...msg,
-        chamados: chamadosMap.get(Number(msg.chamado_id)) || null
-      }))
-      
-      // Filtrar apoios: Se o usuário logado for Supervisor (e não Admin/Dev):
-      // - Não pode receber solicitações de corretores PJ
-      // - Recebe apenas solicitações de corretores do regime CLT e Estágio
-      const isSuperOnly = !isAdminUser && (perfil?.role?.toLowerCase() === 'supervisor' || perfil?.role?.toLowerCase() === 'supervisor/coordenador')
-
-      const filteredActive = isSuperOnly
-        ? allActive.filter((msg: any) => {
-            const authorProfile = userProfiles.find((u) => 
-              (msg.user_id && u.id === msg.user_id) ||
-              (u.nome && msg.user_nome && u.nome.trim().toLowerCase() === msg.user_nome.trim().toLowerCase()) ||
-              (msg.chamados?.user_id && u.id === msg.chamados.user_id) ||
-              (msg.chamados?.usuario_abertura && (u.id === msg.chamados.usuario_abertura || (u.nome && u.nome.trim().toLowerCase() === msg.chamados.usuario_abertura.trim().toLowerCase())))
-            )
-
-            const authorRegime = (authorProfile?.regime_contratacao || '').trim().toUpperCase()
-            const authorFuncao = (authorProfile?.funcao || '').trim().toUpperCase()
-            const msgRole = (msg.user_role || '').trim().toUpperCase()
-            const chamadoEquipe = (msg.chamados?.equipe || '').trim().toUpperCase()
-
-            const isPJ = authorRegime === 'PJ' || 
-                         authorFuncao === 'PJ' || 
-                         msgRole.includes('PJ') || 
-                         chamadoEquipe.includes('PJ')
-            
-            // Se for PJ, supervisor NÃO pode receber
-            return !isPJ
-          })
-        : allActive
-
-      setActiveApoios(filteredActive)
-    } catch (err) {
-      console.error("Erro ao carregar apoios:", err)
+    } catch {
+      // Tratamento silencioso para não poluir o console caso haja interrupção temporária
     }
   }
 
   const fetchHistoryApoios = async () => {
     try {
-      let query = supabase
-        .from('mensagens_chamado')
-        .select('id, chamado_id, user_nome, content, action, created_at')
-        .in('action', ['pediu_apoio', 'resolveu_apoio'])
+      const params = new URLSearchParams({ type: 'history' })
+      if (filterStartDate) params.set('startDate', filterStartDate)
+      if (filterEndDate) params.set('endDate', filterEndDate)
 
-      if (filterStartDate) {
-        query = query.gte('created_at', `${filterStartDate}T00:00:00`)
+      const res = await fetch(`/api/apoios?${params.toString()}`)
+      if (res.ok) {
+        const json = await res.json()
+        setHistoryApoios(json.data || [])
       }
-      if (filterEndDate) {
-        query = query.lte('created_at', `${filterEndDate}T23:59:59`)
-      }
-
-      const { data, error } = await query.order('created_at', { ascending: true })
-
-      if (error) {
-        console.error("Erro ao buscar histórico de apoios:", error)
-        return
-      }
-
-      if (data) {
-        const ticketIds = Array.from(new Set(data.map((m: any) => m.chamado_id).filter(Boolean)))
-        const chamadosMap = new Map<number, any>()
-        if (ticketIds.length > 0) {
-          try {
-            const { data: chamadosData } = await supabase
-              .from('chamados')
-              .select('id, cliente_nome, margem, margem_liquida_5, margem_beneficio_5, usuario_abertura, equipe')
-              .in('id', ticketIds)
-
-            if (chamadosData) {
-              chamadosData.forEach((c: any) => chamadosMap.set(Number(c.id), c))
-            }
-          } catch (cErr) {
-            console.error("Erro ao carregar chamados para histórico de apoios:", cErr)
-          }
-        }
-
-        const pedidos: (ApoioRequest & { is_resolved?: boolean })[] = []
-        const resolveuMsgs = data.filter(msg => msg.action === 'resolveu_apoio')
-
-        for (const msg of data) {
-          if (msg.action === 'pediu_apoio') {
-            const resolved = resolveuMsgs.some(r => r.chamado_id === msg.chamado_id && new Date(r.created_at) >= new Date(msg.created_at))
-            pedidos.push({
-              ...msg,
-              chamados: chamadosMap.get(Number(msg.chamado_id)) || null,
-              is_resolved: resolved
-            })
-          }
-        }
-
-        pedidos.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        setHistoryApoios(pedidos)
-      }
-    } catch (err) {
-      console.error("Erro ao carregar histórico de apoios:", err)
+    } catch {
+      // Silencioso
     }
   }
 
@@ -523,19 +437,17 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
         )}
 
         {/* Botão Relatar Situação (para todos os usuários) / Situações Relatadas (para Administrador) */}
-        {!isKanban && (
-          <button
-            type="button"
-            id="header-relatar-situacao-btn"
-            onClick={() => setIsRelatosOpen(true)}
-            className="h-9 px-3 sm:px-3.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl shadow-xs hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap mr-2 border border-amber-600/30"
-            title={isAdmin ? "Visualizar situações e dúvidas relatadas pela equipe" : "Relatar uma situação ou dúvida ao Administrador"}
-          >
-            <MessageSquareWarning className="w-4 h-4 text-slate-950" />
-            <span className="hidden sm:inline">{isAdmin ? "Situações Relatadas" : "Relatar Situação"}</span>
-            <span className="sm:hidden">{isAdmin ? "Relatos" : "Relatar"}</span>
-          </button>
-        )}
+        <button
+          type="button"
+          id="header-relatar-situacao-btn"
+          onClick={() => setIsRelatosOpen(true)}
+          className="h-9 px-3 sm:px-3.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl shadow-xs hover:shadow-md transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap mr-2 border border-amber-600/30"
+          title={isAdmin ? "Visualizar situações e dúvidas relatadas pela equipe" : "Relatar uma situação ou dúvida ao Administrador"}
+        >
+          <MessageSquareWarning className="w-4 h-4 text-slate-950" />
+          <span className="hidden sm:inline">{isAdmin ? "Situações Relatadas" : "Relatar Situação"}</span>
+          <span className="sm:hidden">{isAdmin ? "Relatos" : "Relatar"}</span>
+        </button>
 
         <div className="relative" ref={dropdownRef}>
           <button 
