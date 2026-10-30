@@ -2096,52 +2096,82 @@ export default function KanbanPage() {
       setIsRefreshing(true)
     }
     try {
-      let query = supabase
-        .from("kanban_fichas")
-        .select("*")
-        .order("updated_at", { ascending: false })
-        .limit(1000)
+      // Helper para fatiar listas em chunks seguros evitando URLs extensas no Supabase
+      const chunkArray = <T,>(arr: T[], size: number): T[][] => {
+        const res: T[][] = []
+        for (let i = 0; i < arr.length; i += size) {
+          res.push(arr.slice(i, i + size))
+        }
+        return res
+      }
 
-      // Regras de visibilidade:
+      // Regras de visibilidade pré-resolvidas:
       // - Estágio visualiza SOMENTE os seus próprios atendimentos;
       // - Corretor visualiza os seus próprios atendimentos e os atendimentos de seus estagiários apadrinhados;
-      // - Desenvolvedor, Administrador, Supervisor, Operacional, Monitoramento e Recursos Humanos (isGestor) visualizam os atendimentos de todos.
+      // - Gestores visualizam os atendimentos de todos.
       let myEstagiariosIdsList: string[] = []
-      if (!isGestor && user) {
-        if (userRole === "Estágio" || userRole === "Estagio") {
-          query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
-        } else if (userRole === "Corretor") {
-          try {
-            const res = await fetch("/api/usuarios")
-            if (res.ok) {
-              const allUsers = await res.json()
-              myEstagiariosIdsList = allUsers
-                .filter((u: { padrinho_id: string }) => u.padrinho_id === user.id)
-                .map((u: { id: string }) => u.id)
-            }
-          } catch {
-            // ignore
+      if (!isGestor && user && userRole === "Corretor") {
+        try {
+          const res = await fetch("/api/usuarios")
+          if (res.ok) {
+            const allUsers = await res.json()
+            myEstagiariosIdsList = allUsers
+              .filter((u: { padrinho_id: string }) => u.padrinho_id === user.id)
+              .map((u: { id: string }) => u.id)
           }
-
-          if (myEstagiariosIdsList.length > 0) {
-            query = query.or(`operador_id.in.(${[user.id, ...myEstagiariosIdsList].join(",")}),operador_nome.ilike.%${perfil?.nome || user.email}%`)
-          } else {
-            query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
-          }
-        } else {
-          query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
+        } catch {
+          // ignore
         }
       }
 
-      const { data, error } = await query
-      if (error) {
-        console.error("Erro ao consultar kanban_fichas:", error)
-        if (!silent) setTickets([])
-        return
+      // Consulta paginada em blocos de 1000 para contornar o limite nativo de max-rows do Supabase/PostgREST e carregar 100% dos registros
+      const PAGE_SIZE = 1000
+      let allFichas: any[] = []
+      let from = 0
+      let hasMore = true
+
+      while (hasMore) {
+        let query = supabase
+          .from("kanban_fichas")
+          .select("*")
+          .order("updated_at", { ascending: false })
+          .range(from, from + PAGE_SIZE - 1)
+
+        if (!isGestor && user) {
+          if (userRole === "Estágio" || userRole === "Estagio") {
+            query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
+          } else if (userRole === "Corretor") {
+            if (myEstagiariosIdsList.length > 0) {
+              query = query.or(`operador_id.in.(${[user.id, ...myEstagiariosIdsList].join(",")}),operador_nome.ilike.%${perfil?.nome || user.email}%`)
+            } else {
+              query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
+            }
+          } else {
+            query = query.or(`operador_id.eq.${user.id},operador_nome.ilike.%${perfil?.nome || user.email}%`)
+          }
+        }
+
+        const { data, error } = await query
+        if (error) {
+          console.error("Erro ao consultar kanban_fichas:", error)
+          if (!silent && allFichas.length === 0) setTickets([])
+          break
+        }
+
+        if (data && data.length > 0) {
+          allFichas.push(...data)
+          if (data.length < PAGE_SIZE) {
+            hasMore = false
+          } else {
+            from += PAGE_SIZE
+          }
+        } else {
+          hasMore = false
+        }
       }
 
       // Normalizar registros vindos da tabela kanban_fichas para o formato TicketItem
-      const formatted: TicketItem[] = (data || []).map((f: any) => {
+      const formatted: TicketItem[] = allFichas.map((f: any) => {
         const meta: TicketMetadata = (f.metadata && typeof f.metadata === "object") ? f.metadata : {}
         const isDrawer = (f.etapa === "PERDIDO" || !f.etapa) && (
           Boolean(meta.tabulacao_whatsapp) || 
@@ -2270,92 +2300,117 @@ export default function KanbanPage() {
       ))
 
       if (cpfsComValorZerado.length > 0) {
-        supabase
-          .from("chamados")
-          .select("id, cliente_cpf, user_id, margem, margem_liquida_5, margem_beneficio_5, valor_operacao, created_at")
-          .in("cliente_cpf", cpfsComValorZerado)
-          .order("created_at", { ascending: false })
-          .then(({ data: chamadosExistentes }) => {
-            if (chamadosExistentes && chamadosExistentes.length > 0) {
-              // Mapeia chamados estritamente pelo par [CPF + USER_ID] para NUNCA herdar dados de outro operador
-              const mapaChamadosDoOperador = new Map<string, any>()
-              chamadosExistentes.forEach(ch => {
-                const cCpf = (ch.cliente_cpf || "").replace(/\D/g, "")
-                const uId = ch.user_id ? String(ch.user_id) : ""
-                const key = `${cCpf}_${uId}`
-                if (cCpf && uId && !mapaChamadosDoOperador.has(key)) {
-                  mapaChamadosDoOperador.set(key, ch)
-                }
-              })
+        const cpfZeroChunks = chunkArray(cpfsComValorZerado, 100)
+        Promise.all(
+          cpfZeroChunks.map(chunk =>
+            supabase
+              .from("chamados")
+              .select("id, cliente_cpf, user_id, margem, margem_liquida_5, margem_beneficio_5, valor_operacao, created_at")
+              .in("cliente_cpf", chunk)
+              .order("created_at", { ascending: false })
+          )
+        ).then(responses => {
+          const chamadosExistentes: any[] = []
+          responses.forEach(r => {
+            if (r.data) chamadosExistentes.push(...r.data)
+          })
 
-              setTickets(prev => {
-                let alterou = false
-                const atualizados = prev.map(t => {
-                  const cCpf = (t.cliente_cpf || "").replace(/\D/g, "")
-                  const tUserId = t.user_id ? String(t.user_id) : ""
-                  const key = `${cCpf}_${tUserId}`
-                  // Isolamento rigoroso: somente preenche se o chamado pertencer ao MESMO usuário/operador
-                  const ch = mapaChamadosDoOperador.get(key)
-                  if (ch) {
-                    const op = getValorOperacaoDeAbertura(t)
-                    if (!op.valor || op.valor === "R$ 0,00") {
-                      alterou = true
-                      return {
-                        ...t,
-                        margem: (t.margem && t.margem > 0) ? t.margem : (ch.margem || undefined),
-                        margem_liquida_5: (t.margem_liquida_5 && t.margem_liquida_5 > 0) ? t.margem_liquida_5 : (ch.margem_liquida_5 || undefined),
-                        margem_beneficio_5: (t.margem_beneficio_5 && t.margem_beneficio_5 > 0) ? t.margem_beneficio_5 : (ch.margem_beneficio_5 || undefined),
-                        valor_operacao: (t.valor_operacao && t.valor_operacao > 0) 
-                          ? t.valor_operacao 
-                          : (ch.valor_operacao ? Number(ch.valor_operacao) : undefined)
-                      }
+          if (chamadosExistentes.length > 0) {
+            // Mapeia chamados estritamente pelo par [CPF + USER_ID] para NUNCA herdar dados de outro operador
+            const mapaChamadosDoOperador = new Map<string, any>()
+            chamadosExistentes.forEach(ch => {
+              const cCpf = (ch.cliente_cpf || "").replace(/\D/g, "")
+              const uId = ch.user_id ? String(ch.user_id) : ""
+              const key = `${cCpf}_${uId}`
+              if (cCpf && uId && !mapaChamadosDoOperador.has(key)) {
+                mapaChamadosDoOperador.set(key, ch)
+              }
+            })
+
+            setTickets(prev => {
+              let alterou = false
+              const atualizados = prev.map(t => {
+                const cCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+                const tUserId = t.user_id ? String(t.user_id) : ""
+                const key = `${cCpf}_${tUserId}`
+                // Isolamento rigoroso: somente preenche se o chamado pertencer ao MESMO usuário/operador
+                const ch = mapaChamadosDoOperador.get(key)
+                if (ch) {
+                  const op = getValorOperacaoDeAbertura(t)
+                  if (!op.valor || op.valor === "R$ 0,00") {
+                    alterou = true
+                    return {
+                      ...t,
+                      margem: (t.margem && t.margem > 0) ? t.margem : (ch.margem || undefined),
+                      margem_liquida_5: (t.margem_liquida_5 && t.margem_liquida_5 > 0) ? t.margem_liquida_5 : (ch.margem_liquida_5 || undefined),
+                      margem_beneficio_5: (t.margem_beneficio_5 && t.margem_beneficio_5 > 0) ? t.margem_beneficio_5 : (ch.margem_beneficio_5 || undefined),
+                      valor_operacao: (t.valor_operacao && t.valor_operacao > 0) 
+                        ? t.valor_operacao 
+                        : (ch.valor_operacao ? Number(ch.valor_operacao) : undefined)
                     }
                   }
-                  return t
-                })
-                return alterou ? atualizados : prev
+                }
+                return t
               })
-            }
-          })
-          .catch(err => console.warn("Aviso ao buscar chamados para cartões do Kanban:", err))
+              return alterou ? atualizados : prev
+            })
+          }
+        }).catch(err => console.warn("Aviso ao buscar chamados para cartões do Kanban:", err))
       }
 
       // Identificar operadores em atendimento simultâneo para os CPFs presentes no pipeline
       const cpfs = Array.from(new Set(formatted.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)))
       if (cpfs.length > 0) {
         try {
-          const { data: fichasExistentes } = await supabase
-            .from("kanban_fichas")
-            .select("cliente_cpf, operador_nome, etapa")
-            .in("cliente_cpf", cpfs)
-            .neq("etapa", "PERDIDO")
+          const cpfChunks = chunkArray(cpfs, 100)
+          const concorrenciaResponses = await Promise.all(
+            cpfChunks.map(chunk =>
+              supabase
+                .from("kanban_fichas")
+                .select("cliente_cpf, operador_nome, etapa")
+                .in("cliente_cpf", chunk)
+                .neq("etapa", "PERDIDO")
+            )
+          )
 
-          if (fichasExistentes) {
-            const map: Record<string, string[]> = {}
-            fichasExistentes.forEach(f => {
-              const cCpf = (f.cliente_cpf || "").replace(/\D/g, "")
-              if (!cCpf) return
-              if (!map[cCpf]) map[cCpf] = []
-              const nome = (f.operador_nome || "").trim()
-              if (nome && !map[cCpf].includes(nome)) {
-                map[cCpf].push(nome)
-              }
-            })
-            setConcorrenciaPorCpf(map)
-          }
+          const map: Record<string, string[]> = {}
+          concorrenciaResponses.forEach(r => {
+            if (r.data) {
+              r.data.forEach(f => {
+                const cCpf = (f.cliente_cpf || "").replace(/\D/g, "")
+                if (!cCpf) return
+                if (!map[cCpf]) map[cCpf] = []
+                const nome = (f.operador_nome || "").trim()
+                if (nome && !map[cCpf].includes(nome)) {
+                  map[cCpf].push(nome)
+                }
+              })
+            }
+          })
+          setConcorrenciaPorCpf(map)
         } catch (err) {
           console.error("Erro ao verificar operadores em concorrência:", err)
         }
 
         // Buscar propostas digitadas no banco vinculadas aos CPFs (validação por ADE e DATA DE DIGITAÇÃO isolada por operador)
         try {
-          const { data: propostasExistentes } = await supabase
-            .from("propostas")
-            .select("id, id_lead, cliente_cpf, ade, data_digitacao, status, corretor_id, corretor, nome_corretor, estagiario_colaborador_id, estagiario_colaborador_nome")
-            .in("cliente_cpf", cpfs)
-            .order("updated_at", { ascending: false })
+          const cpfChunks = chunkArray(cpfs, 100)
+          const propostasResponses = await Promise.all(
+            cpfChunks.map(chunk =>
+              supabase
+                .from("propostas")
+                .select("id, id_lead, cliente_cpf, ade, data_digitacao, status, corretor_id, corretor, nome_corretor, estagiario_colaborador_id, estagiario_colaborador_nome")
+                .in("cliente_cpf", chunk)
+                .order("updated_at", { ascending: false })
+            )
+          )
 
-          if (propostasExistentes && propostasExistentes.length > 0) {
+          const propostasExistentes: any[] = []
+          propostasResponses.forEach(r => {
+            if (r.data) propostasExistentes.push(...r.data)
+          })
+
+          if (propostasExistentes.length > 0) {
             const mapPropsByTicketId: Record<string, { ade?: string; data_digitacao?: string; status?: string }> = {}
 
             // Atualiza os tickets com o status e informações da proposta bancária estritamente pertencente a este operador
