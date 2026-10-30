@@ -1675,25 +1675,27 @@ export default function KanbanPage() {
       .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }))
   }, [usersList])
 
-  // Usuários que ocupam as funções de Supervisor, Operacional, Administrador e Monitoramento em ordem alfabética (excluindo Desenvolvedor e Endrio Novo)
+  // Destinatários da Ação Especial nas posições e cargos específicos solicitados
   const destinatariosAcaoEspecial = useMemo(() => {
-    return activeUsersList.filter(u => {
-      const name = (u.nome || "").toLowerCase()
-      if (name.includes("endrio")) return false
+    const configuracaoDestinatarios = [
+      { key: "nathali", defaultNome: "Nathali Beneduzi", label: "Nathali Beneduzi - Supervisora Comercial" },
+      { key: "talita", defaultNome: "Talita Haupt", label: "Talita Haupt - Supervisora Operacional" },
+      { key: "larissa", defaultNome: "Larissa Ramos", label: "Larissa Ramos - Administradora" },
+      { key: "robson", defaultNome: "Robson Ramos", label: "Robson Ramos - Direção" },
+      { key: "leticia", defaultNome: "Leticia Pereira", label: "Leticia Pereira - Monitoramento" },
+    ]
 
-      const r = (u.role || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      const f = (u.funcao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    return configuracaoDestinatarios.map(item => {
+      const found = activeUsersList.find(u => {
+        const n = (u.nome || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        return n.includes(item.key)
+      })
 
-      if (r.includes("desenvolvedor") || f.includes("desenvolvedor") || r === "dev" || f === "dev") {
-        return false
+      return {
+        id: found?.id || item.key,
+        nome: found?.nome || item.defaultNome,
+        label: item.label
       }
-
-      return (
-        r.includes("supervisor") || f.includes("supervisor") ||
-        r.includes("operacion") || f.includes("operacion") ||
-        r.includes("admin") || f.includes("admin") ||
-        r.includes("monitor") || f.includes("monitor")
-      )
     })
   }, [activeUsersList])
 
@@ -3766,27 +3768,53 @@ export default function KanbanPage() {
       const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
       const etapaAtual = inferKanbanStage(atendimentoModalTicket, currentMeta)
 
+      // Regras de movimentação automática por opção rápida:
+      // 1. 'Sem interesse' -> move para a coluna 'SEM INTERESSE'
+      // 2. 'Sem interação' em 'Em negociação' ('EM NEGOCIAÇÃO') -> move para 'EM REATIVAÇÃO'
+      // 3. 'Sem interação' em 'Em interação ou retomada' ('EM RETOMADA') -> mantém na etapa atual
+      const isEmNegociacao = (
+        etapaAtual === "EM NEGOCIAÇÃO" || 
+        atendimentoModalTicket.status === "EM NEGOCIAÇÃO" ||
+        currentMeta.kanban_stage === "EM NEGOCIAÇÃO"
+      )
+      const isMoverParaReativacao = novaOpcao === "Sem interação" && isEmNegociacao
+
+      const novaEtapa: KanbanStage | null = isSemInteresse 
+        ? "SEM INTERESSE" 
+        : (isMoverParaReativacao ? "EM REATIVAÇÃO" : null)
+
       const historicoAtual = Array.isArray(atendimentoModalTicket.historico_movimentacoes)
         ? atendimentoModalTicket.historico_movimentacoes
         : (Array.isArray(currentMeta.historico_kanban) ? currentMeta.historico_kanban : [])
 
-      const novoHistoricoMov = isSemInteresse ? [
+      const novoHistoricoMov = novaEtapa ? [
         ...historicoAtual,
         {
           data: new Date().toISOString(),
           etapa_anterior: etapaAtual,
-          etapa_nova: "SEM INTERESSE",
+          etapa_nova: novaEtapa,
           autor: perfil?.nome || "Usuário",
-          motivo: "Opção rápida 'Sem interesse' selecionada"
+          motivo: isSemInteresse 
+            ? "Opção rápida 'Sem interesse' selecionada" 
+            : "Opção rápida 'Sem interação' selecionada em Negociação"
         }
       ] : historicoAtual
 
+      const acaoConfig = novaEtapa ? proximasAcoesConfig.find(a => a.ativo && a.etapa_kanban === novaEtapa) : null
+      const proximaAcaoPadrao = novaEtapa === "SEM INTERESSE"
+        ? (acaoConfig?.titulo || "Cadência de Longo Prazo / Nutrição")
+        : (novaEtapa === "EM REATIVAÇÃO" ? (acaoConfig?.titulo || "Resgatar oportunidade esfriada") : (currentMeta.proxima_acao || ""))
+
+      const vencimentoCalculado = acaoConfig
+        ? calcularVencimentoComSla(acaoConfig.sla_minutos, acaoConfig.apenas_dias_uteis).toISOString()
+        : new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+
       const updatedMeta: TicketMetadata = {
         ...currentMeta,
-        ...(isSemInteresse ? {
-          kanban_stage: "SEM INTERESSE",
-          proxima_acao: "Cadência de Longo Prazo / Nutrição",
-          vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+        ...(novaEtapa ? {
+          kanban_stage: novaEtapa,
+          proxima_acao: proximaAcaoPadrao,
+          vencimento_acao: vencimentoCalculado,
           alerta_atrasado: false,
           historico_kanban: novoHistoricoMov
         } : {})
@@ -3797,8 +3825,8 @@ export default function KanbanPage() {
         updated_at: new Date().toISOString()
       }
 
-      if (isSemInteresse) {
-        updateData.etapa = "SEM INTERESSE"
+      if (novaEtapa) {
+        updateData.etapa = novaEtapa
         updateData.historico_movimentacoes = novoHistoricoMov
         const metaParaSalvar = { ...updatedMeta }
         delete (metaParaSalvar as any).historico_kanban
@@ -3806,7 +3834,7 @@ export default function KanbanPage() {
         updateData.metadata = metaParaSalvar
       }
 
-      // 1. Grava na tabela kanban_fichas na coluna observacoes e etapa se 'Sem interesse'
+      // 1. Grava na tabela kanban_fichas na coluna observacoes e etapa se mudou de etapa
       const { error } = await supabase
         .from("kanban_fichas")
         .update(updateData)
@@ -3821,25 +3849,25 @@ export default function KanbanPage() {
       // 2. Atualizar em memória e sincronizar estado do modal e do Kanban
       const novaDescricao = stringifyWithMetadata(novaOpcao, updatedMeta)
       atendimentoModalTicket.descricao = novaDescricao
-      if (isSemInteresse) {
-        atendimentoModalTicket.status = "SEM INTERESSE"
+      if (novaEtapa) {
+        atendimentoModalTicket.status = novaEtapa
         atendimentoModalTicket.historico_movimentacoes = novoHistoricoMov
       }
 
       setAtendimentoModalTicket(prev => prev ? {
         ...prev,
-        status: isSemInteresse ? "SEM INTERESSE" : prev.status,
+        status: novaEtapa ? novaEtapa : prev.status,
         descricao: novaDescricao,
-        historico_movimentacoes: isSemInteresse ? novoHistoricoMov : prev.historico_movimentacoes
+        historico_movimentacoes: novaEtapa ? novoHistoricoMov : prev.historico_movimentacoes
       } : null)
 
       setTickets(prev => prev.map(t => {
         if (t.id === atendimentoModalTicket.id) {
           return {
             ...t,
-            status: isSemInteresse ? "SEM INTERESSE" : t.status,
+            status: novaEtapa ? novaEtapa : t.status,
             descricao: novaDescricao,
-            historico_movimentacoes: isSemInteresse ? novoHistoricoMov : t.historico_movimentacoes
+            historico_movimentacoes: novaEtapa ? novoHistoricoMov : t.historico_movimentacoes
           }
         }
         return t
@@ -3847,22 +3875,30 @@ export default function KanbanPage() {
 
       // 3. Registrar no histórico se opção marcada
       if (novaOpcao) {
-        await supabase.from("mensagens_chamado").insert({
-          chamado_id: parseInt(atendimentoModalTicket.id, 10),
-          user_id: user?.id,
-          user_nome: perfil?.nome || "Colaborador",
-          user_role: perfil?.role || "Corretor",
-          user_avatar: perfil?.avatar_url || null,
-          content: isSemInteresse
-            ? `📌 Registrado: Sem interesse (Cartão movido automaticamente para a coluna SEM INTERESSE)`
-            : `📌 Registrado: ${novaOpcao}`,
-          action: isSemInteresse ? "etapa_kanban_change" : "registro_opcao"
-        })
-        loadHistoricoChamado(atendimentoModalTicket.id)
-        toast.success(isSemInteresse 
-          ? `Cartão movido automaticamente para a coluna "SEM INTERESSE"!` 
-          : `"${novaOpcao}" registrado em kanban_fichas!`
-        )
+        const numId = parseInt(atendimentoModalTicket.id, 10)
+        if (!isNaN(numId)) {
+          await supabase.from("mensagens_chamado").insert({
+            chamado_id: numId,
+            user_id: user?.id,
+            user_nome: perfil?.nome || "Colaborador",
+            user_role: perfil?.role || "Corretor",
+            user_avatar: perfil?.avatar_url || null,
+            content: isSemInteresse
+              ? `📌 Registrado: Sem interesse (Cartão movido automaticamente para a coluna SEM INTERESSE)`
+              : (isMoverParaReativacao
+                  ? `📌 Registrado: Sem interação (Cartão movido automaticamente para a coluna EM REATIVAÇÃO)`
+                  : `📌 Registrado: ${novaOpcao}`),
+            action: (isSemInteresse || isMoverParaReativacao) ? "etapa_kanban_change" : "registro_opcao"
+          })
+          loadHistoricoChamado(atendimentoModalTicket.id)
+        }
+        if (isSemInteresse) {
+          toast.success('Cartão movido automaticamente para a coluna "SEM INTERESSE"!')
+        } else if (isMoverParaReativacao) {
+          toast.success('Cartão movido automaticamente para a coluna "EM REATIVAÇÃO"!')
+        } else {
+          toast.success(`"${novaOpcao}" registrado em kanban_fichas!`)
+        }
       } else {
         toast.info("Opção desmarcada em kanban_fichas.")
       }
@@ -5821,8 +5857,8 @@ export default function KanbanPage() {
   return (
     <div className="flex flex-col h-screen min-h-screen bg-[#FDFDFD]">
       <Header hideQuickLinks>
-        <div className="flex items-center gap-2.5 sm:gap-3 w-full">
-          <div className="relative w-full max-w-[340px] sm:max-w-[420px] md:max-w-[480px]">
+        <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 mr-4 sm:mr-6 lg:mr-8">
+          <div className="relative w-full max-w-[260px] sm:max-w-[320px] md:max-w-[360px] shrink-1">
             <Input 
               placeholder="Buscar Cliente por CPF ou Telefone" 
               value={clientSearchQuery}
@@ -5850,7 +5886,7 @@ export default function KanbanPage() {
             <div
               onClick={() => setActiveView("MINHA_FILA")}
               className={cn(
-                "w-[165px] sm:w-[195px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-2.5 sm:px-3 py-1.5 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2 cursor-pointer group select-none",
+                "w-[125px] sm:w-[138px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-2.5 py-1.5 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2 cursor-pointer group select-none",
                 activeView === "MINHA_FILA" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-xs"
               )}
               title="Visualizar Minha Fila (Tela inicial)"
@@ -5877,7 +5913,7 @@ export default function KanbanPage() {
             <div
               onClick={() => setActiveView("KANBAN")}
               className={cn(
-                "w-[165px] sm:w-[195px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-2.5 sm:px-3 py-1.5 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2 cursor-pointer group select-none",
+                "w-[125px] sm:w-[138px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-2.5 py-1.5 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2 cursor-pointer group select-none",
                 activeView === "KANBAN" && "ring-2 ring-sky-500 bg-sky-50/50 border-sky-300 shadow-xs"
               )}
               title="Visualizar Pipeline Kanban"
@@ -6394,7 +6430,7 @@ export default function KanbanPage() {
           {/* Totais Gerais */}
           <div className="flex items-center gap-2 shrink-0 text-sm pl-2 sm:border-l border-slate-200 self-end md:self-center">
             <span className="font-medium text-slate-600">
-              <strong className="text-slate-900 font-bold">{totalListLeads}</strong> leads
+              <strong className="text-slate-900 font-bold">{totalListLeads}</strong> {totalListLeads === 1 ? "atendimento" : "atendimentos"}
             </span>
             <span className="text-slate-300">•</span>
             <span className="font-medium text-slate-600">
@@ -7104,19 +7140,28 @@ export default function KanbanPage() {
                     </div>
                   )}
 
-                  {/* Opções com Caixas Seletoras e Botão INICIAR ABORDAGEM */}
                   <div className="flex flex-wrap items-center justify-between gap-3 mt-2 pb-4">
                     <div className="flex items-center gap-5">
-                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-slate-900 transition-colors">
-                        <input
-                          type="checkbox"
-                          checked={opcaoSelecionada === "Sem interação"}
-                          onChange={() => handleToggleOpcaoAtendimento("Sem interação")}
-                          disabled={isSavingOpcao}
-                          className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
-                        />
-                        <span>Sem interação</span>
-                      </label>
+                      {/* Opção 'Sem interação': fica oculta quando a seção dos RTs estiver ativa em 'Em interação ou retomada' ou a dos REs em 'Em reativação' */}
+                      {!(
+                        modalCadencia && (
+                          atendimentoModalTicket.status === "EM RETOMADA" ||
+                          atendimentoModalTicket.status === "EM REATIVAÇÃO" ||
+                          modalStage === "EM RETOMADA" ||
+                          modalStage === "EM REATIVAÇÃO"
+                        )
+                      ) && (
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-slate-900 transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={opcaoSelecionada === "Sem interação"}
+                            onChange={() => handleToggleOpcaoAtendimento("Sem interação")}
+                            disabled={isSavingOpcao}
+                            className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer accent-sky-600"
+                          />
+                          <span>Sem interação</span>
+                        </label>
+                      )}
 
                       <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none hover:text-slate-900 transition-colors">
                         <input
@@ -8129,25 +8174,11 @@ export default function KanbanPage() {
                   onChange={e => setAcaoEspecialDestinatario(e.target.value)}
                   className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 text-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-semibold"
                 >
-                  {destinatariosAcaoEspecial.length === 0 ? (
-                    <option value="">Carregando usuários...</option>
-                  ) : (
-                    destinatariosAcaoEspecial.map(u => {
-                      const funcaoNome = (() => {
-                        const r = (u.role || u.funcao || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-                        if (r.includes("supervisor")) return "Supervisor"
-                        if (r.includes("operacion")) return "Operacional"
-                        if (r.includes("admin")) return "Administrador"
-                        if (r.includes("monitor")) return "Monitoramento"
-                        return u.funcao || u.role || "Colaborador"
-                      })()
-                      return (
-                        <option key={u.id} value={u.nome}>
-                          {u.nome} - {funcaoNome}
-                        </option>
-                      )
-                    })
-                  )}
+                  {destinatariosAcaoEspecial.map(u => (
+                    <option key={u.id} value={u.nome}>
+                      {u.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 

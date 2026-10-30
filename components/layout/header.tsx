@@ -335,7 +335,7 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
           </h2>
         ) : null}
       </div>
-      <div className={`flex items-center gap-2 sm:gap-4 ${isHeaderBlocked ? "pointer-events-none opacity-40 select-none" : ""}`}>
+      <div className={`flex items-center gap-2 sm:gap-3 shrink-0 ml-4 sm:ml-6 lg:ml-8 ${isHeaderBlocked ? "pointer-events-none opacity-40 select-none" : ""}`}>
         {isAdminUser && !isKanban && (
           <button
             id="header-historico-apoio-btn"

@@ -1751,6 +1751,15 @@ export function ClientDetailsModal({
           </div>
         ) : client && (() => {
           const activeReg = allRegs[activeRegIndex] || allRegs[0];
+          const isGovernoAm = clientType === 'governo_am' || 
+            Boolean(
+              (client as any)?.convenio && 
+              String((client as any).convenio).toLowerCase().includes("amazonas")
+            ) ||
+            Boolean(
+              (activeReg as any)?.orgao && 
+              String((activeReg as any).orgao).toLowerCase().includes("amazonas")
+            );
 
           // Extração normalizada de margens conforme padrão do sistema
           const anyReg = (activeReg || {}) as Record<string, unknown>;
@@ -2225,7 +2234,7 @@ export function ClientDetailsModal({
                   return (
                     <div className="space-y-0">
                       {/* Tabs Navigation */}
-                      {allRegs.length > 1 && (
+                      {(allRegs.length > 1 || isGovernoAm) && (
                         <div className="flex flex-wrap gap-1 px-4 sm:px-8">
                           {allRegs.map((reg, idx) => (
                             <button
@@ -2239,7 +2248,7 @@ export function ClientDetailsModal({
                               )}
                             >
                               <div className="flex flex-col items-center">
-                                <span>Matrícula {reg.numero_matricula || reg.identificacao || reg.matricula || idx + 1}</span>
+                                <span>{isGovernoAm ? `MATRÍCULA ${reg.matricula || reg.numero_matricula || reg.identificacao || idx + 1}` : `Matrícula ${reg.numero_matricula || reg.identificacao || reg.matricula || idx + 1}`}</span>
                               </div>
                             </button>
                           ))}
@@ -2248,7 +2257,7 @@ export function ClientDetailsModal({
 
                       {/* Active Content Card */}
                       {activeReg && (
-                        <Card className={cn("card-shadow border border-slate-200 animate-in fade-in duration-300", allRegs.length > 1 && "rounded-tl-none")}>
+                        <Card className={cn("card-shadow border border-slate-200 animate-in fade-in duration-300", (allRegs.length > 1 || isGovernoAm) && "rounded-tl-none")}>
                           {isEmAbordagem && (
                             <div
                               onClick={() => setIsContractsCardExpanded(!isContractsCardExpanded)}
@@ -2279,7 +2288,151 @@ export function ClientDetailsModal({
                               "p-4 sm:p-8 space-y-10 sm:space-y-12",
                               isEmAbordagem && "border-t border-slate-100 pt-6 sm:pt-8"
                             )}>
-                              {/* Informações da Matrícula */}
+                              {isGovernoAm ? (
+                                <div className="space-y-10 sm:space-y-12">
+                                  {/* Informações da Matrícula (GOVERNO DO AMAZONAS) */}
+                                  <div className="space-y-8 sm:space-y-10">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-1 h-5 bg-emerald-600 rounded-full"></div>
+                                      <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">
+                                        Informações da Matrícula (GOVERNO DO AMAZONAS)
+                                      </h3>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-8 sm:gap-y-10 gap-x-6 sm:gap-x-12">
+                                      <div className="space-y-1.5">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matrícula</p>
+                                        <p className="text-[13px] font-bold text-slate-900">{activeReg.matricula || activeReg.numero_matricula || "NÃO INFORMADA"}</p>
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Órgão</p>
+                                        <p className="text-[13px] font-bold text-slate-900 uppercase">{(activeReg as any).orgao || "GOVERNO DO AMAZONAS"}</p>
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Secretaria / Cargo</p>
+                                        <p className="text-[13px] font-bold text-slate-900 uppercase">
+                                          {(((activeReg as any).secretaria as string) || "N/I") + " / " + (((activeReg as any).cargo as string) || "N/I")}
+                                        </p>
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Situação / Vínculo</p>
+                                        <p className="text-[13px] font-bold text-slate-900 uppercase">
+                                          {(((activeReg as any).situacao as string) || "N/I") + " / " + (((activeReg as any).tipo_servidor as string) || "N/I")}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Margens Disponíveis */}
+                                  <div className="space-y-8 sm:space-y-10">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-1 h-5 bg-emerald-600 rounded-full"></div>
+                                      <h3 className="text-[14px] font-bold text-slate-900 uppercase tracking-widest">Margens Disponíveis</h3>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                                      {/* Margem Consignável */}
+                                      {(() => {
+                                        const val = Number((activeReg as any).margem_consignavel) || 0;
+                                        const isPositive = val > 0;
+                                        return (
+                                          <div className={cn(
+                                            "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                            isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-red-100/50 border-red-200"
+                                          )}>
+                                            <div>
+                                              <p className={cn(
+                                                "text-[9px] font-bold uppercase tracking-widest",
+                                                isPositive ? "text-emerald-700/60" : "text-red-700/60"
+                                              )}>
+                                                Margem Consignável
+                                              </p>
+                                              <p className={cn(
+                                                "text-lg font-black tracking-tight leading-none mt-1",
+                                                isPositive ? "text-emerald-950" : "text-red-950"
+                                              )}>
+                                                {formatCurrency(val)}
+                                              </p>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 mt-2">
+                                              <div className={cn("w-1.5 h-1.5 rounded-full", isPositive ? "bg-emerald-500" : "bg-red-500")}></div>
+                                              <span className={cn(
+                                                "text-[9px] font-bold uppercase tracking-widest",
+                                                isPositive ? "text-emerald-600" : "text-red-600"
+                                              )}>
+                                                {isPositive ? "DISPONÍVEL" : "INDISPONÍVEL"}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        );
+                                      })()}
+
+                                      {/* Margem Cartão */}
+                                      {(() => {
+                                        const val = Number((activeReg as any).margem_cartao) || 0;
+                                        const isPositive = val > 0;
+                                        return (
+                                          <div className={cn(
+                                            "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                            isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-slate-50 border-slate-200"
+                                          )}>
+                                            <div>
+                                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                                Margem Cartão (RMC)
+                                              </p>
+                                              <p className="text-lg font-black text-slate-900 tracking-tight leading-none mt-1">
+                                                {formatCurrency(val)}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        );
+                                      })()}
+
+                                      {/* Margem Cartão Benefício */}
+                                      {(() => {
+                                        const val = Number((activeReg as any).margem_cartao_beneficio) || 0;
+                                        const isPositive = val > 0;
+                                        return (
+                                          <div className={cn(
+                                            "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                            isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-slate-50 border-slate-200"
+                                          )}>
+                                            <div>
+                                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                                Margem Cartão Benefício (RCC)
+                                              </p>
+                                              <p className="text-lg font-black text-slate-900 tracking-tight leading-none mt-1">
+                                                {formatCurrency(val)}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        );
+                                      })()}
+
+                                      {/* Margem Cartão Benefício Saque */}
+                                      {(() => {
+                                        const val = Number((activeReg as any).margem_cartao_beneficio_saque) || 0;
+                                        const isPositive = val > 0;
+                                        return (
+                                          <div className={cn(
+                                            "p-3.5 border rounded-xl space-y-0.5 flex flex-col justify-between min-h-[82px] transition-colors duration-200",
+                                            isPositive ? "bg-emerald-100/50 border-emerald-200" : "bg-slate-50 border-slate-200"
+                                          )}>
+                                            <div>
+                                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                                Margem Benefício Saque
+                                              </p>
+                                              <p className="text-lg font-black text-slate-900 tracking-tight leading-none mt-1">
+                                                {formatCurrency(val)}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  {/* Informações da Matrícula */}
                             <div className="space-y-8 sm:space-y-10">
                               <div className="flex items-center gap-3">
                                 <div className="w-1 h-5 bg-blue-600 rounded-full"></div>
@@ -2581,6 +2734,8 @@ export function ClientDetailsModal({
                                 </div>
                               </div>
                             </div>
+                          </>
+                        )}
 
                             {/* Botões de Ação do Pipeline: SIMULAR PROPOSTA, ABRIR CHAMADO e DIGITAR PROPOSTA */}
                             {showPipelineActionButtons && (
