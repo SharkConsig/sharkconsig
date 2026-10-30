@@ -5545,13 +5545,18 @@ export default function KanbanPage() {
       let secTickets = filterTicketsBySearch(sec.tickets)
       secTickets = sortTickets(secTickets)
 
-      leadsCount += secTickets.length
       const secVal = secTickets.reduce((acc, t) => {
         const opData = getValorOperacaoDeAbertura(t)
         const opNum = parseValorToNumber(opData.valor)
         return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
       }, 0)
-      valorSum += secVal
+
+      // Nos totais não deve ser contabilizado os cartões de atendimento que estiverem nas colunas 'Fechado' e 'Perdido'
+      const isExcludedFromTotals = sec.id === "FECHADO" || sec.id === "PERDIDO"
+      if (!isExcludedFromTotals) {
+        leadsCount += secTickets.length
+        valorSum += secVal
+      }
 
       return {
         ...sec,
@@ -5564,9 +5569,23 @@ export default function KanbanPage() {
       ? sections 
       : sections.filter(s => s.id === listFilterStage)
 
+    let displayLeadsCount = leadsCount
+    let displayValorSum = valorSum
+
+    if (listFilterStage !== "ALL") {
+      const selectedSec = finalSections[0]
+      if (selectedSec && selectedSec.id !== "FECHADO" && selectedSec.id !== "PERDIDO") {
+        displayLeadsCount = selectedSec.displayTickets.length
+        displayValorSum = selectedSec.displayValor
+      } else {
+        displayLeadsCount = 0
+        displayValorSum = 0
+      }
+    }
+
     return {
-      totalListLeads: leadsCount,
-      totalListValor: valorSum,
+      totalListLeads: displayLeadsCount,
+      totalListValor: displayValorSum,
       filteredListSections: finalSections
     }
   }, [listSections, filterTicketsBySearch, sortTickets, listFilterStage])

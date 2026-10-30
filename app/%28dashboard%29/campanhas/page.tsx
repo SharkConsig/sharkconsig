@@ -1,0 +1,2482 @@
+"use client"
+
+import { Card, CardContent } from "@/components/ui/card"
+import { Button, buttonVariants } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Header } from "@/components/layout/header"
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { 
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import { 
+  Search, 
+  Plus, 
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+  Calendar,
+  Loader2,
+  Info,
+  Download,
+  Eye,
+  Trash2,
+  ChevronDown,
+  Edit2,
+  Check,
+  X,
+  Share2,
+  Upload
+} from "lucide-react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import Papa from "papaparse"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { motion, AnimatePresence } from "motion/react"
+import { cn } from "@/lib/utils"
+import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
+import { supabase } from "@/lib/supabase"
+import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
+
+import { useAuth } from "@/context/auth-context"
+
+interface ICampaignMembroRow {
+  cpf: string;
+  nome: string;
+  data_nascimento?: string;
+  data_de_nascimento?: string;
+  telefone_1?: string;
+  telefone_2?: string;
+  telefone_3?: string;
+  numero_matricula?: string;
+  orgao?: string;
+  situacao_funcional?: string;
+  salario?: number;
+  instituidor_nome?: string;
+  regime_juridico?: string;
+  uf?: string;
+  saldo_70?: number;
+  margem_35?: number;
+  bruta_5?: number;
+  utilizada_5?: number;
+  liquida_5?: number;
+  beneficio_bruta_5?: number;
+  beneficio_utilizada_5?: number;
+  beneficio_liquida_5?: number;
+  banco?: string;
+  prazo?: string | number;
+  tipo?: string;
+  margem_emprestimo?: number | string;
+  margem_cartao?: number | string;
+  margem_disponivel_emprestimo?: number | string | null;
+  margem_cartao_consignado?: number | string | null;
+  margem_cartao_beneficio?: number | string | null;
+}
+
+interface IGovPiRow {
+  cpf: string;
+  nome: string;
+  matricula?: string;
+  vinculo?: string;
+  data_nascimento?: string;
+  telefone_1?: string;
+  telefone_2?: string;
+  telefone_3?: string;
+  orgao?: string;
+  margem_disponivel_emprestimo?: number | string | null;
+  margem_cartao_consignado?: number | string | null;
+  margem_cartao_beneficio?: number | string | null;
+}
+
+interface CampaignFilters {
+  orgaos: string[];
+  situacoes: string[];
+  regimes: string[];
+  ufs: string[];
+  margemMin: string;
+  margemMax: string;
+  saldoMin: string;
+  saldoMax: string;
+  cardMargemMin: string;
+  cardBeneficioMin: string;
+  loanBanks: string[];
+  loanPrazoMin: string;
+  loanPrazoMax: string;
+  cardBanks: string[];
+  cardTypes: string[];
+  idadeMin: string;
+  idadeMax: string;
+  distribuicao?: string[];
+  corretores_selecionados?: string[];
+}
+
+interface Campaign {
+  id: string;
+  nome: string;
+  created_at: string;
+  publico_estimado: number;
+  filtros: CampaignFilters;
+}
+
+function FilterAccordion({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="border border-slate-100 rounded-xl overflow-hidden bg-white shadow-sm transition-all duration-200 hover:border-slate-200">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-4 text-left transition-colors hover:bg-slate-50"
+      >
+        <div className="flex items-center gap-3">
+          <h4 className="text-[11px] font-black text-slate-500 uppercase tracking-widest">{title}</h4>
+          {count !== undefined && (
+            <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full font-bold">
+              {count}
+            </span>
+          )}
+        </div>
+        <ChevronDown 
+          className={cn(
+            "w-4 h-4 text-slate-400 transition-transform duration-300",
+            isOpen ? "rotate-180 text-primary" : ""
+          )} 
+        />
+      </button>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+          >
+            <div className="px-4 pb-4 border-t border-slate-50/50">
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+interface User {
+  id: string;
+  nome: string;
+  equipe: string;
+  funcao: string;
+  status?: string;
+  supervisor_id?: string;
+  avatar_url?: string;
+}
+
+export default function CampaignsPage() {
+  const router = useRouter()
+  const { user, canAccessAdminAreas, isOperational, isLoading: authLoading } = useAuth()
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedCampaignForFilters, setSelectedCampaignForFilters] = useState<Campaign | null>(null)
+  const [showFiltersModal, setShowFiltersModal] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState("")
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Import Campaign State
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importConvenio, setImportConvenio] = useState("detect")
+  const [importCampaignName, setImportCampaignName] = useState("")
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [isImportingCamp, setIsImportingCamp] = useState(false)
+  const [importProgress, setImportProgress] = useState(0)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
+  
+  // Distribution State
+  const [showDistributionModal, setShowDistributionModal] = useState(false)
+  const [campaignToDistribute, setCampaignToDistribute] = useState<Campaign | null>(null)
+  const [allUsers, setAllUsers] = useState<User[]>([])
+  const [selectedSupervisors, setSelectedSupervisors] = useState<string[]>([])
+  const [selectedBrokers, setSelectedBrokers] = useState<string[]>([])
+  const [distributionStep, setDistributionStep] = useState<1 | 2>(1)
+  const [isSavingDistribution, setIsSavingDistribution] = useState(false)
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false)
+  
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  const fetchCampaigns = useCallback(async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('campanhas')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (fetchError) throw fetchError
+      setCampaigns(data || [])
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Ocorreu um erro ao carregar as campanhas.";
+      console.error("Erro ao buscar campanhas:", err)
+      setError(errorMsg)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!authLoading && (canAccessAdminAreas || isOperational)) {
+      fetchCampaigns()
+    }
+  }, [authLoading, canAccessAdminAreas, isOperational, fetchCampaigns])
+
+  useEffect(() => {
+    if (!authLoading && !canAccessAdminAreas && !isOperational) {
+      router.replace('/')
+    }
+  }, [authLoading, canAccessAdminAreas, isOperational, router])
+
+  const [isExporting, setIsExporting] = useState<string | null>(null)
+  const [exportProgress, setExportProgress] = useState(0)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDragOver(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file && file.name.endsWith('.csv')) {
+      setImportFile(file)
+      if (!importCampaignName) {
+        const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ").replace(/-/g, " ")
+        setImportCampaignName(baseName.toUpperCase())
+      }
+    } else {
+      alert("Por favor, selecione apenas arquivos CSV.")
+    }
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setImportFile(file)
+      if (!importCampaignName) {
+        const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/_/g, " ").replace(/-/g, " ")
+        setImportCampaignName(baseName.toUpperCase())
+      }
+    }
+  }
+
+  const extractCpfFromRow = (row: unknown): string | null => {
+    if (!row) return null
+    
+    if (Array.isArray(row)) {
+      for (const val of row) {
+        if (typeof val === "string") {
+          const clean = val.replace(/\D/g, "")
+          if (clean.length === 11) return clean
+        }
+      }
+      if (row.length > 0 && (typeof row[0] === "string" || typeof row[0] === "number")) {
+        const clean = String(row[0]).replace(/\D/g, "")
+        if (clean) return clean
+      }
+      return null
+    }
+    
+    if (typeof row === "object") {
+      const rowObj = row as Record<string, unknown>
+      const keys = Object.keys(rowObj)
+      const exactCpfKey = keys.find(k => k.toLowerCase() === 'cpf')
+      if (exactCpfKey && rowObj[exactCpfKey]) {
+        const clean = String(rowObj[exactCpfKey]).replace(/\D/g, "")
+        if (clean) return clean
+      }
+      
+      const containsCpfKey = keys.find(k => k.toLowerCase().includes('cpf'))
+      if (containsCpfKey && rowObj[containsCpfKey]) {
+        const clean = String(rowObj[containsCpfKey]).replace(/\D/g, "")
+        if (clean) return clean
+      }
+      
+      for (const key of keys) {
+        const val = rowObj[key];
+        if (typeof val === "string" || typeof val === "number") {
+          const clean = String(val).replace(/\D/g, "")
+          if (clean.length === 11) return clean
+        }
+      }
+      
+      if (keys.length > 0) {
+        const firstVal = rowObj[keys[0]]
+        if (firstVal !== undefined && firstVal !== null) {
+          const clean = String(firstVal).replace(/\D/g, "")
+          if (clean) return clean
+        }
+      }
+    }
+    
+    return null
+  }
+
+  const handleImportCampaign = async () => {
+    if (!importCampaignName.trim()) {
+      setImportError("O nome da campanha é obrigatório.")
+      return
+    }
+    if (!importFile) {
+      setImportError("Por favor, selecione um arquivo CSV para importar.")
+      return
+    }
+
+    setIsImportingCamp(true)
+    setImportProgress(0)
+    setImportError(null)
+
+    try {
+      // 1. Criar a campanha correspondente com status PROCESSANDO
+      const initFiltros = {
+        convenio: importConvenio,
+        imported: true,
+        orgaos: [],
+        situacoes: [],
+        regimes: [],
+        ufs: [],
+        margemMin: "",
+        margemMax: "",
+        saldoMin: "",
+        saldoMax: "",
+        cardMargemMin: "",
+        cardBeneficioMin: "",
+        loanBanks: [],
+        loanPrazoMin: "",
+        loanPrazoMax: "",
+        cardBanks: [],
+        cardTypes: [],
+        idadeMin: "",
+        idadeMax: "",
+        distribuicao: [],
+        corretores_selecionados: []
+      }
+
+      const { data: createdCampaign, error: saveError } = await withRetry(() =>
+        supabase
+          .from('campanhas')
+          .insert({
+            nome: importCampaignName.toUpperCase(),
+            publico_estimado: 0,
+            convenio: importConvenio,
+            filtros: initFiltros,
+            filtros_json: initFiltros,
+            user_id: user?.id,
+            criado_por: user?.id,
+            status: 'ativa',
+            processamento_status: 'PROCESSANDO',
+            created_at: new Date().toISOString(),
+            criado_em: new Date().toISOString()
+          })
+          .select()
+          .single()
+      )
+
+      if (saveError) throw saveError
+      const campaignId = createdCampaign.id
+
+      let orderIndex = 1
+      const insertedCpfs = new Set<string>()
+
+      Papa.parse(importFile, {
+        header: true,
+        skipEmptyLines: true,
+        encoding: "ISO-8859-1",
+        chunkSize: 1024 * 256, // Usar 256KB de chunkSize para máxima estabilidade
+        chunk: async (results, parser) => {
+          parser.pause()
+          
+          try {
+            const uniqueCpfBatch: { cpf: string }[] = []
+            for (const row of results.data) {
+              const rawCpf = extractCpfFromRow(row)
+              if (rawCpf) {
+                const cleanCpf = rawCpf.trim().padStart(11, '0')
+                if (cleanCpf && !insertedCpfs.has(cleanCpf)) {
+                  insertedCpfs.add(cleanCpf)
+                  uniqueCpfBatch.push({ cpf: cleanCpf })
+                }
+              }
+            }
+
+            const stepSize = 1000
+            for (let i = 0; i < uniqueCpfBatch.length; i += stepSize) {
+              const chunk = uniqueCpfBatch.slice(i, i + stepSize)
+              if (chunk.length > 0) {
+                const membersToInsert = chunk.map(row => ({
+                  campanha_id: campaignId,
+                  cliente_cpf: row.cpf,
+                  convenio: importConvenio,
+                  ordem_fila: orderIndex++,
+                  criado_em: new Date().toISOString()
+                }))
+
+                const { error: insertError } = await withRetry(() =>
+                  supabase.from('campanha_membros').insert(membersToInsert)
+                )
+                if (insertError) throw insertError
+              }
+            }
+
+            setImportProgress(insertedCpfs.size)
+            await new Promise(resolve => setTimeout(resolve, 300))
+
+          } catch (err) {
+            console.error("Erro ao importar lote:", err)
+            parser.abort()
+            throw err
+          } finally {
+            parser.resume()
+          }
+        },
+        complete: async () => {
+          try {
+            const realPublicoCount = insertedCpfs.size
+            const { error: updateError } = await withRetry(() =>
+              supabase
+                .from('campanhas')
+                .update({ 
+                  processamento_status: 'PRONTA',
+                  publico_estimado: realPublicoCount
+                })
+                .eq('id', campaignId)
+            )
+
+            if (updateError) throw updateError
+
+            await fetchCampaigns()
+
+            // Reset states
+            setImportFile(null)
+            setImportCampaignName("")
+            setShowImportModal(false)
+            setIsImportingCamp(false)
+            alert("Sua campanha foi importada com sucesso com " + realPublicoCount + " CPFs únicos!")
+
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : "Erro desconhecido ao finalizar importação"
+            setImportError(errorMsg)
+            setIsImportingCamp(false)
+          }
+        },
+        error: (err) => {
+          console.error("Erro PapaParse:", err)
+          setImportError(err.message || "Erro no parsing do arquivo CSV.")
+          setIsImportingCamp(false)
+        }
+      })
+
+    } catch (err: unknown) {
+      console.error("Erro geral na importação:", err)
+      const errorMsg = err instanceof Error ? err.message : "Ocorreu um erro ao iniciar a importação de campanha."
+      setImportError(errorMsg)
+      setIsImportingCamp(false)
+    }
+  }
+
+  const handleCancelExport = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+      setIsExporting(null)
+      setExportProgress(0)
+      alert("Exportação cancelada pelo usuário.")
+    }
+  }
+
+  const withRetry = async <T,>(fn: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> => {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const result = await fn();
+        if ((result as { error?: unknown })?.error) throw (result as { error?: unknown }).error;
+        return result;
+      } catch (err: unknown) {
+        const error = err as { code?: string; message?: string };
+        const isTimeout = error?.code === '57014' || error?.code === 'P0001' || (error?.message && (error.message.includes('timeout') || error.message.includes('abort')));
+        if (isTimeout && i < maxRetries - 1) {
+          console.warn(`Timeout detectado na exportação, tentando novamente (${i + 1}/${maxRetries})...`);
+          await new Promise(r => setTimeout(r, delay * (i + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
+    throw new Error("Máximo de tentativas excedido");
+  };
+
+  const parseSafeNumber = (val: string) => {
+    if (!val) return null;
+    let clean = val.replace(/[R$\s]/g, "");
+    
+    // Se houver vírgula e ponto, assumimos padrão BR (ponto milhar, vírgula decimal): 1.000,00 -> 1000.00
+    if (clean.includes(",") && clean.includes(".")) {
+      clean = clean.replace(/\./g, "").replace(",", ".");
+    } 
+    // Se houver apenas vírgula: 1000,00 -> 1000.00
+    else if (clean.includes(",")) {
+      clean = clean.replace(",", ".");
+    }
+    // Se houver apenas ponto (sem vírgula): "1.500" ou "15.000" (seguido de exatamente 3 dígitos)
+    else if (clean.includes(".")) {
+      const parts = clean.split(".");
+      if (parts[parts.length - 1].length === 3) {
+        clean = clean.replace(/\./g, "");
+      }
+    }
+    
+    const num = parseFloat(clean);
+    return isNaN(num) ? null : num;
+  };
+
+  const PART_SIZE = 50000;
+
+  const handleExport = async (campaign: Campaign, partIndex: number = 0) => {
+    if (isExporting) return
+    setIsExporting(`${campaign.id}_${partIndex}`)
+    setExportProgress(0)
+    
+    abortControllerRef.current = new AbortController()
+    
+    try {
+      const filters = campaign.filtros
+      const allCsvRows: string[] = []
+      const uniqueRowsKeys = new Set()
+
+      // Determinar tabela de consulta rápida otimizada e convênio
+      let targetTable = 'base_consulta_siape';
+      const campaignName = (campaign.nome || "").toUpperCase();
+      const convenioKey = campaign.convenio || campaign.filtros?.convenio;
+
+      const TABLE_MAP: Record<string, string> = {
+        'siape': 'base_consulta_siape',
+        'governo_sp': 'base_consulta_governo_sp',
+        'prefeitura_sp': 'base_consulta_prefeitura_sp',
+        'governo_pi': 'base_consulta_governo_pi',
+        'governo_ma': 'base_consulta_governo_ma',
+        'governo_rr': 'base_consulta_governo_rr',
+        'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
+        'prefeitura_natal': 'base_consulta_prefeitura_natal',
+        'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
+        'governo_ba': 'base_consulta_governo_ba',
+        'governo_am': 'base_consulta_governo_am',
+        'governo_ce': 'base_consulta_governo_ce',
+        'governo_ro': 'base_consulta_governo_ro',
+        'governo_mg': 'base_consulta_governo_mg',
+        'governo_rj': 'base_consulta_governo_rj',
+        'governo_ms': 'base_consulta_governo_ms',
+        'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
+        'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
+        'amazon_prev': 'base_consulta_amazon_prev',
+      };
+
+      if (convenioKey && TABLE_MAP[convenioKey]) {
+        targetTable = TABLE_MAP[convenioKey];
+      } else if (campaignName.includes('GOVERNO SP')) {
+        targetTable = 'base_consulta_governo_sp';
+      } else if (campaignName.includes('PREFEITURA SP')) {
+        targetTable = 'base_consulta_prefeitura_sp';
+      } else if (campaignName.includes('GOVERNO MG') || campaignName.includes('MINAS GERAIS') || campaignName.includes('GOVERNO DE MINAS')) {
+        targetTable = 'base_consulta_governo_mg';
+      } else if (campaignName.includes('GOVERNO PI')) {
+        targetTable = 'base_consulta_governo_pi';
+      } else if (campaignName.includes('GOVERNO MA')) {
+        targetTable = 'base_consulta_governo_ma';
+      } else if (campaignName.includes('RORAIMA') || campaignName.includes('RR')) {
+        targetTable = 'base_consulta_governo_rr';
+      } else if (campaignName.includes('SANTO ANDRÉ') || campaignName.includes('SANTO ANDRE') || campaignName.includes('PREFEITURA SANTO ANDRE') || campaignName.includes('PREF SANTO ANDRE')) {
+        targetTable = 'base_consulta_prefeitura_santo_andre';
+      } else if (campaignName.includes('PONTA GROSSA') || campaignName.includes('PREFEITURA DE PONTA GROSSA') || campaignName.includes('PREFEITURA PONTA GROSSA') || campaignName.includes('PREF PONTA GROSSA')) {
+        targetTable = 'base_consulta_prefeitura_ponta_grossa';
+      } else if (campaignName.includes('AMAZON PREV') || campaignName.includes('AMAZONPREV')) {
+        targetTable = 'base_consulta_amazon_prev';
+      } else if (campaignName.includes('NATAL')) {
+        targetTable = 'base_consulta_prefeitura_natal';
+      } else if (campaignName.includes('PORTO VELHO')) {
+        targetTable = 'base_consulta_prefeitura_porto_velho';
+      } else if (campaignName.includes('AMAZONAS') || campaignName.includes('GOVERNO AM')) {
+        targetTable = 'base_consulta_governo_am';
+      } else if (campaignName.includes('CEARÁ') || campaignName.includes('CEARA') || campaignName.includes('GOVERNO CE')) {
+        targetTable = 'base_consulta_governo_ce';
+      } else if (campaignName.includes('RONDÔNIA') || campaignName.includes('RONDONIA') || campaignName.includes('GOVERNO RO')) {
+        targetTable = 'base_consulta_governo_ro';
+      } else if (campaignName.includes('GOVERNO BA') || campaignName.includes('BAHIA')) {
+        targetTable = 'base_consulta_governo_ba';
+      }
+
+      const isGovMg = targetTable === 'base_consulta_governo_mg';
+      const isGovPi = targetTable === 'base_consulta_governo_pi';
+      const isGovRr = targetTable === 'base_consulta_governo_rr';
+      const isGovSp = targetTable === 'base_consulta_governo_sp';
+      const isPrefSp = targetTable === 'base_consulta_prefeitura_sp';
+      const isGovMa = targetTable === 'base_consulta_governo_ma';
+      const isGovAm = targetTable === 'base_consulta_governo_am';
+      const isGovCe = targetTable === 'base_consulta_governo_ce';
+      const isGovRo = targetTable === 'base_consulta_governo_ro';
+      const isGovBa = targetTable === 'base_consulta_governo_ba';
+      const isSantoAndre = targetTable === 'base_consulta_prefeitura_santo_andre';
+      const isPrefNatal = targetTable === 'base_consulta_prefeitura_natal';
+      const isPrefPortoVelho = targetTable === 'base_consulta_prefeitura_porto_velho';
+      const isPrefPontaGrossa = targetTable === 'base_consulta_prefeitura_ponta_grossa';
+      const isAmazonPrev = targetTable === 'base_consulta_amazon_prev';
+      const isMultiConvenio = (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect');
+
+      const headersArray = ["CPF", "NOME", "DATA NASCIMENTO", "TELEFONE 1", "TELEFONE 2", "TELEFONE 3"];
+      if (isPrefPontaGrossa) {
+        headersArray.push("IDADE", "MATRÍCULA", "ORIGEM", "SITUAÇÃO", "VÍNCULO", "MARGEM TOTAL", "MARGEM DISPONÍVEL");
+      } else if (isAmazonPrev) {
+        headersArray.push("MATRÍCULA", "ÓRGÃO", "LOTAÇÃO", "SITUAÇÃO FUNCIONAL", "SALÁRIO", "MARGEM");
+      } else if (isGovMg) {
+        headersArray.push("MATRÍCULA", "ÓRGÃO", "SALDO 70%", "MARGEM EMPRÉSTIMO", "CARTÃO CRÉDITO", "CARTÃO BENEFÍCIO");
+      } else if (isGovAm) {
+        headersArray.push("MATRÍCULA", "ÓRGÃO", "SECRETARIA", "CARGO", "SITUAÇÃO", "MARGEM CONSIGNÁVEL", "MARGEM CARTÃO", "MARGEM CARTÃO BENEFÍCIO", "MARGEM BENEFÍCIO SAQUE");
+      } else if (isGovCe) {
+        headersArray.push("SALÁRIO", "ÓRGÃO", "SECRETARIA", "VÍNCULO");
+      } else if (isGovRo) {
+        headersArray.push("MATRÍCULA", "ÓRGÃO", "SECRETARIA", "CARGO", "VÍNCULO", "SALÁRIO", "MARGEM EMPRÉSTIMO", "MARGEM CARTÃO", "MARGEM CARTÃO BENEFÍCIO");
+      } else if (isGovBa) {
+        headersArray.push("MATRÍCULA", "ÓRGÃO", "SECRETARIA", "SITUAÇÃO", "TIPO SERVIDOR", "MARGEM EMPRÉSTIMO TOTAL", "MARGEM EMPRÉSTIMO DISPONÍVEL");
+      } else if (isGovPi) {
+        headersArray.push("MARGEM DISPONÍVEL EMPRÉSTIMO", "MARGEM CARTÃO CONSIGNADO", "MARGEM CARTÃO BENEFÍCIO");
+      } else if (isGovRr) {
+        headersArray.push("MARGEM EMPRÉSTIMO", "MARGEM CARTÃO");
+      } else if (isGovSp) {
+        headersArray.push("MARGEM 35%", "BRUTA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO LÍQUIDA 5%");
+      } else if (isPrefSp) {
+        headersArray.push("MARGEM 35%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO LÍQUIDA 5%");
+      } else if (isGovMa) {
+        headersArray.push("MARGEM 35%", "BRUTA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO LÍQUIDA 5%");
+      } else if (isSantoAndre) {
+        headersArray.push("MARGEM BRUTA CARTÃO", "MARGEM LÍQUIDA CARTÃO");
+      } else if (isPrefNatal) {
+        headersArray.push("VÍNCULO", "ÓRGÃO", "MARGEM EMPRÉSTIMO CONSIGNADO", "MARGEM CARTÃO CONSIGNADO", "MARGEM CARTÃO BENEFÍCIO");
+      } else if (isPrefPortoVelho) {
+        headersArray.push("VÍNCULO", "ÓRGÃO", "MARGEM EMPRÉSTIMO", "MARGEM CARTÃO CONSIGNADO");
+      } else if (isMultiConvenio) {
+        headersArray.push(
+          "CONVÊNIO",
+          "SALDO 70%",
+          "MARGEM 35% / EMPRÉSTIMO",
+          "BRUTA 5%",
+          "UTILIZADA 5%",
+          "LÍQUIDA 5% / CARTÃO",
+          "BENEFÍCIO BRUTA 5%",
+          "BENEFÍCIO UTILIZADA 5%",
+          "BENEFÍCIO LÍQUIDA 5% / CARTÃO BENEFÍCIO"
+        );
+      } else {
+        headersArray.push("SALDO 70%", "MARGEM 35%", "BRUTA 5%", "UTILIZADA 5%", "LÍQUIDA 5%", "BENEFÍCIO BRUTA 5%", "BENEFÍCIO UTILIZADA 5%", "BENEFÍCIO LÍQUIDA 5%");
+      }
+
+      const headers = headersArray.map(h => `"${h}"`).join(",");
+      
+      allCsvRows.push(headers)
+      
+      const pageSize = 500 // Lote otimizado para alta velocidade e baixo consumo de requisições
+      let totalProcessed = 0
+      
+      const actualPublicoEstimado = campaign.publico_estimado || 0;
+
+      const startRange = partIndex * PART_SIZE;
+      const endRange = Math.min((partIndex + 1) * PART_SIZE - 1, (actualPublicoEstimado || 0) - 1);
+      const totalToExport = Math.max(0, endRange - startRange + 1);
+
+      if (totalToExport <= 0) {
+        alert("Intervalo de exportação inválido.");
+        setIsExporting(null);
+        return;
+      }
+
+      while (totalProcessed < totalToExport) {
+        if (abortControllerRef.current?.signal.aborted) {
+          throw new Error("ABORT_BY_USER")
+        }
+        
+        const fetchBatch = async () => {
+          return await supabase
+            .from('campanha_membros')
+            .select('cliente_cpf, convenio')
+            .eq('campanha_id', campaign.id)
+            .order('ordem_fila', { ascending: true })
+            .range(startRange + totalProcessed, startRange + totalProcessed + pageSize - 1);
+        };
+
+        const { data: memberBatch, error: memberError } = await withRetry(fetchBatch);
+        if (memberError) throw memberError;
+
+        if (!memberBatch || memberBatch.length === 0) {
+          break;
+        }
+
+        const cpfs = memberBatch
+          .map((m: { cliente_cpf: string | null }) => m.cliente_cpf)
+          .filter((cpf): cpf is string => !!cpf);
+        if (cpfs.length === 0) {
+          break;
+        }
+
+        // Expand CPFs to include all common formats for database matches
+        const expandedCpfs = Array.from(new Set(cpfs.flatMap((cpf: string) => {
+          const clean = cpf.replace(/\D/g, "");
+          if (!clean) return [cpf];
+          const padded = clean.padStart(11, '0');
+          const unpadded = clean.replace(/^0+/, '');
+          const formatted = `${padded.substring(0, 3)}.${padded.substring(3, 6)}.${padded.substring(6, 9)}-${padded.substring(9, 11)}`;
+          return [cpf, clean, padded, unpadded, formatted];
+        })));
+
+        const detectedConvenios = new Map<string, string>();
+        let bcrData: Record<string, unknown>[] = [];
+
+        const tablesList = [
+          { name: 'base_consulta_siape', prodTable: 'clientes', convenio: 'siape', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo" },
+          { name: 'base_consulta_governo_ba', prodTable: 'governo_ba_clientes', convenio: 'governo_ba', columns: "cpf, nome, telefone, matricula, margem_emprestimo_total, margem_emprestimo_disponivel, orgao, secretaria, situacao, tipo_servidor" },
+          { name: 'base_consulta_governo_sp', prodTable: 'governo_sp_clientes', convenio: 'governo_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_prefeitura_sp', prodTable: 'prefeitura_sp_clientes', convenio: 'prefeitura_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_pi', prodTable: 'governo_pi_clientes', convenio: 'governo_pi', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio" },
+          { name: 'base_consulta_governo_ma', prodTable: 'governo_ma_clientes', convenio: 'governo_ma', columns: "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf" },
+          { name: 'base_consulta_governo_rr', prodTable: 'governo_rr_clientes', convenio: 'governo_rr', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao" },
+          { name: 'base_consulta_prefeitura_santo_andre', prodTable: 'prefeitura_santo_andre_clientes', convenio: 'prefeitura_santo_andre', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, vinculo, margem_bruta_cartao, margem_liquida_cartao" },
+          { name: 'base_consulta_prefeitura_contagem', prodTable: 'prefeitura_contagem_clientes', convenio: 'prefeitura_contagem', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_mg', prodTable: 'governo_mg_clientes', convenio: 'governo_mg', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_rj', prodTable: 'governo_rj_clientes', convenio: 'governo_rj', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_governo_ms', prodTable: 'governo_ms_clientes', convenio: 'governo_ms', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
+          { name: 'base_consulta_prefeitura_natal', prodTable: 'prefeitura_natal_clientes', convenio: 'prefeitura_natal', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_emprestimo_consignado, margem_cartao_consignado, margem_cartao_beneficio" },
+          { name: 'base_consulta_prefeitura_porto_velho', prodTable: 'prefeitura_porto_velho_clientes', convenio: 'prefeitura_porto_velho', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_emprestimo, margem_cartao_consignado" },
+          { name: 'base_consulta_governo_am', prodTable: 'governo_am_clientes', convenio: 'governo_am', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, situacao, margem_consignavel, margem_cartao, margem_cartao_beneficio, margem_cartao_beneficio_saque" },
+          { name: 'base_consulta_governo_ce', prodTable: 'governo_ce_clientes', convenio: 'governo_ce', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, salario, orgao, secretaria, vinculo" },
+          { name: 'base_consulta_governo_ro', prodTable: 'governo_ro_clientes', convenio: 'governo_ro', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, orgao, secretaria, cargo, vinculo, salario, margem_emprestimo, margem_cartao, margem_cartao_beneficio" },
+          { name: 'base_consulta_prefeitura_ponta_grossa', prodTable: 'base_consulta_prefeitura_ponta_grossa', convenio: 'prefeitura_ponta_grossa', columns: "cpf, nome, idade, matricula, origem, situacao, vinculo, margem_total, margem_disponivel, telefone_1, telefone_2, telefone_3" },
+          { name: 'base_consulta_amazon_prev', prodTable: 'amazon_prev_clientes', convenio: 'amazon_prev', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, matricula, orgao, lotacao, situacao_funcional, salario, margem" },
+        ];
+
+        // 1. Buscar primeiro na tabela preferencial da campanha (targetTable) com lotes paralelos de 150
+        const targetTableObj = tablesList.find(t => t.name === targetTable) || tablesList[0];
+        let primaryData: Record<string, unknown>[] = [];
+        
+        const chunkArray = <T,>(arr: T[], size: number): T[][] => {
+          const res: T[][] = [];
+          for (let i = 0; i < arr.length; i += size) res.push(arr.slice(i, i + size));
+          return res;
+        };
+
+        const primaryChunks = chunkArray(expandedCpfs, 150);
+        const primaryResults = await Promise.all(
+          primaryChunks.map(async (pChunk) => {
+            try {
+              const { data, error } = await supabase.from(targetTable).select(targetTableObj.columns).in('cpf', pChunk);
+              if (!error && data && data.length > 0) {
+                return data;
+              } else if (error) {
+                const { data: fallbackData } = await supabase.from(targetTable).select('*').in('cpf', pChunk);
+                if (fallbackData && fallbackData.length > 0) {
+                  return fallbackData;
+                }
+              }
+            } catch (queryErr) {
+              console.warn(`Aviso ao buscar lote em ${targetTable}:`, queryErr);
+            }
+            return [];
+          })
+        );
+        primaryData = primaryResults.flat();
+
+        const foundNormCpfSet = new Set((primaryData || []).map(r => String(r.cpf || "").replace(/\D/g, "").padStart(11, '0')));
+        const missingCpfs = cpfs.filter((cpf: string) => !foundNormCpfSet.has(cpf.replace(/\D/g, "").padStart(11, '0')));
+
+        const tempBcrData = [...(primaryData || [])];
+
+        // 2. Se houver CPFs ausentes, buscar nas outras tabelas de base_consulta em paralelo
+        if (missingCpfs.length > 0) {
+          const missingExpandedCpfs = Array.from(new Set(missingCpfs.flatMap((cpf: string) => {
+            const clean = cpf.replace(/\D/g, "");
+            if (!clean) return [cpf];
+            const padded = clean.padStart(11, '0');
+            const unpadded = clean.replace(/^0+/, '');
+            const formatted = `${padded.substring(0, 3)}.${padded.substring(3, 6)}.${padded.substring(6, 9)}-${padded.substring(9, 11)}`;
+            return [cpf, clean, padded, unpadded, formatted];
+          })));
+
+          const missingChunks = chunkArray(missingExpandedCpfs, 150);
+          const otherTablesList = tablesList.filter(t => t.name !== targetTable);
+
+          for (const mChunk of missingChunks) {
+            const queriesResults = await Promise.all(
+              otherTablesList.map(async (t) => {
+                try {
+                  const { data, error } = await supabase.from(t.name).select(t.columns).in('cpf', mChunk);
+                  if (!error && data && data.length > 0) {
+                    return { data, convenio: t.convenio };
+                  }
+                } catch (e) {
+                  console.error(`Erro ao buscar na tabela ${t.name} para exportação:`, e);
+                }
+                return { data: [], convenio: t.convenio };
+              })
+            );
+
+            queriesResults.forEach(({ data, convenio }) => {
+              if (data && data.length > 0) {
+                (data as Record<string, unknown>[]).forEach((row) => {
+                  const rowNormCpf = String(row.cpf || "").replace(/\D/g, "").padStart(11, '0');
+                  if (row && row.cpf && !foundNormCpfSet.has(rowNormCpf)) {
+                    foundNormCpfSet.add(rowNormCpf);
+                    detectedConvenios.set(rowNormCpf, convenio);
+                    tempBcrData.push(row);
+
+                    const currentMember = (memberBatch as { cliente_cpf: string | null; convenio?: string | null }[]).find((m) => String(m.cliente_cpf || "").replace(/\D/g, "").padStart(11, '0') === rowNormCpf);
+                    if (currentMember && (!currentMember.convenio || currentMember.convenio === "detect" || currentMember.convenio === "importado" || currentMember.convenio === "multi")) {
+                      supabase
+                        .from('campanha_membros')
+                        .update({ convenio })
+                        .eq('campanha_id', campaign.id)
+                        .eq('cliente_cpf', row.cpf as string)
+                        .then(() => {});
+                    }
+                  }
+                });
+              }
+            });
+          }
+        }
+
+        // 3. Fallback adicional nas tabelas de produção de clientes caso ainda restem registros não encontrados
+        const stillMissingCpfs = cpfs.filter((cpf: string) => !foundNormCpfSet.has(cpf.replace(/\D/g, "").padStart(11, '0')));
+        if (stillMissingCpfs.length > 0) {
+          const stillExpanded = Array.from(new Set(stillMissingCpfs.flatMap((cpf: string) => {
+            const clean = cpf.replace(/\D/g, "");
+            if (!clean) return [cpf];
+            const padded = clean.padStart(11, '0');
+            const unpadded = clean.replace(/^0+/, '');
+            const formatted = `${padded.substring(0, 3)}.${padded.substring(3, 6)}.${padded.substring(6, 9)}-${padded.substring(9, 11)}`;
+            return [cpf, clean, padded, unpadded, formatted];
+          })));
+
+          const prodChunks = chunkArray(stillExpanded, 150);
+          for (const pChunk of prodChunks) {
+            // Prioriza a tabela de produção do convênio da campanha
+            const prodTablesToTry = [
+              targetTableObj.prodTable,
+              'governo_ba_clientes',
+              'governo_mg_clientes',
+              'governo_sp_clientes',
+              'prefeitura_sp_clientes',
+              'clientes'
+            ];
+            const uniqueProdTables = Array.from(new Set(prodTablesToTry.filter(Boolean)));
+
+            await Promise.all(
+              uniqueProdTables.map(async (pTable) => {
+                try {
+                  const { data, error } = await supabase.from(pTable).select('*').in('cpf', pChunk);
+                  if (!error && data && data.length > 0) {
+                    data.forEach((pRow: Record<string, unknown>) => {
+                      const rowNormCpf = String(pRow.cpf || "").replace(/\D/g, "").padStart(11, '0');
+                      if (pRow && pRow.cpf && !foundNormCpfSet.has(rowNormCpf)) {
+                        foundNormCpfSet.add(rowNormCpf);
+                        tempBcrData.push(pRow);
+                      }
+                    });
+                  }
+                } catch (e) {
+                  // Fallback silencioso
+                }
+              })
+            );
+          }
+        }
+
+        bcrData = tempBcrData;
+
+        const memberConvenioMap = new Map<string, string>(
+          memberBatch.map((m: { cliente_cpf: string | null; convenio?: string | null }) => {
+            const rawCpf = m.cliente_cpf || "";
+            const normCpf = rawCpf.replace(/\D/g, "").padStart(11, '0');
+            const conv = m.convenio && m.convenio !== "detect" && m.convenio !== "importado" && m.convenio !== "multi"
+              ? m.convenio
+              : (detectedConvenios.get(normCpf) || (targetTableObj.convenio || "siape"));
+            return [normCpf, conv];
+          })
+        );
+
+        // O(N) Maps lookup por CPF normalizado (11 dígitos)
+        const bcrMap = new Map<string, ICampaignMembroRow>();
+        (bcrData || []).forEach((row) => {
+          if (row.cpf) {
+            const nCpf = String(row.cpf).replace(/\D/g, "").padStart(11, '0');
+            if (!bcrMap.has(nCpf)) {
+              bcrMap.set(nCpf, row as unknown as ICampaignMembroRow);
+            }
+          }
+        });
+
+        const sortedBatchData: ICampaignMembroRow[] = [];
+        cpfs.forEach((cpf: string) => {
+          const norm = cpf.replace(/\D/g, "").padStart(11, '0');
+          const matchedRow = bcrMap.get(norm);
+          if (matchedRow) {
+            sortedBatchData.push(matchedRow);
+          } else {
+            // Garantir que 100% dos clientes da campanha sejam exportados mesmo se ausentes da tabela
+            sortedBatchData.push({
+              cpf,
+              nome: "CLIENTE DA CAMPANHA",
+              data_nascimento: "",
+              telefone_1: "",
+              telefone_2: "",
+              telefone_3: ""
+            } as ICampaignMembroRow);
+          }
+        });
+
+        sortedBatchData.forEach((row: ICampaignMembroRow) => {
+          const key = row.cpf;
+          if (uniqueRowsKeys.has(key)) return
+          uniqueRowsKeys.add(key)
+
+          const govRow = row as unknown as IGovPiRow;
+
+          let csvFields: (string | number | null | undefined)[] = [];
+          if (isGovMg) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).matricula || "",
+              (row as any).orgao || "",
+              (row as any).margem_70 ?? "",
+              (row as any).margem_emprestimo ?? "",
+              (row as any).cartao_credito ?? "",
+              (row as any).cartao_beneficio ?? (row as any).margem_beneficio ?? ""
+            ];
+          } else if (isGovAm) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).matricula || "",
+              (row as any).orgao || "",
+              (row as any).secretaria || "",
+              (row as any).cargo || "",
+              (row as any).situacao || "",
+              (row as any).margem_consignavel ?? "",
+              (row as any).margem_cartao ?? "",
+              (row as any).margem_cartao_beneficio ?? "",
+              (row as any).margem_cartao_beneficio_saque ?? ""
+            ];
+          } else if (isGovCe) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).salario ?? "",
+              (row as any).orgao || "",
+              (row as any).secretaria || "",
+              (row as any).vinculo || ""
+            ];
+          } else if (isGovRo) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).matricula || "",
+              (row as any).orgao || "",
+              (row as any).secretaria || "",
+              (row as any).cargo || "",
+              (row as any).vinculo || "",
+              (row as any).salario ?? "",
+              (row as any).margem_emprestimo ?? "",
+              (row as any).margem_cartao ?? "",
+              (row as any).margem_cartao_beneficio ?? ""
+            ];
+          } else if (isGovBa) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || (row as any).telefone || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).matricula || "",
+              (row as any).orgao || "",
+              (row as any).secretaria || "",
+              (row as any).situacao || "",
+              (row as any).tipo_servidor || "",
+              (row as any).margem_emprestimo_total ?? "",
+              (row as any).margem_emprestimo_disponivel ?? ""
+            ];
+          } else if (isGovPi) {
+            csvFields = [
+              govRow.cpf,
+              govRow.nome,
+              govRow.data_nascimento || "",
+              govRow.telefone_1 || "",
+              govRow.telefone_2 || "",
+              govRow.telefone_3 || "",
+              govRow.margem_disponivel_emprestimo ?? "",
+              govRow.margem_cartao_consignado ?? "",
+              govRow.margem_cartao_beneficio ?? ""
+            ];
+          } else if (isGovRr) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_de_nascimento || row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              row.margem_emprestimo ?? "",
+              row.margem_cartao ?? ""
+            ];
+          } else if (isGovSp) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              row.margem_35 || 0,
+              row.bruta_5 || 0,
+              row.liquida_5 || 0,
+              row.beneficio_bruta_5 || 0,
+              row.beneficio_liquida_5 || 0
+            ];
+          } else if (isSantoAndre) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).margem_bruta_cartao ?? "",
+              (row as any).margem_liquida_cartao ?? ""
+            ];
+          } else if (isPrefPontaGrossa) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).idade ?? "",
+              (row as any).matricula || "",
+              (row as any).origem || "",
+              (row as any).situacao || "",
+              (row as any).vinculo || "",
+              (row as any).margem_total ?? "",
+              (row as any).margem_disponivel ?? ""
+            ];
+          } else if (isAmazonPrev) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).matricula || "",
+              (row as any).orgao || "AMAZON PREV",
+              (row as any).lotacao || "",
+              (row as any).situacao_funcional || "",
+              (row as any).salario ?? "",
+              (row as any).margem ?? ""
+            ];
+          } else if (isPrefNatal) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).vinculo || "",
+              (row as any).orgao || "",
+              (row as any).margem_emprestimo_consignado ?? "",
+              (row as any).margem_cartao_consignado ?? "",
+              (row as any).margem_cartao_beneficio ?? ""
+            ];
+          } else if (isPrefPortoVelho) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              (row as any).vinculo || "",
+              (row as any).orgao || "",
+              (row as any).margem_emprestimo ?? "",
+              (row as any).margem_cartao_consignado ?? ""
+            ];
+          } else if (isPrefSp) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              row.margem_35 || 0,
+              row.beneficio_bruta_5 || 0,
+              row.beneficio_liquida_5 || 0
+            ];
+          } else if (isGovMa) {
+            csvFields = [
+              row.cpf,
+              row.nome,
+              row.data_nascimento || "",
+              row.telefone_1 || "",
+              row.telefone_2 || "",
+              row.telefone_3 || "",
+              row.margem_35 || 0,
+              row.bruta_5 || 0,
+              row.liquida_5 || 0,
+              row.beneficio_bruta_5 || 0,
+              row.beneficio_liquida_5 || 0
+            ];
+          } else if (isMultiConvenio) {
+            const conv = memberConvenioMap.get(row.cpf) || "siape";
+            if (conv === "siape") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "SIAPE",
+                row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
+                row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0
+              ];
+            } else if (conv === "governo_sp") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO SP",
+                "", row.margem_35 || 0, row.bruta_5 || 0, "",
+                row.liquida_5 || 0, row.beneficio_bruta_5 || 0, "", row.beneficio_liquida_5 || 0
+              ];
+            } else if (conv === "prefeitura_sp") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "PREFEITURA SP",
+                "", row.margem_35 || 0, "", "",
+                "", row.beneficio_bruta_5 || 0, "", row.beneficio_liquida_5 || 0
+              ];
+            } else if (conv === "governo_pi") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO PIAUÍ",
+                "", row.margem_disponivel_emprestimo ?? "", "", "",
+                row.margem_cartao_consignado ?? "", "", "", row.margem_cartao_beneficio ?? ""
+              ];
+            } else if (conv === "governo_ma") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO MARANHÃO",
+                "", row.margem_35 || 0, row.bruta_5 || 0, "",
+                row.liquida_5 || 0, row.beneficio_bruta_5 || 0, "", row.beneficio_liquida_5 || 0
+              ];
+            } else if (conv === "governo_rr") {
+              csvFields = [
+                row.cpf, row.nome, row.data_de_nascimento || row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO RORAIMA",
+                "", row.margem_emprestimo ?? "", "", "",
+                row.margem_cartao ?? "", "", "", ""
+              ];
+            } else if (conv === "prefeitura_santo_andre") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "PREFEITURA SANTO ANDRÉ",
+                "", "", "", "",
+                (row as any).margem_liquida_cartao ?? "", "", "", ""
+              ];
+            } else if (conv === "prefeitura_natal") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "PREFEITURA DE NATAL",
+                "", (row as any).margem_emprestimo_consignado ?? "", "", "",
+                (row as any).margem_cartao_consignado ?? "", "", "", (row as any).margem_cartao_beneficio ?? ""
+              ];
+            } else if (conv === "prefeitura_porto_velho") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "PREFEITURA PORTO VELHO",
+                "", (row as any).margem_emprestimo ?? "", "", "",
+                (row as any).margem_cartao_consignado ?? "", "", "", ""
+              ];
+            } else if (conv === "governo_am") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO AMAZONAS",
+                "", (row as any).margem_consignavel ?? "", "", "",
+                (row as any).margem_cartao ?? "", (row as any).margem_cartao_beneficio ?? "", "", (row as any).margem_cartao_beneficio_saque ?? ""
+              ];
+            } else if (conv === "amazon_prev") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "AMAZON PREV",
+                "", (row as any).margem ?? "", "", "",
+                "", "", "", ""
+              ];
+            } else if (conv === "governo_ce") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO CEARÁ",
+                "", (row as any).salario ?? "", "", "",
+                "", "", "", ""
+              ];
+            } else if (conv === "governo_ro") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO RONDÔNIA",
+                "", (row as any).margem_emprestimo ?? "", "", "",
+                (row as any).margem_cartao ?? "", (row as any).margem_cartao_beneficio ?? "", "", ""
+              ];
+            } else if (conv === "governo_mg") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO MINAS GERAIS",
+                (row as any).margem_70 ?? "", (row as any).margem_emprestimo ?? "", "", "",
+                (row as any).cartao_credito ?? "", "", "", (row as any).cartao_beneficio ?? ""
+              ];
+            } else if (conv === "governo_ba") {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || (row as any).telefone || "", row.telefone_2 || "", row.telefone_3 || "",
+                "GOVERNO BAHIA",
+                "", (row as any).margem_emprestimo_disponivel ?? (row as any).margem_emprestimo_total ?? "", "", "",
+                "", "", "", ""
+              ];
+            } else {
+              csvFields = [
+                row.cpf, row.nome, row.data_nascimento || "",
+                row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+                "SIAPE",
+                row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
+                row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0
+              ];
+            }
+          } else {
+            csvFields = [
+              row.cpf, row.nome, row.data_nascimento || "",
+              row.telefone_1 || "", row.telefone_2 || "", row.telefone_3 || "",
+              row.saldo_70 || 0, row.margem_35 || 0, row.bruta_5 || 0, row.utilizada_5 || 0,
+              row.liquida_5 || 0, row.beneficio_bruta_5 || 0, row.beneficio_utilizada_5 || 0, row.beneficio_liquida_5 || 0
+            ];
+          }
+
+          const csvRow = csvFields.map(val => {
+            const clean = String(val === null || val === undefined ? "" : val).replace(/"/g, '""');
+            return `"${clean}"`;
+          }).join(",")
+          
+          allCsvRows.push(csvRow)
+        });
+
+        totalProcessed += memberBatch.length;
+        const progress = Math.min(Math.round((totalProcessed / totalToExport) * 100), 100)
+        setExportProgress(progress)
+
+        // Backpressure: delay para liberar main thread e evitar sobrecarga
+        await new Promise(resolve => setTimeout(resolve, 400))
+      }
+
+      if (allCsvRows.length === 0) {
+        alert("Nenhum dado encontrado para os filtros desta campanha.")
+        setIsExporting(null)
+        return
+      }
+
+      const csvContent = allCsvRows.join("\n")
+      const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' })
+      const link = document.createElement("a")
+      const url = URL.createObjectURL(blob)
+      link.setAttribute("href", url)
+      link.setAttribute("download", `campanha_${campaign.nome.toLowerCase().replace(/[^\w\s]/gi, '').replace(/\s+/g, '_')}_p${partIndex + 1}_${new Date().getTime()}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+    } catch (err: unknown) {
+      if ((err as Error)?.message === "ABORT_BY_USER") {
+        console.log("Exportação abortada.")
+        return
+      }
+
+      const anyErr = (typeof err === "object" && err !== null ? err : {}) as Record<string, unknown>;
+      const errorCode = anyErr.code as string | undefined;
+      const isTimeout = errorCode === "57014" || errorCode === "P0001";
+
+      let errorMsg = "Erro desconhecido. Verifique o console.";
+      if (isTimeout) {
+        errorMsg = "Tempo limite do banco de dados excedido. Tente reduzir o intervalo de exportação ou simplificar os filtros.";
+      } else if (err instanceof Error && err.message) {
+        errorMsg = err.message;
+      } else if (typeof anyErr.message === "string" && anyErr.message) {
+        errorMsg = anyErr.message;
+      } else if (typeof anyErr.details === "string" && anyErr.details) {
+        errorMsg = anyErr.details;
+      } else if (typeof anyErr.error_description === "string" && anyErr.error_description) {
+        errorMsg = anyErr.error_description;
+      } else if (typeof err === "string") {
+        errorMsg = err;
+      } else {
+        try {
+          errorMsg = JSON.stringify(err);
+        } catch {
+          errorMsg = String(err);
+        }
+      }
+
+      console.error("ERRO DETALHADO NA EXPORTAÇÃO:", {
+        raw: err,
+        message: anyErr.message,
+        details: anyErr.details,
+        code: anyErr.code,
+        hint: anyErr.hint,
+      })
+      alert(`Erro ao exportar campanha: ${errorMsg}`)
+    } finally {
+      setIsExporting(null)
+      setExportProgress(0)
+      abortControllerRef.current = null
+    }
+  }
+
+  const handleRename = async (id: string) => {
+    if (!editingName.trim()) return
+    setIsUpdating(true)
+    try {
+      const { error: updateError } = await supabase
+        .from('campanhas')
+        .update({ nome: editingName.trim() })
+        .eq('id', id)
+
+      if (updateError) throw updateError
+      
+      setCampaigns(prev => prev.map(c => c.id === id ? { ...c, nome: editingName.trim() } : c))
+      setEditingId(null)
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : "Tente novamente.";
+      console.error("Erro ao renomear campanha:", err)
+      alert("Erro ao renomear: " + errorMsg)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const filteredCampaigns = campaigns.filter(c => 
+    c.nome.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    c.id.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  // Pagination Logic
+  const totalPages = Math.ceil(filteredCampaigns.length / itemsPerPage);
+  const paginatedCampaigns = filteredCampaigns.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
+  const fetchUsers = useCallback(async () => {
+    setIsLoadingUsers(true)
+    try {
+      const response = await fetch('/api/usuarios')
+      const data = await response.json()
+      setAllUsers(data || [])
+    } catch (err) {
+      console.error("Erro ao buscar usuários:", err)
+    } finally {
+      setIsLoadingUsers(false)
+    }
+  }, [])
+
+  const handleOpenDistribution = (campaign: Campaign) => {
+    setCampaignToDistribute(campaign)
+    setDistributionStep(1)
+    
+    const filtersWithDist = campaign.filtros
+    const distributedSups = filtersWithDist?.distribuicao || []
+    const distributedBrokers = filtersWithDist?.corretores_selecionados || []
+    
+    setSelectedSupervisors(distributedSups)
+    setSelectedBrokers(distributedBrokers)
+    setShowDistributionModal(true)
+    fetchUsers()
+  }
+
+  const handleSaveDistribution = async () => {
+    if (!campaignToDistribute) return
+    setIsSavingDistribution(true)
+    try {
+      const response = await fetch('/api/campanhas/distribuir', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          campanhaId: campaignToDistribute.id,
+          selectedSupervisors,
+          selectedBrokers
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao processar distribuição no servidor.')
+      }
+
+      const updatedFiltros = data.updatedFiltros || {
+        ...campaignToDistribute.filtros,
+        distribuicao: selectedSupervisors,
+        corretores_selecionados: selectedBrokers
+      }
+
+      setCampaigns(prev => prev.map(c => 
+        c.id === campaignToDistribute.id ? { ...c, filtros: updatedFiltros } : c
+      ))
+      
+      setShowDistributionModal(false)
+      alert("Campanha distribuída com sucesso!")
+    } catch (err: unknown) {
+      console.error("Erro ao salvar distribuição:", err)
+      let errorMsg = "Erro desconhecido"
+      if (err instanceof Error) {
+        errorMsg = err.message
+      } else if (typeof err === 'object' && err !== null) {
+        const anyErr = err as { message?: string; error?: string; details?: string }
+        errorMsg = anyErr.message || anyErr.error || anyErr.details || JSON.stringify(err)
+      } else if (typeof err === 'string') {
+        errorMsg = err
+      }
+      alert("Erro ao salvar distribuição: " + errorMsg)
+    } finally {
+      setIsSavingDistribution(false)
+    }
+  }
+
+  const supervisors = allUsers.filter(u => {
+    const f = (u.funcao || '').toLowerCase()
+    const isActive = (u.status || 'ATIVO').toUpperCase() === 'ATIVO'
+    return isActive && (f.includes('supervisor') || f.includes('administrador') || f.includes('admin'))
+  })
+  const availableBrokers = allUsers.filter(u => {
+    const f = (u.funcao || '').toLowerCase()
+    const isBrokerRole = f.includes('corretor') || f.includes('estágio') || f.includes('estagio') || f.includes('processo seletivo') || f.includes('pj')
+    const isActive = (u.status || 'ATIVO').toUpperCase() === 'ATIVO'
+    return isActive && isBrokerRole && (u.supervisor_id && selectedSupervisors.includes(u.supervisor_id))
+  })
+
+  return (
+    <div className="flex-1 flex flex-col relative">
+      <Header title="CAMPANHAS" />
+      
+      {/* Modal de exportação removido para nova implementação */}
+      
+      <div className="p-4 lg:p-8 space-y-8 max-w-[1400px] mx-auto w-full">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <p className="text-[10.5px] font-bold text-slate-400 uppercase tracking-widest text-center md:text-left">Gerencie seus públicos e estratégias de vendas.</p>
+          <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
+            <Button 
+              onClick={() => {
+                setImportFile(null)
+                setImportCampaignName("")
+                setImportError(null)
+                setImportProgress(0)
+                setShowImportModal(true)
+              }}
+              variant="outline"
+              className="w-full md:w-auto h-10 px-6 text-[12px] font-bold uppercase tracking-widest border-slate-200 text-slate-700 hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Importar Campanha
+            </Button>
+            <Link href="/campanhas/nova" className="w-full md:w-auto">
+              <Button className="w-full md:w-auto h-10 px-6 text-[12px] font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                <Plus className="w-3.5 h-3.5" />
+                Nova Campanha
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        <Card className="card-shadow">
+          <CardContent className="p-0">
+                <div className="p-8 border-b border-slate-50 flex gap-4">
+                  <div className="flex-1">
+                    <Input 
+                      placeholder="Buscar por ID ou Nome da Campanha..." 
+                      icon={<Search className="w-4 h-4" />}
+                      className="h-9 text-[12px]"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  <Button variant="outline" size="icon" className="w-9 h-9 border-slate-100 bg-slate-50/30">
+                    <Filter className="w-4 h-4 text-slate-400" />
+                  </Button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/50 border-b border-slate-50">
+                        <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Identificação</th>
+                        <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Nome</th>
+                        <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Data Criação</th>
+                        <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest">Público</th>
+                        <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest"></th>
+                        <th className="px-8 py-4 text-[8.5px] font-semibold text-slate-400 uppercase tracking-widest text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {isLoading ? (
+                        <tr>
+                          <td colSpan={6} className="px-8 py-20 text-center">
+                            <div className="flex flex-col items-center gap-4">
+                              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Carregando campanhas...</p>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : error ? (
+                        <tr>
+                          <td colSpan={6} className="px-8 py-20 text-center">
+                            <div className="flex flex-col items-center gap-4">
+                              <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center">
+                                <Info className="w-6 h-6 text-red-500" />
+                              </div>
+                              <div className="space-y-1">
+                                <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest">Erro ao carregar campanhas</p>
+                                <p className="text-[10px] text-slate-400 max-w-xs mx-auto">{error}</p>
+                              </div>
+                              <Button 
+                                onClick={fetchCampaigns}
+                                variant="outline" 
+                                size="sm" 
+                                className="h-8 px-4 text-[9px] font-bold uppercase tracking-widest border-slate-200"
+                              >
+                                Tentar Novamente
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : filteredCampaigns.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-8 py-20 text-center">
+                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhuma campanha encontrada.</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedCampaigns.map((campaign) => (
+                          <tr key={campaign.id} className="border-b border-slate-50 hover:bg-slate-50/30 transition-colors group">
+                            <td className="px-8 py-5 text-[11px] font-bold text-slate-400 truncate max-w-[100px]">{campaign.id}</td>
+                            <td className="px-8 py-5">
+                              {editingId === campaign.id ? (
+                                <div className="flex items-center gap-2 max-w-[250px]">
+                                  <Input
+                                    value={editingName}
+                                    onChange={(e) => setEditingName(e.target.value)}
+                                    className="h-8 text-[12px] font-bold"
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleRename(campaign.id);
+                                      if (e.key === 'Escape') setEditingId(null);
+                                    }}
+                                  />
+                                  <Button 
+                                    size="icon" 
+                                    className="w-8 h-8 shrink-0 bg-emerald-500 hover:bg-emerald-600"
+                                    onClick={() => handleRename(campaign.id)}
+                                    disabled={isUpdating}
+                                  >
+                                    {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                                  </Button>
+                                  <Button 
+                                    size="icon" 
+                                    variant="ghost"
+                                    className="w-8 h-8 shrink-0 text-slate-400"
+                                    onClick={() => setEditingId(null)}
+                                    disabled={isUpdating}
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col">
+                                  <span className="text-[12.5px] font-bold text-slate-900 uppercase tracking-tight">{campaign.nome}</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-8 py-5">
+                              <div className="flex items-center gap-2 text-slate-500">
+                                <Calendar className="w-3.5 h-3.5" />
+                                <span className="text-[11.5px] font-medium">{new Date(campaign.created_at).toLocaleDateString('pt-BR')}</span>
+                              </div>
+                            </td>
+                            <td className="px-8 py-5">
+                              <div className="flex items-center gap-2">
+                                <Users className="w-3.5 h-3.5 text-primary" />
+                                <span className="text-[12.5px] font-black text-slate-900">{campaign.publico_estimado.toLocaleString('pt-BR')}</span>
+                              </div>
+                            </td>
+                            <td className="px-8 py-5">
+                              {isExporting?.startsWith(campaign.id) && (
+                                <div className="flex items-center gap-3 w-full max-w-[160px]">
+                                  <div className="flex-1 flex flex-col gap-1">
+                                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                      <div 
+                                        className="bg-emerald-500 h-full transition-all duration-300" 
+                                        style={{ width: `${exportProgress}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest text-center">
+                                      {exportProgress}%
+                                    </span>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={handleCancelExport}
+                                    className="w-7 h-7 rounded-lg text-rose-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-100 hover:border-rose-100 shrink-0"
+                                    title="Parar Exportação"
+                                  >
+                                    <X className="w-3.5 h-3.5" strokeWidth={3} />
+                                  </Button>
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-8 py-5 text-right font-medium">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {/* Ver Filtros */}
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="w-8 h-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all border border-transparent hover:border-blue-100 shadow-sm hover:shadow-md"
+                                  onClick={() => {
+                                    setSelectedCampaignForFilters(campaign);
+                                    setShowFiltersModal(true);
+                                  }}
+                                  title="Ver Filtros"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+
+                                {/* Renomear */}
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="w-8 h-8 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-all border border-transparent hover:border-amber-100 shadow-sm hover:shadow-md"
+                                  onClick={() => {
+                                    setEditingId(campaign.id);
+                                    setEditingName(campaign.nome);
+                                  }}
+                                  title="Renomear"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </Button>
+
+                                {/* Distribuir Campanha */}
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="w-8 h-8 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all border border-transparent hover:border-indigo-100 shadow-sm hover:shadow-md"
+                                  onClick={() => handleOpenDistribution(campaign)}
+                                  title="Distribuir Campanha"
+                                >
+                                  <Share2 className="w-4 h-4" />
+                                </Button>
+
+                                {/* Exportar */}
+                                {campaign.publico_estimado > PART_SIZE ? (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger 
+                                      disabled={isExporting !== null}
+                                      className={cn(
+                                        buttonVariants({ variant: "ghost", size: "icon" }),
+                                        "w-8 h-8 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-all border border-transparent hover:border-emerald-100 shadow-sm hover:shadow-md",
+                                        isExporting?.startsWith(campaign.id) && "text-emerald-600 bg-emerald-50 border-emerald-100"
+                                      )}
+                                      title="Exportar Partes"
+                                    >
+                                      {isExporting?.startsWith(campaign.id) ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <Download className="w-4 h-4" />
+                                      )}
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-[240px] rounded-2xl border-slate-100 shadow-xl p-2">
+                                      {Array.from({ length: Math.ceil(campaign.publico_estimado / PART_SIZE) }).map((_, i) => (
+                                        <DropdownMenuItem 
+                                          key={i} 
+                                          onClick={() => handleExport(campaign, i)}
+                                          className="text-[10px] font-black uppercase tracking-widest py-2.5 px-3 cursor-pointer rounded-xl hover:bg-emerald-50 hover:text-emerald-600"
+                                        >
+                                          <Download className="w-3.5 h-3.5 mr-2 text-slate-400" />
+                                          Parte {i + 1} ({ (i * PART_SIZE).toLocaleString() } ao { Math.min((i + 1) * PART_SIZE - 1, campaign.publico_estimado - 1).toLocaleString() })
+                                        </DropdownMenuItem>
+                                      ))}
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                ) : (
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    disabled={isExporting !== null}
+                                    onClick={() => handleExport(campaign)}
+                                    className={cn(
+                                      "w-8 h-8 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-all border border-transparent hover:border-emerald-100 shadow-sm hover:shadow-md",
+                                      isExporting?.startsWith(campaign.id) && "text-emerald-600 bg-emerald-50 border-emerald-100"
+                                    )}
+                                    title="Exportar"
+                                  >
+                                    {isExporting?.startsWith(campaign.id) ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Download className="w-4 h-4" />
+                                    )}
+                                  </Button>
+                                )}
+
+                                {/* Excluir */}
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="w-8 h-8 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all border border-transparent hover:border-red-100 shadow-sm hover:shadow-md"
+                                  onClick={() => {
+                                    setCampaignToDelete(campaign.id);
+                                    setIsDeleteDialogOpen(true);
+                                  }}
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+            {totalPages > 1 && (
+              <div className="px-8 py-10 flex flex-col sm:flex-row items-center justify-between border-t border-slate-50 bg-slate-50/20 gap-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  Mostrando {((currentPage - 1) * itemsPerPage) + 1} a {Math.min(currentPage * itemsPerPage, filteredCampaigns.length)} de {filteredCampaigns.length} campanhas
+                </p>
+                
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  
+                  <div className="flex items-center gap-1">
+                    {(() => {
+                      const pages = [];
+                      const maxVisiblePages = 5;
+                      let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+                      const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+                      
+                      if (endPage - startPage + 1 < maxVisiblePages) {
+                        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+                      }
+
+                      for (let i = startPage; i <= endPage; i++) {
+                        pages.push(
+                          <Button
+                            key={i}
+                            variant={currentPage === i ? "default" : "outline"}
+                            size="icon"
+                            className={cn(
+                              "h-8 w-8 rounded-lg transition-all text-[10px] font-black tracking-widest",
+                              currentPage === i 
+                                ? "bg-primary text-white shadow-lg shadow-primary/20 border-primary" 
+                                : "border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20"
+                            )}
+                            onClick={() => handlePageChange(i)}
+                          >
+                            {i}
+                          </Button>
+                        );
+                      }
+                      return pages;
+                    })()}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg border-slate-200 text-slate-400 hover:text-primary hover:border-primary/20 transition-all disabled:opacity-30"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      {/* Modal de Filtros */}
+      <Dialog open={showFiltersModal} onOpenChange={setShowFiltersModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-[16px] font-bold uppercase tracking-tight text-slate-900">
+              Filtros da Campanha: {selectedCampaignForFilters?.nome}
+            </DialogTitle>
+            <DialogDescription className="text-[11px] font-medium text-slate-400 uppercase tracking-widest">
+              Confira todos os parâmetros utilizados para gerar este público.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-6">
+            {selectedCampaignForFilters?.filtros && Object.keys(selectedCampaignForFilters.filtros).length > 0 ? (
+              <div className="space-y-3">
+                {/* Orgãos */}
+                {selectedCampaignForFilters.filtros.orgaos?.length > 0 && (
+                  <FilterAccordion title="Órgãos" count={selectedCampaignForFilters.filtros.orgaos.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.orgaos.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-blue-50 text-blue-600 px-2.5 py-1 rounded font-bold uppercase border border-blue-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* UFs */}
+                {selectedCampaignForFilters.filtros.ufs?.length > 0 && (
+                  <FilterAccordion title="Estados (UF)" count={selectedCampaignForFilters.filtros.ufs.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.ufs.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-slate-100 text-slate-600 px-2.5 py-1 rounded font-bold uppercase border border-slate-200">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Idade */}
+                {(selectedCampaignForFilters.filtros.idadeMin || selectedCampaignForFilters.filtros.idadeMax) && (
+                  <FilterAccordion title="Faixa Etária">
+                    <div className="pt-2">
+                      <div className="text-[12px] font-bold text-slate-700 bg-orange-50/50 p-3 rounded-lg border border-orange-100 flex items-center justify-between">
+                        <span className="text-[10px] text-orange-400 uppercase tracking-widest font-black">Intervalo</span>
+                        <span>{selectedCampaignForFilters.filtros.idadeMin || "0"} a {selectedCampaignForFilters.filtros.idadeMax || "∞"} anos</span>
+                      </div>
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Margem */}
+                {(selectedCampaignForFilters.filtros.margemMin || selectedCampaignForFilters.filtros.margemMax) && (
+                  <FilterAccordion title="Margem 35%">
+                    <div className="pt-2">
+                      <div className="text-[12px] font-bold text-slate-700 bg-emerald-50/50 p-3 rounded-lg border border-emerald-100 flex items-center justify-between">
+                        <span className="text-[10px] text-emerald-400 uppercase tracking-widest font-black">Valor</span>
+                        <span>R$ {selectedCampaignForFilters.filtros.margemMin || "0"} a R$ {selectedCampaignForFilters.filtros.margemMax || "∞"}</span>
+                      </div>
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Bancos de Empréstimo */}
+                {selectedCampaignForFilters.filtros.loanBanks?.length > 0 && (
+                  <FilterAccordion title="Bancos (Empréstimo)" count={selectedCampaignForFilters.filtros.loanBanks.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.loanBanks.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-amber-50 text-amber-600 px-2.5 py-1 rounded font-bold uppercase border border-amber-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Prazo */}
+                {(selectedCampaignForFilters.filtros.loanPrazoMin || selectedCampaignForFilters.filtros.loanPrazoMax) && (
+                  <FilterAccordion title="Prazo de Empréstimo">
+                    <div className="pt-2">
+                      <div className="text-[12px] font-bold text-slate-700 bg-amber-50/30 p-3 rounded-lg border border-amber-100/50 flex items-center justify-between">
+                        <span className="text-[10px] text-amber-400 uppercase tracking-widest font-black">Meses</span>
+                        <span>{selectedCampaignForFilters.filtros.loanPrazoMin || "0"} a {selectedCampaignForFilters.filtros.loanPrazoMax || "∞"} meses</span>
+                      </div>
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Bancos de Cartão */}
+                {selectedCampaignForFilters.filtros.cardBanks?.length > 0 && (
+                  <FilterAccordion title="Bancos (Cartão)" count={selectedCampaignForFilters.filtros.cardBanks.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.cardBanks.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-rose-50 text-rose-600 px-2.5 py-1 rounded font-bold uppercase border border-rose-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Tipos de Cartão */}
+                {selectedCampaignForFilters.filtros.cardTypes?.length > 0 && (
+                  <FilterAccordion title="Tipos de Cartão" count={selectedCampaignForFilters.filtros.cardTypes.filter((t: string) => t !== '__ACTIVE__').length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.cardTypes.filter((t: string) => t !== '__ACTIVE__').map((item: string) => (
+                        <span key={item} className="text-[9px] bg-rose-50 text-rose-600 px-2.5 py-1 rounded font-bold uppercase border border-rose-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Situações Funcionais */}
+                {selectedCampaignForFilters.filtros.situacoes?.length > 0 && (
+                  <FilterAccordion title="Situações Funcionais" count={selectedCampaignForFilters.filtros.situacoes.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.situacoes.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-violet-50 text-violet-600 px-2.5 py-1 rounded font-bold uppercase border border-violet-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+
+                {/* Regimes Jurídicos */}
+                {selectedCampaignForFilters.filtros.regimes?.length > 0 && (
+                  <FilterAccordion title="Regimes Jurídicos" count={selectedCampaignForFilters.filtros.regimes.length}>
+                    <div className="flex flex-wrap gap-1.5 pt-2">
+                      {selectedCampaignForFilters.filtros.regimes.map((item: string) => (
+                        <span key={item} className="text-[9px] bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded font-bold uppercase border border-indigo-100">{item}</span>
+                      ))}
+                    </div>
+                  </FilterAccordion>
+                )}
+              </div>
+            ) : (
+              <div className="py-12 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-xl">
+                <Info className="w-8 h-8 text-slate-200 mb-2" />
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhum filtro aplicado.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-8 pt-6 border-t border-slate-50 flex justify-end">
+            <Button 
+              onClick={() => setShowFiltersModal(false)}
+              className="h-10 px-8 text-[11px] font-bold uppercase tracking-widest"
+            >
+              Fechar Visualização
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Confirmação de Exclusão */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="max-w-[400px] border-none rounded-3xl shadow-2xl p-0 overflow-hidden bg-white">
+          <div className="p-8">
+            <div className="w-16 h-16 rounded-2xl bg-rose-50 flex items-center justify-center mb-6 mx-auto">
+              <Trash2 className="w-8 h-8 text-rose-500" />
+            </div>
+            <h3 className="text-[18px] font-black text-slate-800 text-center uppercase tracking-tighter mb-2">Excluir Campanha?</h3>
+            <p className="text-[12px] font-medium text-slate-500 text-center leading-relaxed">
+              Esta ação não pode ser desfeita. Todos os dados desta campanha serão removidos permanentemente.
+            </p>
+          </div>
+          <div className="p-6 bg-slate-50 flex gap-3">
+            <Button 
+              variant="ghost" 
+              className="flex-1 h-12 text-[11px] font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-100 rounded-xl"
+              onClick={() => setIsDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              className="flex-1 h-12 text-[11px] font-bold uppercase tracking-widest bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-200 rounded-xl gap-2"
+              onClick={async () => {
+                if (!campaignToDelete) return;
+                setIsDeleting(true);
+                try {
+                  const { error } = await supabase.from('campanhas').delete().eq('id', campaignToDelete);
+                  if (error) throw error;
+                  await fetchCampaigns();
+                  setIsDeleteDialogOpen(false);
+                } catch (err) {
+                  console.error("Erro ao excluir campanha:", err);
+                  alert("Erro ao excluir campanha.");
+                } finally {
+                  setIsDeleting(false);
+                }
+              }}
+              disabled={isDeleting}
+            >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Confirmar Exclusão"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Distribuição de Campanha */}
+      <Dialog open={showDistributionModal} onOpenChange={setShowDistributionModal}>
+        <DialogContent className="max-w-md w-[95vw] max-h-[85vh] border-none rounded-[32px] shadow-2xl p-0 bg-white flex flex-col overflow-hidden">
+          <div className="p-8 pb-4 flex-1 flex flex-col min-h-0">
+            <div className="flex items-center justify-end mb-6 shrink-0">
+              {distributionStep === 2 && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setDistributionStep(1)}
+                  className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-blue-600 gap-2"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  VOLTAR
+                </Button>
+              )}
+            </div>
+            
+            <h3 className="text-[19px] font-black text-slate-900 uppercase tracking-tighter mb-1.5">
+              {distributionStep === 1 ? "Distribuir Campanha" : "Selecionar Corretores"}
+            </h3>
+            <p className="text-[11px] font-medium text-slate-500 leading-relaxed uppercase tracking-wider">
+              {distributionStep === 1 
+                ? "Escolha as equipes (supervisores) que terão acesso a esta campanha:" 
+                : "Selecione os corretores desta(s) equipe(s) que poderão visualizar os dados:"}
+              <br />
+              <span className="font-bold text-blue-600">{campaignToDistribute?.nome}</span>
+            </p>
+
+            <div className="mt-8 space-y-3 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
+              {isLoadingUsers ? (
+                <div className="py-12 flex flex-col items-center justify-center gap-3">
+                  <Loader2 className="w-6 h-6 text-primary animate-spin" />
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Buscando {distributionStep === 1 ? "equipes" : "corretores"}...</span>
+                </div>
+              ) : distributionStep === 1 ? (
+                supervisors.length === 0 ? (
+                  <div className="py-12 text-center border-2 border-dashed border-slate-100 rounded-2xl">
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhum supervisor encontrado.</p>
+                  </div>
+                ) : (
+                  supervisors.map((sup) => {
+                    const isSelected = selectedSupervisors.includes(sup.id)
+                    return (
+                      <button
+                        key={sup.id}
+                        onClick={() => {
+                          setSelectedSupervisors(prev => {
+                            const newSups = isSelected 
+                              ? prev.filter(id => id !== sup.id)
+                              : [...prev, sup.id]
+                            
+                            // Ao desmarcar um supervisor, remover corretores dele da seleção
+                            if (isSelected) {
+                              const broksOfThisSup = allUsers.filter(u => u.supervisor_id === sup.id && (u.status || 'ATIVO').toUpperCase() === 'ATIVO').map(u => u.id)
+                              setSelectedBrokers(curr => curr.filter(bid => !broksOfThisSup.includes(bid)))
+                            }
+                            
+                            return newSups
+                          })
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between py-2.5 px-4 rounded-xl border transition-all duration-200 group text-left",
+                          isSelected 
+                            ? "bg-blue-600 border-blue-600 shadow-md shadow-blue-100" 
+                            : "bg-white border-slate-100 hover:border-blue-200 hover:bg-blue-50/30"
+                        )}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-black uppercase transition-colors shrink-0 overflow-hidden",
+                            isSelected ? "bg-white/20 text-white" : "bg-blue-50 text-blue-600"
+                          )}>
+                            {sup.avatar_url ? (
+                              <img src={sup.avatar_url} alt={sup.nome} className="w-full h-full object-cover" />
+                            ) : (
+                              sup.nome.substring(0, 2)
+                            )}
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className={cn(
+                              "text-[11.5px] font-bold uppercase tracking-tight truncate",
+                              isSelected ? "text-white" : "text-slate-900 group-hover:text-blue-600"
+                            )}>
+                              {sup.nome}
+                            </span>
+                            <span className={cn(
+                              "text-[9.5px] font-medium uppercase tracking-widest",
+                              isSelected ? "text-white/70" : "text-slate-400"
+                            )}>
+                              {sup.equipe}
+                            </span>
+                          </div>
+                        </div>
+                        <div className={cn(
+                          "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                          isSelected 
+                            ? "bg-white border-white text-blue-600" 
+                            : "border-slate-200 text-transparent group-hover:border-blue-300"
+                        )}>
+                          <Check className="w-3.5 h-3.5" strokeWidth={4} />
+                        </div>
+                      </button>
+                    )
+                  })
+                )
+              ) : (
+                // Step 2: Selecting Brokers
+                availableBrokers.length === 0 ? (
+                  <div className="py-12 text-center border-2 border-dashed border-slate-100 rounded-2xl">
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Nenhum corretor encontrado nestas equipes.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between px-2 mb-2">
+                       <button 
+                         onClick={() => {
+                           const allIds = availableBrokers.map(b => b.id)
+                           setSelectedBrokers(prev => {
+                             const allSelected = allIds.every(id => prev.includes(id))
+                             if (allSelected) {
+                               return prev.filter(id => !allIds.includes(id))
+                             } else {
+                               return Array.from(new Set([...prev, ...allIds]))
+                             }
+                           })
+                         }}
+                         className="text-[9px] font-black text-blue-600 uppercase tracking-widest hover:underline"
+                       >
+                         {availableBrokers.every(b => selectedBrokers.includes(b.id)) ? "Desmarcar Todos" : "Selecionar Todos"}
+                       </button>
+                    </div>
+                    {availableBrokers.map((broker) => {
+                      const isSelected = selectedBrokers.includes(broker.id)
+                      const sup = supervisors.find(s => s.id === broker.supervisor_id)
+                      return (
+                        <button
+                          key={broker.id}
+                          onClick={() => {
+                            setSelectedBrokers(prev => 
+                              isSelected 
+                                ? prev.filter(id => id !== broker.id)
+                                : [...prev, broker.id]
+                            )
+                          }}
+                          className={cn(
+                            "w-full flex items-center justify-between py-2.5 px-4 rounded-xl border transition-all duration-200 group text-left",
+                            isSelected 
+                              ? "bg-emerald-600 border-emerald-600 shadow-md shadow-emerald-100" 
+                              : "bg-white border-slate-100 hover:border-emerald-200 hover:bg-emerald-50/30"
+                          )}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-black uppercase transition-colors shrink-0 overflow-hidden",
+                              isSelected ? "bg-white/20 text-white" : "bg-emerald-50 text-emerald-600"
+                            )}>
+                              {broker.avatar_url ? (
+                                <img src={broker.avatar_url} alt={broker.nome} className="w-full h-full object-cover" />
+                              ) : (
+                                broker.nome.substring(0, 2)
+                              )}
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className={cn(
+                                "text-[11.5px] font-bold uppercase tracking-tight truncate",
+                                isSelected ? "text-white" : "text-slate-900 group-hover:text-emerald-600"
+                              )}>
+                                {broker.nome}
+                              </span>
+                              <span className={cn(
+                                "text-[9.5px] font-medium uppercase tracking-widest",
+                                isSelected ? "text-white/70" : "text-slate-400"
+                              )}>
+                                Equipe: {sup?.nome || broker.equipe}
+                              </span>
+                            </div>
+                          </div>
+                          <div className={cn(
+                            "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                            isSelected 
+                              ? "bg-white border-white text-emerald-600" 
+                              : "border-slate-200 text-transparent group-hover:border-emerald-300"
+                          )}>
+                            <Check className="w-3.5 h-3.5" strokeWidth={4} />
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </>
+                )
+              )}
+            </div>
+          </div>
+
+          <div className="p-6 bg-slate-50 flex gap-3 shrink-0 rounded-b-[32px] overflow-hidden">
+            <Button 
+              variant="ghost" 
+              className="flex-1 h-11 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-100 rounded-xl"
+              onClick={() => setShowDistributionModal(false)}
+              disabled={isSavingDistribution}
+            >
+              CANCELAR
+            </Button>
+            {distributionStep === 1 ? (
+              <Button 
+                className="flex-1 h-11 text-[10px] font-bold uppercase tracking-widest bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200 rounded-xl gap-2"
+                onClick={() => {
+                  if (selectedSupervisors.length === 0) {
+                    alert("Selecione ao menos um supervisor.")
+                    return
+                  }
+                  setDistributionStep(2)
+                }}
+                disabled={isLoadingUsers}
+              >
+                PRÓXIMA ETAPA
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            ) : (
+              <Button 
+                className="flex-1 h-11 text-[10px] font-bold uppercase tracking-widest bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200 rounded-xl gap-2"
+                onClick={handleSaveDistribution}
+                disabled={isSavingDistribution}
+              >
+                {isSavingDistribution ? <Loader2 className="w-4 h-4 animate-spin" /> : "FINALIZAR DISTRIBUIÇÃO"}
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Campaign Dialog */}
+      <Dialog open={showImportModal} onOpenChange={(open) => {
+        if (!isImportingCamp) setShowImportModal(open);
+      }}>
+        <DialogContent className="max-w-md p-0 overflow-hidden bg-white rounded-3xl border border-slate-100 shadow-2xl">
+          <DialogHeader className="p-6 pb-4 border-b border-slate-50 relative">
+            <DialogTitle className="text-sm font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+              <Upload className="w-4 h-4 text-primary" />
+              Importar Campanha
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 font-medium">
+              Importe uma lista de CPFs no formato CSV para criar uma nova campanha.
+            </DialogDescription>
+            <button 
+              onClick={() => setShowImportModal(false)}
+              className="absolute right-6 top-6 p-1.5 rounded-lg text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all"
+              disabled={isImportingCamp}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </DialogHeader>
+
+          <div className="p-6 space-y-5">
+            {/* Automatic Agreement Detector Status */}
+            <div id="auto_convenio_indicator" className="bg-slate-50/60 border border-slate-100/80 p-3.5 rounded-2xl flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                  Identificação do Convênio
+                </span>
+                <span className="text-[11px] font-semibold text-slate-600">
+                  Detecção automática por CPF ativa
+                </span>
+              </div>
+              <span className="px-2 py-0.5 text-[9.5px] font-black uppercase bg-emerald-50 text-emerald-700 rounded-lg tracking-wider border border-emerald-100">
+                Multi-convênio
+              </span>
+            </div>
+
+            {/* Campaign Name Input */}
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                Nome da Campanha
+              </label>
+              <Input
+                disabled={isImportingCamp}
+                placeholder="Ex: IMPORTADOS - LEADS NOVOS"
+                className="h-11 text-[12px] uppercase font-bold"
+                value={importCampaignName}
+                onChange={(e) => setImportCampaignName(e.target.value)}
+              />
+            </div>
+
+            {/* Drag & Drop File Upload field */}
+            <div className="space-y-1.5">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
+                Arquivo de Clientes (CSV)
+              </label>
+
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => {
+                  if (!isImportingCamp) {
+                    document.getElementById("file-upload-input")?.click();
+                  }
+                }}
+                className={cn(
+                  "border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all duration-300 min-h-[140px]",
+                  isDragOver ? "border-primary bg-primary/5 scale-[0.99]" : "border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50",
+                  importFile ? "border-emerald-200 bg-emerald-50/10 hover:bg-emerald-50/20" : "",
+                  isImportingCamp ? "pointer-events-none opacity-50" : ""
+                )}
+              >
+                <input
+                  id="file-upload-input"
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+
+                {importFile ? (
+                  <>
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                      <Check className="w-5 h-5 animate-bounce" strokeWidth={3} />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-bold text-slate-700 max-w-[240px] truncate">
+                        {importFile.name}
+                      </p>
+                      <p className="text-[10px] text-slate-400 mt-0.5 font-medium">
+                        {(importFile.size / 1024).toFixed(1)} KB • Pronto para importar
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className={cn(
+                      "w-10 h-10 rounded-full flex items-center justify-center transition-colors",
+                      isDragOver ? "bg-primary/20 text-primary" : "bg-slate-100/80 text-slate-400"
+                    )}>
+                      <Upload className="w-4 h-4" />
+                    </div>
+                    <div className="text-center space-y-0.5">
+                      <p className="text-xs font-bold text-slate-600">
+                        Arraste seu arquivo CSV ou <span className="text-blue-600 font-extrabold hover:underline">busque</span>
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
+                        Selecione um arquivo CSV com uma coluna de CPFs.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Error and progress feedbacks */}
+            {importError && (
+              <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-[11px] font-bold text-red-600 flex items-center gap-2">
+                <X className="w-4 h-4 shrink-0" strokeWidth={3} />
+                <span>{importError}</span>
+              </div>
+            )}
+
+            {isImportingCamp && (
+              <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-black text-slate-500 uppercase tracking-wider">
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                    Processando base em lotes...
+                  </span>
+                  <span>{importProgress} CPFs inseridos</span>
+                </div>
+                <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-primary h-full transition-all duration-300 animate-pulse" 
+                    style={{ width: "100%" }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3 rounded-b-[24px]">
+            <Button
+              variant="ghost"
+              disabled={isImportingCamp}
+              onClick={() => setShowImportModal(false)}
+              className="flex-1 h-11 text-[11px] font-black uppercase tracking-wider rounded-xl text-slate-400 hover:bg-slate-100"
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={isImportingCamp || !importFile || !importCampaignName.trim()}
+              onClick={handleImportCampaign}
+              className="flex-1 h-11 text-[11px] font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-lg shadow-emerald-100 hover:shadow-xl transition-all"
+            >
+              {isImportingCamp ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  Importando...
+                </>
+              ) : (
+                "Importar"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
