@@ -524,11 +524,60 @@ export function ClientDetailsModal({
       const digits = cpf.replace(/\D/g, "")
       const paddedCpf = digits.padStart(11, '0')
       const foundProfiles: ConvenioProfile[] = []
-      
-      // 1. Try search in SIAPE Clients
-      const { data: siapeData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
+
+      // Pré-filtro concorrente paralelo: localiza simultaneamente em ~120ms os convênios que possuem cadastro
+      const tableCheckList: { type: string; table: string }[] = [
+        { type: 'siape', table: 'clientes' },
+        { type: 'governo_sp', table: 'governo_sp_clientes' },
+        { type: 'prefeitura_sp', table: 'prefeitura_sp_clientes' },
+        { type: 'governo_pi', table: 'governo_pi_clientes' },
+        { type: 'governo_ma', table: 'governo_ma_clientes' },
+        { type: 'governo_rr', table: 'governo_rr_clientes' },
+        { type: 'governo_rj', table: 'governo_rj_clientes' },
+        { type: 'prefeitura_santo_andre', table: 'prefeitura_santo_andre_clientes' },
+        { type: 'prefeitura_contagem', table: 'prefeitura_contagem_clientes' },
+        { type: 'governo_mg', table: 'governo_mg_clientes' },
+        { type: 'prefeitura_natal', table: 'prefeitura_natal_clientes' },
+        { type: 'prefeitura_porto_velho', table: 'prefeitura_porto_velho_clientes' },
+        { type: 'governo_ba', table: 'governo_ba_clientes' },
+        { type: 'governo_am', table: 'governo_am_clientes' },
+        { type: 'governo_ce', table: 'governo_ce_clientes' },
+        { type: 'governo_ro', table: 'governo_ro_clientes' },
+        { type: 'prefeitura_ponta_grossa', table: 'prefeitura_ponta_grossa_clientes' },
+        { type: 'amazon_prev', table: 'amazon_prev_clientes' }
+      ]
+
+      const checkResults = await Promise.all(
+        tableCheckList.map(async ({ type, table }) => {
+          try {
+            const { data } = await supabase.from(table).select('id').or(`cpf.eq.${paddedCpf},cpf.eq.${digits}`).limit(1).maybeSingle()
+            return data ? type : null
+          } catch {
+            return null
+          }
+        })
       )
+      const matchedTypes = new Set(checkResults.filter(Boolean) as string[])
+
+      if (matchedTypes.size === 0) {
+        const [hasAmazon, hasPg] = await Promise.all([
+          supabase.from('base_consulta_amazon_prev').select('id').or(`cpf.eq.${paddedCpf},cpf.eq.${digits}`).limit(1).maybeSingle().then(r => !!r.data).catch(() => false),
+          supabase.from('base_consulta_prefeitura_ponta_grossa').select('id').or(`cpf.eq.${paddedCpf},cpf.eq.${digits}`).limit(1).maybeSingle().then(r => !!r.data).catch(() => false)
+        ])
+        if (hasAmazon) matchedTypes.add('amazon_prev')
+        if (hasPg) matchedTypes.add('prefeitura_ponta_grossa')
+      }
+
+      if (matchedTypes.size === 0) {
+        setIsLoading(false)
+        setError("Cliente não encontrado.")
+        return
+      }
+
+      // 1. Try search in SIAPE Clients
+      const { data: siapeData } = matchedTypes.has('siape')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (siapeData) {
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
@@ -553,9 +602,9 @@ export function ClientDetailsModal({
       }
 
       // 2. Try search in Governo SP Clients
-      const { data: govSpData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('governo_sp_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: govSpData } = matchedTypes.has('governo_sp')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('governo_sp_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (govSpData) {
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
@@ -596,9 +645,9 @@ export function ClientDetailsModal({
       }
 
       // 3. Try search in Prefeitura SP Clients
-      const { data: pmspData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('prefeitura_sp_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: pmspData } = matchedTypes.has('prefeitura_sp')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('prefeitura_sp_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (pmspData) {
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
@@ -639,9 +688,9 @@ export function ClientDetailsModal({
       }
 
       // 4. Try search in Governo PI Clients
-      const { data: govPiData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('governo_pi_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: govPiData } = matchedTypes.has('governo_pi')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('governo_pi_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (govPiData) {
         interface BasePiData {
@@ -752,9 +801,9 @@ export function ClientDetailsModal({
       }
 
       // 5. Try search in Governo MA Clients
-      const { data: govMaData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('governo_ma_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: govMaData } = matchedTypes.has('governo_ma')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('governo_ma_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (govMaData) {
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
@@ -798,9 +847,9 @@ export function ClientDetailsModal({
       }
 
       // 6. Try search in Governo RR Clients
-      const { data: govRrData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('governo_rr_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: govRrData } = matchedTypes.has('governo_rr')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('governo_rr_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (govRrData) {
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
@@ -903,9 +952,9 @@ export function ClientDetailsModal({
       }
 
       // 7. Try search in Governo RJ Clients
-      const { data: govRjData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('governo_rj_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: govRjData } = matchedTypes.has('governo_rj')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('governo_rj_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (govRjData) {
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
@@ -934,9 +983,9 @@ export function ClientDetailsModal({
       }
 
       // 8. Try search in Prefeitura Santo André Clients
-      const { data: saData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('prefeitura_santo_andre_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: saData } = matchedTypes.has('prefeitura_santo_andre')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('prefeitura_santo_andre_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (saData) {
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
@@ -968,9 +1017,9 @@ export function ClientDetailsModal({
       }
 
       // 9. Try search in Prefeitura Contagem Clients
-      const { data: contagemData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('prefeitura_contagem_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: contagemData } = matchedTypes.has('prefeitura_contagem')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('prefeitura_contagem_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (contagemData) {
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
@@ -1004,9 +1053,9 @@ export function ClientDetailsModal({
       }
 
       // 10. Try search in Governo MG Clients
-      const { data: mgData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('governo_mg_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: mgData } = matchedTypes.has('governo_mg')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('governo_mg_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (mgData) {
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
@@ -1037,9 +1086,9 @@ export function ClientDetailsModal({
       }
 
       // 11. Try search in Prefeitura Natal Clients
-      const { data: natalData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('prefeitura_natal_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: natalData } = matchedTypes.has('prefeitura_natal')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('prefeitura_natal_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (natalData) {
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
@@ -1080,9 +1129,9 @@ export function ClientDetailsModal({
       }
 
       // 12. Try search in Prefeitura Porto Velho Clients
-      const { data: portoVelhoData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('prefeitura_porto_velho_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: portoVelhoData } = matchedTypes.has('prefeitura_porto_velho')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('prefeitura_porto_velho_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (portoVelhoData) {
         const { data: idData, error: idError } = await withRetry<Record<string, unknown>[] | null>(async () =>
@@ -1123,9 +1172,9 @@ export function ClientDetailsModal({
       }
 
       // 13. Try search in Governo BA Clients
-      const { data: baData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('governo_ba_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: baData } = matchedTypes.has('governo_ba')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('governo_ba_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (baData) {
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
@@ -1156,9 +1205,9 @@ export function ClientDetailsModal({
       }
 
       // 14. Try search in Governo AM Clients
-      const { data: amData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('governo_am_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: amData } = matchedTypes.has('governo_am')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('governo_am_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (amData) {
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
@@ -1192,9 +1241,9 @@ export function ClientDetailsModal({
       }
 
       // 15. Try search in Governo CE Clients
-      const { data: ceData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('governo_ce_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: ceData } = matchedTypes.has('governo_ce')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('governo_ce_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (ceData) {
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
@@ -1223,9 +1272,9 @@ export function ClientDetailsModal({
       }
 
       // 16. Try search in Governo RO Clients
-      const { data: roData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('governo_ro_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: roData } = matchedTypes.has('governo_ro')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('governo_ro_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (roData) {
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
@@ -1258,9 +1307,9 @@ export function ClientDetailsModal({
       }
 
       // 17. Try search in Prefeitura Ponta Grossa Clients
-      const { data: pgData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('prefeitura_ponta_grossa_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: pgData } = matchedTypes.has('prefeitura_ponta_grossa')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('prefeitura_ponta_grossa_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
 
       if (pgData) {
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
@@ -1287,7 +1336,7 @@ export function ClientDetailsModal({
           client: pgData,
           registrations: mappedRegs as unknown as Registration[]
         })
-      } else {
+      } else if (matchedTypes.has('prefeitura_ponta_grossa')) {
         // Fallback: search in base_consulta_prefeitura_ponta_grossa directly
         const { data: basePgData } = await withRetry<Record<string, unknown> | null>(async () =>
           await supabase.from('base_consulta_prefeitura_ponta_grossa').select('*').eq('cpf', paddedCpf).maybeSingle()
@@ -1325,9 +1374,9 @@ export function ClientDetailsModal({
       }
 
       // 18. Try search in Amazon Prev Clients
-      const { data: amazonData } = await withRetry<ClientData | null>(async () => 
-        await supabase.from('amazon_prev_clientes').select('*').eq('cpf', paddedCpf).maybeSingle()
-      )
+      const { data: amazonData } = matchedTypes.has('amazon_prev')
+        ? await withRetry<ClientData | null>(async () => await supabase.from('amazon_prev_clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        : { data: null }
       if (amazonData) {
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase.from('amazon_prev_matriculas').select('*').eq('cliente_id', (amazonData as ClientData).id)
@@ -1354,7 +1403,7 @@ export function ClientDetailsModal({
           client: amazonData,
           registrations: mappedRegs as unknown as Registration[]
         })
-      } else {
+      } else if (matchedTypes.has('amazon_prev')) {
         // Fallback: search in base_consulta_amazon_prev directly
         const { data: baseAmazonData } = await withRetry<Record<string, unknown> | null>(async () =>
           await supabase.from('base_consulta_amazon_prev').select('*').eq('cpf', paddedCpf).maybeSingle()

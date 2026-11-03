@@ -1450,46 +1450,80 @@ export default function KanbanPage() {
         foundCpf = digits
       }
 
-      // 3. Se for telefone (>= 8 dígitos): buscar em kanban_fichas, chamados e em todas as bases de convênios do CRM
+      // 3. Se for telefone (>= 8 dígitos) ou CPF não identificado em memória: busca indexada de alta performance
       if (!foundCpf && digits.length >= 8) {
-        // 3.1 Busca em kanban_fichas
-        try {
-          const { data: fByTel } = await supabase
-            .from("kanban_fichas")
-            .select("cliente_cpf, cliente_telefone, metadata")
-            .or(`cliente_telefone.ilike.%${last8}%,cliente_telefone.ilike.%${prefix4}%${suffix4}%,cliente_cpf.ilike.%${digits}%`)
-            .not("cliente_cpf", "is", null)
-            .limit(10)
+        // Prepara variações exatas indexadas de CPF e Telefone (evitando varredura ilike de tabela inteira)
+        const cleanCPF = digits.padStart(11, "0")
+        const formattedCleanCpf = cleanCPF.length === 11 
+          ? `${cleanCPF.slice(0, 3)}.${cleanCPF.slice(3, 6)}.${cleanCPF.slice(6, 9)}-${cleanCPF.slice(9)}`
+          : ""
+        const cpfVariants = Array.from(new Set([digits, cleanCPF, formattedCleanCpf].filter(Boolean)))
 
-          if (fByTel && fByTel.length > 0) {
-            const match = fByTel.find(f => {
-              if (matchesPhone(f.cliente_telefone)) return true
-              const meta = f.metadata && typeof f.metadata === "object" ? f.metadata : {}
-              const metaPhones = [
-                meta.cliente_telefone,
-                meta.cliente_telefone_2,
-                meta.cliente_telefone_3,
-                ...(Array.isArray(meta.telefones) ? meta.telefones.map((x: any) => typeof x === "string" ? x : x?.numero) : [])
-              ]
-              return metaPhones.some(matchesPhone)
-            })
-            if (match?.cliente_cpf) {
-              foundCpf = match.cliente_cpf
-            } else if (fByTel[0]?.cliente_cpf) {
-              foundCpf = fByTel[0].cliente_cpf
-            }
+        const phoneVariations = new Set<string>([digits])
+        if (digits.length >= 8) {
+          phoneVariations.add(last8)
+          phoneVariations.add(last9)
+          if (digits.length === 10) {
+            phoneVariations.add(digits.slice(0, 2) + "9" + digits.slice(2))
+            phoneVariations.add(`(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`)
+          } else if (digits.length === 11) {
+            phoneVariations.add(digits.slice(0, 2) + digits.slice(3))
+            phoneVariations.add(`(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`)
           }
-        } catch (err) {
-          console.warn("Erro ao buscar telefone em kanban_fichas:", err)
+          if (digits.length >= 10) {
+            phoneVariations.add(`0${digits}`)
+          }
+        }
+        const phoneVariantsList = Array.from(phoneVariations)
+
+        // Busca paralela simultânea em kanban_fichas, chamados e bases de consulta dos convênios
+        const searchKf = async () => {
+          try {
+            const kTerms = [
+              ...cpfVariants.map(c => `cliente_cpf.eq.${c}`),
+              ...phoneVariantsList.map(p => `cliente_telefone.eq.${p}`)
+            ]
+            const { data: fByTel } = await supabase
+              .from("kanban_fichas")
+              .select("cliente_cpf, cliente_telefone, metadata")
+              .or(kTerms.join(","))
+              .not("cliente_cpf", "is", null)
+              .limit(10)
+
+            if (fByTel && fByTel.length > 0) {
+              const match = fByTel.find(f => {
+                if (matchesPhone(f.cliente_telefone)) return true
+                const meta = f.metadata && typeof f.metadata === "object" ? f.metadata : {}
+                const metaPhones = [
+                  meta.cliente_telefone,
+                  meta.cliente_telefone_2,
+                  meta.cliente_telefone_3,
+                  ...(Array.isArray(meta.telefones) ? meta.telefones.map((x: any) => typeof x === "string" ? x : x?.numero) : [])
+                ]
+                return metaPhones.some(matchesPhone)
+              })
+              return match?.cliente_cpf || fByTel[0]?.cliente_cpf || null
+            }
+          } catch (err) {
+            console.warn("Erro ao buscar telefone em kanban_fichas:", err)
+          }
+          return null
         }
 
-        // 3.2 Busca em chamados
-        if (!foundCpf) {
+        const searchCh = async () => {
           try {
+            const chTerms = [
+              ...cpfVariants.map(c => `cliente_cpf.eq.${c}`),
+              ...phoneVariantsList.flatMap(p => [
+                `cliente_telefone.eq.${p}`,
+                `cliente_telefone_2.eq.${p}`,
+                `cliente_telefone_3.eq.${p}`
+              ])
+            ]
             const { data: chByTel } = await supabase
               .from("chamados")
               .select("cliente_cpf, cliente_telefone, cliente_telefone_2, cliente_telefone_3")
-              .or(`cliente_telefone.ilike.%${last8}%,cliente_telefone.ilike.%${prefix4}%${suffix4}%,cliente_telefone_2.ilike.%${last8}%,cliente_telefone_2.ilike.%${prefix4}%${suffix4}%,cliente_telefone_3.ilike.%${last8}%,cliente_telefone_3.ilike.%${prefix4}%${suffix4}%,cliente_cpf.ilike.%${digits}%`)
+              .or(chTerms.join(","))
               .not("cliente_cpf", "is", null)
               .limit(5)
 
@@ -1499,52 +1533,16 @@ export default function KanbanPage() {
                 matchesPhone(ch.cliente_telefone_2) || 
                 matchesPhone(ch.cliente_telefone_3)
               )
-              if (match?.cliente_cpf) {
-                foundCpf = match.cliente_cpf
-              } else if (chByTel[0]?.cliente_cpf) {
-                foundCpf = chByTel[0].cliente_cpf
-              }
+              return match?.cliente_cpf || chByTel[0]?.cliente_cpf || null
             }
           } catch (err) {
             console.warn("Erro ao buscar telefone em chamados:", err)
           }
+          return null
         }
 
-        // 3.3 Busca em todas as tabelas de clientes e bases de consulta dos convênios
-        if (!foundCpf) {
-          const phoneVariations = new Set<string>([digits, last8, last9])
-          if (digits.length === 10) {
-            phoneVariations.add(digits.slice(0, 2) + "9" + digits.slice(2))
-          } else if (digits.length === 11) {
-            phoneVariations.add(digits.slice(0, 2) + digits.slice(3))
-          }
-          if (digits.length >= 10) {
-            phoneVariations.add(`0${digits}`)
-          }
-
-          const phoneTerms: string[] = []
-          phoneVariations.forEach(pv => {
-            phoneTerms.push(`telefone_1.eq.${pv}`, `telefone_2.eq.${pv}`, `telefone_3.eq.${pv}`)
-          })
-          if (prefix4 && suffix4) {
-            phoneTerms.push(
-              `telefone_1.ilike.%${prefix4}%${suffix4}%`,
-              `telefone_2.ilike.%${prefix4}%${suffix4}%`,
-              `telefone_3.ilike.%${prefix4}%${suffix4}%`
-            )
-          }
-
-          const tablesWithoutTel3 = new Set([
-            'base_consulta_amazon_prev',
-            'base_consulta_governo_ma',
-            'amazon_prev_clientes',
-            'governo_ma_clientes',
-            'governo_sp_clientes',
-            'prefeitura_sp_clientes',
-            'governo_pi_clientes'
-          ])
-
-          const conveniosTables = [
+        const searchConvenios = async () => {
+          const splitTables = [
             'base_consulta_siape',
             'base_consulta_governo_sp',
             'base_consulta_prefeitura_sp',
@@ -1564,21 +1562,39 @@ export default function KanbanPage() {
             'base_consulta_governo_ro',
             'base_consulta_prefeitura_ponta_grossa',
             'base_consulta_amazon_prev',
-            'clientes',
-            'governo_sp_clientes',
-            'prefeitura_sp_clientes',
-            'governo_mg_clientes',
-            'governo_rj_clientes',
-            'prefeitura_santo_andre_clientes',
-            'inss_clientes'
           ]
 
+          const tablesWithoutTel3 = new Set([
+            'base_consulta_amazon_prev',
+            'base_consulta_governo_ma'
+          ])
+
+          const conveniosTerms = [
+            `cpf.eq.${cleanCPF}`,
+            `telefone_1.eq.${digits}`,
+            `telefone_2.eq.${digits}`,
+            `telefone_3.eq.${digits}`
+          ]
+          if (digits.length >= 8) {
+            if (digits.length === 11) {
+              const withoutNinth = digits.slice(0, 2) + digits.slice(3)
+              conveniosTerms.push(`telefone_1.eq.${withoutNinth}`, `telefone_2.eq.${withoutNinth}`, `telefone_3.eq.${withoutNinth}`)
+            }
+            if (digits.length === 10) {
+              const withNinth = digits.slice(0, 2) + "9" + digits.slice(2)
+              conveniosTerms.push(`telefone_1.eq.${withNinth}`, `telefone_2.eq.${withNinth}`, `telefone_3.eq.${withNinth}`)
+            }
+            if (digits.length >= 10) {
+              conveniosTerms.push(`telefone_1.eq.0${digits}`, `telefone_2.eq.0${digits}`, `telefone_3.eq.0${digits}`)
+            }
+          }
+
           try {
-            const searchPromises = conveniosTables.map(async (tableName) => {
+            const searchPromises = splitTables.map(async (tableName) => {
               try {
                 const terms = tablesWithoutTel3.has(tableName)
-                  ? phoneTerms.filter(t => !t.startsWith('telefone_3.'))
-                  : phoneTerms
+                  ? conveniosTerms.filter(t => !t.startsWith('telefone_3.'))
+                  : conveniosTerms
 
                 const { data } = await supabase
                   .from(tableName)
@@ -1595,14 +1611,20 @@ export default function KanbanPage() {
             })
 
             const foundResults = await Promise.all(searchPromises)
-            const matchCpf = foundResults.find(c => Boolean(c))
-            if (matchCpf) {
-              foundCpf = matchCpf
-            }
+            return foundResults.find(c => Boolean(c)) || null
           } catch (err) {
             console.warn("Erro ao buscar nas tabelas de convênios:", err)
           }
+          return null
         }
+
+        const [cpfFromKf, cpfFromCh, cpfFromConv] = await Promise.all([
+          searchKf(),
+          searchCh(),
+          searchConvenios()
+        ])
+
+        foundCpf = cpfFromKf || cpfFromCh || cpfFromConv || null
       }
 
       if (!foundCpf) {
@@ -1612,12 +1634,19 @@ export default function KanbanPage() {
       }
 
       const cleanCpf = foundCpf.replace(/\D/g, "")
+      const paddedCleanCpf = cleanCpf.padStart(11, "0")
+      const formattedCleanCpf = paddedCleanCpf.length === 11 
+        ? `${paddedCleanCpf.slice(0, 3)}.${paddedCleanCpf.slice(3, 6)}.${paddedCleanCpf.slice(6, 9)}-${paddedCleanCpf.slice(9)}`
+        : ""
+      const cpfLookupTerms = Array.from(new Set([cleanCpf, paddedCleanCpf, formattedCleanCpf].filter(Boolean)))
+        .map(c => `cliente_cpf.eq.${c}`)
+        .join(",")
 
       // Buscar fichas existentes no pipeline para o CPF
       const { data: allFichas } = await supabase
         .from("kanban_fichas")
         .select("id, cliente_nome, cliente_cpf, cliente_telefone, etapa, operador_id, operador_nome, motivo_perda, metadata")
-        .eq("cliente_cpf", cleanCpf)
+        .or(cpfLookupTerms)
 
       // Filtrar fichas que estão ativas no pipeline (não gavetas e não perdidas)
       const fichasAtivas = (allFichas || []).filter(f => {
@@ -2995,7 +3024,8 @@ export default function KanbanPage() {
         agendamento_obs: agendamentoObs,
         observacoes_historico: updatedHistoricoObs,
         observacao_data: nowIso,
-        alerta_atrasado: false
+        alerta_atrasado: false,
+        regua_proximo_vencimento: dataHoraIso
       }
 
       const newDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
@@ -4854,7 +4884,7 @@ export default function KanbanPage() {
       const meta = parseMetadata(ticket.descricao)
       const isAcaoEspecial = Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"
 
-      const dateStr = meta.regua_proximo_vencimento || meta.vencimento_acao || meta.agendamento_data
+      const dateStr = meta.vencimento_acao || meta.agendamento_data || meta.regua_proximo_vencimento
 
       let vencimentoDate: Date | null = null
       if (dateStr) {
@@ -4864,8 +4894,8 @@ export default function KanbanPage() {
         }
       }
 
-      const isAtrasado = Boolean(meta.alerta_atrasado) || (vencimentoDate !== null && vencimentoDate.getTime() < now.getTime())
-      const isFuturo = !isAtrasado && vencimentoDate !== null && vencimentoDate.getTime() > now.getTime() + 10 * 60 * 1000
+      const isFuturo = vencimentoDate !== null && vencimentoDate.getTime() > now.getTime()
+      const isAtrasado = !isFuturo && (Boolean(meta.alerta_atrasado) || (vencimentoDate !== null && vencimentoDate.getTime() < now.getTime()))
 
       if (isAcaoEspecial) {
         acaoEspecial.push(ticket)
@@ -4936,9 +4966,13 @@ export default function KanbanPage() {
         ))
     const proximaAcaoTexto = rawProximaAcao.replace(/^\[[^\]]+\]\s*/, "")
 
-    const vencimentoLabel = meta.vencimento_acao 
-      ? format(new Date(meta.vencimento_acao), "dd/MM 'às' HH:mm")
+    const rawVencimento = meta.vencimento_acao || meta.agendamento_data || meta.regua_proximo_vencimento
+    const vencimentoLabel = rawVencimento 
+      ? format(new Date(rawVencimento), "dd/MM 'às' HH:mm")
       : "Hoje às 14:30"
+    const vencDateParsed = rawVencimento ? new Date(rawVencimento) : null
+    const isFuturoCard = vencDateParsed !== null && !isNaN(vencDateParsed.getTime()) && vencDateParsed.getTime() > Date.now()
+    const isCardAtrasado = !isFuturoCard && Boolean(meta.alerta_atrasado)
 
     const acaoDestinatario = meta.acao_especial_destinatario || (() => {
       const obsLista = Array.isArray(meta.observacoes_historico) ? meta.observacoes_historico : []
@@ -5069,7 +5103,7 @@ export default function KanbanPage() {
         {/* 1. Cabeçalho Visual: Tags de Alerta e Cronômetro/Prazo */}
         <div className="flex items-start justify-between gap-1.5 text-[11px]">
           <div className="flex flex-wrap gap-1">
-            {meta.alerta_atrasado && (
+            {isCardAtrasado && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-rose-100 text-rose-800 border border-rose-200 animate-pulse text-[12px]">
                 🔴 ATRASADO
               </span>
