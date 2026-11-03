@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/context/auth-context"
 import { isProposalFromKanban } from "@/app/(dashboard)/propostas/page"
+import { syncKanbanForClosedProposal } from "@/lib/sync-kanban-propostas"
 interface HistoryItem {
   id: string;
   created_at: string;
@@ -1304,6 +1305,25 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       }
 
       toast.success("Proposta atualizada com sucesso!", { id: loadingToast })
+
+      // Sincroniza fechamento no Kanban se a proposta possuir ADE e Data de Digitação
+      const effectiveAde = (updateData as any).ade || proposal.ade
+      const effectiveDataDigitacao = (updateData as any).data_digitacao || proposal.data_digitacao || (proposal as any).created_at
+      if (effectiveAde && effectiveDataDigitacao) {
+        syncKanbanForClosedProposal({
+          cliente_cpf: proposal.cliente_cpf,
+          id_lead: proposal.id_lead,
+          ade: effectiveAde,
+          data_digitacao: effectiveDataDigitacao,
+          status: (updateData as any).status || proposal.status,
+          corretor_id: proposal.corretor_id,
+          corretor: proposal.corretor,
+          nome_corretor: proposal.nome_corretor,
+          estagiario_colaborador_id: (proposal as any).estagiario_colaborador_id,
+          estagiario_colaborador_nome: (proposal as any).estagiario_colaborador_nome,
+          user_id: currentUser?.id
+        })
+      }
       if (_onRefresh) _onRefresh()
     } catch (error) {
       console.error("Erro ao atualizar:", error)

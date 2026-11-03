@@ -40,6 +40,7 @@ import { IntervencaoOperacionalModal } from "@/components/propostas/intervencao-
 import { toast } from "react-hot-toast"
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
+import { syncKanbanForClosedProposal } from "@/lib/sync-kanban-propostas"
 
 const TABS_CONFIG = [
   {
@@ -492,6 +493,25 @@ export default function ProposalsPage() {
         }
         return newCounts
       })
+
+      // Sincroniza fechamento no Kanban se a proposta tiver ADE e Data de Digitação
+      const effectiveAde = ade || proposal.ade
+      const effectiveDataDigitacao = (actualFullUpdate.data_digitacao as string) || proposal.data_digitacao
+      if (effectiveAde && effectiveDataDigitacao) {
+        syncKanbanForClosedProposal({
+          cliente_cpf: proposal.cliente_cpf,
+          id_lead: idLead,
+          ade: effectiveAde,
+          data_digitacao: effectiveDataDigitacao,
+          status: newStatus,
+          corretor_id: proposal.corretor_id,
+          corretor: proposal.corretor,
+          nome_corretor: proposal.nome_corretor,
+          estagiario_colaborador_id: proposal.estagiario_colaborador_id,
+          estagiario_colaborador_nome: proposal.estagiario_colaborador_nome,
+          user_id: perfil?.id
+        })
+      }
 
       toast.success("Status atualizado com sucesso!", { id: loadingToast })
     } catch (error: unknown) {

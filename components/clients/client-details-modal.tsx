@@ -2197,7 +2197,7 @@ export function ClientDetailsModal({
                                   type="text"
                                   value={searchEmpresaPhone}
                                   onChange={(e) => setSearchEmpresaPhone(e.target.value)}
-                                  placeholder="Buscar por 4 dígitos, número ou setor..."
+                                  placeholder="Buscar por 4 dígitos ou número..."
                                   autoFocus
                                   onClick={(e) => e.stopPropagation()}
                                   className="w-full h-8 px-2.5 text-[12px] font-medium rounded-md border border-slate-200 bg-slate-50 placeholder:text-slate-400 text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20"
@@ -2258,11 +2258,6 @@ export function ClientDetailsModal({
                                       >
                                         <div className="flex items-center gap-2 truncate">
                                           <span>{tel.numero}</span>
-                                          {tel.descricao && (
-                                            <span className="text-[10px] text-slate-400 font-normal truncate">
-                                              • {tel.descricao}
-                                            </span>
-                                          )}
                                         </div>
                                         {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
                                       </button>

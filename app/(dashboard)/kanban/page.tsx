@@ -64,6 +64,7 @@ import {
   ProximaAcaoConfig, 
   calcularVencimentoComSla 
 } from "@/lib/kanban-proximas-acoes"
+import { hasProposalDigitacao, syncKanbanForClosedProposal } from "@/lib/sync-kanban-propostas"
 
 // Definição das Etapas do Kanban Comercial
 export type KanbanStage = 
@@ -1648,15 +1649,13 @@ export default function KanbanPage() {
         .select("id, cliente_nome, cliente_cpf, cliente_telefone, etapa, operador_id, operador_nome, motivo_perda, metadata")
         .or(cpfLookupTerms)
 
-      // Filtrar fichas que estão ativas no pipeline (não gavetas e não perdidas)
+      // Filtrar fichas presentes nas colunas do pipeline do Kanban (incluindo Fechado e Perdido, exceto gavetas de descarte rápido por WhatsApp)
       const fichasAtivas = (allFichas || []).filter(f => {
         const meta = (f.metadata && typeof f.metadata === "object") ? f.metadata : {}
-        const isDrawer = (f.etapa === "PERDIDO" || !f.etapa) && (
-          Boolean(meta.tabulacao_whatsapp) || 
+        const isWhatsappDrawer = Boolean(meta.tabulacao_whatsapp) || 
           f.motivo_perda === "Não Existe Whatsapp" || 
           f.motivo_perda === "Whatsapp Divergente"
-        )
-        return !isDrawer && f.etapa !== "PERDIDO"
+        return !isWhatsappDrawer && Boolean(f.etapa)
       })
 
       // 1. REGRA COMERCIAL: O mesmo corretor NÃO pode iniciar um segundo atendimento de um lead que ele mesmo já está atendendo
@@ -2500,7 +2499,7 @@ export default function KanbanPage() {
           if (propostasExistentes.length > 0) {
             const mapPropsByTicketId: Record<string, { ade?: string; data_digitacao?: string; status?: string }> = {}
 
-            // Atualiza os tickets com o status e informações da proposta bancária estritamente pertencente a este operador
+            // Atualiza os tickets com o status e informações da proposta bancária
             setTickets(prev => prev.map(t => {
               const cCpf = (t.cliente_cpf || "").replace(/\D/g, "")
               const matchingProp = propostasExistentes.find((p: any) => {
@@ -2511,6 +2510,16 @@ export default function KanbanPage() {
 
                 return matchesProposalUser(p, t)
               })
+
+              // Proposta digitada no banco que foi fechada por OUTRO operador para este mesmo cliente
+              const closedOtherProp = !matchingProp ? propostasExistentes.find((p: any) => {
+                const pCpf = (p.cliente_cpf || "").replace(/\D/g, "")
+                const sameCpf = cCpf && pCpf && cCpf === pCpf
+                const sameLead = p.id_lead && String(p.id_lead).trim() === String(t.id).trim()
+                if (!sameCpf && !sameLead) return false
+                if (matchesProposalUser(p, t)) return false
+                return hasProposalDigitacao(p)
+              }) : null
 
               if (matchingProp) {
                 const info = {
@@ -2526,6 +2535,36 @@ export default function KanbanPage() {
                   status: inferred,
                   proposta_info: info
                 }
+              } else if (closedOtherProp) {
+                const meta = parseMetadata(t.descricao)
+                const closingName = closedOtherProp.nome_corretor || closedOtherProp.corretor || closedOtherProp.estagiario_colaborador_nome || "outro operador"
+                const closingAde = closedOtherProp.ade ? String(closedOtherProp.ade).trim() : ""
+                const noteText = `Cliente já foi fechado pelo operador ${closingName}${closingAde ? ` (ADE: ${closingAde})` : ""}. Atendimento encerrado automaticamente.`
+
+                const obsHistorico = Array.isArray(meta.observacoes_historico) ? [...meta.observacoes_historico] : []
+                if (!obsHistorico.some((o: any) => String(o?.texto || "").includes(`ADE: ${closingAde}`) || String(o?.texto || "").includes("já foi fechado pelo operador"))) {
+                  obsHistorico.push({
+                    texto: noteText,
+                    data: new Date().toISOString(),
+                    autor: "Sistema"
+                  })
+                }
+                meta.observacoes_historico = obsHistorico
+                meta.kanban_stage = "PERDIDO"
+
+                const existingObs = t.observacoes ? String(t.observacoes).trim() : ""
+                const newObs = existingObs.includes(noteText) || (closingAde && existingObs.includes(`ADE: ${closingAde}`))
+                  ? existingObs
+                  : (existingObs ? `${existingObs}\n\n${noteText}` : noteText)
+
+                return {
+                  ...t,
+                  status: "PERDIDO" as KanbanStage,
+                  motivo_perda: "Cliente já foi fechado por outro usuário",
+                  observacoes: newObs,
+                  descricao: JSON.stringify(meta),
+                  proposta_info: undefined
+                }
               } else {
                 const meta = parseMetadata(t.descricao)
                 const inferred = inferKanbanStage(t, meta, undefined)
@@ -2537,6 +2576,11 @@ export default function KanbanPage() {
               }
             }))
             setPropostasPorCpf(mapPropsByTicketId)
+
+            // Sincroniza fichas fechadas no banco de dados para garantir persistência em kanban_fichas
+            propostasExistentes.filter(hasProposalDigitacao).forEach(p => {
+              syncKanbanForClosedProposal(p)
+            })
           }
         } catch (propErr) {
           console.warn("Aviso ao carregar propostas para o Kanban:", propErr)
@@ -9098,21 +9142,27 @@ export default function KanbanPage() {
       {/* Modal Completo de Detalhes do Cliente (Mesmo formato de ACESSAR CLIENTE) */}
       {selectedClientCpf && (() => {
         const isClientInAnyKanbanStage = Boolean(
-          isViewingLeadInAttendance || tickets.some(t => {
-            const cleanT = (t.cliente_cpf || "").replace(/\D/g, "")
-            const cleanS = selectedClientCpf.replace(/\D/g, "")
-            if (!cleanT || cleanT !== cleanS) return false
-            const isMeuTicket = (t.user_id && t.user_id === user?.id) || (perfil?.nome && t.responsavel_nome?.trim().toLowerCase() === perfil?.nome?.trim().toLowerCase())
-            if (!isMeuTicket) return false
-            const meta = parseMetadata(t.descricao)
-            const isDrawer = (
-              t.status === "NÃO EXISTE WHATSAPP" ||
-              t.status === "NAO_EXISTE_WHATSAPP" ||
-              t.status === "WHATSAPP DIVERGENTE" ||
-              Boolean(meta.tabulacao_whatsapp)
-            )
-            return !isDrawer
-          })
+          !isKanbanSearchModal && (
+            isViewingLeadInAttendance || tickets.some(t => {
+              const cleanT = (t.cliente_cpf || "").replace(/\D/g, "")
+              const cleanS = selectedClientCpf.replace(/\D/g, "")
+              if (!cleanT || cleanT !== cleanS) return false
+              const isMeuTicket = (t.user_id && t.user_id === user?.id) || (perfil?.nome && t.responsavel_nome?.trim().toLowerCase() === perfil?.nome?.trim().toLowerCase())
+              if (!isMeuTicket) return false
+              const meta = parseMetadata(t.descricao)
+              const statusUpper = String(t.status || meta.kanban_stage || "").trim().toUpperCase()
+              const isInactiveOrDrawer = (
+                statusUpper === "PERDIDO" ||
+                statusUpper === "CANCELADO" ||
+                statusUpper === "ENCERRADO" ||
+                statusUpper === "NÃO EXISTE WHATSAPP" ||
+                statusUpper === "NAO_EXISTE_WHATSAPP" ||
+                statusUpper === "WHATSAPP DIVERGENTE" ||
+                Boolean(meta.tabulacao_whatsapp)
+              )
+              return !isInactiveOrDrawer
+            })
+          )
         )
 
         return (
@@ -9178,7 +9228,11 @@ export default function KanbanPage() {
               : "Cliente com cartão ativo no pipeline"
 
         const alertMessage = isMeuAtendimento
-          ? `Você já possui este lead ativo no seu pipeline na etapa "${leadEmAtendimentoInfo.etapa}".`
+          ? (isFechado
+              ? `Você já possui este lead no seu pipeline na etapa "FECHADO".`
+              : isPerdido
+                ? `Você já possui este lead no seu pipeline na etapa "PERDIDO".`
+                : `Você já possui este lead ativo no seu pipeline na etapa "${leadEmAtendimentoInfo.etapa}".`)
           : isFechado
             ? "Este lead foi finalizado como negócio fechado pelo operador informado acima."
             : isPerdido
