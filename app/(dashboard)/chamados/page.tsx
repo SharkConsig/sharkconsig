@@ -795,7 +795,6 @@ export default function TicketsPage() {
             q = q.gte('created_at', `${startDate}T00:00:00Z`)
           }
         }
-
         if (endDate && endDate.length === 10) {
           const localEnd = new Date(`${endDate}T23:59:59.999`)
           if (!isNaN(localEnd.getTime())) {
@@ -989,9 +988,8 @@ export default function TicketsPage() {
           .select('cliente_cpf', { count: 'exact' })
           .eq('tabulacao', 'CLIENTE CHAMADO');
 
-        if (startDate && startDate.length === 10) {
-          ccQuery = ccQuery.gte('data_chamado', startDate);
-        }
+        const effectiveStartDate = (startDate && startDate.length === 10) ? startDate : '2026-09-16';
+        ccQuery = ccQuery.gte('data_chamado', effectiveStartDate);
         if (endDate && endDate.length === 10) {
           ccQuery = ccQuery.lte('data_chamado', endDate);
         }
@@ -1043,9 +1041,8 @@ export default function TicketsPage() {
           .eq('tabulacao', 'CLIENTE CHAMADO')
           .neq('cliente_cpf', '00000000000');
 
-        if (startDate && startDate.length === 10) {
-          caQuery = caQuery.gte('created_at', `${startDate}T00:00:00.000Z`);
-        }
+        const effectiveStartDate = (startDate && startDate.length === 10) ? startDate : '2026-09-16';
+        caQuery = caQuery.gte('created_at', `${effectiveStartDate}T00:00:00.000Z`);
         if (endDate && endDate.length === 10) {
           caQuery = caQuery.lte('created_at', `${endDate}T23:59:59.999Z`);
         }
@@ -1368,7 +1365,7 @@ export default function TicketsPage() {
         if (maxVal !== null && opVal > maxVal) return false
       }
 
-      // Filtro de Período (Data selecionado pelo usuário)
+      // Filtro de Período (Data)
       if (startDate || endDate) {
         const ticketDateStr = (() => {
           const raw = ticket.created_at || ticket.updated_at

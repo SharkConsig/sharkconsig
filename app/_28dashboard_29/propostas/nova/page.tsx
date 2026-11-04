@@ -1,0 +1,2840 @@
+"use client"
+
+import { useState, Suspense, useEffect, useRef } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import NextImage from "next/image"
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Header } from "@/components/layout/header"
+import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
+import { cn } from "@/lib/utils"
+import { 
+  ChevronLeft, 
+  ChevronDown,
+  Search,
+  Save, 
+  Bold,
+  Italic,
+  Underline,
+  Quote,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  List,
+  ListOrdered,
+  Type,
+  Link2,
+  Image as ImageIcon,
+  Paperclip,
+  Loader2,
+  UploadCloud,
+  CheckCircle2,
+  Phone,
+  FileEdit,
+  X
+} from "lucide-react"
+import { useAuth } from "@/context/auth-context"
+
+export interface NewProposalFormProps {
+  isModal?: boolean;
+  modalInitialData?: {
+    nome?: string;
+    cpf?: string;
+    nascimento?: string;
+    matricula?: string;
+    origem?: string;
+    tel1?: string;
+    tel2?: string;
+    tel3?: string;
+    tel4?: string;
+    convenio?: string;
+  };
+  onCloseModal?: () => void;
+  onSuccessModal?: () => void;
+}
+
+export function NewProposalForm({
+  isModal = false,
+  modalInitialData,
+  onCloseModal,
+  onSuccessModal
+}: NewProposalFormProps = {}) {
+  const { user, isCorretor, perfil, isEstagio, isMonitoramento } = useAuth()
+  const isPJ = (perfil?.regime_contratacao || "").trim().toUpperCase() === "PJ" || (perfil?.role || "").trim().toUpperCase() === "PJ" || (perfil as any)?.funcao?.trim()?.toUpperCase() === "PJ"
+  const roleLower = perfil?.role?.toLowerCase() || ""
+  const canEditPreFilled = ["operacional", "monitoramento", "administrador", "desenvolvedor", "admin"].includes(roleLower)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const getParam = (key: string) => {
+    if (modalInitialData && key in modalInitialData) {
+      return (modalInitialData as any)[key] || ""
+    }
+    return searchParams.get(key) || ""
+  }
+
+  const isFromChamado = !!getParam("idChamado")
+
+  const [initialParams] = useState({
+    nome: !!getParam("nome"),
+    cpf: !!getParam("cpf"),
+    nascimento: !!getParam("nascimento"),
+    matricula: !!getParam("matricula"),
+    origem: !!getParam("origem"),
+    tel_1: !!getParam("tel1"),
+    tel_2: !!getParam("tel2"),
+    tel_3: !!getParam("tel3"),
+    tel_4: !!getParam("tel4"),
+  })
+
+  useEffect(() => {
+    if (perfil && (isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio')) {
+      toast.error("Você não tem acesso a esta página.")
+      if (isModal) {
+        if (onCloseModal) onCloseModal()
+      } else {
+        router.push("/")
+      }
+    }
+  }, [perfil, isEstagio, router, isModal, onCloseModal])
+  
+  const [step, setStep] = useState(1)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSearchingCEP, setIsSearchingCEP] = useState(false)
+  
+  const [dbConvenios, setDbConvenios] = useState<{id: string, nome: string}[]>([])
+  const [dbBancos, setDbBancos] = useState<{id: string, nome: string}[]>([])
+  const [dbOperacoes, setDbOperacoes] = useState<{id: string, nome: string}[]>([])
+  const [dbProdutosConfigs, setDbProdutosConfigs] = useState<ProdutoConfig[]>([])
+  const [dbEstagiarios, setDbEstagiarios] = useState<{id: string, nome: string}[]>([])
+  
+  const [selectedCoefValue, setSelectedCoefValue] = useState<number | null>(null)
+  const [selectedProdPercent, setSelectedProdPercent] = useState<number | null>(null)
+  const [selectedComissaoPercent, setSelectedComissaoPercent] = useState<number | null>(null)
+
+  const [selection, setSelection] = useState({
+    convenio: getParam("convenio") || "",
+    convenioId: "",
+    banco: "",
+    bancoId: "",
+    operacao: "",
+    operacaoId: "",
+    comissaoDisplay: "",
+    prazoDisplay: "",
+    coefDisplay: ""
+  })
+
+  const [formData, setFormData] = useState({
+    nome: getParam("nome") || "",
+    cpf: getParam("cpf") || "",
+    nascimento: getParam("nascimento") || "",
+    idLead: getParam("idLead") || "",
+    origem: getParam("origem")?.toUpperCase() || (isModal ? "KANBAN" : ""),
+    matricula: getParam("matricula") || "",
+    naturalidade: "",
+    uf_naturalidade: "",
+    identidade: "",
+    orgao_emissor: "",
+    uf_emissao: "",
+    data_emissao: "",
+    nome_pai: "",
+    nome_mae: "",
+    tel_1: getParam("tel1") || "",
+    tel_2: getParam("tel2") || "",
+    tel_3: getParam("tel3") || "",
+    tel_4: getParam("tel4") || "",
+    telefone_selecionado: "",
+    email: "",
+    equipe: (perfil?.role === 'Supervisor' ? perfil?.nome : perfil?.supervisor_nome) || "",
+    cep: "",
+    endereco: "",
+    numero: "",
+    complemento: "",
+    bairro: "",
+    cidade: "",
+    uf: "",
+    banco_cliente: "",
+    chave_pix: "",
+    conta: "",
+    agencia: "",
+    dv: "",
+    tipo_conta: "",
+    valor_parcela: "",
+    valor_operacao_operacional: "",
+    valor_cliente_operacional: "",
+    valor_producao_operacional: "",
+    margem_utilizada: "",
+    coeficiente_prazo: "",
+    prazo: "",
+    valor_producao_corretor: "",
+    observacoes: "",
+    estagiario_colaborador_id: "",
+    estagiario_colaborador_nome: ""
+  })
+
+  const [selectedFiles, setSelectedFiles] = useState<{ [key: string]: File | null }>({
+    frente: null,
+    verso: null,
+    contracheque: null,
+    extrato: null,
+    residencia: null,
+    outros: null,
+    outros_2: null,
+    outros_3: null,
+    outros_4: null
+  })
+  const [existingAttachments, setExistingAttachments] = useState<{ [key: string]: string | null }>({
+    frente: null,
+    verso: null,
+    contracheque: null,
+    extrato: null,
+    residencia: null,
+    outros: null,
+    outros_2: null,
+    outros_3: null,
+    outros_4: null
+  })
+  const [pastedImages, setPastedImages] = useState<File[]>([])
+  
+  const [isCoefDropdownOpen, setIsCoefDropdownOpen] = useState(false)
+  const [coefSearchTerm, setCoefSearchTerm] = useState("")
+  const coefDropdownRef = useRef<HTMLDivElement>(null)
+
+  interface ProdutoConfig {
+    id: string
+    nome_tabela: string | null
+    prazo: number
+    coeficiente: number
+    percentual_producao: number
+    percentual_comissao?: number
+    percentual_comissao_pj?: number | string
+    comissoes_pj_corretores?: Record<string, string | number>
+    convenio_id: string
+    banco_id: string
+    operacoes: string[]
+    regras?: { 
+      prazo: string | number, 
+      coeficiente: string | number, 
+      percentual_producao: string | number, 
+      percentual_comissao?: string | number, 
+      percentual_comissao_pj?: string | number,
+      comissoes_pj_corretores?: Record<string, string | number>,
+      ativo?: boolean 
+    }[]
+    ativo: boolean;
+    created_at: string;
+    convenios?: { nome: string };
+    bancos?: { id?: string, nome: string };
+  }
+
+  // Sincronizar selectedCoefValue e selectedPrazoValue quando coeficiente_prazo mudar
+  useEffect(() => {
+    if (dbProdutosConfigs.length > 0 && formData.coeficiente_prazo) {
+      const allOptions = (dbProdutosConfigs as ProdutoConfig[]).flatMap(config => {
+        if (config.regras && config.regras.length > 0) {
+          return config.regras
+            .filter((r: { ativo?: boolean }) => r.ativo !== false)
+            .map((regra) => ({
+              nome_tabela: config.nome_tabela,
+              prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
+              coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+              percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
+              percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : regra.percentual_comissao) : undefined,
+              convenioNome: config.convenios?.nome
+            }));
+        }
+        return [{
+          nome_tabela: config.nome_tabela,
+          prazo: config.prazo || 0,
+          coeficiente: config.coeficiente || 0,
+          percentual_producao: config.percentual_producao || 0,
+          percentual_comissao: config.percentual_comissao || undefined,
+          convenioNome: config.convenios?.nome
+        }];
+      });
+
+      const targetPrazoMatch = formData.coeficiente_prazo.match(/(\d+)\s*x/i);
+      const targetPrazo = targetPrazoMatch ? parseInt(targetPrazoMatch[1], 10) : null;
+      const targetCoefMatch = formData.coeficiente_prazo.match(/(?:x\s*[| ]\s*|\|\s*)([0-9]+[.,][0-9]+)/i) || formData.coeficiente_prazo.match(/([0-9]+[.,][0-9]+)/);
+      const targetCoef = targetCoefMatch ? parseFloat(targetCoefMatch[1].replace(',', '.')) : null;
+
+      let option = allOptions.find(opt => {
+        const labelText = opt.nome_tabela 
+          ? `${opt.nome_tabela} (${opt.prazo}x | ${opt.coeficiente})`
+          : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${opt.coeficiente}`;
+        const labelTextCommas = opt.nome_tabela
+          ? `${opt.nome_tabela} (${opt.prazo}x | ${String(opt.coeficiente).replace('.', ',')})`
+          : `${opt.convenioNome || 'Tabela'} - ${opt.prazo}x ${String(opt.coeficiente).replace('.', ',')}`;
+        
+        return labelText === formData.coeficiente_prazo || labelTextCommas === formData.coeficiente_prazo;
+      });
+
+      if (!option && targetPrazo !== null && targetCoef !== null) {
+        option = allOptions.find(opt => 
+          opt.prazo === targetPrazo && Math.abs(opt.coeficiente - targetCoef) < 0.0001
+        );
+      }
+
+      if (!option && targetCoef !== null) {
+        option = allOptions.find(opt => Math.abs(opt.coeficiente - targetCoef) < 0.0001);
+      }
+
+      if (!option && targetPrazo !== null) {
+        option = allOptions.find(opt => opt.prazo === targetPrazo);
+      }
+
+      if (option) {
+        setSelectedCoefValue(option.coeficiente);
+        setSelectedProdPercent(option.percentual_producao);
+        setFormData(prev => ({ ...prev, prazo: option.prazo.toString() }));
+      }
+    }
+  }, [dbProdutosConfigs, formData.coeficiente_prazo]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (coefDropdownRef.current && !coefDropdownRef.current.contains(event.target as Node)) {
+        setIsCoefDropdownOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    async function fetchData() {
+      setIsLoading(true)
+      try {
+        const [
+          { data: convData, error: convErr },
+          { data: bancoData, error: bancoErr },
+          { data: operData, error: operErr }
+        ] = await Promise.all([
+          supabase.from('convenios').select('id, nome').eq('ativo', true).order('nome'),
+          supabase.from('bancos').select('id, nome').eq('ativo', true).order('nome'),
+          supabase.from('tipos_operacao').select('id, nome').eq('ativo', true).order('nome')
+        ])
+
+        if (convErr) throw convErr
+        if (bancoErr) throw bancoErr
+        if (operErr) throw operErr
+
+        setDbConvenios(convData || [])
+        setDbBancos(bancoData || [])
+        setDbOperacoes(operData || [])
+      } catch (error: unknown) {
+        console.error("Erro ao buscar dados de configuração:", error)
+        toast.error("Erro ao carregar opções de proposta")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  useEffect(() => {
+    async function loadEstagiarios() {
+      try {
+        const res = await fetch("/api/usuarios")
+        if (res.ok) {
+          const data = await res.json()
+          if (Array.isArray(data)) {
+            const isMon = perfil?.role === 'Monitoramento' || perfil?.role === 'MONITORAMENTO';
+            const targetRoles = isMon 
+              ? ['corretor', 'estágio', 'estagio', 'supervisor', 'processo seletivo']
+              : ['estágio', 'estagio'];
+            const filtered = data
+              .filter((u: { id: string; nome: string; funcao?: string; status?: string; padrinho_id?: string }) => {
+                const funcao = (u.funcao || '').toLowerCase();
+                const status = (u.status || '').toUpperCase();
+                
+                // If user is a Corretor, they can only collaborate with Estagiários assigned to them (padrinho)
+                if (isCorretor && perfil?.id) {
+                  return targetRoles.includes(funcao) && status === 'ATIVO' && u.padrinho_id === perfil.id;
+                }
+                
+                return targetRoles.includes(funcao) && status === 'ATIVO';
+              })
+              .map((u: { id: string; nome: string }) => ({ id: u.id, nome: u.nome }))
+            setDbEstagiarios(filtered)
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao carregar colaboradores:", error)
+      }
+    }
+    loadEstagiarios()
+  }, [perfil?.role, perfil?.id, isCorretor])
+
+  useEffect(() => {
+    async function loadTicketAttachments() {
+      const idLead = searchParams.get("idLead")
+      const idChamado = searchParams.get("idChamado")
+      const origem = searchParams.get("origem")
+
+      const targetId = idChamado || idLead
+
+      if (targetId) {
+        // Validar se targetId é um UUID válido ou um ID numérico para não dar erro na busca do Supabase
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const numRegex = /^\d+$/;
+        if (!uuidRegex.test(targetId) && !numRegex.test(targetId)) {
+          return
+        }
+
+        try {
+          const { data: ticket, error } = await supabase
+            .from('chamados')
+            .select('*')
+            .eq('id', targetId)
+            .maybeSingle()
+
+          if (ticket && !error) {
+            setExistingAttachments({
+              frente: ticket.arquivo_rg_frente || null,
+              verso: ticket.arquivo_rg_verso || null,
+              contracheque: ticket.arquivo_contracheque || null,
+              extrato: ticket.arquivo_extrato || null,
+              residencia: ticket.arquivo_residencia || null,
+              outros: ticket.arquivo_outros || null,
+              outros_2: ticket.arquivo_outros_2 || null,
+              outros_3: ticket.arquivo_outros_3 || null,
+              outros_4: ticket.arquivo_outros_4 || null
+            })
+
+            // Also ensure we populate telephone fields from the ticket if they are in formData
+            setFormData(prev => ({
+              ...prev,
+              tel_1: prev.tel_1 || ticket.cliente_telefone || "",
+              tel_2: prev.tel_2 || ticket.cliente_telefone_2 || "",
+              tel_3: prev.tel_3 || ticket.cliente_telefone_3 || "",
+              tel_4: prev.tel_4 || ticket.cliente_telefone_4 || ticket.telefone_4 || "",
+              telefone_selecionado: prev.telefone_selecionado || ticket.telefone_selecionado || "",
+            }))
+
+            // Se o chamado foi aberto por um estagiário ativo, preenche automaticamente o campo de colaboração
+            if (ticket.user_id) {
+              try {
+                const resUser = await fetch(`/api/usuarios?id=${ticket.user_id}`)
+                if (resUser.ok) {
+                  const userData = await resUser.json()
+                  const funcao = (userData.funcao || '').toLowerCase()
+                  const status = (userData.status || '').toUpperCase()
+                  if ((funcao === 'estágio' || funcao === 'estagio') && status === 'ATIVO') {
+                    setFormData(prev => ({
+                      ...prev,
+                      estagiario_colaborador_id: userData.id,
+                      estagiario_colaborador_nome: userData.nome
+                    }))
+                  }
+                }
+              } catch (userErr) {
+                console.error("Erro ao verificar estagiário do chamado:", userErr)
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao carregar anexos do chamado:", err)
+        }
+      }
+    }
+    loadTicketAttachments()
+  }, [searchParams])
+
+  // Fetch product configurations
+  useEffect(() => {
+    async function fetchConfigs() {
+      try {
+        const { data, error } = await supabase
+          .from('produtos_config')
+          .select('*, convenios(nome)')
+
+        if (error) throw error
+
+        const filtered = (data || []).filter((p: { ativo?: boolean | null }) => p.ativo !== false)
+        setDbProdutosConfigs(filtered)
+      } catch (err) {
+        console.error("Erro ao buscar tabelas de regras:", err)
+      }
+    }
+    fetchConfigs()
+  }, []) 
+
+  // Auto-fill supervisor info
+  useEffect(() => {
+    const fillSupervisor = async () => {
+      // Se o usuário logado é um SUPERVISOR, ele é a própria equipe comercial
+      if (perfil?.role === 'Supervisor' && !formData.equipe) {
+        setFormData(prev => ({ ...prev, equipe: perfil.nome || "" }));
+        return;
+      }
+
+      // Se já temos o nome no perfil e o campo está vazio, preenchemos
+      if (perfil?.supervisor_nome && !formData.equipe) {
+        setFormData(prev => ({ ...prev, equipe: perfil.supervisor_nome }));
+        return;
+      }
+
+      // Se temos o ID mas não o nome no perfil, buscamos via API
+      if (perfil?.supervisor_id && !formData.equipe) {
+        try {
+          const res = await fetch(`/api/usuarios?id=${perfil.supervisor_id}`);
+          if (res.ok) {
+            const supervisorData = await res.json();
+            if (supervisorData.nome) {
+              setFormData(prev => ({ ...prev, equipe: supervisorData.nome }));
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao buscar supervisor:", err);
+        }
+      }
+    };
+
+    fillSupervisor();
+  }, [perfil, formData.equipe])
+
+  const isFormValid = (() => {
+    // Campos obrigatórios conforme regras de negócio solicitadas
+    // Observação: 'observacoes' não é obrigatório.
+    const requiredFields = [
+      'nome', 'cpf', 'nascimento', 'matricula', 'origem', 
+      'naturalidade', 'uf_naturalidade', 'identidade', 'orgao_emissor', 'uf_emissao', 'data_emissao',
+      'nome_mae', 'nome_pai', 'email', 'cep', 'endereco', 'numero', 'bairro', 'cidade', 'uf',
+      'banco_cliente', 'agencia', 'conta', 'dv', 'tipo_conta', 'valor_parcela', 'valor_producao_corretor',
+      'coeficiente_prazo'
+    ];
+
+    // Verifica se todos os campos obrigatórios estão preenchidos
+    const hasAllFields = requiredFields.every(field => {
+      const val = formData[field as keyof typeof formData];
+      return typeof val === 'string' ? val.trim() !== "" : !!val;
+    });
+
+    // Verifica se o usuário selecionou o telefone de contato com o cliente e o número não está vazio
+    const selectedKey = formData.telefone_selecionado;
+    const hasSelectedPhone = !!selectedKey && !!(formData[selectedKey as keyof typeof formData] as string)?.trim();
+
+    // Verifica seleção de convênio, banco e operação (essenciais para a proposta)
+    const hasSelection = !!selection.convenio && !!selection.banco && !!selection.operacao;
+    
+    // Verifica anexos obrigatórios (pode ser arquivo novo ou já existente vindo do lead/chamado)
+    const hasRgFrente = !!selectedFiles.frente || !!existingAttachments.frente;
+    const hasContraCheque = !!selectedFiles.contracheque || !!existingAttachments.contracheque;
+
+    return hasAllFields && hasSelectedPhone && hasSelection && hasRgFrente && hasContraCheque;
+  })();
+
+  const getMissingFields = () => {
+    const missing: string[] = [];
+
+    const fieldLabels: Record<string, string> = {
+      nome: "Nome completo",
+      cpf: "CPF",
+      nascimento: "Data de nascimento",
+      matricula: "Matrícula",
+      origem: "Origem/Órgão",
+      naturalidade: "Naturalidade",
+      uf_naturalidade: "UF de Naturalidade",
+      identidade: "Identidade (Nº do RG)",
+      orgao_emissor: "Órgão emissor do RG",
+      uf_emissao: "UF de emissão do RG",
+      data_emissao: "Data de emissão do RG",
+      nome_mae: "Nome da mãe",
+      nome_pai: "Nome do pai",
+      email: "E-mail",
+      cep: "CEP",
+      endereco: "Endereço",
+      numero: "Número",
+      bairro: "Bairro",
+      cidade: "Cidade",
+      uf: "UF",
+      banco_cliente: "Banco do cliente",
+      agencia: "Agência bancária",
+      conta: "Conta bancária",
+      dv: "Dígito verificador da conta",
+      tipo_conta: "Tipo de conta",
+      valor_parcela: "Valor da parcela",
+      valor_producao_corretor: "Valor de produção",
+      coeficiente_prazo: "Coeficiente/Prazo"
+    };
+
+    const requiredFields = [
+      'nome', 'cpf', 'nascimento', 'matricula', 'origem', 
+      'naturalidade', 'uf_naturalidade', 'identidade', 'orgao_emissor', 'uf_emissao', 'data_emissao',
+      'nome_mae', 'nome_pai', 'email', 'cep', 'endereco', 'numero', 'bairro', 'cidade', 'uf',
+      'banco_cliente', 'agencia', 'conta', 'dv', 'tipo_conta', 'valor_parcela', 'valor_producao_corretor',
+      'coeficiente_prazo'
+    ];
+
+    requiredFields.forEach(field => {
+      const val = formData[field as keyof typeof formData];
+      const isFilled = typeof val === 'string' ? val.trim() !== "" : !!val;
+      if (!isFilled) {
+        missing.push(fieldLabels[field] || field);
+      }
+    });
+
+    const selectedKey = formData.telefone_selecionado;
+    if (!selectedKey) {
+      missing.push("Seleção do Telefone em que falou com o cliente (clique no campo do telefone)");
+    } else if (!(formData[selectedKey as keyof typeof formData] as string)?.trim()) {
+      missing.push("Número do Telefone selecionado para contato");
+    }
+
+    if (!selection.convenio) missing.push("Convênio");
+    if (!selection.banco) missing.push("Banco");
+    if (!selection.operacao) missing.push("Operação");
+
+    const hasRgFrente = !!selectedFiles.frente || !!existingAttachments.frente;
+    const hasContraCheque = !!selectedFiles.contracheque || !!existingAttachments.contracheque;
+
+    if (!hasRgFrente) missing.push("Anexo: RG ou CNH (FRENTE)");
+    if (!hasContraCheque) missing.push("Anexo: Contra Cheque");
+
+    return missing;
+  };
+
+  const fileRefs = {
+    frente: useRef<HTMLInputElement>(null),
+    verso: useRef<HTMLInputElement>(null),
+    contracheque: useRef<HTMLInputElement>(null),
+    extrato: useRef<HTMLInputElement>(null),
+    residencia: useRef<HTMLInputElement>(null),
+    outros: useRef<HTMLInputElement>(null),
+    outros_2: useRef<HTMLInputElement>(null),
+    outros_3: useRef<HTMLInputElement>(null),
+    outros_4: useRef<HTMLInputElement>(null)
+  }
+
+  const handleSearchCEP = async () => {
+    console.log("handleSearchCEP called. Current CEP:", formData.cep);
+    const cep = formData.cep.replace(/\D/g, "")
+    if (cep.length !== 8) {
+      console.warn("Invalid CEP length:", cep.length);
+      toast.error("Por favor, informe um CEP válido com 8 dígitos.")
+      return
+    }
+
+    setIsSearchingCEP(true)
+    const loadingToast = toast.loading("Buscando endereço...")
+    
+    try {
+      console.log("Fetching from ViaCEP:", cep);
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json()
+      console.log("ViaCEP response data:", data);
+
+      if (data.erro) {
+        toast.error("CEP não encontrado.", { id: loadingToast })
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          endereco: data.logradouro || prev.endereco,
+          bairro: data.bairro || prev.bairro,
+          cidade: data.localidade || prev.cidade,
+          uf: data.uf || prev.uf
+        }))
+        toast.success("Endereço preenchido com sucesso!", { id: loadingToast })
+      }
+    } catch (error) {
+      console.error("Erro ao buscar CEP:", error)
+      toast.error("Erro ao conectar com o serviço de CEP.", { id: loadingToast })
+    } finally {
+      setIsSearchingCEP(false)
+    }
+  }
+
+  const handleFileClick = (ref: React.RefObject<HTMLInputElement | null>) => {
+    ref.current?.click()
+  }
+
+  const handleFileChange = (field: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null
+    setSelectedFiles(prev => ({ ...prev, [field]: file }))
+    // If a new file is uploaded, clear the existing attachment for that slot
+    setExistingAttachments(prev => ({ ...prev, [field]: null }))
+  }
+
+  const uploadFile = async (file: File, path: string) => {
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
+    const fullPath = `${path}/${fileName}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('propostas-attachments')
+      .upload(fullPath, file)
+
+    if (uploadError) throw uploadError
+
+    const { data } = supabase.storage
+      .from('propostas-attachments')
+      .getPublicUrl(fullPath)
+
+    return data.publicUrl
+  }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const file = new File([blob], `screenshot_${Date.now()}.png`, { type: blob.type });
+          files.push(file);
+        }
+      }
+    }
+    if (files.length > 0) {
+      setPastedImages(prev => [...prev, ...files]);
+      toast.success(`${files.length} imagem(ns) colada(s) do clipboard`);
+    }
+  };
+
+  useEffect(() => {
+    async function fetchClientDetails() {
+      if (!formData.cpf) return
+      
+      const cleanCPF = formData.cpf.replace(/\D/g, "")
+      if (cleanCPF.length !== 11) return
+
+      try {
+        // Primeiro tenta buscar na tabela de propostas (mais completo)
+        const { data: proposal, error: propError } = await supabase
+          .from('propostas')
+          .select('*')
+          .eq('cliente_cpf', cleanCPF)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!propError && proposal) {
+          setFormData(prev => ({
+            ...prev,
+            nome: proposal.nome_cliente || prev.nome,
+            nascimento: proposal.data_nascimento ? fromInputDate(proposal.data_nascimento) : prev.nascimento,
+            matricula: proposal.matricula || prev.matricula,
+            naturalidade: proposal.naturalidade || prev.naturalidade,
+            uf_naturalidade: proposal.uf_naturalidade || prev.uf_naturalidade,
+            identidade: proposal.identidade || prev.identidade,
+            orgao_emissor: proposal.orgao_emissor || prev.orgao_emissor,
+            uf_emissao: proposal.uf_emissao || prev.uf_emissao,
+            data_emissao: proposal.data_emissao ? fromInputDate(proposal.data_emissao) : prev.data_emissao,
+            nome_pai: proposal.nome_pai || prev.nome_pai,
+            nome_mae: proposal.nome_mae || prev.nome_mae,
+            tel_1: proposal.tel_residencial_1 || prev.tel_1,
+            tel_2: proposal.tel_residencial_2 || prev.tel_2,
+            tel_3: proposal.tel_comercial || prev.tel_3,
+            tel_4: proposal.tel_4 || proposal.tel_celular || prev.tel_4,
+            telefone_selecionado: proposal.telefone_selecionado || prev.telefone_selecionado || "",
+            email: proposal.email || prev.email,
+            cep: proposal.cep || prev.cep,
+            endereco: proposal.endereco || prev.endereco,
+            numero: proposal.numero || prev.numero,
+            complemento: proposal.complemento || prev.complemento,
+            bairro: proposal.bairro || prev.bairro,
+            cidade: proposal.cidade || prev.cidade,
+            uf: proposal.uf || prev.uf,
+            observacoes: proposal.observacoes || prev.observacoes
+          }));
+
+          // Preenche os anexos se existirem na proposta anterior
+          setExistingAttachments(prev => ({
+            ...prev,
+            frente: proposal.arquivo_rg_frente || prev.frente,
+            verso: proposal.arquivo_rg_verso || prev.verso,
+            contracheque: proposal.arquivo_contracheque || prev.contracheque,
+            extrato: proposal.arquivo_extrato || prev.extrato,
+            residencia: proposal.arquivo_residencia || prev.residencia,
+            outros: proposal.arquivo_outros || prev.outros,
+            outros_2: proposal.arquivo_outros_2 || prev.outros_2,
+            outros_3: proposal.arquivo_outros_3 || prev.outros_3,
+            outros_4: proposal.arquivo_outros_4 || prev.outros_4
+          }));
+
+          toast.success("Dados pessoais e anexos preenchidos automaticamente.");
+          return; 
+        }
+
+        // Busca inteligente nas tabelas de consulta rápida (Split Tables Optimization)
+        const conv = selection.convenio?.toUpperCase() || ""
+        let targetTable = ""
+        
+        if (conv === 'SIAPE') targetTable = 'base_consulta_siape'
+        else if (conv.includes('GOVERNO SP') || conv.includes('SÃO PAULO')) targetTable = 'base_consulta_governo_sp'
+        else if (conv.includes('PREFEITURA SP')) targetTable = 'base_consulta_prefeitura_sp'
+        else if (conv.includes('GOVERNO PI') || conv.includes('PIAUÍ')) targetTable = 'base_consulta_governo_pi'
+        else if (conv.includes('GOVERNO MA') || conv.includes('MARANHÃO')) targetTable = 'base_consulta_governo_ma'
+        else if (conv.includes('GOVERNO RR') || conv.includes('RORAIMA')) targetTable = 'base_consulta_governo_rr'
+        else if (conv.includes('GOVERNO BA') || conv.includes('BAHIA')) targetTable = 'base_consulta_governo_ba'
+
+        let data = null
+        let error = null
+
+        if (targetTable) {
+          const { data: resData, error: resError } = await supabase
+            .from(targetTable)
+            .select('*')
+            .eq('cpf', cleanCPF)
+            .maybeSingle()
+          data = resData
+          error = resError
+        }
+
+        // Se não encontrou na tabela especializada, tenta uma busca paralela nas split tables
+        if (!data || error) {
+          const splitTables = [
+            'base_consulta_siape',
+            'base_consulta_governo_sp',
+            'base_consulta_prefeitura_sp',
+            'base_consulta_governo_pi',
+            'base_consulta_governo_ma',
+            'base_consulta_governo_rr',
+            'base_consulta_governo_ba'
+          ];
+          
+          const results = await Promise.all(
+            splitTables.map(async (table) => {
+              try {
+                const { data: rowData, error: rowError } = await supabase
+                  .from(table)
+                  .select('*')
+                  .eq('cpf', cleanCPF)
+                  .maybeSingle()
+                if (!rowError && rowData) return rowData;
+              } catch (err) {
+                console.warn(`Erro na tabela paralela ${table}:`, err);
+              }
+              return null;
+            })
+          );
+
+          const globalData = results.find(r => r !== null) || null;
+          
+          if (globalData) {
+            setFormData(prev => ({ 
+              ...prev, 
+              matricula: globalData.matricula || globalData.identificacao || globalData.numero_matricula || prev.matricula || "",
+              nascimento: prev.nascimento || (globalData.data_nascimento ? fromInputDate(globalData.data_nascimento) : ""),
+              nome: prev.nome || globalData.nome || "",
+              tel_1: prev.tel_1 || globalData.telefone_1 || "",
+              tel_2: prev.tel_2 || globalData.telefone_2 || "",
+              tel_3: prev.tel_3 || globalData.telefone_3 || "",
+              tel_4: prev.tel_4 || globalData.telefone_4 || "",
+              email: prev.email || (globalData as { email?: string }).email || ""
+            }))
+            toast.success("Dados básicos encontrados.");
+            return
+          }
+        }
+
+        if (!error && data) {
+          setFormData(prev => ({ 
+            ...prev, 
+            matricula: data.matricula || data.identificacao || data.numero_matricula || prev.matricula || "",
+            nascimento: prev.nascimento || (data.data_nascimento ? fromInputDate(data.data_nascimento) : ""),
+            nome: prev.nome || data.nome || "",
+            tel_1: prev.tel_1 || data.telefone_1 || "",
+            tel_2: prev.tel_2 || data.telefone_2 || "",
+            tel_3: prev.tel_3 || data.telefone_3 || "",
+            tel_4: prev.tel_4 || data.telefone_4 || "",
+            email: prev.email || (data as { email?: string }).email || ""
+          }))
+          toast.success("Dados básicos encontrados.");
+        }
+      } catch (error) {
+        console.error("Erro ao buscar detalhes do cliente:", error)
+      }
+    }
+    fetchClientDetails()
+  }, [formData.cpf])
+
+  useEffect(() => {
+    async function generateLeadId() {
+      // Only generate if we don't have one from searchParams
+      if (searchParams.get("idLead")) return
+
+      try {
+        // Query both tables to find the maximum ID
+        const [chamadosRes, propostasRes] = await Promise.all([
+          supabase.from('chamados').select('id').order('id', { ascending: false }).limit(1),
+          supabase.from('propostas').select('id_lead').order('id_lead', { ascending: false }).limit(1)
+        ])
+
+        let maxId = 0
+
+        if (!chamadosRes.error && chamadosRes.data && chamadosRes.data.length > 0) {
+          maxId = Math.max(maxId, parseInt(chamadosRes.data[0].id))
+        }
+
+        if (!propostasRes.error && propostasRes.data && propostasRes.data.length > 0) {
+          maxId = Math.max(maxId, parseInt(propostasRes.data[0].id_lead))
+        }
+
+        // If no records found, start from 1
+        const nextId = maxId > 0 ? maxId + 1 : 1
+        setFormData(prev => ({ ...prev, idLead: nextId.toString() }))
+      } catch (err: unknown) {
+        console.error("Erro ao gerar ID de Lead:", err)
+      }
+    }
+    generateLeadId()
+  }, [searchParams])
+
+  const handleSubmit = async (targetStatus?: string) => {
+    if (!selection.convenio || !selection.banco || !selection.operacao) {
+      toast.error("Por favor, selecione o convênio, banco e tipo de operação.")
+      return
+    }
+
+      if (!formData.nome || !formData.cpf || !formData.matricula) {
+        toast.error(`Preencha os campos obrigatórios (MATRÍCULA/IDENTIFICAÇÃO, CPF e Nome).`)
+        return
+      }
+
+    if (!formData.coeficiente_prazo) {
+      toast.error("Por favor, selecione a tabela (Coeficiente e Prazo).")
+      return
+    }
+
+    setIsSubmitting(true)
+    const loadingToast = toast.loading("Salvando proposta e anexos...")
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error("Usuário não autenticado")
+
+      // Upload de arquivos
+      const fileUrls: { [key: string]: string | null } = {
+        frente: null,
+        verso: null,
+        contracheque: null,
+        extrato: null,
+        residencia: null,
+        outros: null,
+        outros_2: null,
+        outros_3: null,
+        outros_4: null
+      };
+
+      for (const [key, file] of Object.entries(selectedFiles)) {
+        if (file) {
+          try {
+            const url = await uploadFile(file, `${user.id}/${Date.now()}`);
+            fileUrls[key] = url;
+          } catch (uploadErr: unknown) {
+            const err = uploadErr as { message?: string };
+            console.error(`Erro ao enviar arquivo ${key}:`, err);
+            throw new Error(`Falha no upload do arquivo ${key}: ${err.message || 'Erro desconhecido'}`);
+          }
+        }
+      }
+
+      // Upload de imagens coladas (screenshots)
+      const pastedUrls = [];
+      if (pastedImages.length > 0) {
+        for (const file of pastedImages) {
+          try {
+            const url = await uploadFile(file, `pasted/${user.id}/${Date.now()}`);
+            pastedUrls.push(url);
+          } catch (err: unknown) {
+            console.error("Erro ao subir imagem colada:", err);
+          }
+        }
+      }
+
+      // Se houver imagens coladas, adiciona às observações
+      let finalObservations = formData.observacoes;
+      if (pastedUrls.length > 0) {
+        finalObservations += "\n\n--- IMAGENS EM ANEXO ---\n" + pastedUrls.map((url, i) => `![Print ${i+1}](${url})`).join("\n");
+      }
+
+      const cleanMoney = (val: string) => {
+        if (!val) return null
+        const cleaned = val.replace(/[R$\s.]/g, "").replace(",", ".")
+        return parseFloat(cleaned) || null
+      }
+
+      const formatDate = (val: string) => {
+        if (!val) return null
+        const trimmed = val.trim()
+        if (!trimmed) return null
+        const upper = trimmed.toUpperCase()
+        if (upper === "NÃO INFORMADO" || upper === "NAO INFORMADO" || upper === "N/A" || upper === "NULL" || upper === "UNDEFINED") {
+          return null
+        }
+        try {
+          const parts = trimmed.split('/')
+          if (parts.length === 3) {
+            const day = parts[0].padStart(2, '0')
+            const month = parts[1].padStart(2, '0')
+            const year = parts[2]
+            if (year.length === 4 && !isNaN(Number(year)) && !isNaN(Number(month)) && !isNaN(Number(day))) {
+              return `${year}-${month}-${day}`
+            }
+          }
+          if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+            return trimmed
+          }
+          return null
+        } catch {
+          return null
+        }
+      }
+
+      const currentStatus = targetStatus || 'AGUARDANDO SOLICITAÇÃO DE DIGITAÇÃO'
+
+      // Validar Coeficiente e Prazo
+      if (!formData.coeficiente_prazo) {
+        toast.error("Por favor, selecione uma tabela no campo 'COEFICIENTE E PRAZO' antes de prosseguir.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Generate a unique ID for this proposal to prevent overwrites
+      const uniqueIdLead = `${Date.now()}${Math.floor(Math.random() * 900) + 100}`
+
+      const { error } = await supabase.from('propostas').insert({
+        id_lead: uniqueIdLead,
+        cliente_cpf: formData.cpf.replace(/\D/g, ""),
+        nome_cliente: formData.nome,
+        data_nascimento: formatDate(formData.nascimento),
+        origem: formData.origem,
+        matricula: formData.matricula,
+        convenio: selection.convenio,
+        banco: selection.banco,
+        tipo_operacao: selection.operacao,
+        corretor_id: perfil?.id,
+        corretor: perfil?.nome,
+        equipe: formData.equipe,
+        status: currentStatus,
+        estagiario_colaborador_id: formData.estagiario_colaborador_id || null,
+        estagiario_colaborador_nome: formData.estagiario_colaborador_nome || null,
+        naturalidade: formData.naturalidade,
+        uf_naturalidade: formData.uf_naturalidade,
+        identidade: formData.identidade,
+        orgao_emissor: formData.orgao_emissor,
+        uf_emissao: formData.uf_emissao,
+        data_emissao: formatDate(formData.data_emissao),
+        nome_pai: formData.nome_pai,
+        nome_mae: formData.nome_mae,
+        tel_residencial_1: formData.tel_1,
+        tel_residencial_2: formData.tel_2,
+        tel_comercial: formData.tel_3,
+        tel_4: formData.tel_4,
+        telefone_contato: formData.telefone_selecionado ? (formData[formData.telefone_selecionado as keyof typeof formData] as string) : null,
+        telefone_selecionado: formData.telefone_selecionado || null,
+        email: formData.email,
+        cep: formData.cep,
+        endereco: formData.endereco,
+        numero: formData.numero,
+        complemento: formData.complemento,
+        bairro: formData.bairro,
+        cidade: formData.cidade,
+        uf: formData.uf,
+        banco_cliente: formData.banco_cliente,
+        chave_pix: formData.chave_pix,
+        conta: formData.conta,
+        agencia: formData.agencia,
+        dv: formData.dv,
+        tipo_conta: formData.tipo_conta,
+        valor_parcela: cleanMoney(formData.valor_parcela),
+        valor_operacao_operacional: cleanMoney(formData.valor_operacao_operacional),
+        valor_cliente_operacional: cleanMoney(formData.valor_cliente_operacional),
+        valor_producao_operacional: cleanMoney(formData.valor_producao_operacional),
+        valor_producao: cleanMoney(formData.valor_producao_corretor),
+        valor_operacao: cleanMoney(formData.valor_operacao_operacional),
+        valor_cliente: cleanMoney(formData.valor_cliente_operacional),
+        margem_utilizada: cleanMoney(formData.margem_utilizada),
+        coeficiente_prazo: formData.coeficiente_prazo,
+        comissao_banco_porcentagem: selectedComissaoPercent,
+        comissao_banco_valor: (selectedComissaoPercent !== null && cleanMoney(formData.valor_operacao_operacional) !== null) 
+          ? (cleanMoney(formData.valor_operacao_operacional)! * selectedComissaoPercent) / 100 
+          : null,
+        observacoes: finalObservations,
+        arquivo_rg_frente: fileUrls.frente || existingAttachments.frente,
+        arquivo_rg_verso: fileUrls.verso || existingAttachments.verso,
+        arquivo_contracheque: fileUrls.contracheque || existingAttachments.contracheque,
+        arquivo_extrato: fileUrls.extrato || existingAttachments.extrato,
+        arquivo_residencia: fileUrls.residencia || existingAttachments.residencia,
+        arquivo_outros: fileUrls.outros || existingAttachments.outros,
+        arquivo_outros_2: fileUrls.outros_2 || existingAttachments.outros_2,
+        arquivo_outros_3: fileUrls.outros_3 || existingAttachments.outros_3,
+        arquivo_outros_4: fileUrls.outros_4 || existingAttachments.outros_4,
+        updated_at: new Date().toISOString()
+      })
+
+      if (error) throw error
+
+      // Se a proposta foi originada de um chamado, atualiza o status desse chamado específico para "PROPOSTA ENVIADA"
+      const idChamadoParam = searchParams.get("idChamado") || searchParams.get("idLead")
+      if (idChamadoParam) {
+        try {
+          const { data: ticketData } = await supabase
+            .from('chamados')
+            .select('id')
+            .eq('id', idChamadoParam)
+            .maybeSingle()
+
+          if (ticketData) {
+            const { data: statusObj } = await supabase
+              .from('status_chamados')
+              .select('id, nome')
+              .ilike('nome', '%PROPOSTA ENVIADA%')
+              .maybeSingle()
+
+            const updatePayload: Record<string, any> = {
+              status: statusObj?.nome || 'PROPOSTA ENVIADA',
+              updated_at: new Date().toISOString()
+            }
+            if (statusObj?.id) {
+              updatePayload.status_id = statusObj.id
+            }
+
+            await supabase
+              .from('chamados')
+              .update(updatePayload)
+              .eq('id', ticketData.id)
+          }
+        } catch (tErr) {
+          console.error("Erro ao atualizar chamado para PROPOSTA ENVIADA:", tErr)
+        }
+      }
+
+      toast.dismiss(loadingToast)
+      toast.success("Proposta salva com sucesso!")
+      if (isModal) {
+        if (onSuccessModal) onSuccessModal()
+        if (onCloseModal) onCloseModal()
+      } else {
+        router.push("/propostas")
+      }
+    } catch (err: unknown) {
+      console.error("Erro ao salvar proposta:", JSON.stringify(err, null, 2))
+      console.log("Detalhes do erro:", err)
+      toast.dismiss(loadingToast)
+      const error = err as { message?: string; error_description?: string }
+      const message = error?.message || error?.error_description || "Erro ao salvar proposta."
+      toast.error(message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+
+  useEffect(() => {
+    if (perfil && !formData.equipe) {
+      const equipeValue = (perfil.role === 'Supervisor' ? perfil.nome : perfil.supervisor_nome) || "";
+      setFormData(prev => ({ ...prev, equipe: equipeValue }));
+    }
+  }, [perfil, formData.equipe])
+
+  // Helper to convert DD/MM/YYYY to YYYY-MM-DD for native input
+  const toInputDate = (val: string) => {
+    if (!val || !val.includes('/')) return val;
+    const [d, m, y] = val.split('/');
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  };
+
+  // Helper to convert YYYY-MM-DD to DD/MM/YYYY for state
+  const fromInputDate = (val: string) => {
+    if (!val || !val.includes('-')) return val;
+    const [y, m, d] = val.split('-');
+    return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+  };
+
+  const handleFormChange = (field: string, value: string) => {
+    let newValue = value
+    
+    // CEP formatting (00000-000)
+    if (field === "cep") {
+      const digits = value.replace(/\D/g, "")
+      if (digits.length <= 8) {
+        if (digits.length > 5) {
+          newValue = `${digits.substring(0, 5)}-${digits.substring(5, 8)}`
+        } else {
+          newValue = digits
+        }
+      } else {
+        return // Reject values longer than 8 digits
+      }
+    }
+
+    // Currency fields formatting
+    if (["valor_parcela", "valor_operacao_operacional", "valor_cliente_operacional", "valor_producao_operacional", "margem_utilizada", "valor_producao_corretor"].includes(field)) {
+      const digits = value.replace(/\D/g, "")
+      if (digits) {
+        const amount = parseFloat(digits) / 100
+        newValue = new Intl.NumberFormat('pt-BR', {
+          style: 'currency',
+          currency: 'BRL',
+        }).format(amount)
+      } else {
+        newValue = ""
+      }
+    }
+
+    // Date fields formatting (DD/MM/AAAA)
+    if (["nascimento", "data_emissao"].includes(field)) {
+      const digits = value.replace(/\D/g, "")
+      if (digits.length <= 8) {
+        if (digits.length > 4) {
+          newValue = `${digits.substring(0, 2)}/${digits.substring(2, 4)}/${digits.substring(4, 8)}`
+        } else if (digits.length > 2) {
+          newValue = `${digits.substring(0, 2)}/${digits.substring(2, 4)}`
+        } else {
+          newValue = digits
+        }
+      } else {
+        return // Reject values longer than 8 digits
+      }
+    }
+    // Phone fields formatting
+    if (["tel_1", "tel_2", "tel_3", "tel_4"].includes(field)) {
+      const digits = value.replace(/\D/g, "")
+      if (digits.length <= 11) {
+        if (digits.length > 2) {
+          const part1 = digits.substring(0, 2)
+          const part2 = digits.substring(2, 7)
+          const part3 = digits.substring(7, 11)
+          newValue = `(${part1}) ${part2}${part3 ? "-" + part3 : ""}`
+        } else if (digits.length > 0) {
+          newValue = `(${digits}`
+        }
+      } else {
+        return // Reject values longer than 11 digits
+      }
+    }
+
+    setFormData(prev => {
+      const updated = { ...prev, [field]: newValue }
+
+      // Se o CPF mudar, podemos tentar limpar ou reagir se necessário
+      if (field === "cpf") {
+        // ... ja tratado no useEffect
+      }
+
+      // Sync parcel with margin
+      if (field === "margem_utilizada") {
+        updated.valor_parcela = newValue
+      } else if (field === "valor_parcela") {
+        updated.margem_utilizada = newValue
+      }
+
+      // Operational field changes propagate to primary fields
+      if (field === "valor_operacao_operacional") {
+        updated.valor_cliente_operacional = newValue
+        if (selectedProdPercent) {
+          const rawOp = newValue.replace(/\D/g, "")
+          if (rawOp) {
+            const opValue = parseFloat(rawOp) / 100
+            const prodValue = (opValue * selectedProdPercent) / 100
+            updated.valor_producao_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prodValue)
+            updated.valor_producao_corretor = updated.valor_producao_operacional
+          }
+        }
+      }
+
+      if (field === "valor_producao_operacional") {
+        updated.valor_producao_corretor = newValue
+      }
+
+      if (field === "valor_cliente_operacional") {
+        // Updated requirement: Valor Cliente = Valor Operação
+        updated.valor_operacao_operacional = newValue
+        if (selectedProdPercent) {
+          const rawVal = newValue.replace(/\D/g, "")
+          if (rawVal) {
+            const val = parseFloat(rawVal) / 100
+            const prodValue = (val * selectedProdPercent) / 100
+            updated.valor_producao_operacional = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prodValue)
+            updated.valor_producao_corretor = updated.valor_producao_operacional
+          }
+        }
+      }
+
+      // Auto-calculations check
+      if ((field === "margem_utilizada" || field === "valor_parcela") && selectedCoefValue) {
+        const rawMargem = (field === "margem_utilizada" ? newValue : updated.margem_utilizada).replace(/\D/g, "")
+        if (rawMargem && selectedCoefValue > 0) {
+          const margemValue = parseFloat(rawMargem) / 100
+          const valorOperacao = margemValue / selectedCoefValue
+          
+          const formattedOp = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorOperacao)
+          
+          updated.valor_operacao_operacional = formattedOp
+          updated.valor_cliente_operacional = formattedOp
+          
+          // Re-calculate production if percent is available
+          if (selectedProdPercent) {
+            const valorProducao = (valorOperacao * selectedProdPercent) / 100
+            const formattedProd = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+            updated.valor_producao_operacional = formattedProd
+            updated.valor_producao_corretor = formattedProd
+          }
+        } else {
+          updated.valor_operacao_operacional = ""
+          updated.valor_cliente_operacional = ""
+          updated.valor_producao_operacional = ""
+          updated.valor_producao_corretor = ""
+        }
+      }
+
+      return updated
+    })
+  }
+
+  const nextStep = () => setStep(prev => prev + 1)
+  const prevStep = () => setStep(prev => prev - 1)
+
+  const handleSelect = (key: string, id: string, name: string) => {
+    setSelection(prev => ({ 
+      ...prev, 
+      [key]: name,
+      [`${key}Id`]: id
+    }))
+    nextStep()
+  }
+
+  const calcEffectivePJCommission = (
+    rawPj: number | string | undefined | null,
+    rawComissaoEmpresa: number | string | undefined | null
+  ): number | undefined => {
+    if (rawPj === undefined || rawPj === null || rawPj === "" || rawPj === "--") return undefined;
+    const valPJ = typeof rawPj === 'number' ? rawPj : parseFloat(String(rawPj).replace(',', '.'));
+    if (isNaN(valPJ)) return undefined;
+
+    if (rawComissaoEmpresa !== undefined && rawComissaoEmpresa !== null && rawComissaoEmpresa !== "" && rawComissaoEmpresa !== "--") {
+      const valCom = typeof rawComissaoEmpresa === 'number' ? rawComissaoEmpresa : parseFloat(String(rawComissaoEmpresa).replace(',', '.'));
+      if (!isNaN(valCom) && valCom > 0) {
+        const converted = (valCom * valPJ) / 100;
+        return parseFloat(converted.toFixed(2));
+      }
+    }
+    return valPJ;
+  };
+
+  const hasValidPJCommission = (config: ProdutoConfig): boolean => {
+    if (!config || config.ativo === false) return false
+
+    const isPos = (v: any) => {
+      if (v === null || v === undefined || v === "" || v === "--") return false
+      const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'))
+      return !isNaN(num) && num > 0
+    }
+
+    if (config.regras && config.regras.length > 0) {
+      return config.regras.some(regra => {
+        if (regra.ativo === false) return false
+        if (perfil?.id && regra.comissoes_pj_corretores && isPos(regra.comissoes_pj_corretores[perfil.id])) {
+          return true
+        }
+        if (isPos(regra.percentual_comissao_pj)) return true
+        if (regra.comissoes_pj_corretores && typeof regra.comissoes_pj_corretores === 'object') {
+          return Object.values(regra.comissoes_pj_corretores).some(v => isPos(v))
+        }
+        return false
+      })
+    }
+
+    return isPos(config.percentual_comissao_pj)
+  }
+
+  const matchesOp = (config: ProdutoConfig, opId: string, opNome?: string) => {
+    if (!config.operacoes || !Array.isArray(config.operacoes)) return false
+    return config.operacoes.includes(opId) || (opNome ? config.operacoes.includes(opNome) : false)
+  }
+
+  const matchesConvenio = (config: ProdutoConfig, convId: string, convNome?: string) => {
+    if (config.convenio_id === convId) return true
+    if (convNome && config.convenios?.nome === convNome) return true
+    return false
+  }
+
+  const matchesBanco = (config: ProdutoConfig, bancoId: string, bancoNome?: string) => {
+    if (config.banco_id === bancoId) return true
+    if (config.bancos?.id === bancoId) return true
+    if (bancoNome && config.bancos?.nome === bancoNome) return true
+    return false
+  }
+
+  const renderStep1 = () => {
+    let sortedConvenios = [...dbConvenios]
+    if (isPJ) {
+      sortedConvenios = sortedConvenios.filter(c => {
+        return dbProdutosConfigs.some(config => 
+          config.ativo !== false &&
+          matchesConvenio(config, c.id, c.nome) &&
+          (!selection.operacaoId || matchesOp(config, selection.operacaoId, selection.operacao)) &&
+          hasValidPJCommission(config)
+        )
+      })
+    }
+    sortedConvenios.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+
+    return (
+    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex items-center justify-center gap-4 relative">
+        {step > 1 && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={prevStep}
+            className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
+          </Button>
+        )}
+        <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
+          ESCOLHA O <span className="text-slate-900 font-extrabold">CONVÊNIO</span> QUE SERÁ UTILIZADO NO CONTRATO
+        </h2>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl mx-auto">
+        {isLoading ? (
+          <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
+        ) : sortedConvenios.length === 0 ? (
+          <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum convênio disponível</div>
+        ) : (
+          sortedConvenios.map(c => (
+            <button
+              key={c.id}
+              onClick={() => handleSelect("convenio", c.id, c.nome)}
+              className="w-full h-8 px-4 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[9px] font-extrabold text-[#1A2B49] transition-all uppercase tracking-wider shadow-sm leading-tight"
+            >
+              {c.nome}
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+  const renderStep2 = () => {
+    if (isPJ) {
+      const isPos = (v: any) => {
+        if (v === null || v === undefined || v === "" || v === "--") return false
+        const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'))
+        return !isNaN(num) && num > 0
+      }
+
+      const pjBankRows: Array<{
+        id: string
+        bancoId: string
+        bancoNome: string
+        nomeTabela?: string
+        comissaoPj: number | string
+        prazo: number | string
+        coeficiente: number | string
+      }> = []
+
+      dbProdutosConfigs.forEach(config => {
+        if (config.ativo === false) return
+        if (selection.convenioId && !matchesConvenio(config, selection.convenioId, selection.convenio)) return
+        if (selection.operacaoId && !matchesOp(config, selection.operacaoId, selection.operacao)) return
+        if (!hasValidPJCommission(config)) return
+
+        const bId = config.banco_id || config.bancos?.id || ''
+        const bNome = config.bancos?.nome || dbBancos.find(b => b.id === bId)?.nome || 'Banco'
+
+        if (config.regras && config.regras.length > 0) {
+          config.regras.forEach((r, idx) => {
+            if (r.ativo === false) return
+            let comPj: any = undefined
+            if (perfil?.id && r.comissoes_pj_corretores?.[perfil.id] && isPos(r.comissoes_pj_corretores[perfil.id])) {
+              comPj = r.comissoes_pj_corretores[perfil.id]
+            } else if (isPos(r.percentual_comissao_pj)) {
+              comPj = r.percentual_comissao_pj
+            } else if (perfil?.id && config.comissoes_pj_corretores?.[perfil.id] && isPos(config.comissoes_pj_corretores[perfil.id])) {
+              comPj = config.comissoes_pj_corretores[perfil.id]
+            } else if (isPos(config.percentual_comissao_pj)) {
+              comPj = config.percentual_comissao_pj
+            }
+
+            if (comPj !== undefined) {
+              const rawComEmpresa = r.percentual_comissao !== undefined ? r.percentual_comissao : config.percentual_comissao;
+              const effectivePj = calcEffectivePJCommission(comPj, rawComEmpresa) ?? comPj;
+
+              pjBankRows.push({
+                id: `${config.id}-rule-${idx}`,
+                bancoId: bId,
+                bancoNome: bNome,
+                nomeTabela: config.nome_tabela,
+                comissaoPj: effectivePj,
+                prazo: r.prazo,
+                coeficiente: r.coeficiente,
+              })
+            }
+          })
+        } else {
+          let comPjRoot: any = undefined
+          if (perfil?.id && config.comissoes_pj_corretores?.[perfil.id] && isPos(config.comissoes_pj_corretores[perfil.id])) {
+            comPjRoot = config.comissoes_pj_corretores[perfil.id]
+          } else if (isPos(config.percentual_comissao_pj)) {
+            comPjRoot = config.percentual_comissao_pj
+          }
+
+          if (comPjRoot !== undefined) {
+            const effectivePj = calcEffectivePJCommission(comPjRoot, config.percentual_comissao) ?? comPjRoot;
+
+            pjBankRows.push({
+              id: config.id,
+              bancoId: bId,
+              bancoNome: bNome,
+              nomeTabela: config.nome_tabela,
+              comissaoPj: effectivePj,
+              prazo: config.prazo,
+              coeficiente: config.coeficiente,
+            })
+          }
+        }
+      })
+
+      pjBankRows.sort((a, b) => {
+        const getNum = (v: any) => {
+          if (typeof v === 'number') return v
+          if (!v) return 0
+          const n = parseFloat(String(v).replace(',', '.').replace('%', ''))
+          return isNaN(n) ? 0 : n
+        }
+        const valA = getNum(a.comissaoPj)
+        const valB = getNum(b.comissaoPj)
+        if (valB !== valA) return valB - valA
+        const comp = a.bancoNome.localeCompare(b.bancoNome, 'pt-BR', { sensitivity: 'base' })
+        if (comp !== 0) return comp
+        return String(a.prazo).localeCompare(String(b.prazo), 'pt-BR', { numeric: true })
+      })
+
+      return (
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex items-center justify-center gap-4 relative">
+            {step > 1 && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={prevStep}
+                className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
+              </Button>
+            )}
+            <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
+              ESCOLHA O <span className="text-slate-900 font-extrabold">BANCO DE EMPRÉSTIMO</span> QUE SERÁ UTILIZADO NO CONTRATO
+            </h2>
+          </div>
+
+          <div className="flex flex-col gap-3 max-w-4xl mx-auto w-full">
+            {isLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
+            ) : pjBankRows.length === 0 ? (
+              <div className="text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest py-8">Nenhum banco com comissão PJ disponível</div>
+            ) : (
+              pjBankRows.map(row => {
+                const comPjFormatted = typeof row.comissaoPj === 'number' ? `${row.comissaoPj.toString().replace('.', ',')}%` : `${row.comissaoPj}`.includes('%') ? row.comissaoPj : `${row.comissaoPj}%`
+                const prazoFormatted = typeof row.prazo === 'number' || !isNaN(Number(row.prazo)) ? `${row.prazo}x` : row.prazo
+                const coefFormatted = typeof row.coeficiente === 'number' ? row.coeficiente.toFixed(5).replace('.', ',') : row.coeficiente
+
+                return (
+                  <button
+                    key={row.id}
+                    onClick={() => {
+                      const comPjFormatted = typeof row.comissaoPj === 'number' ? `${row.comissaoPj.toString().replace('.', ',')}%` : `${row.comissaoPj}`.includes('%') ? row.comissaoPj : `${row.comissaoPj}%`
+                      const prazoFormatted = typeof row.prazo === 'number' || !isNaN(Number(row.prazo)) ? `${row.prazo}x` : String(row.prazo)
+                      const coefFormatted = typeof row.coeficiente === 'number' ? row.coeficiente.toFixed(5).replace('.', ',') : String(row.coeficiente)
+
+                      setSelection(prev => ({ 
+                        ...prev, 
+                        banco: row.bancoNome,
+                        bancoId: row.bancoId,
+                        comissaoDisplay: comPjFormatted,
+                        prazoDisplay: prazoFormatted,
+                        coefDisplay: coefFormatted,
+                      }))
+
+                      const numComissao = typeof row.comissaoPj === 'number' ? row.comissaoPj : parseFloat(String(row.comissaoPj).replace(',', '.'))
+                      if (!isNaN(numComissao)) setSelectedComissaoPercent(numComissao)
+
+                      const numCoef = typeof row.coeficiente === 'number' ? row.coeficiente : parseFloat(String(row.coeficiente).replace(',', '.'))
+                      if (!isNaN(numCoef)) setSelectedCoefValue(numCoef)
+
+                      if (row.prazo) setFormData(prev => ({ ...prev, prazo: String(row.prazo) }))
+
+                      nextStep()
+                    }}
+                    className="w-full p-3.5 bg-white hover:bg-slate-50 border border-slate-200 hover:border-amber-400/80 rounded-xl transition-all shadow-xs flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 text-left group"
+                  >
+                    <div className="flex flex-col min-w-[180px]">
+                      <span className="text-xs font-black text-slate-800 group-hover:text-amber-800 uppercase tracking-wide">
+                        {row.bancoNome}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3 sm:gap-6 flex-wrap sm:flex-nowrap">
+                      <div className="flex flex-col items-center bg-amber-50/80 border border-amber-200/60 px-3 py-1 rounded-lg">
+                        <span className="text-[9px] font-bold text-amber-700/80 uppercase tracking-wider">
+                          Comissão
+                        </span>
+                        <span className="text-xs font-black text-amber-900">
+                          {comPjFormatted}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col items-center bg-slate-100/80 border border-slate-200/60 px-3 py-1 rounded-lg min-w-[70px]">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                          Prazo
+                        </span>
+                        <span className="text-xs font-bold text-slate-800">
+                          {prazoFormatted}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col items-center bg-slate-100/80 border border-slate-200/60 px-3 py-1 rounded-lg min-w-[90px]">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                          COEF
+                        </span>
+                        <span className="text-xs font-mono font-extrabold text-slate-800">
+                          {coefFormatted}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    let sortedBancos = [...dbBancos]
+    sortedBancos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+
+    return (
+      <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="flex items-center justify-center gap-4 relative">
+          {step > 1 && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={prevStep}
+              className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
+            </Button>
+          )}
+          <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
+            ESCOLHA O <span className="text-slate-900 font-extrabold">BANCO DE EMPRÉSTIMO</span> QUE SERÁ UTILIZADO NO CONTRATO
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
+          {isLoading ? (
+            <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
+          ) : sortedBancos.length === 0 ? (
+            <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum banco disponível</div>
+          ) : (
+            sortedBancos.map(b => (
+              <button
+                key={b.id}
+                onClick={() => handleSelect("banco", b.id, b.nome)}
+                className="w-full h-9 px-6 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[10px] font-extrabold text-[#1A2B49] transition-all uppercase tracking-wider leading-tight shadow-sm"
+              >
+                {b.nome}
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const renderStep3 = () => {
+    let sortedOperacoes = [...dbOperacoes]
+    if (isPJ) {
+      sortedOperacoes = sortedOperacoes.filter(op => {
+        return dbProdutosConfigs.some(config => 
+          config.ativo !== false &&
+          matchesOp(config, op.id, op.nome) &&
+          hasValidPJCommission(config)
+        )
+      })
+    }
+    sortedOperacoes.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+
+    return (
+    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex items-center justify-center gap-4 relative">
+        {step > 1 && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={prevStep}
+            className="absolute left-0 text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
+          </Button>
+        )}
+        <h2 className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">
+          ESCOLHA O <span className="text-slate-900 font-extrabold">TIPO DE OPERAÇÃO</span> DESEJADO
+        </h2>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 max-w-5xl mx-auto">
+        {isLoading ? (
+          <div className="col-span-full flex justify-center py-8"><Loader2 className="w-8 h-8 text-slate-300 animate-spin" /></div>
+        ) : sortedOperacoes.length === 0 ? (
+          <div className="col-span-full text-center text-slate-400 font-bold text-[11px] uppercase tracking-widest">Nenhum tipo de operação disponível</div>
+        ) : (
+          sortedOperacoes.map(o => (
+            <button
+              key={o.id}
+              onClick={() => handleSelect("operacao", o.id, o.nome)}
+              className="w-full h-9 px-6 bg-[#E9EAEB] hover:bg-[#DDE0E2] border border-slate-200 rounded-lg text-[10px] font-extrabold text-[#1A2B49] transition-all uppercase tracking-wider leading-tight shadow-sm"
+            >
+              {o.nome}
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+  const renderStep4 = () => {
+    const comissaoVal = selectedComissaoPercent !== null 
+      ? `${selectedComissaoPercent.toString().replace('.', ',')}%` 
+      : selection.comissaoDisplay || ""
+
+    const prazoVal = formData.prazo 
+      ? (formData.prazo.endsWith('x') ? formData.prazo : `${formData.prazo}x`) 
+      : selection.prazoDisplay || ""
+
+    const coefVal = selectedCoefValue !== null 
+      ? (typeof selectedCoefValue === 'number' ? selectedCoefValue.toFixed(5).replace('.', ',') : String(selectedCoefValue))
+      : selection.coefDisplay || ""
+
+    return (
+    <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
+      <div className="flex flex-col items-center gap-4">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={prevStep}
+          className="self-start text-[#171717] hover:text-[#171717]/80 font-bold text-[10px] uppercase tracking-widest"
+        >
+          <ChevronLeft className="w-4 h-4 mr-1" /> VOLTAR
+        </Button>
+        <div className="flex flex-wrap md:flex-nowrap justify-center gap-2 md:gap-6 items-center bg-white py-4 px-6 md:px-8 rounded-2xl border border-slate-200 shadow-sm w-full max-w-5xl mx-auto overflow-x-auto">
+          {isPJ ? (
+            <>
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
+              </div>
+              {comissaoVal && (
+                <>
+                  <div className="h-8 w-px bg-slate-100 hidden md:block" />
+                  <div className="flex flex-col items-center md:items-start bg-amber-50/80 border border-amber-200/60 px-3 py-1 rounded-lg">
+                    <span className="text-[8px] font-bold text-amber-700/80 uppercase tracking-[0.2em] mb-0.5">Comissão</span>
+                    <span className="text-[11px] font-black text-amber-900">{comissaoVal}</span>
+                  </div>
+                </>
+              )}
+              {prazoVal && (
+                <>
+                  <div className="h-8 w-px bg-slate-100 hidden md:block" />
+                  <div className="flex flex-col items-center md:items-start bg-slate-100/80 border border-slate-200/60 px-3 py-1 rounded-lg">
+                    <span className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-0.5">Prazo</span>
+                    <span className="text-[11px] font-black text-slate-800">{prazoVal}</span>
+                  </div>
+                </>
+              )}
+              {coefVal && (
+                <>
+                  <div className="h-8 w-px bg-slate-100 hidden md:block" />
+                  <div className="flex flex-col items-center md:items-start bg-slate-100/80 border border-slate-200/60 px-3 py-1 rounded-lg">
+                    <span className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-0.5">COEF</span>
+                    <span className="text-[11px] font-mono font-extrabold text-slate-800">{coefVal}</span>
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Convênio</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.convenio}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Banco</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase">{selection.banco}</span>
+              </div>
+              <div className="h-8 w-px bg-slate-100 hidden md:block" />
+              <div className="flex flex-col items-center md:items-start">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Operação</span>
+                <span className="text-[11px] font-black text-[#1A2B49] uppercase leading-tight text-center md:text-left max-w-[300px]">{selection.operacao}</span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <Card className="card-shadow border border-slate-200 bg-white">
+        <CardContent className="p-10 space-y-16">
+          {/* Campo atribuição para Supervisor ou Monitoramento ou Corretor (remover para Corretor PJ) */}
+          {!isPJ && (perfil?.role === 'Supervisor' || isMonitoramento || isCorretor) && (
+            <div className="p-5 bg-amber-50/30 border border-amber-100 rounded-xl space-y-2 max-w-md">
+              <label className="text-[10px] font-bold text-amber-900 uppercase tracking-widest block">
+                {isMonitoramento 
+                  ? "Atribuir Digitação para Colaborador (Opcional)" 
+                  : isCorretor
+                    ? "Atribuir Colaboração com Estagiário da sua Célula (Opcional)"
+                    : "Atribuir Colaboração com Estagiário (Opcional)"}
+              </label>
+              <select
+                value={formData.estagiario_colaborador_id}
+                onChange={(e) => {
+                  const selectedId = e.target.value;
+                  const selectedName = dbEstagiarios.find(u => u.id === selectedId)?.nome || "";
+                  setFormData(prev => ({
+                    ...prev,
+                    estagiario_colaborador_id: selectedId,
+                    estagiario_colaborador_nome: selectedName
+                  }));
+                }}
+                className="w-full h-9 px-4 rounded-md border border-slate-300 bg-white text-[13px] font-medium focus:border-amber-400 focus:outline-none transition-colors text-amber-950"
+              >
+                <option value="">
+                  {isMonitoramento ? "Digitar eu mesmo (Nenhum)" : "Sem colaboração (Nenhum)"}
+                </option>
+                {dbEstagiarios.map((est) => (
+                  <option key={est.id} value={est.id}>{est.nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Top Fields */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">ID Lead</label>
+              <span className="block text-xl font-black text-slate-900 tracking-tight py-1">
+                {formData.idLead}
+              </span>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Origem do Cliente</label>
+              <select 
+                value={formData.origem}
+                onChange={(e) => handleFormChange("origem", e.target.value)}
+                disabled={initialParams.origem && !canEditPreFilled}
+                className={cn(
+                  "w-full h-9 px-4 rounded-md border border-slate-100 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors",
+                  (initialParams.origem && !canEditPreFilled) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                )}
+              >
+                <option value="">Selecione</option>
+                <option value="DISPARO">DISPARO</option>
+                <option value="TRÁFEGO">TRÁFEGO</option>
+                <option value="INDICAÇÃO">INDICAÇÃO</option>
+                <option value="CLIENTE DA CASA">CLIENTE DA CASA</option>
+                <option value="3C - DISCADOR">3C - DISCADOR</option>
+                <option value="LISTA MANUAL">LISTA MANUAL</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">
+                MATRÍCULA/IDENTIFICAÇÃO <span className="text-red-500">*</span>
+              </label>
+              <Input 
+                value={formData.matricula}
+                onChange={(e) => handleFormChange("matricula", e.target.value)}
+                readOnly={initialParams.matricula && !canEditPreFilled}
+                className={cn(
+                  "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
+                  (initialParams.matricula && !canEditPreFilled) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                )}
+              />
+            </div>
+
+          </div>
+
+          {/* Dados Pessoais */}
+          <div className="space-y-10">
+            <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">DADOS PESSOAIS</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              <div className="md:col-span-1 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">CPF</label>
+                <Input 
+                  value={formData.cpf}
+                  onChange={(e) => handleFormChange("cpf", e.target.value)}
+                  readOnly={initialParams.cpf && !canEditPreFilled}
+                  className={cn(
+                    "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
+                    (initialParams.cpf && !canEditPreFilled) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                  )}
+                />
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome</label>
+                <Input 
+                  value={formData.nome}
+                  onChange={(e) => handleFormChange("nome", e.target.value)}
+                  readOnly={initialParams.nome && !canEditPreFilled && !(isFromChamado && isCorretor)}
+                  className={cn(
+                    "h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors",
+                    (initialParams.nome && !canEditPreFilled && !(isFromChamado && isCorretor)) && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                  )}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Data de Nascimento</label>
+                <div className="relative">
+                  <Input 
+                    type="date"
+                    value={toInputDate(formData.nascimento)}
+                    onChange={(e) => handleFormChange("nascimento", fromInputDate(e.target.value))}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Naturalidade</label>
+                <Input 
+                  value={formData.naturalidade}
+                  onChange={(e) => handleFormChange("naturalidade", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">UF Naturalidade</label>
+                <select 
+                  value={formData.uf_naturalidade}
+                  onChange={(e) => handleFormChange("uf_naturalidade", e.target.value)}
+                  className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                >
+                  <option value="">Selecione</option>
+                  {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Identidade</label>
+                <Input 
+                  value={formData.identidade}
+                  onChange={(e) => handleFormChange("identidade", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Órgão Emissor</label>
+                <Input 
+                  value={formData.orgao_emissor}
+                  onChange={(e) => handleFormChange("orgao_emissor", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">UF Emissão</label>
+                <select 
+                  value={formData.uf_emissao}
+                  onChange={(e) => handleFormChange("uf_emissao", e.target.value)}
+                  className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                >
+                  <option value="">Selecione</option>
+                  {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Data de Emissão</label>
+                <div className="relative">
+                  <Input 
+                    type="date"
+                    value={toInputDate(formData.data_emissao)}
+                    onChange={(e) => handleFormChange("data_emissao", fromInputDate(e.target.value))}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors px-3 text-[11px] font-normal text-slate-600 appearance-none" 
+                  />
+                </div>
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome da Mãe</label>
+                <Input 
+                  value={formData.nome_mae}
+                  onChange={(e) => handleFormChange("nome_mae", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Nome do Pai</label>
+                <Input 
+                  value={formData.nome_pai}
+                  onChange={(e) => handleFormChange("nome_pai", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+
+              <div className="md:col-span-4 space-y-2 pt-2 pb-2">
+                <div className="flex items-center justify-between flex-wrap gap-1">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest flex items-center gap-1.5">
+                    Telefones do Cliente <span className="text-red-500">*</span>
+                    <span className="text-[9px] font-semibold text-slate-500 lowercase">
+                      (clique sobre o telefone em que falou com o cliente para selecionar)
+                    </span>
+                  </label>
+                  {formData.telefone_selecionado && (
+                    <span className="text-[10px] font-bold text-[#00a86b] uppercase tracking-wider flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#00b074]" />
+                      Contato: {
+                        formData.telefone_selecionado === 'tel_1' ? 'Telefone 1' :
+                        formData.telefone_selecionado === 'tel_2' ? 'Telefone 2' :
+                        formData.telefone_selecionado === 'tel_3' ? 'Telefone 3' : 'Telefone 4'
+                      }
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {[
+                    { key: "tel_1", label: "Telefone 1", initial: initialParams.tel_1 },
+                    { key: "tel_2", label: "Telefone 2", initial: initialParams.tel_2 },
+                    { key: "tel_3", label: "Telefone 3", initial: initialParams.tel_3 },
+                    { key: "tel_4", label: "Telefone 4", initial: initialParams.tel_4 },
+                  ].map((item) => {
+                    const isSelected = formData.telefone_selecionado === item.key;
+                    const val = (formData[item.key as keyof typeof formData] as string) || "";
+                    const isReadOnly = item.initial && !canEditPreFilled;
+
+                    return (
+                      <div 
+                        key={item.key}
+                        onClick={() => handleFormChange("telefone_selecionado", item.key)}
+                        className="space-y-1 cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <label className={cn(
+                            "text-[10px] font-bold uppercase tracking-widest cursor-pointer transition-colors",
+                            isSelected ? "text-[#008f5a] font-black" : "text-black/90"
+                          )}>
+                            {item.label}
+                          </label>
+                          {isSelected && (
+                            <span className="text-[9px] font-bold text-[#008f5a] bg-[#e6f7f0] px-1.5 py-0.5 rounded-md border border-[#00b074]/30">
+                              SELECIONADO
+                            </span>
+                          )}
+                        </div>
+                        <Input 
+                          value={val}
+                          onChange={(e) => handleFormChange(item.key, e.target.value)}
+                          onFocus={() => handleFormChange("telefone_selecionado", item.key)}
+                          readOnly={isReadOnly}
+                          placeholder={item.key === 'tel_4' ? "(00) 00000-0000" : ""}
+                          className={cn(
+                            "h-9 transition-all cursor-pointer text-[12px]",
+                            isSelected ? (
+                              "bg-[#e6f7f0] border-2 border-[#00b074] text-[#005c3b] font-bold shadow-sm focus:border-[#00b074] focus:ring-1 focus:ring-[#00b074]"
+                            ) : (
+                              "border-slate-100 bg-[#E8E8E8] focus:border-primary text-slate-800"
+                            ),
+                            isReadOnly && "opacity-60 cursor-not-allowed select-none bg-slate-200"
+                          )}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">E-MAIL</label>
+                <Input 
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => handleFormChange("email", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="md:col-span-2 hidden md:block" />
+
+              <div className="md:col-span-1 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">CEP</label>
+                <div className="flex gap-2">
+                  <Input 
+                    value={formData.cep}
+                    onChange={(e) => handleFormChange("cep", e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSearchCEP();
+                      }
+                    }}
+                    className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors flex-1" 
+                    placeholder="00000-000"
+                  />
+                  <button 
+                    type="button" 
+                    disabled={isSearchingCEP}
+                    onClick={handleSearchCEP}
+                    className="text-[10px] font-bold text-primary italic whitespace-nowrap hover:underline disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    {isSearchingCEP ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : null}
+                    Buscar CEP
+                  </button>
+                </div>
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Endereço</label>
+                <Input 
+                  value={formData.endereco}
+                  onChange={(e) => handleFormChange("endereco", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="md:col-span-1 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Número</label>
+                <Input 
+                  value={formData.numero}
+                  onChange={(e) => handleFormChange("numero", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="md:col-span-1 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Complemento</label>
+                <Input 
+                  value={formData.complemento}
+                  onChange={(e) => handleFormChange("complemento", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Bairro</label>
+                <Input 
+                  value={formData.bairro}
+                  onChange={(e) => handleFormChange("bairro", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="md:col-span-3 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Cidade</label>
+                <Input 
+                  value={formData.cidade}
+                  onChange={(e) => handleFormChange("cidade", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="md:col-span-1 space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">UF</label>
+                <select 
+                  value={formData.uf}
+                  onChange={(e) => handleFormChange("uf", e.target.value)}
+                  className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                >
+                  <option value="">Selecione</option>
+                  {["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"].map(uf => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Dados Bancários */}
+          <div className="space-y-10">
+            <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">DADOS BANCÁRIOS</h3>
+            
+            {/* Primeira linha */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Banco</label>
+                <Input 
+                  value={formData.banco_cliente}
+                  onChange={(e) => handleFormChange("banco_cliente", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">CHAVE PIX</label>
+                <Input 
+                  value={formData.chave_pix}
+                  onChange={(e) => handleFormChange("chave_pix", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+            </div>
+
+            {/* Segunda linha */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Agência</label>
+                <Input 
+                  value={formData.agencia}
+                  onChange={(e) => handleFormChange("agencia", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Conta</label>
+                <Input 
+                  value={formData.conta}
+                  onChange={(e) => handleFormChange("conta", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">DV</label>
+                <Input 
+                  value={formData.dv}
+                  onChange={(e) => handleFormChange("dv", e.target.value)}
+                  className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Tipo de Conta</label>
+                <select 
+                  value={formData.tipo_conta}
+                  onChange={(e) => handleFormChange("tipo_conta", e.target.value)}
+                  className="w-full h-9 px-4 rounded-md border border-slate-300 bg-[#E8E8E8] text-[13px] font-medium focus:border-primary focus:outline-none transition-colors"
+                >
+                  <option value="">Selecione</option>
+                  <option value="corrente">CORRENTE</option>
+                  <option value="poupanca">POUPANÇA</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Dados da Operação */}
+          <div className="space-y-10">
+            <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">DADOS DA OPERAÇÃO</h3>
+            
+            {/* Operacional Box */}
+            {!isCorretor && (
+              <div className="bg-[#FEFCE8] border border-amber-100 rounded-xl p-8 space-y-6">
+                <p className="text-[11px] font-medium text-slate-600 leading-relaxed">
+                  <span className="font-bold text-slate-900">Operacional:</span> Preencha os campos abaixo em caso de divergência nos valores informados pelo corretor do valores do banco. Salvar valor operacional atualizará somente os campos abaixo.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
+                    <Input 
+                      value={formData.valor_parcela}
+                      onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                      placeholder="R$ 0,00" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Operação</label>
+                    <Input 
+                      value={formData.valor_operacao_operacional}
+                      onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
+                      className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors" 
+                      placeholder="R$ 0,00" 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Cliente</label>
+                    <div className="flex gap-2 items-center">
+                      <Input 
+                        value={formData.valor_cliente_operacional}
+                        onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
+                        className="h-9 border-slate-100 bg-[#E8E8E8] focus:border-primary transition-colors flex-1" 
+                        placeholder="R$ 0,00" 
+                      />
+                      <Button 
+                        onClick={handleSubmit} 
+                        className="h-9 bg-[#171717] hover:bg-[#171717]/90 text-white w-12 p-0 shadow-lg shadow-slate-200"
+                      >
+                        <Save className="w-5 h-5" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Margem Utilizada</label>
+                <Input 
+                  value={formData.margem_utilizada}
+                  onChange={(e) => handleFormChange("margem_utilizada", e.target.value)}
+                  className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
+                  placeholder="R$ 0,00" 
+                />
+              </div>
+              <div className="space-y-2 relative" ref={coefDropdownRef}>
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Coeficiente e Prazo</label>
+                <div 
+                  className={cn(
+                    "h-9 px-4 rounded-md border border-slate-800 flex items-center justify-between cursor-pointer focus-within:ring-2 focus-within:ring-primary/20 transition-all bg-[#171717]",
+                    isCoefDropdownOpen && "ring-2 ring-primary/20 border-primary"
+                  )}
+                  onClick={() => setIsCoefDropdownOpen(!isCoefDropdownOpen)}
+                >
+                  <span className="text-[13px] font-medium text-white truncate">
+                    {formData.coeficiente_prazo || "Selecione uma tabela"}
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 text-white/70 transition-transform", isCoefDropdownOpen && "rotate-180")} />
+                </div>
+
+                {isCoefDropdownOpen && (
+                  <div className="absolute top-full left-0 w-full mt-1 bg-white border border-slate-100 rounded-xl shadow-2xl z-[50] animate-in fade-in slide-in-from-top-2 duration-200 overflow-hidden flex flex-col max-h-[300px]">
+                    {/* Search Input */}
+                    <div className="p-2 border-b border-slate-50 bg-slate-50/50 sticky top-0 z-10">
+                      <div className="relative">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                        <input 
+                          autoFocus
+                          type="text"
+                          placeholder="Buscar tabela..."
+                          className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                          value={coefSearchTerm}
+                          onChange={(e) => setCoefSearchTerm(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Options List */}
+                    <div className="overflow-y-auto custom-scrollbar p-1">
+                      {(() => {
+                        const filteredConfigs = dbProdutosConfigs
+                          .filter(config => {
+                            const matchBanco = config.banco_id === selection.bancoId || config.bancos?.id === selection.bancoId;
+                            const matchConvenio = config.convenio_id === selection.convenioId;
+                            const matchOperacao = config.operacoes && (config.operacoes.includes(selection.operacaoId) || config.operacoes.includes(selection.operacao));
+                            
+                            if (!matchBanco || !matchConvenio || !matchOperacao) return false;
+                            if (isPJ && !hasValidPJCommission(config)) return false;
+
+                            const rulesStr = config.regras?.map(r => `${r.prazo} ${r.coeficiente}`).join(' ') || '';
+                            const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''} ${rulesStr}`.toLowerCase()
+                            return searchStr.includes(coefSearchTerm.toLowerCase())
+                          });
+
+                        // Expand rules into individual options
+                        const options = filteredConfigs.flatMap(config => {
+                          if (config.regras && config.regras.length > 0) {
+                            return config.regras
+                              .filter((r: { ativo?: boolean; percentual_comissao_pj?: any; comissoes_pj_corretores?: any }) => {
+                                if (r.ativo === false) return false;
+                                if (isPJ) {
+                                  const isPos = (v: any) => {
+                                    if (v === null || v === undefined || v === "" || v === "--") return false;
+                                    const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+                                    return !isNaN(num) && num > 0;
+                                  };
+                                  const hasRulePJ = isPos(r.percentual_comissao_pj) || 
+                                    (perfil?.id && r.comissoes_pj_corretores && isPos(r.comissoes_pj_corretores[perfil.id])) ||
+                                    (r.comissoes_pj_corretores && Object.values(r.comissoes_pj_corretores).some(v => isPos(v))) ||
+                                    isPos(config.percentual_comissao_pj);
+                                  if (!hasRulePJ) return false;
+                                }
+                                return true;
+                              })
+                              .map((regra, idx) => {
+                                let comissaoPjVal: number | undefined = undefined;
+                                const isPosVal = (v: any) => {
+                                  if (v === null || v === undefined || v === "" || v === "--") return false;
+                                  const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+                                  return !isNaN(num) && num > 0;
+                                };
+                                if (perfil?.id && regra.comissoes_pj_corretores?.[perfil.id] !== undefined && isPosVal(regra.comissoes_pj_corretores[perfil.id])) {
+                                  const v = regra.comissoes_pj_corretores[perfil.id];
+                                  comissaoPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+                                } else if (regra.percentual_comissao_pj !== undefined && regra.percentual_comissao_pj !== null && regra.percentual_comissao_pj !== "" && isPosVal(regra.percentual_comissao_pj)) {
+                                  comissaoPjVal = typeof regra.percentual_comissao_pj === 'string' ? parseFloat(regra.percentual_comissao_pj.replace(',', '.')) : regra.percentual_comissao_pj;
+                                } else if (perfil?.id && config.comissoes_pj_corretores?.[perfil.id] !== undefined && isPosVal(config.comissoes_pj_corretores[perfil.id])) {
+                                  const v = config.comissoes_pj_corretores[perfil.id];
+                                  comissaoPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+                                } else if (config.percentual_comissao_pj !== undefined && config.percentual_comissao_pj !== null && config.percentual_comissao_pj !== "") {
+                                  comissaoPjVal = typeof config.percentual_comissao_pj === 'string' ? parseFloat(config.percentual_comissao_pj.replace(',', '.')) : config.percentual_comissao_pj;
+                                }
+
+                                const rawComEmpresa = regra.percentual_comissao !== undefined ? regra.percentual_comissao : config.percentual_comissao;
+                                const effectivePj = calcEffectivePJCommission(comissaoPjVal, rawComEmpresa);
+
+                                return {
+                                  id: `${config.id}-rule-${idx}`,
+                                  parentConfig: config,
+                                  nome_tabela: config.nome_tabela,
+                                  convenioNome: config.convenios?.nome,
+                                  prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
+                                  coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
+                                  percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
+                                  percentual_comissao: regra.percentual_comissao !== undefined ? (typeof regra.percentual_comissao === 'string' ? parseFloat(regra.percentual_comissao.replace(',', '.')) : regra.percentual_comissao) : undefined,
+                                  percentual_comissao_pj: effectivePj,
+                                };
+                              });
+                          }
+                          let rootPjVal: number | undefined = undefined;
+                          const isPosValRoot = (v: any) => {
+                            if (v === null || v === undefined || v === "" || v === "--") return false;
+                            const num = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+                            return !isNaN(num) && num > 0;
+                          };
+                          if (perfil?.id && config.comissoes_pj_corretores?.[perfil.id] !== undefined && isPosValRoot(config.comissoes_pj_corretores[perfil.id])) {
+                            const v = config.comissoes_pj_corretores[perfil.id];
+                            rootPjVal = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : v;
+                          } else if (config.percentual_comissao_pj !== undefined && config.percentual_comissao_pj !== null && config.percentual_comissao_pj !== "") {
+                            rootPjVal = typeof config.percentual_comissao_pj === 'string' ? parseFloat(config.percentual_comissao_pj.replace(',', '.')) : config.percentual_comissao_pj;
+                          }
+                          const effectiveRootPj = calcEffectivePJCommission(rootPjVal, config.percentual_comissao);
+
+                          return [{
+                            id: config.id,
+                            parentConfig: config,
+                            nome_tabela: config.nome_tabela,
+                            convenioNome: config.convenios?.nome,
+                            prazo: config.prazo,
+                            coeficiente: config.coeficiente,
+                            percentual_producao: config.percentual_producao,
+                            percentual_comissao: config.percentual_comissao,
+                            percentual_comissao_pj: effectiveRootPj,
+                          }];
+                        });
+
+                        options.sort((a, b) => {
+                          const nameA = a.nome_tabela || a.convenioNome || '';
+                          const nameB = b.nome_tabela || b.convenioNome || '';
+                          return nameA.localeCompare(nameB, 'pt-BR', { sensitivity: 'base' });
+                        });
+
+                        if (options.length === 0) {
+                          return (
+                            <div className="px-3 py-4 text-center text-[10px] text-slate-400 italic font-bold uppercase tracking-widest">
+                              Nenhuma tabela encontrada
+                            </div>
+                          );
+                        }
+
+                        return options.map((option) => {
+                          const comPjFormatted = option.percentual_comissao_pj !== undefined && option.percentual_comissao_pj !== null
+                            ? (typeof option.percentual_comissao_pj === 'number' ? `${option.percentual_comissao_pj.toString().replace('.', ',')}%` : `${option.percentual_comissao_pj}`.includes('%') ? option.percentual_comissao_pj : `${option.percentual_comissao_pj}%`)
+                            : '';
+
+                          const label = option.nome_tabela 
+                            ? `${option.nome_tabela} (${option.prazo}x | ${option.coeficiente})`
+                            : `${option.convenioNome || 'Tabela'} - ${option.prazo}x ${option.coeficiente}`;
+                          
+                          return (
+                            <div
+                              key={option.id}
+                              onClick={() => {
+                                handleFormChange("coeficiente_prazo", label)
+                                setSelectedCoefValue(option.coeficiente)
+                                setSelectedProdPercent(option.percentual_producao)
+                                const comissaoFinal = isPJ
+                                  ? (option.percentual_comissao_pj !== undefined ? option.percentual_comissao_pj : null)
+                                  : (option.percentual_comissao !== undefined ? option.percentual_comissao : null)
+                                setSelectedComissaoPercent(comissaoFinal)
+                                setFormData(prev => ({ ...prev, prazo: option.prazo.toString() }))
+                                
+                                // Auto-calculate Valor Operação (Margin / Coef)
+                                let currentValorOp = 0
+                                if (formData.margem_utilizada && option.coeficiente) {
+                                  const rawMargem = formData.margem_utilizada.replace(/\D/g, "")
+                                  const margemValue = parseFloat(rawMargem) / 100
+                                  currentValorOp = margemValue / option.coeficiente
+                                  const formattedOp = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(currentValorOp)
+                                  handleFormChange("valor_operacao_operacional", formattedOp)
+                                  handleFormChange("valor_cliente_operacional", formattedOp)
+                                } else if (formData.valor_operacao_operacional) {
+                                  currentValorOp = parseFloat(formData.valor_operacao_operacional.replace(/\D/g, "")) / 100
+                                }
+
+                                // Auto-calculate production value based on Valor Operação
+                                if (currentValorOp && option.percentual_producao) {
+                                  const valorProducao = (currentValorOp * option.percentual_producao) / 100
+                                  const formatted = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorProducao)
+                                  handleFormChange("valor_producao_operacional", formatted)
+                                  handleFormChange("valor_producao_corretor", formatted)
+                                }
+
+                                setIsCoefDropdownOpen(false)
+                                setCoefSearchTerm("")
+                              }}
+                              className={cn(
+                                "px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase transition-all cursor-pointer flex flex-col gap-0.5 border-b border-slate-50 last:border-0",
+                                formData.coeficiente_prazo === label 
+                                  ? "bg-primary text-white" 
+                                  : "text-slate-600 hover:bg-slate-50"
+                              )}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span>{option.nome_tabela || option.convenioNome || 'Tabela'}</span>
+                                {formData.coeficiente_prazo === label && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                              </div>
+                              <span className={cn(
+                                "text-[9px] font-medium lowercase tracking-normal",
+                                formData.coeficiente_prazo === label ? "text-white/80" : "text-slate-400"
+                              )}>
+                                prazo: {option.prazo}x | coef: {option.coeficiente}
+                              </span>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {!isPJ && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Produção</label>
+                  <Input 
+                    value={formData.valor_producao_corretor}
+                    onChange={(e) => handleFormChange("valor_producao_corretor", e.target.value)}
+                    className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
+                    placeholder="R$ 0,00" 
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Prazo</label>
+                <Input 
+                  readOnly
+                  value={formData.prazo}
+                  className="h-9 border-slate-100 bg-[#F8FAFC] font-bold text-[#1A2B49] focus:outline-none transition-colors cursor-default"
+                  placeholder="-"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Parcela</label>
+                <Input 
+                  value={formData.valor_parcela}
+                  onChange={(e) => handleFormChange("valor_parcela", e.target.value)}
+                  className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
+                  placeholder="R$ 0,00" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Operação</label>
+                <Input 
+                  value={formData.valor_operacao_operacional}
+                  onChange={(e) => handleFormChange("valor_operacao_operacional", e.target.value)}
+                  className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
+                  placeholder="R$ 0,00" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Valor Cliente</label>
+                <Input 
+                  value={formData.valor_cliente_operacional}
+                  onChange={(e) => handleFormChange("valor_cliente_operacional", e.target.value)}
+                  className="h-9 border-slate-100 bg-white focus:border-primary transition-colors"
+                  placeholder="R$ 0,00" 
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Outras Informações */}
+          <div className="space-y-10">
+            <h3 className="text-center text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">OUTRAS INFORMAÇÕES</h3>
+            <div className="space-y-3">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Observações</label>
+              <div className="border border-slate-100 rounded-lg overflow-hidden focus-within:border-primary transition-colors">
+                <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-wrap gap-1.5">
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><Bold className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><Italic className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><Underline className="w-3.5 h-3.5" /></Button>
+                  <div className="w-px h-5 bg-slate-200 mx-0.5 self-center" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><Quote className="w-4 h-4" /></Button>
+                  <div className="w-px h-5 bg-slate-200 mx-0.5 self-center" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><AlignLeft className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><AlignCenter className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><AlignRight className="w-4 h-4" /></Button>
+                  <div className="w-px h-5 bg-slate-200 mx-0.5 self-center" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><List className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><ListOrdered className="w-4 h-4" /></Button>
+                  <div className="w-px h-5 bg-slate-200 mx-0.5 self-center" />
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><Type className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><Link2 className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><ImageIcon className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:bg-white"><Paperclip className="w-4 h-4" /></Button>
+                </div>
+                <textarea 
+                  value={formData.observacoes}
+                  onChange={(e) => handleFormChange("observacoes", e.target.value)}
+                  className="w-full p-6 text-[14px] font-medium focus:outline-none min-h-[200px] bg-[#E8E8E8]" 
+                  placeholder="Digite suas observações aqui..."
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Anexos */}
+          <div className="space-y-8" onPaste={handlePaste}>
+            <div className="text-center space-y-2">
+              <h3 className="text-[11px] font-bold text-slate-900 uppercase tracking-[0.3em]">ANEXAR DOCUMENTOS</h3>
+              <p className="text-[10px] font-bold text-primary uppercase tracking-wider">Anexar RG VERSO somente se não tiver enviado um CNH.</p>
+              <p className="text-[10px] text-slate-400 max-w-2xl mx-auto">Você pode enviar arquivos com tamanho máximo de 20 mb dos tipos jpg, jpeg, png, webp, gif, pdf, doc, docx, ppt, pptx, pps, ppsx, odt, xls, xlsx.</p>
+            </div>
+
+            {Object.values(existingAttachments).some(val => !!val) && (
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-6">
+                <p className="text-[10px] font-bold text-slate-700 uppercase mb-4 tracking-widest text-center">Arquivos Vinculados ao Chamado</p>
+                <div className="flex flex-wrap justify-center gap-4">
+                  {Object.entries(existingAttachments).map(([field, url]) => {
+                    if (!url) return null;
+                    const labels: { [key: string]: string } = {
+                      frente: "RG/CNH Frente",
+                      verso: "RG Verso",
+                      contracheque: "Contra Cheque",
+                      extrato: "Extrato",
+                      residencia: "Comprovante de Residência",
+                      outros: "Outros 1",
+                      outros_2: "Outros 2",
+                      outros_3: "Outros 3",
+                      outros_4: "Outros 4"
+                    };
+                    return (
+                      <div key={field} className="relative group">
+                        <a 
+                          href={url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 px-4 py-2.5 bg-white border border-slate-200 rounded-lg hover:border-primary hover:shadow-md transition-all"
+                        >
+                          <Paperclip className="w-4 h-4 text-primary" />
+                          <span className="text-[10px] font-bold text-slate-600 uppercase whitespace-nowrap">{labels[field]}</span>
+                        </a>
+                        <button 
+                          onClick={() => setExistingAttachments(prev => ({ ...prev, [field]: null }))}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Remover vínculo"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {pastedImages.length > 0 && (
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                <p className="text-[10px] font-bold text-emerald-700 uppercase mb-3">Imagens Coladas ({pastedImages.length})</p>
+                <div className="flex flex-wrap gap-3">
+                  {pastedImages.map((file, idx) => (
+                    <div key={idx} className="relative group">
+                      <div className="w-20 h-20 rounded-lg border-2 border-emerald-200 overflow-hidden bg-white relative">
+                        <NextImage 
+                          src={URL.createObjectURL(file)} 
+                          alt="Pasted" 
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
+                      </div>
+                      <button 
+                        onClick={() => setPastedImages(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[
+                  { label: "RG ou CNH (FRENTE)", id: "frente", ref: fileRefs.frente },
+                  { label: "RG (VERSO)", id: "verso", ref: fileRefs.verso },
+                  { label: "CONTRA CHEQUE", id: "contracheque", ref: fileRefs.contracheque },
+                  { label: "EXTRATO DE CONSIGNAÇÃO", id: "extrato", ref: fileRefs.extrato },
+                  { label: "COMPROVANTE DE RESIDÊNCIA", id: "residencia", ref: fileRefs.residencia },
+                  { label: "OUTROS", id: "outros", ref: fileRefs.outros },
+                  { label: "OUTROS", id: "outros_2", ref: fileRefs.outros_2 },
+                  { label: "OUTROS", id: "outros_3", ref: fileRefs.outros_3 },
+                  { label: "OUTROS", id: "outros_4", ref: fileRefs.outros_4 }
+              ].map((field) => (
+                <div key={field.id} className="space-y-2">
+                  <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest block">
+                    {field.label}
+                  </label>
+                  <div 
+                    onClick={() => handleFileClick(field.ref)}
+                    className={cn(
+                      "w-full h-11 px-4 rounded-lg border text-[12px] flex items-center gap-3 cursor-pointer transition-all",
+                      selectedFiles[field.id]
+                        ? "bg-[#171717] text-white border-[#171717] shadow-lg"
+                        : "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200"
+                    )}
+                  >
+                    <UploadCloud className={cn("w-5 h-5", selectedFiles[field.id] ? "text-white" : "text-slate-400")} />
+                    <span className={cn("truncate font-medium", selectedFiles[field.id] ? "text-white" : "text-slate-500")}>
+                      {selectedFiles[field.id] 
+                        ? selectedFiles[field.id]?.name 
+                        : "Selecionar arquivo..."}
+                    </span>
+                    {selectedFiles[field.id] && (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFiles(prev => ({ ...prev, [field.id]: null }));
+                        }}
+                        className="ml-auto p-1 hover:bg-white/10 rounded-full transition-colors"
+                      >
+                        <X className="w-4 h-4 text-white/70" />
+                      </button>
+                    )}
+                  </div>
+                  <input 
+                    type="file" 
+                    ref={field.ref} 
+                    className="hidden" 
+                    accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.ppt,.pptx,.pps,.ppsx,.odt,.xls,.xlsx"
+                    onChange={(e) => handleFileChange(field.id, e)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {!isFormValid && (
+            <div className="mt-8 p-4 bg-red-50 border border-red-200 rounded-xl text-left w-full">
+              <p className="text-[11px] font-black text-red-700 uppercase tracking-wider mb-2">
+                Campos obrigatórios pendentes para habilitar a conclusão da proposta:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {getMissingFields().map((field, idx) => (
+                  <span 
+                    key={idx} 
+                    className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold bg-red-100 text-red-800 uppercase tracking-wider"
+                  >
+                    • {field}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-wrap justify-center gap-4 pt-12">
+            <Button 
+              onClick={() => handleSubmit()}
+              disabled={isSubmitting || !isFormValid}
+              className="w-full max-w-xs h-12 bg-primary text-white text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-slate-200 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  SALVANDO...
+                </>
+              ) : (
+                "CADASTRAR PROPOSTA"
+              )}
+            </Button>
+
+            <Button 
+              onClick={() => handleSubmit('AGUARDANDO DIGITAÇÃO OPERACIONAL')}
+              disabled={isSubmitting || !isFormValid}
+              className="w-full max-w-xs h-12 bg-[#00C853] hover:bg-[#00B248] text-white text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-[#00C853]/20 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ENVIANDO...
+                </>
+              ) : (
+                "ENVIAR PROPOSTA PARA DIGITAÇÃO"
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+  return (
+    <div className="flex-1 flex flex-col h-full overflow-hidden">
+      {isModal ? (
+        <div className="flex items-center justify-between px-6 sm:px-8 py-4 sm:py-5 border-b border-slate-100 bg-slate-50/50 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#162546]/10 text-[#162546] rounded-xl flex items-center justify-center">
+              <FileEdit className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-[15px] font-bold text-slate-900 tracking-tight">Digitar Proposta</h3>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            onClick={onCloseModal}
+            className="text-slate-400 hover:text-slate-600 transition-colors p-2 hover:bg-slate-100 rounded-full cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      ) : (
+        <Header title="DIGITAR PROPOSTA" />
+      )}
+      
+      <main className={cn(
+        "flex-1 bg-slate-50/50",
+        isModal ? "p-4 sm:p-6 overflow-y-auto h-[calc(92vh-65px)]" : "p-4 lg:p-8"
+      )}>
+        <div className="max-w-[1400px] mx-auto w-full">
+          {isPJ ? (
+            <>
+              {step === 1 && renderStep3()}
+              {step === 2 && renderStep1()}
+              {step === 3 && renderStep2()}
+              {step === 4 && renderStep4()}
+            </>
+          ) : (
+            <>
+              {step === 1 && renderStep1()}
+              {step === 2 && renderStep2()}
+              {step === 3 && renderStep3()}
+              {step === 4 && renderStep4()}
+            </>
+          )}
+        </div>
+      </main>
+    </div>
+  )
+}
+
+export default function NewProposalPage() {
+  return (
+    <Suspense fallback={<div className="flex-1 flex items-center justify-center">Carregando...</div>}>
+      <NewProposalForm />
+    </Suspense>
+  )
+}

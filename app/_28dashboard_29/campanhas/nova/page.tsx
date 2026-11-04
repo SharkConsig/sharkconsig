@@ -1,0 +1,2142 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client"
+
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Header } from "@/components/layout/header"
+import { 
+  Search, 
+  Filter, 
+  PlusCircle,
+  Info,
+  Wallet,
+  Landmark,
+  CreditCard,
+  Check,
+  Loader2,
+  Users,
+  X
+} from "lucide-react"
+import { motion } from "motion/react"
+import { cn, withRetry } from "@/lib/utils"
+import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
+import { ORGAOS_MAPPING } from "@/lib/orgaos-mapping"
+import { supabase } from "@/lib/supabase"
+import { CONTRATOS_TIPO_MAPPING } from "@/lib/contratos-mapping"
+
+import { useAuth } from "@/context/auth-context"
+
+const orgaoOptions = Array.from(new Set(Object.values(ORGAOS_MAPPING)))
+  .filter(name => name && name.trim() !== "")
+  .sort();
+
+const filterSections = [
+  {
+    id: "1",
+    title: "2. ÓRGÃO",
+    options: orgaoOptions
+  },
+  {
+    id: "2",
+    title: "3. SITUAÇÃO FUNCIONAL",
+    options: [
+      "ANIST PRIVADO L10559", "ANIST PUBLICO L10559", "ANISTIADO ADCT CF",
+      "APOSENTADO", "APOSENTADO TCU733 94", "APRENDIZ",
+      "ATIVO DEC JUDIC", "ATIVO EM OUTRO ORGAO", "ATIVO PERMANENTE",
+      "BENEFICIARIO PENSAO", "CDT PROF TUT MMEDICO", "CEDIDO REQUISITADO",
+      "CEDIDO SUS LEI 8270", "CELETISTA", "CELETISTA DEC JUDIC",
+      "CELETISTA EMPREGADO", "CLT ANS DEC 6657 08", "CLT ANS DEC JUDICIAL",
+      "CLT ANS JUD CEDIDO", "CLT APOS COMPLEMENTO", "CLT APS DEC JUDICIAL",
+      "COLAB PCCTAE E MAGIS", "CONT PROF SUBSTITUTO", "CONT PROF TEMPORARIO",
+      "CONTR PROF VISITANTE", "CONTR TEMPORARIO CLT", "CONTRATO TEMPORARIO",
+      "EMPREGO PCC EX TERRI", "EMPREGO PUBLICO", "EXCEDENTE A LOTACAO",
+      "EXERC 7 ART93 8112", "EXERC DESCENT CARREI", "EXERCICIO PROVISORIO",
+      "NATUREZA ESPECIAL", "NOMEADO CARGO COMIS", "QUADRO ESPEC QE MRE",
+      "QE MRE CEDIDO", "REFORMA CBM PM", "REQ DE OUTROS ORGAOS",
+      "RESERVA CBM PM", "RESIDENCIA E PMM", "SEM VINCULO"
+    ]
+  },
+  {
+    id: "3",
+    title: "4. REGIME JURÍDICO",
+    options: [
+      "ANS", "CDT", "CLT", "EST", "MRD", "NES", "RMI"
+    ]
+  },
+  {
+    id: "4",
+    title: "5. UF (ESTADO)",
+    options: [
+      "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO"
+    ]
+  }
+]
+
+const CATEGORY_MAP: Record<string, string> = {
+  "1": "orgaos",
+  "2": "situacoes",
+  "3": "regimes",
+  "4": "ufs"
+};
+
+const TABLE_MAP: Record<string, string> = {
+  'siape': 'base_consulta_siape',
+  'governo_sp': 'base_consulta_governo_sp',
+  'prefeitura_sp': 'base_consulta_prefeitura_sp',
+  'governo_pi': 'base_consulta_governo_pi',
+  'governo_ma': 'base_consulta_governo_ma',
+  'governo_rr': 'base_consulta_governo_rr',
+  'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
+  'prefeitura_natal': 'base_consulta_prefeitura_natal',
+  'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
+  'governo_ba': 'base_consulta_governo_ba',
+  'governo_am': 'base_consulta_governo_am',
+  'governo_ce': 'base_consulta_governo_ce',
+  'governo_ro': 'base_consulta_governo_ro',
+  'governo_mg': 'base_consulta_governo_mg',
+  'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
+  'amazon_prev': 'base_consulta_amazon_prev',
+};
+
+const TABLE_COLUMNS: Record<string, string[]> = {
+  'base_consulta_siape': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'numero_matricula', 'orgao', 'situacao_funcional', 'regime_juridico', 
+    'salario', 'uf', 'instituidor_nome',
+    'saldo_70', 'margem_35', 'bruta_5', 'utilizada_5', 'liquida_5', 
+    'beneficio_bruta_5', 'beneficio_utilizada_5', 'beneficio_liquida_5',
+    'banco', 'tipo', 'tipo_prefix', 'prazo'
+  ],
+  'base_consulta_governo_sp': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3', 
+    'identificacao', 'orgao', 'situacao_funcional', 'regime_juridico', 
+    'margem_35', 'bruta_5', 'liquida_5', 'beneficio_bruta_5', 'beneficio_liquida_5', 'uf'
+  ],
+  'base_consulta_prefeitura_sp': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3', 
+    'identificacao', 'orgao', 'situacao_funcional', 'regime_juridico', 
+    'margem_35', 'beneficio_bruta_5', 'beneficio_liquida_5', 'uf'
+  ],
+  'base_consulta_governo_pi': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'matricula', 'vinculo', 'orgao', 'margem_disponivel_emprestimo', 'margem_cartao_consignado', 'margem_cartao_beneficio'
+  ],
+  'base_consulta_governo_ma': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 
+    'numero_matricula', 'orgao', 'situacao_funcional', 
+    'margem_35', 'bruta_5', 'liquida_5', 'beneficio_bruta_5', 'beneficio_liquida_5', 'uf'
+  ],
+  'base_consulta_governo_rr': [
+    'cpf', 'nome', 'data_de_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'margem_emprestimo', 'margem_cartao'
+  ],
+  'base_consulta_prefeitura_santo_andre': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'matricula', 'orgao', 'vinculo', 'margem_bruta_cartao', 'margem_liquida_cartao'
+  ],
+  'base_consulta_prefeitura_natal': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'matricula', 'vinculo', 'orgao', 'margem_emprestimo_consignado', 'margem_cartao_consignado', 'margem_cartao_beneficio'
+  ],
+  'base_consulta_prefeitura_porto_velho': [
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3',
+    'matricula', 'vinculo', 'orgao', 'margem_emprestimo', 'margem_cartao_consignado'
+  ],
+  'base_consulta_governo_ba': [
+    'cpf', 'nome', 'matricula', 'margem_emprestimo_total', 'margem_emprestimo_disponivel', 'orgao', 'secretaria', 'situacao', 'tipo_servidor', 'telefone'
+  ],
+  'base_consulta_governo_am': [
+    'cpf', 'nome', 'data_nascimento', 'matricula', 'orgao', 'secretaria', 'cargo', 'situacao', 'margem_consignavel', 'margem_cartao', 'margem_cartao_beneficio', 'margem_cartao_beneficio_saque', 'telefone_1', 'telefone_2', 'telefone_3'
+  ],
+  'base_consulta_governo_ce': [
+    'cpf', 'nome', 'data_nascimento', 'salario', 'orgao', 'secretaria', 'vinculo', 'telefone_1', 'telefone_2', 'telefone_3'
+  ],
+  'base_consulta_governo_ro': [
+    'cpf', 'nome', 'data_nascimento', 'matricula', 'orgao', 'secretaria', 'cargo', 'vinculo', 'salario', 'margem_emprestimo', 'margem_cartao', 'margem_cartao_beneficio', 'telefone_1', 'telefone_2', 'telefone_3'
+  ],
+  'base_consulta_governo_mg': [
+    'cpf', 'nome', 'telefone_1', 'telefone_2', 'telefone_3', 'matricula', 'orgao', 'margem_70', 'margem_emprestimo', 'cartao_credito', 'cartao_beneficio'
+  ],
+  'base_consulta_prefeitura_ponta_grossa': [
+    'cpf', 'nome', 'idade', 'matricula', 'origem', 'situacao', 'vinculo', 'margem_total', 'margem_disponivel', 'telefone_1', 'telefone_2', 'telefone_3'
+  ],
+  'base_consulta_amazon_prev': [
+    'cpf', 'nome', 'data_nascimento', 'matricula', 'orgao', 'lotacao', 'situacao_funcional', 'salario', 'margem', 'telefone_1', 'telefone_2'
+  ]
+};
+
+const CONVENIOS = [
+  { id: 'siape', label: 'SIAPE / FEDERAL' },
+  { id: 'governo_sp', label: 'GOVERNO SP' },
+  { id: 'prefeitura_sp', label: 'PREFEITURA SP' },
+  { id: 'governo_mg', label: 'GOVERNO MINAS GERAIS' },
+  { id: 'governo_pi', label: 'GOVERNO PIAUÍ' },
+  { id: 'governo_ma', label: 'GOVERNO MARANHÃO' },
+  { id: 'governo_rr', label: 'GOVERNO RORAIMA' },
+  { id: 'prefeitura_santo_andre', label: 'PREFEITURA SANTO ANDRÉ' },
+  { id: 'prefeitura_ponta_grossa', label: 'PREFEITURA DE PONTA GROSSA' },
+  { id: 'amazon_prev', label: 'AMAZON PREV' },
+  { id: 'prefeitura_natal', label: 'PREFEITURA DE NATAL' },
+  { id: 'prefeitura_porto_velho', label: 'PREFEITURA PORTO VELHO' },
+  { id: 'governo_ba', label: 'GOVERNO BAHIA' },
+  { id: 'governo_am', label: 'GOVERNO AMAZONAS' },
+  { id: 'governo_ce', label: 'GOVERNO CEARÁ' },
+  { id: 'governo_ro', label: 'GOVERNO RONDÔNIA' },
+];
+
+export default function NewCampaignPage() {
+  const router = useRouter()
+  const { user, canAccessAdminAreas, isOperational, isLoading: authLoading } = useAuth()
+  const [activeConvenio, setActiveConvenio] = useState('siape')
+  const [dynamicOptions, setDynamicOptions] = useState<{
+    orgaos: string[];
+    situacoes: string[];
+    regimes: string[];
+    ufs: string[];
+  }>({ orgaos: [], situacoes: [], regimes: [], ufs: [] })
+  const [filters, setFilters] = useState({
+    orgaos: [] as string[],
+    situacoes: [] as string[],
+    regimes: [] as string[],
+    ufs: [] as string[],
+    margemMin: "",
+    margemMax: "",
+    saldoMin: "",
+    saldoMax: "" as string,
+    loanBanks: [] as string[],
+    loanPrazoMin: "",
+    loanPrazoMax: "",
+    cardTypes: [] as string[],
+    cardBanks: [] as string[],
+    cardMargemMin: "",
+    cardMargemMax: "",
+    cardBeneficioMin: "",
+    cardBeneficioMax: "",
+    idadeMin: "",
+    idadeMax: "",
+  })
+
+  const fetchDynamicOptions = useCallback(async () => {
+    try {
+      const tableName = TABLE_MAP[activeConvenio];
+      if (!tableName) return;
+
+      setIsCalculating(true); // Use loading state while fetching options
+
+      let orgaos: string[] = [];
+      let situacoes: string[] = [];
+      let regimes: string[] = [];
+      let ufs: string[] = [];
+
+      if (activeConvenio === 'governo_sp') {
+        orgaos = ['PMESP', 'SEFAZ', 'SPPREV'];
+        situacoes = ['APOSENTADO', 'PENSIONISTA', 'EFETIVO', 'ESTAB. CONSTIT.'];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'prefeitura_sp') {
+        orgaos = ['HSPM', 'IPREM', 'IPREM APOSENTADOS', 'PENSIONISTAS', 'SP (PMSP)'];
+        situacoes = ['APOSENTADO', 'PENSIONISTA', 'EFETIVO'];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'governo_pi') {
+        orgaos = ['GOVERNO PIAUI'];
+        situacoes = ['APOSENTADO', 'PENSIONISTA', 'ESTAVEL', 'EFETIVO', 'NAO INFORMADO'];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'prefeitura_santo_andre') {
+        orgaos = [];
+        situacoes = [];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'governo_ma') {
+        orgaos = ['GOVERNO MARANHAO'];
+        situacoes = ['EFETIVO', 'PENSIONISTA PREVIDENCIARIA', 'SERVIDOR EFETIVO MILITAR'];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'governo_rr') {
+        orgaos = [];
+        situacoes = [];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'governo_am') {
+        const { data: orgaosData } = await supabase
+          .from(tableName)
+          .select('orgao')
+          .limit(1000);
+        
+        const { data: situacoesData } = await supabase
+          .from(tableName)
+          .select('situacao')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(situacoesData?.map(i => i.situacao).filter(Boolean) || [])).sort() as string[];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'governo_ce' || activeConvenio === 'governo_ro') {
+        const { data: orgaosData } = await supabase
+          .from(tableName)
+          .select('orgao')
+          .limit(1000);
+        
+        const { data: vinculosData } = await supabase
+          .from(tableName)
+          .select('vinculo')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(vinculosData?.map(i => i.vinculo).filter(Boolean) || [])).sort() as string[];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') {
+        const { data: orgaosData } = await supabase
+          .from(tableName)
+          .select('orgao')
+          .limit(1000);
+        
+        const { data: vinculosData } = await supabase
+          .from(tableName)
+          .select('vinculo')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(vinculosData?.map(i => i.vinculo).filter(Boolean) || [])).sort() as string[];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'prefeitura_ponta_grossa') {
+        const { data: origensData } = await supabase
+          .from(tableName)
+          .select('origem')
+          .limit(1000);
+        
+        const { data: situacoesData } = await supabase
+          .from(tableName)
+          .select('situacao')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(origensData?.map(i => i.origem).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(situacoesData?.map(i => i.situacao).filter(Boolean) || [])).sort() as string[];
+        regimes = [];
+        ufs = [];
+      } else if (activeConvenio === 'amazon_prev') {
+        const { data: orgaosData } = await supabase
+          .from(tableName)
+          .select('orgao')
+          .limit(1000);
+        
+        const { data: situacoesData } = await supabase
+          .from(tableName)
+          .select('situacao_funcional')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(situacoesData?.map(i => i.situacao_funcional).filter(Boolean) || [])).sort() as string[];
+        regimes = [];
+        ufs = [];
+      } else {
+        const { data: orgaosData } = await supabase
+          .from(tableName)
+          .select('orgao')
+          .limit(1000);
+        
+        const { data: situacoesData } = await supabase
+          .from(tableName)
+          .select('situacao_funcional')
+          .limit(1000);
+
+        const { data: regimesData } = await supabase
+          .from(tableName)
+          .select('regime_juridico')
+          .limit(1000);
+        
+        const { data: ufsData } = await supabase
+          .from(tableName)
+          .select('uf')
+          .limit(1000);
+
+        orgaos = Array.from(new Set(orgaosData?.map(i => i.orgao).filter(Boolean) || [])).sort() as string[];
+        situacoes = Array.from(new Set(situacoesData?.map(i => i.situacao_funcional).filter(Boolean) || [])).sort() as string[];
+        regimes = Array.from(new Set(regimesData?.map(i => i.regime_juridico).filter(Boolean) || [])).sort() as string[];
+        ufs = Array.from(new Set(ufsData?.map(i => i.uf).filter(Boolean) || [])).sort() as string[];
+      }
+
+      setDynamicOptions({
+        orgaos,
+        situacoes,
+        regimes,
+        ufs
+      });
+    } catch (err) {
+      console.error("Erro ao buscar opções dinâmicas:", err);
+    } finally {
+      setIsCalculating(false);
+    }
+  }, [activeConvenio])
+
+  useEffect(() => {
+    fetchDynamicOptions()
+  }, [fetchDynamicOptions])
+
+  useEffect(() => {
+    if (!authLoading && !canAccessAdminAreas && !isOperational) {
+      router.replace('/')
+    }
+  }, [authLoading, canAccessAdminAreas, isOperational, router])
+
+  const translateOrgao = (id: string) => {
+    return ORGAOS_MAPPING[id as keyof typeof ORGAOS_MAPPING] || id
+  }
+
+  const getCardNumbers = useCallback(() => {
+    if (activeConvenio === 'prefeitura_santo_andre') {
+      return {
+        idade: 1,
+        orgao: 0,
+        situacao: 0,
+        regime: 0,
+        uf: 0,
+        margem: 0,
+        saldo: 0,
+        loans: 0,
+        cards: 2,
+      };
+    }
+
+    if (activeConvenio === 'governo_rr') {
+      return {
+        idade: 1,
+        orgao: 0,
+        situacao: 0,
+        regime: 0,
+        uf: 0,
+        margem: 2,
+        saldo: 0,
+        loans: 0,
+        cards: 3,
+      };
+    }
+
+    if (activeConvenio === 'governo_ma') {
+      return {
+        idade: 1,
+        orgao: 2,
+        situacao: 3,
+        regime: 0,
+        uf: 0,
+        margem: 4,
+        saldo: 0,
+        loans: 0,
+        cards: 5,
+      };
+    }
+
+    if (activeConvenio === 'prefeitura_ponta_grossa' || activeConvenio === 'amazon_prev') {
+      return {
+        idade: 1,
+        orgao: 2,
+        situacao: 3,
+        regime: 0,
+        uf: 0,
+        margem: 4,
+        saldo: 0,
+        loans: 0,
+        cards: 0,
+      };
+    }
+
+    let currentNumber = 1;
+    const numbers: Record<string, number> = {
+      idade: currentNumber++,
+    };
+
+    if (activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre') {
+      numbers['orgao'] = currentNumber++;
+      numbers['situacao'] = currentNumber++;
+      
+      if (activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'prefeitura_natal' && activeConvenio !== 'prefeitura_porto_velho') {
+        numbers['regime'] = currentNumber++;
+        numbers['uf'] = currentNumber++;
+      }
+    }
+
+    numbers['margem'] = currentNumber++;
+
+    if (activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'prefeitura_natal' && activeConvenio !== 'prefeitura_porto_velho') {
+      numbers['saldo'] = currentNumber++;
+      numbers['loans'] = currentNumber++;
+    }
+
+    numbers['cards'] = currentNumber++;
+
+    return numbers;
+  }, [activeConvenio]);
+
+  const [isCalculating, setIsCalculating] = useState(false)
+  const [estimatedAudience, setEstimatedAudience] = useState(0)
+  const [campaignName, setCampaignName] = useState("")
+  const [isCreating, setIsCreating] = useState(false)
+  const [loanBanksList, setLoanBanksList] = useState<string[]>([
+    "BANCO BMG", "BANCO DO BRASIL", "BANCO PAN", "BANCO SANTANDER", 
+    "BANCO SEGURO", "BANRISUL", "BRB FINANCEIRA", "BANCO BRB", 
+    "CAIXA ECONOMICA FEDERAL", "CAPITAL", "BANCO DAYCOVAL", 
+    "BANCO DIGIMAIS", "BANCO DIGIO", "EAGLE", "BANCO ITAU CONSIGNADO", 
+    "BANCO ITAU", "MEUCASH", "NEOCREDITO", "NUBANK", "PARANA BANCO", 
+    "SABEMI", "BANCO SAFRA", "XNBANK", "BANCO C6", "BANCO BRADESCO",
+    "BANCO INTERMEDIUM", "BANCO PAULISTA", "INBURSA", "LECCA"
+  ])
+
+  useEffect(() => {
+    // Busca de bancos removida para nova implementação
+    setLoanBanksList([
+      "BANCO BMG", "BANCO DO BRASIL", "BANCO PAN", "BANCO SANTANDER", 
+      "BANCO SEGURO", "BANRISUL", "BRB FINANCEIRA", "BANCO BRB", 
+      "CAIXA ECONOMICA FEDERAL", "CAPITAL", "BANCO DAYCOVAL", 
+      "BANCO DIGIMAIS", "BANCO DIGIO", "EAGLE", "BANCO ITAU CONSIGNADO", 
+      "BANCO ITAU", "MEUCASH", "NEOCREDITO", "NUBANK", "PARANA BANCO", 
+      "SABEMI", "BANCO SAFRA", "XNBANK", "BANCO C6", "BANCO BRADESCO",
+      "BANCO INTERMEDIUM", "BANCO PAULISTA", "INBURSA", "LECCA"
+    ])
+  }, []);
+
+  const hasActiveFilters = () => {
+    return (
+      filters.orgaos.length > 0 ||
+      filters.situacoes.length > 0 ||
+      filters.regimes.length > 0 ||
+      filters.ufs.length > 0 ||
+      filters.margemMin !== "" ||
+      filters.margemMax !== "" ||
+      filters.saldoMin !== "" ||
+      filters.saldoMax !== "" ||
+      filters.loanBanks.length > 0 ||
+      filters.loanPrazoMin !== "" ||
+      filters.loanPrazoMax !== "" ||
+      filters.cardMargemMin !== "" ||
+      filters.cardBeneficioMin !== "" ||
+      filters.cardBeneficioMax !== "" ||
+      filters.cardTypes.length > 0 ||
+      filters.cardBanks.length > 0 ||
+      filters.idadeMin !== "" ||
+      filters.idadeMax !== ""
+    )
+  }
+
+  const [searchQueries, setSearchQueries] = useState<Record<string, string>>({
+    "1": "", // Órgão
+    "2": "", // Situação Funcional
+    "3": "", // Regime Jurídico
+    "4": "", // UF
+    "loan_banks": "",
+    "card_banks": "",
+  })
+
+  const toggleFilter = (category: keyof typeof filters, value: string) => {
+    setFilters(prev => {
+      const current = prev[category] as string[]
+      const next = current.includes(value)
+        ? current.filter(v => v !== value)
+        : [...current, value]
+      
+      // Se for cardTypes, garantir o marcador de ativação da lógica binária
+      if (category === 'cardTypes' && !next.includes('__ACTIVE__')) {
+        next.push('__ACTIVE__');
+      }
+      
+      return { ...prev, [category]: next }
+    })
+  }
+
+  const selectAll = (category: keyof typeof filters, options: string[]) => {
+    setFilters(prev => {
+      const next = Array.from(new Set([...(prev[category] as string[]), ...options]));
+      
+      // Se for cardTypes, garantir o marcador de ativação
+      if (category === 'cardTypes' && !next.includes('__ACTIVE__')) {
+        next.push('__ACTIVE__');
+      }
+      
+      return {
+        ...prev,
+        [category]: next
+      }
+    })
+  }
+
+  const clearAll = (category: keyof typeof filters, options: string[]) => {
+    setFilters(prev => {
+      const current = prev[category] as string[]
+      let next = current.filter(v => !options.includes(v));
+      
+      // Se for cardTypes, também limpamos o marcador se estivermos limpando tudo
+      if (category === 'cardTypes') {
+        next = next.filter(v => v !== '__ACTIVE__');
+      }
+      
+      return {
+        ...prev,
+        [category]: next
+      }
+    })
+  }
+
+  const handleSearch = (id: string, query: string) => {
+    setSearchQueries(prev => ({ ...prev, [id]: query }))
+  }
+
+  const getFilteredOptions = (options: string[], id: string) => {
+    const query = searchQueries[id]?.toLowerCase() || ""
+    if (!query) return options
+    
+    if (id === "1") { // Órgão
+      return options.filter(opt => {
+        const matchesName = opt.toLowerCase().includes(query);
+        // Find if any code for this name matches the query
+        const codes = Object.entries(ORGAOS_MAPPING)
+          .filter(([, val]) => val === opt)
+          .map(([code]) => code);
+        const matchesCode = codes.some(code => code.includes(query));
+        return matchesName || matchesCode;
+      });
+    }
+
+    if (id === "loan_banks" || id === "card_banks") {
+      return options.filter(opt => {
+        const normalizedOpt = opt.toLowerCase();
+        const normalizedQuery = query.replace(/^banco\s+/i, "").trim();
+        return normalizedOpt.includes(normalizedQuery) || normalizedOpt.includes(query);
+      });
+    }
+    
+    return options.filter(opt => opt.toLowerCase().includes(query))
+  }
+
+  const parseSafeNumber = (val: string) => {
+    if (!val) return null;
+    let clean = val.replace(/[R$\s]/g, "");
+    
+    // Se houver vírgula e ponto, assumimos padrão BR (ponto milhar, vírgula decimal): 1.000,00 -> 1000.00
+    if (clean.includes(",") && clean.includes(".")) {
+      clean = clean.replace(/\./g, "").replace(",", ".");
+    } 
+    // Se houver apenas vírgula: 1000,00 -> 1000.00
+    else if (clean.includes(",")) {
+      clean = clean.replace(",", ".");
+    }
+    // Se houver apenas ponto (sem vírgula): "1.500" ou "15.000" (seguido de exatamente 3 dígitos)
+    else if (clean.includes(".")) {
+      const parts = clean.split(".");
+      if (parts[parts.length - 1].length === 3) {
+        clean = clean.replace(/\./g, "");
+      }
+    }
+    
+    const num = parseFloat(clean);
+    return isNaN(num) ? null : num;
+  };
+
+  const applySharedFilters = (q: any, f: typeof filters, cols: string[]) => {
+    // Filtros de Margem 35% / Margem Disponível Empréstimo no topo para priorizar o uso do índice
+    const mMinNum = parseSafeNumber(f.margemMin);
+    const mMaxNum = parseSafeNumber(f.margemMax);
+    
+    if (mMinNum !== null || mMaxNum !== null) {
+      if (cols.includes('margem_consignavel')) {
+        q = q.not("margem_consignavel", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_consignavel", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_consignavel", mMaxNum);
+      } else if (cols.includes('margem_35')) {
+        q = q.not("margem_35", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_35", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_35", mMaxNum);
+      } else if (cols.includes('margem_disponivel_emprestimo')) {
+        q = q.not("margem_disponivel_emprestimo", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_disponivel_emprestimo", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_disponivel_emprestimo", mMaxNum);
+      } else if (cols.includes('margem_disponivel')) {
+        q = q.not("margem_disponivel", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_disponivel", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_disponivel", mMaxNum);
+      } else if (cols.includes('margem_emprestimo')) {
+        q = q.not("margem_emprestimo", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_emprestimo", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_emprestimo", mMaxNum);
+      } else if (cols.includes('margem_emprestimo_consignado')) {
+        q = q.not("margem_emprestimo_consignado", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_emprestimo_consignado", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_emprestimo_consignado", mMaxNum);
+      } else if (cols.includes('margem_bruta_cartao')) {
+        q = q.not("margem_bruta_cartao", "is", null);
+        if (mMinNum !== null) q = q.gte("margem_bruta_cartao", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem_bruta_cartao", mMaxNum);
+      } else if (cols.includes('margem')) {
+        q = q.not("margem", "is", null);
+        if (mMinNum !== null) q = q.gte("margem", mMinNum);
+        if (mMaxNum !== null) q = q.lte("margem", mMaxNum);
+      }
+    }
+
+    // 1. Filtros de Matrícula
+    if (f.orgaos.length > 0) {
+      if (cols.includes('orgao')) {
+        const codeFilters = Object.entries(ORGAOS_MAPPING)
+          .filter(([, name]) => f.orgaos.includes(name))
+          .map(([code]) => code);
+        const combinedOrgaos = Array.from(new Set([...f.orgaos, ...codeFilters]));
+        if (combinedOrgaos.length > 0) q = q.in('orgao', combinedOrgaos);
+      } else if (cols.includes('origem')) {
+        q = q.in('origem', f.orgaos);
+      }
+    }
+    if (f.situacoes.length > 0) {
+      const expandedSituacoes: string[] = [];
+      f.situacoes.forEach(sit => {
+        expandedSituacoes.push(sit);
+        if (sit === 'APOSENTADO') {
+          expandedSituacoes.push('1 - APOSENTADO');
+        } else if (sit === 'PENSIONISTA') {
+          expandedSituacoes.push('6 - PENSIONISTA');
+        } else if (sit === 'EFETIVO') {
+          expandedSituacoes.push('7 - EFETIVO');
+        } else if (sit === 'ESTAB. CONSTIT.') {
+          expandedSituacoes.push('8 - ESTAB. CONSTIT.');
+        }
+      });
+      const finalSituacoes = Array.from(new Set(expandedSituacoes));
+
+      if (cols.includes('situacao_funcional')) {
+        q = q.in('situacao_funcional', finalSituacoes);
+      } else if (cols.includes('situacao')) {
+        q = q.in('situacao', finalSituacoes);
+      } else if (cols.includes('vinculo')) {
+        q = q.in('vinculo', finalSituacoes);
+      }
+    }
+    if (f.regimes.length > 0 && cols.includes('regime_juridico')) q = q.in('regime_juridico', f.regimes);
+    if (f.ufs.length > 0 && cols.includes('uf')) q = q.in('uf', f.ufs);
+
+    // 2. Filtro de IDADE
+    if (cols.includes('idade')) {
+      if (f.idadeMin) {
+        const ageMin = parseInt(f.idadeMin);
+        if (!isNaN(ageMin)) q = q.gte('idade', ageMin);
+      }
+      if (f.idadeMax) {
+        const ageMax = parseInt(f.idadeMax);
+        if (!isNaN(ageMax)) q = q.lte('idade', ageMax);
+      }
+    } else {
+      const birthCol = cols.includes('data_de_nascimento') ? 'data_de_nascimento' : cols.includes('data_nascimento') ? 'data_nascimento' : null;
+      if (f.idadeMin && birthCol) {
+        const ageMin = parseInt(f.idadeMin);
+        if (!isNaN(ageMin)) {
+          const d = new Date();
+          d.setFullYear(d.getFullYear() - ageMin);
+          const dateStr = d.toISOString().split('T')[0];
+          q = q.lte(birthCol, dateStr);
+        }
+      }
+      if (f.idadeMax && birthCol) {
+        const ageMax = parseInt(f.idadeMax);
+        if (!isNaN(ageMax)) {
+          const d = new Date();
+          d.setFullYear(d.getFullYear() - ageMax - 1);
+          d.setDate(d.getDate() + 1);
+          const dateStr = d.toISOString().split('T')[0];
+          q = q.gte(birthCol, dateStr);
+        }
+      }
+    }
+
+    const sMin = parseSafeNumber(f.saldoMin);
+    if (sMin !== null && cols.includes('saldo_70')) {
+      q = q.not('saldo_70', 'is', null).gte('saldo_70', sMin);
+    }
+    
+    if (activeConvenio === 'governo_rr') {
+      const cMMin = parseSafeNumber(f.cardMargemMin);
+      const cMMax = parseSafeNumber(f.cardMargemMax);
+      if (cMMin !== null || cMMax !== null) {
+        if (cols.includes('margem_cartao')) {
+          q = q.not('margem_cartao', 'is', null);
+          if (cMMin !== null) q = q.gte('margem_cartao', cMMin);
+          if (cMMax !== null) q = q.lte('margem_cartao', cMMax);
+        }
+      }
+    } else if (activeConvenio === 'governo_sp') {
+      const cleanTypes = f.cardTypes.filter(t => t !== '__ACTIVE__');
+      if (cleanTypes.length > 0) {
+        if (cleanTypes.includes('CARTÃO CONSIGNADO')) {
+          const cMMin = parseSafeNumber(f.cardMargemMin);
+          if (cMMin !== null) {
+            q = q.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+          } else {
+            q = q.not('liquida_5', 'is', null).gt('liquida_5', 0);
+          }
+        }
+        if (cleanTypes.includes('CARTÃO BENEFÍCIO')) {
+          const cBMin = parseSafeNumber(f.cardBeneficioMin);
+          if (cBMin !== null) {
+            q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+          } else {
+            q = q.not('beneficio_liquida_5', 'is', null).gt('beneficio_liquida_5', 0);
+          }
+        }
+      } else {
+        const cMMin = parseSafeNumber(f.cardMargemMin);
+        if (cMMin !== null && cols.includes('liquida_5')) {
+          q = q.not('liquida_5', 'is', null).gte('liquida_5', cMMin);
+        }
+        const cBMin = parseSafeNumber(f.cardBeneficioMin);
+        if (cBMin !== null && cols.includes('beneficio_liquida_5')) {
+          q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+        }
+      }
+    } else if (activeConvenio === 'prefeitura_sp') {
+      const cBMin = parseSafeNumber(f.cardBeneficioMin);
+      const cBMax = parseSafeNumber(f.cardBeneficioMax);
+      if (cBMin !== null && cols.includes('beneficio_liquida_5')) {
+        q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+      }
+      if (cBMax !== null && cols.includes('beneficio_liquida_5')) {
+        q = q.not('beneficio_liquida_5', 'is', null).lte('beneficio_liquida_5', cBMax);
+      }
+    } else {
+      const cMMin = parseSafeNumber(f.cardMargemMin);
+      const cMMax = parseSafeNumber(f.cardMargemMax);
+      if (cMMin !== null || cMMax !== null) {
+        if (cols.includes('liquida_5')) {
+          q = q.not('liquida_5', 'is', null);
+          if (cMMin !== null) q = q.gte('liquida_5', cMMin);
+          if (cMMax !== null) q = q.lte('liquida_5', cMMax);
+        } else if (cols.includes('margem_cartao_consignado')) {
+          q = q.not('margem_cartao_consignado', 'is', null);
+          if (cMMin !== null) q = q.gte('margem_cartao_consignado', cMMin);
+          if (cMMax !== null) q = q.lte('margem_cartao_consignado', cMMax);
+        } else if (cols.includes('margem_liquida_cartao')) {
+          q = q.not('margem_liquida_cartao', 'is', null);
+          if (cMMin !== null) q = q.gte('margem_liquida_cartao', cMMin);
+          if (cMMax !== null) q = q.lte('margem_liquida_cartao', cMMax);
+        }
+      }
+      const cBMin = parseSafeNumber(f.cardBeneficioMin);
+      if (cBMin !== null) {
+        if (cols.includes('beneficio_liquida_5')) {
+          q = q.not('beneficio_liquida_5', 'is', null).gte('beneficio_liquida_5', cBMin);
+        } else if (cols.includes('margem_cartao_beneficio')) {
+          q = q.not('margem_cartao_beneficio', 'is', null).gte('margem_cartao_beneficio', cBMin);
+        }
+      }
+    }
+
+    return q;
+  };
+
+  const applyLoanFilters = (q: any, f: typeof filters, cols: string[]) => {
+    if (f.loanBanks.length > 0 && cols.includes('banco')) {
+      q = q.in('banco', f.loanBanks);
+    }
+    const pMin = parseInt(f.loanPrazoMin);
+    const pMax = parseInt(f.loanPrazoMax);
+    if (!isNaN(pMin) && cols.includes('prazo')) q = q.gte('prazo', pMin);
+    if (!isNaN(pMax) && cols.includes('prazo')) q = q.lte('prazo', pMax);
+    return q;
+  };
+
+  const applyCardFilters = (q: any, f: typeof filters) => {
+    const hasCardTypeFilter = f.cardTypes.length > 0 && !f.cardTypes.includes('__ACTIVE__') || (f.cardTypes.length > 1);
+    const hasCardBankFilter = f.cardBanks.length > 0;
+    
+    const cleanCardTypes = f.cardTypes.filter(t => t !== '__ACTIVE__');
+    const cardQueryCodes = Object.entries(CONTRATOS_TIPO_MAPPING)
+      .filter(([, info]) => {
+        const matchesType = cleanCardTypes.length === 0 || cleanCardTypes.includes(info.label);
+        const matchesBank = !hasCardBankFilter || (info.bank && f.cardBanks.includes(info.bank));
+        return matchesType && matchesBank;
+      })
+      .map(([code]) => code);
+
+    if (cardQueryCodes.length > 0) {
+      q = q.in('tipo_prefix', cardQueryCodes);
+    } else if (hasCardTypeFilter && hasCardBankFilter) {
+      q = q.eq('tipo', '999999999_FORCE_EMPTY');
+    }
+    return q;
+  };
+
+  const calculateAudience = async () => {
+    if (!hasActiveFilters()) return;
+    
+    setIsCalculating(true);
+    try {
+      const tableName = TABLE_MAP[activeConvenio] || 'base_consulta_siape';
+      const tableCols = TABLE_COLUMNS[tableName] || TABLE_COLUMNS['base_consulta_siape'];
+
+      const pMin = parseInt(filters.loanPrazoMin);
+      const pMax = parseInt(filters.loanPrazoMax);
+      const hasLoanFilters = (filters.loanBanks.length > 0 && tableCols.includes('banco')) || 
+                           (!isNaN(pMin) && tableCols.includes('prazo')) || 
+                           (!isNaN(pMax) && tableCols.includes('prazo'));
+
+      const hasCardTypeFilter = filters.cardTypes.length > 0 && !filters.cardTypes.includes('__ACTIVE__') || (filters.cardTypes.length > 1);
+      const hasCardBankFilter = filters.cardBanks.length > 0;
+      const hasCardFilters = (hasCardTypeFilter || hasCardBankFilter) && tableCols.includes('tipo_prefix') && tableCols.includes('banco');
+
+      let totalCount = 0;
+
+      const executeQueryWithFallback = async (queryBuilderFn: (countType: 'exact' | 'estimated' | 'planned') => any) => {
+        // Tentar contagem exata com timeout de 40 segundos para dar tempo ao PostgreSQL de aquecer o cache
+        try {
+          const controller = new AbortController();
+          const q = queryBuilderFn('exact').abortSignal(controller.signal);
+          const timeoutId = setTimeout(() => controller.abort(), 40000);
+          const res = await q;
+          clearTimeout(timeoutId);
+          if (res.error) throw res.error;
+          return res.count || 0;
+        } catch (err) {
+          console.warn("Contagem exata com timeout de 40s falhou ou deu timeout. Tentando novamente sem limite de tempo para aproveitar o cache...", err);
+          
+          // Pequena pausa para respiro antes da tentativa final
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          try {
+            const res = await queryBuilderFn('exact');
+            if (res.error) throw res.error;
+            return res.count || 0;
+          } catch (lastErr) {
+            console.error("Tentativa final de contagem exata também falhou:", lastErr);
+            throw lastErr;
+          }
+        }
+      };
+
+      if (hasLoanFilters && hasCardFilters) {
+        const getQuery1 = (cnt: 'exact' | 'estimated' | 'planned') => {
+          let q = supabase.from(tableName).select('cpf', { count: cnt, head: true });
+          q = applySharedFilters(q, filters, tableCols);
+          q = applyLoanFilters(q, filters, tableCols);
+          return q;
+        };
+
+        const getQuery2 = (cnt: 'exact' | 'estimated' | 'planned') => {
+          let q = supabase.from(tableName).select('cpf', { count: cnt, head: true });
+          q = applySharedFilters(q, filters, tableCols);
+          q = applyCardFilters(q, filters);
+          return q;
+        };
+
+        const [count1, count2] = await Promise.all([
+          executeQueryWithFallback(getQuery1),
+          executeQueryWithFallback(getQuery2)
+        ]);
+
+        totalCount = count1 + count2;
+      } else {
+        const getQuery = (cnt: 'exact' | 'estimated' | 'planned') => {
+          let q = supabase.from(tableName).select('cpf', { count: cnt, head: true });
+          q = applySharedFilters(q, filters, tableCols);
+          if (hasLoanFilters) {
+            q = applyLoanFilters(q, filters, tableCols);
+          } else if (hasCardFilters) {
+            q = applyCardFilters(q, filters);
+          }
+          return q;
+        };
+
+        totalCount = await executeQueryWithFallback(getQuery);
+      }
+
+      setEstimatedAudience(totalCount);
+    } catch (err: unknown) {
+      const error = err as { code?: string; message?: string };
+      const isSilent = 
+        error?.code === '57014' || 
+        error?.message?.includes('aborted') || 
+        error?.message?.includes('AbortError') ||
+        !error?.code || 
+        !error?.message;
+      
+      console.error("ERRO NO CÁLCULO DE AUDIÊNCIA:", err);
+      setEstimatedAudience(0);
+      
+      if (!isSilent) {
+        const message = error?.message || "Erro de conexão ou sintaxe no banco de dados. Verifique os campos informados.";
+        alert(`Houve um erro ao processar os filtros: ${message}`);
+      }
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  const handleCreateCampaign = async () => {
+    if (estimatedAudience === 0 || !campaignName) return;
+    
+    setIsCreating(true);
+    try {
+      // 1. Salvar na tabela 'campanhas' inicializando como 'PROCESSANDO'
+      const { data: createdCampaign, error: saveError } = await supabase
+        .from('campanhas')
+        .insert({
+          nome: campaignName,
+          publico_estimado: estimatedAudience,
+          convenio: activeConvenio,
+          filtros: { ...filters, convenio: activeConvenio },
+          filtros_json: { ...filters, convenio: activeConvenio },
+          user_id: user?.id,
+          criado_por: user?.id,
+          status: 'ativa',
+          processamento_status: 'PROCESSANDO',
+          created_at: new Date().toISOString(),
+          criado_em: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (saveError) throw saveError;
+      const campaignId = createdCampaign.id;
+
+      // 2. Aplicar os filtros e obter todos os CPFs em lotes para persistir na campanha_membros
+      const tableName = TABLE_MAP[activeConvenio] || 'base_consulta_siape';
+      const tableCols = TABLE_COLUMNS[tableName] || TABLE_COLUMNS['base_consulta_siape'];
+      const stepSize = 1000; // Chunk size of 1000 CPFs for high stability and backpressure
+      let orderIndex = 1;
+      const insertedCpfs = new Set<string>();
+
+      const pMin = parseInt(filters.loanPrazoMin);
+      const pMax = parseInt(filters.loanPrazoMax);
+      const hasLoanFilters = (filters.loanBanks.length > 0 && tableCols.includes('banco')) || 
+                           (!isNaN(pMin) && tableCols.includes('prazo')) || 
+                           (!isNaN(pMax) && tableCols.includes('prazo'));
+
+      const hasCardTypeFilter = filters.cardTypes.length > 0 && !filters.cardTypes.includes('__ACTIVE__') || (filters.cardTypes.length > 1);
+      const hasCardBankFilter = filters.cardBanks.length > 0;
+      const hasCardFilters = (hasCardTypeFilter || hasCardBankFilter) && tableCols.includes('tipo_prefix') && tableCols.includes('banco');
+
+      const fetchAndInsertMembers = async (filterType: 'loan' | 'card' | 'none') => {
+        let lastCpf: string | null = null;
+        let hasMore = true;
+
+        while (hasMore) {
+          let query = supabase.from(tableName).select('cpf');
+          query = applySharedFilters(query, filters, tableCols);
+          
+          if (filterType === 'loan') {
+            query = applyLoanFilters(query, filters, tableCols);
+          } else if (filterType === 'card') {
+            query = applyCardFilters(query, filters);
+          }
+
+          if (lastCpf) {
+            query = query.gt('cpf', lastCpf);
+          }
+
+          query = query.order('cpf', { ascending: true }).limit(stepSize);
+
+          const { data: cpfBatch, error: cpfError } = await withRetry(() => query);
+          if (cpfError) throw cpfError;
+
+          if (!cpfBatch || cpfBatch.length === 0) {
+            hasMore = false;
+          } else {
+            lastCpf = cpfBatch[cpfBatch.length - 1].cpf;
+
+            const uniqueCpfBatch: { cpf: string }[] = [];
+            for (const row of cpfBatch) {
+              if (row.cpf) {
+                const cleanCpf = row.cpf.trim().padStart(11, '0');
+                if (cleanCpf && !insertedCpfs.has(cleanCpf)) {
+                  insertedCpfs.add(cleanCpf);
+                  uniqueCpfBatch.push({ cpf: cleanCpf });
+                }
+              }
+            }
+
+            if (uniqueCpfBatch.length > 0) {
+              const membersToInsert = uniqueCpfBatch.map((row: { cpf: string }) => ({
+                campanha_id: campaignId,
+                cliente_cpf: row.cpf,
+                convenio: activeConvenio,
+                ordem_fila: orderIndex++,
+                criado_em: new Date().toISOString()
+              }));
+
+              const { error: insertError } = await withRetry(() => supabase.from('campanha_membros').insert(membersToInsert));
+              if (insertError) throw insertError;
+            }
+
+            if (cpfBatch.length < stepSize) {
+              hasMore = false;
+            }
+
+            // Main Thread Breathing para manter UI responsiva e evitar travamentos
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+      };
+
+      if (hasLoanFilters && hasCardFilters) {
+        // Carrega empréstimos e cartões de forma sequencial com paginação para evitar timeout
+        await fetchAndInsertMembers('loan');
+        await fetchAndInsertMembers('card');
+      } else if (hasLoanFilters) {
+        await fetchAndInsertMembers('loan');
+      } else if (hasCardFilters) {
+        await fetchAndInsertMembers('card');
+      } else {
+        await fetchAndInsertMembers('none');
+      }
+
+      // 3. Atualizar status do processamento para finalizado PRONTA e atualizar o público real de CPFs únicos
+      const realPublicoCount = insertedCpfs.size;
+      const { error: updateError } = await withRetry(() => supabase
+        .from('campanhas')
+        .update({ 
+          processamento_status: 'PRONTA',
+          publico_estimado: realPublicoCount
+        })
+        .eq('id', campaignId)
+      );
+
+      if (updateError) throw updateError;
+
+      alert("Campanha criada e materializada com sucesso! Todos os CPFs foram fixados.");
+      router.push('/campanhas');
+
+    } catch (err: unknown) {
+      const error = err as { message?: string; details?: string; hint?: string; code?: string };
+      console.error("Erro detalhado ao criar campanha materializada:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        fullError: err
+      });
+      const message = error?.message || "Verifique o console.";
+      alert(`Erro ao criar campanha: ${message}`);
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  // Deriva opções únicas do mapeamento para garantir sincronia
+  const CARD_TYPES = Array.from(new Set(Object.values(CONTRATOS_TIPO_MAPPING).map(info => info.label))).sort();
+  const CARD_BANKS = Array.from(new Set(Object.values(CONTRATOS_TIPO_MAPPING).map(info => info.bank).filter(Boolean))) as string[];
+  CARD_BANKS.sort();
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <Header title="CRIAR CAMPANHA" />
+      
+      <div className="p-4 lg:p-8 flex flex-col gap-8 max-w-[1600px] mx-auto w-full">
+        {/* Tabs Navigation - Modern Segmented Control */}
+        <div className="bg-slate-100/80 p-1 rounded-2xl flex flex-wrap gap-1 self-start shadow-sm border border-slate-200/50">
+          {CONVENIOS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => {
+                setActiveConvenio(item.id);
+                setEstimatedAudience(0);
+                setFilters(prev => ({
+                  ...prev,
+                  orgaos: [],
+                  situacoes: [],
+                  regimes: [],
+                  ufs: [],
+                  margemMin: "",
+                  margemMax: "",
+                  saldoMin: "",
+                  saldoMax: "",
+                  loanBanks: [],
+                  loanPrazoMin: "",
+                  loanPrazoMax: "",
+                  cardTypes: [],
+                  cardBanks: [],
+                  cardMargemMin: "",
+                  cardMargemMax: "",
+                  cardBeneficioMin: "",
+                  cardBeneficioMax: "",
+                  idadeMin: "",
+                  idadeMax: "",
+                }));
+              }}
+              className={cn(
+                "relative px-6 py-2.5 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-all rounded-xl",
+                activeConvenio === item.id 
+                  ? "text-primary shadow-sm" 
+                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+              )}
+            >
+              <span className="relative z-10">{item.label}</span>
+              {activeConvenio === item.id && (
+                <motion.div
+                  layoutId="active-tab"
+                  className="absolute inset-0 bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.05)] border border-slate-200"
+                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                />
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-col lg:flex-row gap-8 w-full items-start">
+          {/* Filters Section */}
+          <div className="flex-1 space-y-6 order-2 lg:order-1">
+          <p className="text-[13px] font-medium text-slate-400 px-1">Defina os filtros para segmentar seu público-alvo.</p>
+          
+          {/* 1. IDADE */}
+          <Card className={cn(
+            "card-shadow transition-all duration-300",
+            (filters.idadeMin || filters.idadeMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+          )}>
+            <CardContent className="p-6 lg:p-8 space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                    (filters.idadeMin || filters.idadeMax) ? "bg-blue-100" : "bg-slate-50"
+                  )}>
+                    <Users className={cn(
+                      "w-4 h-4 transition-colors",
+                      (filters.idadeMin || filters.idadeMax) ? "text-blue-600" : "text-slate-400"
+                    )} />
+                  </div>
+                  <h3 className={cn(
+                    "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                    (filters.idadeMin || filters.idadeMax) ? "text-blue-600" : "text-slate-400"
+                  )}>1. IDADE</h3>
+                </div>
+                <button 
+                  onClick={() => setFilters(prev => ({ ...prev, idadeMin: "", idadeMax: "" }))}
+                  className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
+                >
+                  Limpar
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Idade Mínima</label>
+                  <div className="relative">
+                    <Input 
+                      className="h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                      placeholder="Ex: 18" 
+                      type="number"
+                      value={filters.idadeMin}
+                      onChange={(e) => setFilters(prev => ({ ...prev, idadeMin: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Idade Máxima</label>
+                  <div className="relative">
+                    <Input 
+                      className="h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                      placeholder="Ex: 80" 
+                      type="number"
+                      value={filters.idadeMax}
+                      onChange={(e) => setFilters(prev => ({ ...prev, idadeMax: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {filterSections.map((section) => {
+            if (activeConvenio === 'governo_rr') return null;
+            if (activeConvenio === 'governo_pi') return null;
+            if (activeConvenio === 'prefeitura_santo_andre') return null;
+            if ((activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho' || activeConvenio === 'prefeitura_ponta_grossa' || activeConvenio === 'amazon_prev') && (section.id === "3" || section.id === "4")) return null;
+            if (section.id === "4" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
+            if (section.id === "3" && (activeConvenio === 'governo_sp' || activeConvenio === 'prefeitura_sp')) return null;
+            if (activeConvenio === 'governo_ma' && (section.id === "3" || section.id === "4")) return null;
+            const category = CATEGORY_MAP[section.id] as keyof typeof filters;
+            const hasSelectedFilters = category && (filters[category] as string[]).length > 0;
+
+            const cardNumbers = getCardNumbers();
+            let sectionTitle = "";
+            if (section.id === "1") {
+              sectionTitle = `${cardNumbers['orgao']}. ${(activeConvenio === 'prefeitura_ponta_grossa') ? 'ORIGEM' : 'ÓRGÃO'}`;
+            } else if (section.id === "2") {
+              sectionTitle = `${cardNumbers['situacao']}. ${(activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') ? 'VÍNCULO' : (activeConvenio === 'prefeitura_ponta_grossa') ? 'SITUAÇÃO' : 'SITUAÇÃO FUNCIONAL'}`;
+            } else if (section.id === "3") {
+              sectionTitle = `${cardNumbers['regime']}. REGIME JURÍDICO`;
+            } else if (section.id === "4") {
+              sectionTitle = `${cardNumbers['uf']}. UF (ESTADO)`;
+            }
+
+            return (
+              <Card 
+                key={section.id} 
+                className={cn(
+                  "card-shadow transition-all duration-300",
+                  hasSelectedFilters ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+                )}
+              >
+                <CardContent className="p-6 lg:p-8 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                        hasSelectedFilters ? "bg-blue-100" : "bg-slate-50"
+                      )}>
+                        <Filter className={cn(
+                          "w-4 h-4 transition-colors",
+                          hasSelectedFilters ? "text-blue-600" : "text-slate-400"
+                        )} />
+                      </div>
+                      <h3 className={cn(
+                        "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                        hasSelectedFilters ? "text-blue-600" : "text-slate-400"
+                      )}>
+                        {sectionTitle}
+                      </h3>
+                    </div>
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => {
+                          const category = CATEGORY_MAP[section.id] as keyof typeof filters;
+                          const options = activeConvenio === 'siape' ? section.options : (dynamicOptions[category as keyof typeof dynamicOptions] || []);
+                          if (category) selectAll(category, options);
+                        }}
+                        className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:underline"
+                      >
+                        Selecionar Todos
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const category = CATEGORY_MAP[section.id] as keyof typeof filters;
+                          const options = activeConvenio === 'siape' ? section.options : (dynamicOptions[category as keyof typeof dynamicOptions] || []);
+                          if (category) clearAll(category, options);
+                        }}
+                        className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <Input 
+                      placeholder="Localizar filtro..." 
+                      icon={<Search className="w-4 h-4" />}
+                      className="bg-slate-50/30 border-slate-100 h-9 text-[12px]"
+                      value={searchQueries[section.id] || ""}
+                      onChange={(e) => handleSearch(section.id, e.target.value)}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                    {getFilteredOptions(
+                      activeConvenio === 'siape' ? section.options : (dynamicOptions[CATEGORY_MAP[section.id] as keyof typeof dynamicOptions] || []), 
+                      section.id
+                    ).map((option) => {
+                      const category = CATEGORY_MAP[section.id] as keyof typeof filters;
+                      if (!category) return null;
+                      
+                      const isSelected = (filters[category] as string[]).includes(option);
+                      const isSiapeOrgao = activeConvenio === 'siape' && section.id === "1";
+
+                      return (
+                        <button 
+                          key={option}
+                          title={isSiapeOrgao ? translateOrgao(option) : option}
+                          onClick={() => toggleFilter(category, option)}
+                          className={cn(
+                            "flex items-center justify-between px-4 py-3 border rounded-lg text-[10px] font-bold transition-all uppercase tracking-tight text-left",
+                            isSelected 
+                              ? "bg-primary border-primary text-white shadow-lg shadow-primary/20" 
+                              : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary hover:text-primary"
+                          )}
+                        >
+                          <span className="truncate mr-2">
+                            {isSiapeOrgao ? translateOrgao(option) : option}
+                          </span>
+                          {isSelected && <Check className="w-3 h-3 flex-shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+
+          {/* 6. MARGEM */}
+          {activeConvenio !== 'prefeitura_santo_andre' && (
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.margemMin || filters.margemMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      (filters.margemMin || filters.margemMax) ? "bg-blue-100" : "bg-slate-50"
+                    )}>
+                      <Wallet className={cn(
+                        "w-4 h-4 transition-colors",
+                        (filters.margemMin || filters.margemMax) ? "text-blue-600" : "text-slate-400"
+                      )} />
+                    </div>
+                    <h3 className={cn(
+                      "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                      (filters.margemMin || filters.margemMax) ? "text-blue-600" : "text-slate-400"
+                    )}>
+                      {activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_ponta_grossa'
+                        ? `${getCardNumbers()['margem']}. MARGEM DISPONÍVEL` 
+                        : activeConvenio === 'prefeitura_sp'
+                          ? `${getCardNumbers()['margem']}. LÍQUIDA CONSIGNADO`
+                          : activeConvenio === 'governo_rr' || activeConvenio === 'prefeitura_porto_velho'
+                            ? `${getCardNumbers()['margem']}. MARGEM EMPRÉSTIMO`
+                            : activeConvenio === 'siape'
+                              ? `${getCardNumbers()['margem']}. LÍQUIDA FACULTATIVA GLOBAL`
+                              : `${getCardNumbers()['margem']}. MARGEM 35%`}
+                    </h3>
+                  </div>
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, margemMin: "", margemMax: "" }))}
+                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors flex items-center gap-1.5"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                    Limpar
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Mínimo</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="0,00" 
+                        inputMode="decimal"
+                        value={filters.margemMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, margemMin: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Máximo</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="0,00" 
+                        inputMode="decimal"
+                        value={filters.margemMax}
+                        onChange={(e) => setFilters(prev => ({ ...prev, margemMax: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_ponta_grossa' && activeConvenio !== 'amazon_prev' && (
+            /* 7. SALDO 70% */
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.saldoMin || filters.saldoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      (filters.saldoMin || filters.saldoMax) ? "bg-blue-100" : "bg-slate-50"
+                    )}>
+                      <Landmark className={cn(
+                        "w-4 h-4 transition-colors",
+                        (filters.saldoMin || filters.saldoMax) ? "text-blue-600" : "text-slate-400"
+                      )} />
+                    </div>
+                    <h3 className={cn(
+                      "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                      (filters.saldoMin || filters.saldoMax) ? "text-blue-600" : "text-slate-400"
+                    )}>{getCardNumbers()['saldo']}. SALDO 70%</h3>
+                  </div>
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, saldoMin: "", saldoMax: "" }))}
+                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
+                  >
+                    Limpar
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Mínimo</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="0,00" 
+                        inputMode="decimal"
+                        value={filters.saldoMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, saldoMin: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+
+          {/* 8. EMPRÉSTIMOS */}
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_ponta_grossa' && activeConvenio !== 'amazon_prev' && (
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-8">
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                    (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "bg-blue-100" : "bg-slate-50"
+                  )}>
+                    <CreditCard className={cn(
+                      "w-4 h-4 transition-colors",
+                      (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "text-blue-600" : "text-slate-400"
+                    )} />
+                  </div>
+                  <h3 className={cn(
+                    "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                    (filters.loanBanks.length > 0 || filters.loanPrazoMin || filters.loanPrazoMax) ? "text-blue-600" : "text-slate-400"
+                  )}>{getCardNumbers()['loans']}. EMPRÉSTIMOS</h3>
+                </div>
+
+                <div className="space-y-6 bg-slate-50/30 p-5 rounded-xl border border-slate-100/50">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h4 className="text-[9px] font-bold text-slate-900 uppercase tracking-widest">Banco</h4>
+                      <p className="text-[8px] text-slate-400 font-medium">Selecione os bancos para filtrar os contratos</p>
+                    </div>
+                    <div className="flex gap-4">
+                      <button 
+                        onClick={() => selectAll("loanBanks", loanBanksList)}
+                        className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors"
+                      >
+                        Selecionar Todos
+                      </button>
+                      <button 
+                        onClick={() => clearAll("loanBanks", loanBanksList)}
+                        className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <Input 
+                      placeholder="Localizar banco..." 
+                      icon={<Search className="w-4 h-4" />}
+                      className="bg-white border-slate-200 h-10 text-[12px] shadow-sm focus:ring-2 focus:ring-primary/10"
+                      value={searchQueries["loan_banks"] || ""}
+                      onChange={(e) => handleSearch("loan_banks", e.target.value)}
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-52 overflow-y-auto pr-2 custom-scrollbar">
+                      {getFilteredOptions(loanBanksList, "loan_banks").map((bank) => (
+                        <button 
+                          key={bank}
+                          title={bank}
+                          onClick={() => toggleFilter("loanBanks", bank)}
+                          className={cn(
+                            "flex items-center justify-between px-4 py-3.5 border rounded-xl text-[10px] font-bold transition-all uppercase tracking-tight text-left",
+                            filters.loanBanks.includes(bank) 
+                              ? "bg-primary border-primary text-white shadow-md shadow-primary/20 scale-[0.98]" 
+                              : "bg-white border-slate-100 text-slate-500 hover:border-primary/30 hover:bg-slate-50/50"
+                          )}
+                        >
+                          <span className="truncate mr-2">{bank}</span>
+                          {filters.loanBanks.includes(bank) && <Check className="w-3 h-3 flex-shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6 bg-slate-50/30 p-5 rounded-xl border border-slate-100/50 hover:border-slate-200/50 transition-all duration-300 group">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h4 className="text-[9px] font-bold text-slate-900 uppercase tracking-widest group-hover:text-primary transition-colors">Prazo (Meses)</h4>
+                      <p className="text-[8px] text-slate-400 font-medium">Defina o intervalo de meses dos contratos</p>
+                    </div>
+                    <button 
+                      onClick={() => setFilters(prev => ({ ...prev, loanPrazoMin: "", loanPrazoMax: "" }))}
+                      className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors flex items-center gap-1.5"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                      Limpar
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-2.5">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                        Prazo Mínimo
+                      </label>
+                      <div className="relative group/input">
+                        <Input 
+                          className="h-11 bg-white border-slate-200 text-[12px] shadow-sm focus:ring-2 focus:ring-primary/10 transition-all group-hover/input:border-slate-300" 
+                          placeholder="Ex: 12" 
+                          type="number"
+                          value={filters.loanPrazoMin}
+                          onChange={(e) => setFilters(prev => ({ ...prev, loanPrazoMin: e.target.value }))}
+                        />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                          <div className="w-[1px] h-4 bg-slate-100" />
+                          <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">Meses</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2.5">
+                      <label className="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                        Prazo Máximo
+                      </label>
+                      <div className="relative group/input">
+                        <Input 
+                          className="h-11 bg-white border-slate-200 text-[12px] shadow-sm focus:ring-2 focus:ring-primary/10 transition-all group-hover/input:border-slate-300" 
+                          placeholder="Ex: 96" 
+                          type="number"
+                          value={filters.loanPrazoMax}
+                          onChange={(e) => setFilters(prev => ({ ...prev, loanPrazoMax: e.target.value }))}
+                        />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                          <div className="w-[1px] h-4 bg-slate-100" />
+                          <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter">Meses</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* 9. CARTÕES */}
+          {activeConvenio !== 'governo_pi' && activeConvenio !== 'prefeitura_santo_andre' && activeConvenio !== 'governo_ma' && activeConvenio !== 'governo_rr' && activeConvenio !== 'prefeitura_natal' && activeConvenio !== 'prefeitura_porto_velho' && activeConvenio !== 'prefeitura_ponta_grossa' && activeConvenio !== 'amazon_prev' ? (
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-8">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "bg-blue-100" : "bg-slate-50"
+                    )}>
+                      <CreditCard className={cn(
+                        "w-4 h-4 transition-colors",
+                        (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
+                      )} />
+                    </div>
+                    <h3 className={cn(
+                      "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                      (filters.cardMargemMin || filters.cardBeneficioMin || filters.cardBeneficioMax || filters.cardTypes.length > 0 || filters.cardBanks.length > 0) ? "text-blue-600" : "text-slate-400"
+                    )}>
+                      {getCardNumbers()['cards']}. {activeConvenio === 'prefeitura_sp' ? "CARTÃO BENEFÍCIO" : "CARTÕES"}
+                    </h3>
+                  </div>
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardBeneficioMin: "", cardBeneficioMax: "", cardTypes: [] }))}
+                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
+                  >
+                    Limpar
+                  </button>
+                </div>
+
+                {activeConvenio === 'governo_sp' ? (
+                  /* Layout Customizado para Governo SP */
+                  <div className="space-y-6">
+                    <div id="tipo-cartao-section-sp" className="space-y-4 bg-blue-50/10 p-5 rounded-xl border border-blue-100/30">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Tipo de Cartão</h4>
+                          <p className="text-[8px] text-slate-400 font-medium font-bold uppercase tracking-tight">Selecione o tipo de cartão para habilitar o preenchimento de sua margem mínima</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => selectAll("cardTypes", ['CARTÃO CONSIGNADO', 'CARTÃO BENEFÍCIO'])}
+                            className="text-[9px] font-bold text-primary uppercase tracking-widest hover:text-primary/80 transition-colors px-2 py-1 rounded-md bg-white hover:bg-slate-50 border border-slate-100 shadow-xs"
+                          >
+                            Todos
+                          </button>
+                          <button 
+                            onClick={() => clearAll("cardTypes", ['CARTÃO CONSIGNADO', 'CARTÃO BENEFÍCIO'])}
+                            className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-white hover:bg-slate-50 border border-slate-100 shadow-xs"
+                          >
+                            Limpar
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                        {/* Bloco 1: CARTÃO CONSIGNADO */}
+                        <div className="space-y-4 p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
+                          <button 
+                            onClick={() => toggleFilter("cardTypes", "CARTÃO CONSIGNADO")}
+                            className={cn(
+                              "w-full flex items-center justify-between px-4 py-3 border rounded-xl text-[10.5px] font-bold transition-all uppercase tracking-tight text-left group",
+                              filters.cardTypes.includes("CARTÃO CONSIGNADO") 
+                                ? "bg-primary border-primary text-white shadow-md ring-2 ring-primary/10" 
+                                : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary/20"
+                            )}
+                          >
+                            <span>CARTÃO CONSIGNADO</span>
+                            {filters.cardTypes.includes("CARTÃO CONSIGNADO") && <Check className="w-3.5 h-3.5" />}
+                          </button>
+
+                          <div className="space-y-2">
+                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">LÍQUIDA 5% (MÍNIMA)</label>
+                            <div className="relative">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                              <Input 
+                                className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px] rounded-lg" 
+                                placeholder="Ex: 100,00" 
+                                inputMode="decimal"
+                                value={filters.cardMargemMin}
+                                onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Bloco 2: CARTÃO BENEFÍCIO */}
+                        <div className="space-y-4 p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
+                          <button 
+                            onClick={() => toggleFilter("cardTypes", "CARTÃO BENEFÍCIO")}
+                            className={cn(
+                              "w-full flex items-center justify-between px-4 py-3 border rounded-xl text-[10.5px] font-bold transition-all uppercase tracking-tight text-left group",
+                              filters.cardTypes.includes("CARTÃO BENEFÍCIO") 
+                                ? "bg-primary border-primary text-white shadow-md ring-2 ring-primary/10" 
+                                : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary/20"
+                            )}
+                          >
+                            <span>CARTÃO BENEFÍCIO</span>
+                            {filters.cardTypes.includes("CARTÃO BENEFÍCIO") && <Check className="w-3.5 h-3.5" />}
+                          </button>
+
+                          <div className="space-y-2">
+                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">BENEFÍCIO LÍQUIDA 5% MÍNIMA</label>
+                            <div className="relative">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                              <Input 
+                                className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px] rounded-lg" 
+                                placeholder="Ex: 100,00" 
+                                inputMode="decimal"
+                                value={filters.cardBeneficioMin}
+                                onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : activeConvenio === 'prefeitura_sp' ? (
+                  /* Layout Customizado para Prefeitura SP */
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Benefício Líquida 5% (Mínima)</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px] rounded-lg" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardBeneficioMin}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Benefício Líquida 5% (Máxima)</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px] rounded-lg" 
+                            placeholder="Ex: 500,00" 
+                            inputMode="decimal"
+                            value={filters.cardBeneficioMax}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMax: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Layout Original (SIAPE e outros) */
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Líquida 5% (Mínima)</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardMargemMin}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Benefício Líquida 5% (Mínima)</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardBeneficioMin}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div id="tipo-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-blue-50/10 p-4 rounded-xl shadow-sm border border-blue-100/30">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Tipo de Cartão</h4>
+                        </div>
+                        <div className="flex gap-3">
+                          <button 
+                            onClick={() => selectAll("cardTypes", CARD_TYPES)}
+                            className="text-[9px] font-bold text-primary uppercase tracking-widest hover:text-primary/80 transition-colors px-2 py-1 rounded-md bg-primary/5 hover:bg-primary/10"
+                          >
+                            Todos
+                          </button>
+                          <button 
+                            onClick={() => clearAll("cardTypes", CARD_TYPES)}
+                            className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-slate-50 hover:bg-slate-100"
+                          >
+                            Limpar
+                          </button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {CARD_TYPES.map((type) => (
+                          <button 
+                            key={type}
+                            onClick={() => toggleFilter("cardTypes", type)}
+                            className={cn(
+                              "flex items-center justify-between px-4 py-3.5 border rounded-xl text-[10.5px] font-bold transition-all uppercase tracking-tight text-left group",
+                              filters.cardTypes.includes(type) 
+                                ? "bg-primary border-primary text-white shadow-lg shadow-primary/20 ring-2 ring-primary/10" 
+                                : "bg-white border-slate-100 text-slate-500 hover:border-primary/30 hover:bg-slate-50/50"
+                            )}
+                          >
+                            <span className="truncate mr-2">{type}</span>
+                            {filters.cardTypes.includes(type) && <Check className="w-3.5 h-3.5" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {activeConvenio !== 'governo_sp' && activeConvenio !== 'prefeitura_sp' && (
+                  <div id="banco-cartao-section" className="space-y-4 pt-6 border-t border-slate-50 bg-indigo-50/10 p-5 rounded-2xl mt-6 border border-indigo-100/30 shadow-sm transition-all hover:shadow-md">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Banco do Cartão</h4>
+                      </div>
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={() => selectAll("cardBanks", CARD_BANKS)}
+                          className="text-[9px] font-bold text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors px-2 py-1 rounded-md bg-blue-50 hover:bg-blue-100/50"
+                        >
+                          Todos
+                        </button>
+                        <button 
+                          onClick={() => clearAll("cardBanks", CARD_BANKS)}
+                          className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors px-2 py-1 rounded-md bg-white hover:bg-slate-50"
+                        >
+                          Limpar
+                        </button>
+                      </div>
+                    </div>
+                    <Input 
+                      placeholder="Localizar banco..." 
+                      icon={<Search className="w-4 h-4" />}
+                      className="bg-slate-50/30 border-slate-100 h-9 text-[12px]"
+                      value={searchQueries["card_banks"] || ""}
+                      onChange={(e) => handleSearch("card_banks", e.target.value)}
+                    />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                      {getFilteredOptions(CARD_BANKS, "card_banks").map((bank) => (
+                        <button 
+                          key={bank}
+                          title={bank}
+                          onClick={() => toggleFilter("cardBanks", bank)}
+                          className={cn(
+                            "flex items-center justify-between px-4 py-3 border rounded-lg text-[10px] font-bold transition-all uppercase tracking-tight text-left",
+                            filters.cardBanks.includes(bank) 
+                              ? "bg-primary border-primary text-white shadow-lg shadow-primary/20" 
+                              : "bg-slate-50/50 border-slate-100 text-slate-500 hover:border-primary hover:text-primary"
+                          )}
+                        >
+                          <span className="truncate mr-2">{bank}</span>
+                          {filters.cardBanks.includes(bank) && <Check className="w-3 h-3 flex-shrink-0" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ) : activeConvenio === 'governo_rr' ? (
+            /* 3. MARGEM CARTÃO (For Governo Roraima) */
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.cardMargemMin || filters.cardMargemMax) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      (filters.cardMargemMin || filters.cardMargemMax) ? "bg-blue-100" : "bg-slate-50"
+                    )}>
+                      <CreditCard className={cn(
+                        "w-4 h-4 transition-colors",
+                        (filters.cardMargemMin || filters.cardMargemMax) ? "text-blue-600" : "text-slate-400"
+                      )} />
+                    </div>
+                    <h3 className={cn(
+                      "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                      (filters.cardMargemMin || filters.cardMargemMax) ? "text-blue-600" : "text-slate-400"
+                    )}>
+                      {getCardNumbers()['cards']}. MARGEM CARTÃO
+                    </h3>
+                  </div>
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardMargemMax: "" }))}
+                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:text-red-500 transition-colors flex items-center gap-1.5"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                    Limpar
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Mínimo</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="0,00" 
+                        inputMode="decimal"
+                        value={filters.cardMargemMin}
+                        onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Valor Máximo</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                      <Input 
+                        className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                        placeholder="0,00" 
+                        inputMode="decimal"
+                        value={filters.cardMargemMax}
+                        onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMax: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (activeConvenio === 'governo_pi' || activeConvenio === 'prefeitura_santo_andre' || activeConvenio === 'governo_ma' || activeConvenio === 'prefeitura_natal' || activeConvenio === 'prefeitura_porto_velho') ? (
+            /* MARGEM DOS CARTÕES (For Governo Piauí, Prefeitura Santo André, and Governo Maranhão) */
+            <Card className={cn(
+              "card-shadow transition-all duration-300",
+              (filters.cardMargemMin || filters.cardMargemMax || filters.cardBeneficioMin) ? "ring-1 ring-blue-500/20 bg-blue-50/5" : ""
+            )}>
+              <CardContent className="p-6 lg:p-8 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                      (filters.cardMargemMin || filters.cardMargemMax || filters.cardBeneficioMin) ? "bg-blue-100" : "bg-slate-50"
+                    )}>
+                      <CreditCard className={cn(
+                        "w-4 h-4 transition-colors",
+                        (filters.cardMargemMin || filters.cardMargemMax || filters.cardBeneficioMin) ? "text-blue-600" : "text-slate-400"
+                      )} />
+                    </div>
+                    <h3 className={cn(
+                      "text-[10.5px] font-bold uppercase tracking-widest transition-colors",
+                      (filters.cardMargemMin || filters.cardMargemMax || filters.cardBeneficioMin) ? "text-blue-600" : "text-slate-400"
+                    )}>{getCardNumbers()['cards']}. MARGEM DOS CARTÕES</h3>
+                  </div>
+                  <button 
+                    onClick={() => setFilters(prev => ({ ...prev, cardMargemMin: "", cardMargemMax: "", cardBeneficioMin: "" }))}
+                    className="text-[9px] font-bold text-slate-400 uppercase tracking-widest hover:underline"
+                  >
+                    Limpar
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {activeConvenio === 'prefeitura_santo_andre' ? (
+                    <>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                          MARGEM LÍQUIDA CARTÃO (MÍNIMA)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardMargemMin}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                          MARGEM LÍQUIDA CARTÃO (MÁXIMA)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardMargemMax}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMax: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                          MARGEM CARTÃO CONSIGNADO (MÍNIMA)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                          <Input 
+                            className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                            placeholder="Ex: 100,00" 
+                            inputMode="decimal"
+                            value={filters.cardMargemMin}
+                            onChange={(e) => setFilters(prev => ({ ...prev, cardMargemMin: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      {activeConvenio !== 'prefeitura_porto_velho' && (
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">MARGEM CARTÃO BENEFÍCIO (MÍNIMA)</label>
+                          <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">R$</span>
+                            <Input 
+                              className="pl-10 h-11 bg-slate-50/30 border-slate-100 text-[12px]" 
+                              placeholder="Ex: 100,00" 
+                              inputMode="decimal"
+                              value={filters.cardBeneficioMin}
+                              onChange={(e) => setFilters(prev => ({ ...prev, cardBeneficioMin: e.target.value }))}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
+
+        {/* Summary Sidebar */}
+        <div className="w-full lg:w-96 lg:sticky lg:top-28 h-fit order-1 lg:order-2 z-20 lg:pt-11">
+          <Card className="bg-primary border-none shadow-2xl overflow-hidden card-shadow">
+            <CardContent className="px-5 sm:px-6 py-5 sm:py-[22px] space-y-4 sm:space-y-[18px]">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 flex items-center justify-center">
+                  <Users className="w-5 h-5 text-blue-400" />
+                </div>
+                <h3 className="text-[14px] sm:text-[15px] font-bold text-white tracking-widest">Resumo da Campanha</h3>
+              </div>
+
+              <div className="space-y-1 bg-white/5 p-4 sm:p-5 rounded-xl border border-white/10 relative overflow-hidden">
+                {isCalculating && (
+                  <div className="absolute inset-0 bg-primary/40 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2">
+                    <Loader2 className="w-6 h-6 text-white animate-spin" />
+                  </div>
+                )}
+                <p className="text-[9px] font-bold text-white/50 uppercase tracking-widest">Público Estimado</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[28px] sm:text-[34px] font-black text-white tracking-tighter">
+                    {estimatedAudience.toLocaleString('pt-BR')}
+                  </span>
+                  <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">Clientes Encontrados</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <Button 
+                  onClick={calculateAudience}
+                  disabled={isCalculating || !hasActiveFilters()}
+                  variant="secondary" 
+                  className="h-10 bg-slate-800 hover:bg-slate-700 text-white border border-white/10 text-[10px] font-bold uppercase tracking-widest disabled:opacity-30"
+                >
+                  {isCalculating ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                  ) : (
+                    <Search className="w-3.5 h-3.5 mr-2" />
+                  )}
+                  Buscar
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[9px] font-bold text-white/50 uppercase tracking-widest ml-1">Nome da Campanha</label>
+                <Input 
+                  value={campaignName}
+                  onChange={(e) => setCampaignName(e.target.value)}
+                  placeholder="Ex: Campanha SIAPE SP" 
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20 focus-visible:ring-white/20 h-[41px] text-[12px]"
+                />
+              </div>
+
+              <Button 
+                onClick={handleCreateCampaign}
+                disabled={estimatedAudience === 0 || !campaignName || isCreating}
+                className="w-full h-10 bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase tracking-widest text-[12px] disabled:opacity-50"
+              >
+                {isCreating ? (
+                  <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                ) : (
+                  <PlusCircle className="w-3.5 h-3.5 mr-2" />
+                )}
+                Criar Campanha
+              </Button>
+
+              <div className="flex gap-3 p-3 bg-black/20 rounded-xl border border-white/5">
+                <Info className="w-4 h-4 text-white/30 flex-shrink-0" />
+                <p className="text-[9px] text-white/40 leading-relaxed italic">
+                  O sistema está buscando CPFs em tempo real com base nos filtros selecionados. O lote final será gerado ao criar a campanha.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  </div>
+  )
+}

@@ -1,0 +1,1681 @@
+"use client"
+
+import { useState, useRef, Suspense, useEffect, useCallback } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Header } from "@/components/layout/header"
+import { 
+  Bold, 
+  Italic, 
+  Underline, 
+  Quote, 
+  List, 
+  ListOrdered, 
+  Link2, 
+  UploadCloud,
+  Loader2,
+  Check,
+  MessageSquare,
+  X,
+  ChevronDown
+} from "lucide-react"
+import Image from "next/image"
+import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/context/auth-context"
+import { toast } from "sonner"
+import { withRetry, cn } from "@/lib/utils"
+import { TelefoneEmpresa, getLocalTelefonesEmpresa, fetchTelefonesEmpresa, EVENT_TELEFONES_UPDATED } from "@/lib/telefones-empresa"
+
+export interface NewTicketFormProps {
+  isModal?: boolean;
+  modalInitialData?: {
+    nome?: string;
+    cpf?: string;
+    tel1?: string;
+    tel2?: string;
+    tel3?: string;
+    margem?: string;
+    liquida5?: string;
+    beneficio5?: string;
+    convenio?: string;
+    matricula?: string;
+    origem?: string;
+  };
+  onCloseModal?: () => void;
+  onSuccessModal?: () => void;
+}
+
+export function NewTicketForm({
+  isModal = false,
+  modalInitialData,
+  onCloseModal,
+  onSuccessModal
+}: NewTicketFormProps = {}) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { user, perfil } = useAuth()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [description, setDescription] = useState<string>("")
+
+  const getParam = useCallback((key: string) => {
+    if (modalInitialData && key in modalInitialData) {
+      return (modalInitialData as any)[key] || ""
+    }
+    return searchParams.get(key) || ""
+  }, [modalInitialData, searchParams])
+
+  // Persist window scroll
+  useEffect(() => {
+    const handleWindowScroll = () => {
+      if (typeof window !== "undefined") {
+        localStorage.setItem('new_ticket_window_scroll', window.scrollY.toString())
+      }
+    }
+    window.addEventListener('scroll', handleWindowScroll)
+
+    // Restore scroll after a small delay
+    const savedScroll = localStorage.getItem('new_ticket_window_scroll')
+    if (savedScroll) {
+      setTimeout(() => {
+        window.scrollTo(0, parseInt(savedScroll, 10))
+      }, 100)
+    }
+
+    // Always clear draft on mount to make sure a new opening of a chamado starts fresh
+    if (typeof window !== "undefined") {
+      localStorage.removeItem('new_ticket_draft')
+    }
+
+    return () => window.removeEventListener('scroll', handleWindowScroll)
+  }, [])
+
+  const [validationError, setValidationError] = useState<string | null>(null)
+  
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const isPontaGrossa = (getParam("convenio") || "").toUpperCase().includes("PONTA GROSSA");
+  const pontaGrossaMargemDisp = isPontaGrossa 
+    ? (getParam("liquida5") || getParam("margem_disponivel") || getParam("margem") || "")
+    : "";
+
+  const [originalMargins] = useState({
+    margem: isPontaGrossa ? "" : (getParam("margem") || ""),
+    liquida5: isPontaGrossa ? pontaGrossaMargemDisp : (getParam("liquida5") || ""),
+    beneficio5: getParam("beneficio5") || ""
+  })
+
+  const [coefficients, setCoefficients] = useState({
+    margem: "0,028",
+    liquida5: "0,053",
+    beneficio5: "0,053"
+  })
+
+  const parseCurrencyToFloat = (val: string) => {
+    if (!val) return 0;
+    
+    // Se o valor contiver tanto ponto quanto vírgula (ex: "1.500,00" ou "R$ 1.500,00")
+    // ou apenas vírgula como separador decimal (ex: "1500,00")
+    if (val.includes(",")) {
+      const cleaned = val.replace(/[R$\s.]/g, "").replace(",", ".");
+      return parseFloat(cleaned) || 0;
+    }
+    
+    // Se contiver apenas pontos ou nenhum separador (ex: "1500.00" ou "1500")
+    const cleaned = val.replace(/[R$\s]/g, "");
+    return parseFloat(cleaned) || 0;
+  };
+
+  const calculateValorOperacao = (marginStr: string, coefStr: string) => {
+    const marginVal = parseCurrencyToFloat(marginStr);
+    const coefVal = parseFloat(coefStr.replace(",", "."));
+    if (!coefVal || isNaN(coefVal) || coefVal === 0) return "R$ 0,00";
+    
+    const res = marginVal / coefVal;
+    return `R$ ${res.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const isFromClient = !!getParam("nome")
+  const isFromKanban = getParam("from_kanban") === "true" || getParam("origem") === "KANBAN" || (isModal && !getParam("origem"))
+
+  const isCorretorPJ = (() => {
+    const regime = ((perfil as any)?.regime_contratacao || (perfil as any)?.regime_trabalho || (perfil as any)?.regime || "").trim().toLowerCase();
+    const role = (perfil?.role || "").trim().toLowerCase();
+    const func = ((perfil as any)?.funcao || "").trim().toLowerCase();
+    return regime === "pj" || role === "pj" || func === "pj" || role.includes("corretor pj") || func.includes("corretor pj") || role.includes("pj") || func.includes("pj");
+  })();
+
+  const [formData, setFormData] = useState({
+    origem: (getParam("origem") && getParam("origem") !== "KANBAN") ? getParam("origem") : "",
+    equipe: (() => {
+      const pNome = (perfil?.nome || "").trim()
+      const pEmail = (perfil?.email || "").trim().toLowerCase()
+      const isEndrio = pNome.toLowerCase().includes("endrio") || pEmail.includes("endrio")
+      if (isEndrio) return "Nenhum"
+      const role = (perfil?.role || "").toLowerCase()
+      if (role.includes("supervisor") || role.includes("admin")) return pNome
+      if (perfil?.supervisor_nome && perfil.supervisor_nome !== "Nenhum" && !perfil.supervisor_nome.toLowerCase().includes("endrio")) {
+        return perfil.supervisor_nome.trim()
+      }
+      return ""
+    })(),
+    nome: getParam("nome") || "",
+    cpf: getParam("cpf") || "",
+    tel1: getParam("tel1") || "",
+    tel2: getParam("tel2") || "",
+    tel3: getParam("tel3") || "",
+    margem: "", 
+    liquida5: isPontaGrossa ? pontaGrossaMargemDisp : "", 
+    beneficio5: "", 
+    convenio: getParam("convenio") || ""
+  })
+
+  // Selected files state
+  const [selectedFiles, setSelectedFiles] = useState<{ [key: string]: File | null }>({
+    frente: null,
+    verso: null,
+    contracheque: null,
+    extrato: null,
+    outros: null,
+    outros_2: null
+  })
+
+  // Captured matricula from URL
+  const matriculaUrl = getParam("matricula") || ""
+
+  // Pasted images from clipboard
+  const [pastedImages, setPastedImages] = useState<File[]>([])
+  const [dbConvenios, setDbConvenios] = useState<string[]>([])
+  const [equipesList, setEquipesList] = useState<{ id: string; nome: string; role?: string }[]>([])
+
+  // Telefone da Empresa Utilizado
+  const [selectedEmpresaPhone, setSelectedEmpresaPhone] = useState<string>(() => getParam("telefone_empresa") || "")
+  const [searchEmpresaPhone, setSearchEmpresaPhone] = useState<string>("")
+  const [empresaPhonesList, setEmpresaPhonesList] = useState<TelefoneEmpresa[]>(() => getLocalTelefonesEmpresa())
+  const [isEmpresaPhoneOpen, setIsEmpresaPhoneOpen] = useState(false)
+  const empresaPhoneRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handlePhonesUpdated = () => {
+      setEmpresaPhonesList(getLocalTelefonesEmpresa())
+    }
+    window.addEventListener(EVENT_TELEFONES_UPDATED, handlePhonesUpdated)
+    fetchTelefonesEmpresa(supabase).then(phones => {
+      if (phones && phones.length > 0) {
+        setEmpresaPhonesList(phones)
+      }
+    })
+    return () => window.removeEventListener(EVENT_TELEFONES_UPDATED, handlePhonesUpdated)
+  }, [])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (empresaPhoneRef.current && !empresaPhoneRef.current.contains(event.target as Node)) {
+        setIsEmpresaPhoneOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // Ticket number state (using a timestamp-based ID or fetching last)
+  const [ticketNumber, setTicketNumber] = useState<string>("...")
+
+  useEffect(() => {
+    const fetchLastTicket = async () => {
+      const { data, error } = await supabase
+        .from('chamados')
+        .select('id')
+        .order('id', { ascending: false })
+        .limit(1)
+      
+      if (!error && data && data.length > 0) {
+        setTicketNumber((parseInt(data[0].id) + 1).toString())
+      } else {
+        setTicketNumber("1") // Fallback
+      }
+    }
+    fetchLastTicket()
+  }, [])
+
+  useEffect(() => {
+    const fetchConvenios = async () => {
+      const { data, error } = await supabase
+        .from('convenios')
+        .select('nome')
+        .eq('ativo', true)
+        .order('nome')
+      
+      if (!error && data) {
+        setDbConvenios(data.map(c => c.nome))
+      }
+    }
+    fetchConvenios()
+  }, [])
+
+  // Carrega Supervisores e Administradores para o seletor de Equipe Comercial (excluindo Endrio Novo)
+  useEffect(() => {
+    const fetchSupervisoresEAdmins = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('perfis')
+          .select('id, nome, email, role, funcao, status')
+          .order('nome')
+
+        let rawList: any[] = []
+        if (!error && data && data.length > 0) {
+          rawList = data
+        } else {
+          const res = await withRetry(() => fetch('/api/usuarios'))
+          if (res.ok) {
+            rawList = await res.json()
+          }
+        }
+
+        const filtered = rawList.filter((u: any) => {
+          const name = (u.nome || '').trim().toLowerCase()
+          const email = (u.email || '').trim().toLowerCase()
+          // Remova expressamente o Endrio Novo dessa lista
+          if (name.includes('endrio') || email.includes('endrio')) return false
+
+          const r = (u.role || '').toLowerCase()
+          const f = (u.funcao || '').toLowerCase()
+          return (
+            r.includes('supervisor') ||
+            f.includes('supervisor') ||
+            r.includes('admin') ||
+            f.includes('admin')
+          )
+        })
+
+        const uniqueMap = new Map<string, { id: string; nome: string; role?: string }>()
+        filtered.forEach((u: any) => {
+          const nome = (u.nome || '').trim()
+          if (nome && !uniqueMap.has(nome.toUpperCase())) {
+            uniqueMap.set(nome.toUpperCase(), {
+              id: u.id,
+              nome: nome,
+              role: u.role || u.funcao
+            })
+          }
+        })
+
+        const sorted = Array.from(uniqueMap.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+        setEquipesList(sorted)
+      } catch (err) {
+        console.error("Erro ao carregar supervisores e administradores:", err)
+      }
+    }
+
+    fetchSupervisoresEAdmins()
+  }, [])
+
+  // Pré-preenche a equipe (supervisor/administrador) do usuário que está logado
+  useEffect(() => {
+    const autoFillEquipe = async () => {
+      if (!user) return
+
+      try {
+        let userPerfil = perfil
+        if (!userPerfil?.supervisor_nome || !userPerfil?.role) {
+          const { data: dbPerfil } = await supabase
+            .from('perfis')
+            .select('id, nome, email, role, funcao, supervisor_id, supervisor_nome')
+            .eq('id', user.id)
+            .maybeSingle()
+          if (dbPerfil) {
+            userPerfil = {
+              ...userPerfil,
+              ...dbPerfil,
+              role: dbPerfil.funcao || dbPerfil.role
+            } as any
+          }
+        }
+
+        const userNome = (userPerfil?.nome || "").trim()
+        const userEmail = (userPerfil?.email || user.email || "").trim().toLowerCase()
+        const isEndrio = userNome.toLowerCase().includes("endrio") || userEmail.includes("endrio")
+
+        let targetEquipe = ""
+
+        if (isEndrio) {
+          targetEquipe = "Nenhum"
+        } else {
+          const role = (userPerfil?.role || (userPerfil as any)?.funcao || "").toLowerCase()
+          const isSupervisorOrAdmin = role.includes("supervisor") || role.includes("admin")
+
+          if (isSupervisorOrAdmin && userNome) {
+            targetEquipe = userNome
+          } else {
+            let supNome = (userPerfil?.supervisor_nome || "").trim()
+
+            if ((!supNome || supNome === "Nenhum") && userPerfil?.supervisor_id) {
+              const { data: supRow } = await supabase
+                .from('perfis')
+                .select('nome')
+                .eq('id', userPerfil.supervisor_id)
+                .maybeSingle()
+              if (supRow?.nome) {
+                supNome = supRow.nome.trim()
+              }
+            }
+
+            if (supNome && !supNome.toLowerCase().includes("endrio") && supNome !== "Nenhum") {
+              targetEquipe = supNome
+            } else {
+              targetEquipe = "Nenhum"
+            }
+          }
+        }
+
+        if (targetEquipe) {
+          setFormData(prev => {
+            if (prev.equipe && !prev.equipe.toLowerCase().includes("endrio")) {
+              return prev
+            }
+            return { ...prev, equipe: targetEquipe }
+          })
+        }
+      } catch (err) {
+        console.error("Erro ao pré-preencher equipe comercial:", err)
+      }
+    }
+
+    autoFillEquipe()
+  }, [user, perfil])
+
+  // Pré-preenche automaticamente a Origem do Cliente salva no cartão do Kanban se ainda não estiver preenchida
+  useEffect(() => {
+    const autoFillOrigemFromKanban = async () => {
+      const cleanDigits = (formData.cpf || "").replace(/\D/g, "");
+      if (!cleanDigits || formData.origem) return;
+
+      try {
+        let queryKf = supabase
+          .from("kanban_fichas")
+          .select("origem, metadata, operador_id, operador_nome")
+          .eq("cliente_cpf", cleanDigits)
+          .order("updated_at", { ascending: false });
+
+        if (user?.id) {
+          queryKf = queryKf.eq("operador_id", user.id);
+        } else if (perfil?.nome) {
+          queryKf = queryKf.ilike("operador_nome", perfil.nome);
+        }
+
+        const { data: records } = await queryKf.limit(1);
+        const record = records?.[0];
+        const foundOrigem = record?.origem || record?.metadata?.origem;
+        if (foundOrigem && foundOrigem !== "KANBAN" && foundOrigem !== "SISTEMA") {
+          setFormData(prev => {
+            if (prev.origem) return prev; // Se o usuário já alterou ou selecionou, mantém a escolha dele
+            return { ...prev, origem: foundOrigem };
+          });
+        }
+      } catch (err) {
+        console.warn("Aviso ao buscar origem da ficha comercial:", err);
+      }
+    };
+
+    autoFillOrigemFromKanban();
+  }, [formData.cpf, formData.origem, user?.id, perfil?.nome])
+  
+  const fileRefs = {
+    frente: useRef<HTMLInputElement>(null),
+    verso: useRef<HTMLInputElement>(null),
+    contracheque: useRef<HTMLInputElement>(null),
+    extrato: useRef<HTMLInputElement>(null),
+    outros: useRef<HTMLInputElement>(null),
+    outros_2: useRef<HTMLInputElement>(null)
+  }
+
+  const getMarginClasses = (value: string, isSelected: boolean) => {
+    if (!value) return isSelected 
+      ? "bg-[#171717] text-white border-[#171717] shadow-sm" 
+      : "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200";
+
+    const cleaned = value.replace(/[R$\s.]/g, "").replace(",", ".");
+    const num = parseFloat(cleaned) || 0;
+    
+    if (isSelected) {
+      if (num < 0) return "bg-red-50 text-red-700 border-red-500 shadow-md ring-1 ring-red-500";
+      if (num > 0) return "bg-emerald-50 text-emerald-700 border-emerald-500 shadow-md ring-1 ring-emerald-500";
+      return "bg-[#171717] text-white border-[#171717] shadow-sm";
+    }
+
+    if (num < 0) return "bg-red-50 text-red-600 border-red-200 hover:bg-red-100";
+    if (num > 0) return "bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100";
+    
+    return "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200";
+  };
+
+  const handleInputChange = (field: string, value: string) => {
+    if (field === "convenio" && value.toUpperCase().includes("PONTA GROSSA")) {
+      const pontaGrossaMargem = searchParams.get("liquida5") || searchParams.get("margem_disponivel") || searchParams.get("margem") || "";
+      if (pontaGrossaMargem) {
+        setFormData(prev => ({
+          ...prev,
+          convenio: value,
+          liquida5: pontaGrossaMargem,
+          margem: "",
+          beneficio5: ""
+        }));
+        if (validationError) setValidationError(null);
+        return;
+      }
+    }
+    setFormData(prev => ({ ...prev, [field]: value }))
+    if (validationError) setValidationError(null)
+  }
+
+  const getMarginLabel = useCallback((field: 'margem' | 'liquida5' | 'beneficio5') => {
+    const conv = formData.convenio?.toUpperCase();
+    
+    if (conv === "GOVERNO MARANHÃO") {
+      if (field === 'margem') return "MARGEM EMPRÉSTIMO CONSIGNADO";
+      if (field === 'liquida5') return "MARGEM CARTÃO CONSIGNADO";
+      if (field === 'beneficio5') return "MARGEM CARTÃO BENEFÍCIO";
+    }
+    
+    if (conv === "GOVERNO PIAUÍ") {
+      if (field === 'liquida5') return "MARGEM CARTÃO CONSIGNADO";
+      if (field === 'beneficio5') return "MARGEM CARTÃO BENEFÍCIO";
+      if (field === 'margem') return "MARGEM DISPONÍVEL EMPRÉSTIMO";
+    }
+
+    if (conv === "GOVERNO SP" || conv === "PREFEITURA SP") {
+      if (field === 'margem') return "LÍQUIDA CONSIGNAÇÕES";
+      if (field === 'liquida5') return "LÍQUIDA CARTÃO CRÉDITO";
+      if (field === 'beneficio5') return "LÍQUIDA CARTÃO BENEFÍCIO";
+    }
+
+    if (conv?.includes("SANTO ANDRÉ") || conv?.includes("SANTO ANDRE")) {
+      if (field === 'margem') return "MARGEM LÍQUIDA EMPRÉSTIMO";
+      if (field === 'liquida5') return "MARGEM LÍQUIDA CARTÃO";
+      if (field === 'beneficio5') return "Margem Benefício Líquida 5%";
+    }
+
+    if (conv === "GOVERNO RORAIMA" || conv === "GOV RORAIMA") {
+      if (field === 'margem') return "MARGEM EMPRÉSTIMO";
+      if (field === 'liquida5') return "MARGEM CARTÃO";
+      if (field === 'beneficio5') return "Margem 5%";
+    }
+
+    if (field === 'margem') return "Margem 35%";
+    if (field === 'liquida5') return "Líquida 5%";
+    if (field === 'beneficio5') return "Benefício Líquida 5%";
+    return "";
+  }, [formData.convenio]);
+
+  const updateDescription = useCallback((margins: { margem: string, liquida5: string, beneficio5: string }) => {
+    let introText = "";
+    let activeField: 'margem' | 'liquida5' | 'beneficio5' | null = null;
+    
+    if (margins.margem) activeField = 'margem';
+    else if (margins.liquida5) activeField = 'liquida5';
+    else if (margins.beneficio5) activeField = 'beneficio5';
+
+    if (activeField) {
+      const label = getMarginLabel(activeField);
+      const valOperacao = calculateValorOperacao(margins[activeField], coefficients[activeField]);
+      introText = `Esse chamado é para a ${label} com valor de operação ${valOperacao}.`;
+    }
+
+    setDescription(prevDesc => {
+      const lines = prevDesc.split("\n");
+      const introIndex = lines.findIndex(l => l.startsWith("Esse chamado é para a "));
+      
+      if (introText) {
+        if (introIndex >= 0) {
+          lines[introIndex] = introText;
+        } else {
+          return introText + (prevDesc ? "\n\n" + prevDesc : "");
+        }
+      } else if (introIndex >= 0) {
+        lines.splice(introIndex, 1);
+        if (lines[0] === "") lines.shift();
+        if (lines[0] === "") lines.shift();
+      }
+      return lines.join("\n");
+    });
+  }, [getMarginLabel, coefficients]);
+
+  // Monitor convenio changes to sync description labels
+  useEffect(() => {
+    if (formData.margem || formData.liquida5 || formData.beneficio5) {
+      updateDescription({
+        margem: formData.margem,
+        liquida5: formData.liquida5,
+        beneficio5: formData.beneficio5
+      });
+    }
+  }, [formData.convenio, formData.margem, formData.liquida5, formData.beneficio5, updateDescription]);
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const files: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf("image") !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const file = new File([blob], `screenshot_${Date.now()}.png`, { type: blob.type });
+          files.push(file);
+        }
+      }
+    }
+    if (files.length > 0) {
+      setPastedImages(prev => [...prev, ...files]);
+      toast.success(`${files.length} imagem(ns) colada(s) do clipboard`);
+    }
+  };
+
+  const handleMarginInputChange = (field: string, value: string) => {
+    // Verificamos se o valor contém o sinal de menos para aceitar números negativos
+    const isNegative = value.includes("-");
+    const digits = value.replace(/\D/g, "");
+    
+    let formattedValue = "";
+    if (digits) {
+      const numberValue = (parseFloat(digits) / 100).toFixed(2);
+      const parts = numberValue.split(".");
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+      formattedValue = `R$ ${isNegative ? "-" : ""}${parts.join(",")}`;
+    } else if (isNegative) {
+      // Caso o usuário tenha digitado apenas o sinal de menos
+      formattedValue = "R$ -";
+    }
+
+    setFormData(prev => {
+      // Quando preenchemos uma margem, limpamos todas as outras primeiro (seleção exclusiva)
+      const nextData = { 
+        ...prev, 
+        margem: "", 
+        liquida5: "", 
+        beneficio5: "",
+        [field]: formattedValue 
+      };
+      
+      updateDescription({
+        margem: nextData.margem,
+        liquida5: nextData.liquida5,
+        beneficio5: nextData.beneficio5
+      });
+      return nextData;
+    });
+
+    if (validationError) setValidationError(null)
+  }
+
+  const clearMargins = () => {
+    setFormData(prev => {
+      const nextData = { ...prev, margem: "", liquida5: "", beneficio5: "" };
+      updateDescription({ margem: "", liquida5: "", beneficio5: "" });
+      return nextData;
+    });
+  }
+
+  const handleFileClick = (ref: React.RefObject<HTMLInputElement | null>) => {
+    ref.current?.click()
+  }
+
+  const handleFileChange = (field: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null
+    setSelectedFiles(prev => ({ ...prev, [field]: file }))
+  }
+
+  const uploadFile = async (file: File, path: string) => {
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
+    const fullPath = `${path}/${fileName}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('chamados-attachments')
+      .upload(fullPath, file)
+
+    if (uploadError) throw uploadError
+
+    const { data } = supabase.storage
+      .from('chamados-attachments')
+      .getPublicUrl(fullPath)
+
+    return data.publicUrl
+  }
+
+  const toggleMargin = (field: string, value: string) => {
+    const isSelected = !!formData[field as keyof typeof formData];
+    
+    setFormData(prev => {
+      // Quando selecionamos uma margem, limpamos todas as outras primeiro (seleção exclusiva)
+      const nextData = { 
+        ...prev, 
+        margem: "", 
+        liquida5: "", 
+        beneficio5: "",
+        [field]: isSelected ? "" : value 
+      };
+      
+      updateDescription({
+        margem: nextData.margem,
+        liquida5: nextData.liquida5,
+        beneficio5: nextData.beneficio5
+      });
+      return nextData;
+    });
+
+    if (validationError) setValidationError(null)
+  }
+
+  const applyFormat = (prefix: string, suffix: string = prefix) => {
+    if (!textareaRef.current) return;
+    const { selectionStart, selectionEnd, value } = textareaRef.current;
+    
+    const selectedText = value.substring(selectionStart, selectionEnd);
+    const beforeText = value.substring(0, selectionStart);
+    const afterText = value.substring(selectionEnd);
+    
+    const newValue = `${beforeText}${prefix}${selectedText}${suffix}${afterText}`;
+    setDescription(newValue);
+    
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        const start = selectionStart + prefix.length;
+        const end = selectionEnd + prefix.length;
+        textareaRef.current.setSelectionRange(start, end);
+      }
+    }, 0);
+  };
+
+  const handleSubmit = async () => {
+    console.log("Iniciando submissão do chamado...");
+    setValidationError(null);
+    
+    if (!user) {
+      console.error("Usuário não autenticado.");
+      toast.error("Você precisa estar logado para abrir um chamado.");
+      return;
+    }
+
+    // Validação do Telefone da Empresa Utilizado (obrigatório no formulário geral, dispensado para Corretores PJ e modal do Kanban)
+    if (!isModal && !isCorretorPJ && (!selectedEmpresaPhone || !selectedEmpresaPhone.trim())) {
+      setValidationError("POR FAVOR, SELECIONE O TELEFONE DA EMPRESA UTILIZADO");
+      toast.error("Por favor, selecione o Telefone da Empresa Utilizado.");
+      return;
+    }
+
+    // Campos obrigatórios básicos com mensagens específicas
+    if (!formData.origem) {
+      setValidationError("POR FAVOR, SELECIONE A ORIGEM DO CLIENTE");
+      return;
+    }
+    if (!formData.equipe) {
+      setValidationError("POR FAVOR, SELECIONE A EQUIPE COMERCIAL");
+      return;
+    }
+    if (!formData.convenio) {
+      setValidationError("POR FAVOR, SELECIONE O CONVÊNIO");
+      return;
+    }
+    if (!formData.nome) {
+      setValidationError("POR FAVOR, INFORME O NOME DO CLIENTE");
+      return;
+    }
+    if (!formData.cpf) {
+      setValidationError("POR FAVOR, INFORME O CPF DO CLIENTE");
+      return;
+    }
+    if (!formData.tel1) {
+      setValidationError("POR FAVOR, INFORME O TELEFONE DO CLIENTE");
+      return;
+    }
+    if (!description) {
+      setValidationError("POR FAVOR, PREENCHA A DESCRIÇÃO DO CHAMADO");
+      return;
+    }
+
+    // Validação de margem obrigatória (como indicado no formulário com *)
+    if (!formData.margem && !formData.liquida5 && !formData.beneficio5) {
+      console.warn("Nenhuma margem selecionada.");
+      setValidationError("POR FAVOR, SELECIONE OU INFORME AO MENOS UMA MARGEM");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const loadingToast = toast.loading("Enviando chamado e anexos...");
+
+    try {
+      console.log("Iniciando upload de arquivos...");
+      const fileUrls: { [key: string]: string | null } = {
+        frente: null,
+        verso: null,
+        contracheque: null,
+        extrato: null,
+        outros: null,
+        outros_2: null
+      };
+
+      // Sequencial para melhor controle de erro no log
+      for (const [key, file] of Object.entries(selectedFiles)) {
+        if (file) {
+          try {
+            console.log(`Enviando arquivo: ${key}...`);
+            const url = await uploadFile(file, `${user.id}/${Date.now()}`);
+            fileUrls[key] = url;
+            console.log(`Arquivo ${key} enviado com sucesso:`, url);
+          } catch (uploadErr: unknown) {
+            const err = uploadErr as { message?: string };
+            console.error(`Erro ao enviar arquivo ${key}:`, err);
+            throw new Error(`Falha no upload do arquivo ${key}: ${err.message || 'Erro desconhecido'}`);
+          }
+        }
+      }
+
+      console.log("Convertendo valores monetários...");
+      const cleanMoney = (val: string) => {
+        if (!val) return 0;
+        const cleaned = val.replace(/[R$\s.]/g, "").replace(",", ".");
+        return parseFloat(cleaned) || 0;
+      };
+
+      const cleanCPF = (val: string) => val.replace(/\D/g, "");
+
+      // Upload de imagens coladas (screenshots)
+      const pastedUrls = [];
+      if (pastedImages.length > 0) {
+        console.log("Enviando imagens coladas...");
+        for (const file of pastedImages) {
+          try {
+            const url = await uploadFile(file, `pasted/${user.id}/${Date.now()}`);
+            pastedUrls.push(url);
+          } catch (err) {
+            console.error("Erro ao subir imagem colada:", err);
+          }
+        }
+      }
+
+      // Adiciona imagens coladas se houver
+      let finalDescription = description;
+      if (pastedUrls.length > 0) {
+        finalDescription += "\n\n--- IMAGENS EM ANEXO ---\n" + pastedUrls.map((url, i) => `![Print ${i+1}](${url})`).join("\n");
+      }
+
+      // Identificar margens e calcular valor de operação selecionado
+      const margemStr = formData.margem || originalMargins.margem || "";
+      const liquida5Str = formData.liquida5 || originalMargins.liquida5 || "";
+      const beneficio5Str = formData.beneficio5 || originalMargins.beneficio5 || "";
+
+      const valOpMargemStr = calculateValorOperacao(margemStr, coefficients.margem);
+      const valOpLiquida5Str = calculateValorOperacao(liquida5Str, coefficients.liquida5);
+      const valOpBeneficio5Str = calculateValorOperacao(beneficio5Str, coefficients.beneficio5);
+
+      const valOpMargemNum = parseCurrencyToFloat(valOpMargemStr);
+      const valOpLiquida5Num = parseCurrencyToFloat(valOpLiquida5Str);
+      const valOpBeneficio5Num = parseCurrencyToFloat(valOpBeneficio5Str);
+
+      let selectedOpType: 'margem' | 'liquida5' | 'beneficio5' | undefined = undefined;
+      let valorOperacaoCalculado = 0;
+      let margemSelecionadaNum = 0;
+
+      if (formData.margem) {
+        selectedOpType = 'margem';
+        valorOperacaoCalculado = valOpMargemNum;
+        margemSelecionadaNum = cleanMoney(margemStr);
+      } else if (formData.liquida5) {
+        selectedOpType = 'liquida5';
+        valorOperacaoCalculado = valOpLiquida5Num;
+        margemSelecionadaNum = cleanMoney(liquida5Str);
+      } else if (formData.beneficio5) {
+        selectedOpType = 'beneficio5';
+        valorOperacaoCalculado = valOpBeneficio5Num;
+        margemSelecionadaNum = cleanMoney(beneficio5Str);
+      } else {
+        if (valOpMargemNum > 0) {
+          selectedOpType = 'margem';
+          valorOperacaoCalculado = valOpMargemNum;
+          margemSelecionadaNum = cleanMoney(margemStr);
+        } else if (valOpLiquida5Num > 0) {
+          selectedOpType = 'liquida5';
+          valorOperacaoCalculado = valOpLiquida5Num;
+          margemSelecionadaNum = cleanMoney(liquida5Str);
+        } else if (valOpBeneficio5Num > 0) {
+          selectedOpType = 'beneficio5';
+          valorOperacaoCalculado = valOpBeneficio5Num;
+          margemSelecionadaNum = cleanMoney(beneficio5Str);
+        }
+      }
+
+      // Se mais de uma margem tiver sido selecionada/preenchida, calcula a soma das operações
+      const somaOpsSelecionadas = 
+        (formData.margem ? valOpMargemNum : 0) +
+        (formData.liquida5 ? valOpLiquida5Num : 0) +
+        (formData.beneficio5 ? valOpBeneficio5Num : 0);
+      if (somaOpsSelecionadas > 0) {
+        valorOperacaoCalculado = somaOpsSelecionadas;
+      }
+
+      // Adicionar metadados iniciais das margens, coeficientes e valores de operação de abertura
+      const initialMetadata = {
+        margem: margemStr,
+        liquida5: liquida5Str,
+        beneficio5: beneficio5Str,
+        coeficiente_margem: coefficients.margem,
+        coeficiente_liquida5: coefficients.liquida5,
+        coeficiente_beneficio5: coefficients.beneficio5,
+        valor_operacao_margem: valOpMargemStr,
+        valor_operacao_liquida5: valOpLiquida5Str,
+        valor_operacao_beneficio5: valOpBeneficio5Str,
+        valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : undefined,
+        selected_operation_type: selectedOpType,
+        from_kanban: isFromKanban,
+        origem_pipeline: isFromKanban ? "KANBAN" : undefined,
+        telefone_empresa: selectedEmpresaPhone || undefined
+      };
+      finalDescription += `\n\n<!-- TICKET_METADATA: ${JSON.stringify(initialMetadata)} -->`;
+
+      console.log("Enviando dados para o banco de dados...");
+      
+      // Buscar o ID do status 'ABERTO' dinamicamente
+      const { data: statusData } = await supabase
+        .from('status_chamados')
+        .select('id')
+        .eq('nome', 'ABERTO')
+        .maybeSingle();
+
+      const { error } = await withRetry(() => 
+        supabase.from('chamados').insert({
+          status: 'ABERTO',
+          status_id: statusData?.id || null, // Relacionamento dinâmico
+          origem: formData.origem,
+          cliente_nome: formData.nome,
+          cliente_cpf: cleanCPF(formData.cpf),
+          cliente_telefone: formData.tel1,
+          cliente_telefone_2: formData.tel2 || null,
+          cliente_telefone_3: formData.tel3 || null,
+          margem: cleanMoney(formData.margem || originalMargins.margem),
+          margem_liquida_5: cleanMoney(formData.liquida5 || originalMargins.liquida5),
+          margem_beneficio_5: cleanMoney(formData.beneficio5 || originalMargins.beneficio5),
+          valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : null,
+          convenio: formData.convenio,
+          equipe: formData.equipe,
+          matricula: matriculaUrl,
+          descricao: finalDescription,
+          user_id: user.id,
+          user_nome: perfil?.nome || user.email || "Usuário",
+          user_avatar: perfil?.avatar_url || null,
+          arquivo_rg_frente: fileUrls.frente,
+          arquivo_rg_verso: fileUrls.verso,
+          arquivo_contracheque: fileUrls.contracheque,
+          arquivo_extrato: fileUrls.extrato,
+          arquivo_outros: fileUrls.outros,
+          arquivo_outros_2: fileUrls.outros_2
+        })
+      );
+
+      if (error) {
+        console.error("Erro retornado pelo Supabase (RPC/Insert):", error);
+        throw error;
+      }
+
+      // Sincronização Imediata com a Ficha Comercial em kanban_fichas (Estritamente isolada por operador)
+      const cleanCpfDigits = cleanCPF(formData.cpf);
+      const paddedCpf = cleanCpfDigits ? cleanCpfDigits.padStart(11, "0") : "";
+      if (cleanCpfDigits) {
+        try {
+          // Filtrar por CPF (suporta formato com ou sem zeros à esquerda)
+          const { data: fichasRelacionadas } = await supabase
+            .from('kanban_fichas')
+            .select('id, metadata, margem_disponivel, valor_solicitado, operador_id, operador_nome')
+            .or(`cliente_cpf.eq.${cleanCpfDigits},cliente_cpf.eq.${paddedCpf}`);
+
+          if (fichasRelacionadas && fichasRelacionadas.length > 0) {
+            // Identificar ficha do operador logado ou ficha sem operador previamente vinculado
+            const fichasDoOperador = fichasRelacionadas.filter(f => {
+              const mesmoId = user?.id && f.operador_id === user.id;
+              const mesmoNome = perfil?.nome && f.operador_nome && f.operador_nome.trim().toLowerCase() === perfil.nome.trim().toLowerCase();
+              return mesmoId || mesmoNome;
+            });
+
+            const fichasParaAtualizar = fichasDoOperador.length > 0
+              ? fichasDoOperador
+              : (fichasRelacionadas.length === 1 ? fichasRelacionadas : fichasRelacionadas.filter(f => !f.operador_id && !f.operador_nome));
+
+            for (const ficha of fichasParaAtualizar) {
+              const prevMeta = (ficha.metadata && typeof ficha.metadata === 'object') ? ficha.metadata : {};
+              const updatedMeta = {
+                ...prevMeta,
+                margem: margemStr || prevMeta.margem,
+                liquida5: liquida5Str || prevMeta.liquida5,
+                beneficio5: beneficio5Str || prevMeta.beneficio5,
+                coeficiente_margem: coefficients.margem,
+                coeficiente_liquida5: coefficients.liquida5,
+                coeficiente_beneficio5: coefficients.beneficio5,
+                valor_operacao_margem: valOpMargemStr || prevMeta.valor_operacao_margem,
+                valor_operacao_liquida5: valOpLiquida5Str || prevMeta.valor_operacao_liquida5,
+                valor_operacao_beneficio5: valOpBeneficio5Str || prevMeta.valor_operacao_beneficio5,
+                valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : prevMeta.valor_operacao,
+                selected_operation_type: selectedOpType || prevMeta.selected_operation_type,
+                convenio: formData.convenio || prevMeta.convenio,
+                telefone_empresa: selectedEmpresaPhone || prevMeta.telefone_empresa || undefined,
+                ultimo_chamado_aberto_em: new Date().toISOString()
+              };
+
+              const updatePayload: any = {
+                metadata: updatedMeta,
+                updated_at: new Date().toISOString()
+              };
+
+              if (selectedEmpresaPhone) {
+                updatePayload.telefone_empresa = selectedEmpresaPhone;
+              }
+              if (valorOperacaoCalculado > 0) {
+                updatePayload.valor_solicitado = valorOperacaoCalculado;
+              }
+              if (margemSelecionadaNum > 0) {
+                updatePayload.margem_disponivel = margemSelecionadaNum;
+              }
+              if (formData.convenio) {
+                updatePayload.convenio = formData.convenio;
+              }
+              if (!ficha.operador_id && user?.id) {
+                updatePayload.operador_id = user.id;
+              }
+              if (!ficha.operador_nome && (perfil?.nome || user?.email)) {
+                updatePayload.operador_nome = perfil?.nome || user?.email;
+              }
+
+              await supabase
+                .from('kanban_fichas')
+                .update(updatePayload)
+                .eq('id', ficha.id);
+            }
+          }
+        } catch (syncErr) {
+          console.warn("Aviso ao sincronizar ficha comercial do Kanban com o chamado:", syncErr);
+        }
+      }
+
+      console.log("Chamado aberto com sucesso!");
+      localStorage.removeItem('new_ticket_draft');
+      toast.dismiss(loadingToast);
+      toast.success("Chamado aberto com sucesso!");
+      if (isModal) {
+        if (onSuccessModal) onSuccessModal();
+        if (onCloseModal) onCloseModal();
+      } else {
+        router.push("/chamados");
+      }
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      console.error("Erro crítico no handleSubmit:", err);
+      toast.dismiss(loadingToast);
+      toast.error(`Erro ao abrir chamado: ${err.message || "Tente novamente."}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-full overflow-hidden">
+      {isModal ? (
+        <div className="flex items-center justify-between px-6 sm:px-8 py-4 sm:py-5 border-b border-slate-100 bg-slate-50/50 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-[#162546]/10 text-[#162546] rounded-xl flex items-center justify-center">
+              <MessageSquare className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-[15px] font-bold text-slate-900 tracking-tight">Abrir Chamado</h3>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            onClick={onCloseModal}
+            className="text-slate-400 hover:text-slate-600 transition-colors p-2 hover:bg-slate-100 rounded-full cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      ) : (
+        <Header title="ABRIR CHAMADO" />
+      )}
+      
+      <main className={cn(
+        "flex-1 bg-slate-50/50",
+        isModal ? "p-4 sm:p-6 overflow-y-auto h-[calc(92vh-65px)]" : "p-6"
+      )}>
+        <Card className="card-shadow border border-slate-200 overflow-hidden">
+          <CardContent className="p-4 sm:p-8">
+            <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-6 border-b border-slate-100 pb-8">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-black/90 uppercase tracking-widest">Número do Chamado</label>
+                <span className="block text-xl font-black text-slate-900 tracking-tight py-1">
+                  {ticketNumber}
+                </span>
+              </div>
+              <div className="w-full sm:w-72 space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                  Convênio <span className="text-red-500">*</span>
+                </label>
+                <select 
+                  value={formData.convenio}
+                  onChange={(e) => handleInputChange("convenio", e.target.value)}
+                  disabled={!!getParam("convenio")}
+                  className={cn(
+                    "w-full h-[34px] px-3 rounded-lg border border-slate-100 text-[12px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none",
+                    !!getParam("convenio") ? "bg-slate-200 text-slate-500 cursor-not-allowed opacity-70" : "bg-[#E8E8E8] text-slate-900"
+                  )}
+                >
+                  <option value="">Selecione</option>
+                  {formData.convenio && !dbConvenios.includes(formData.convenio) && (
+                    <option key="query-convenio" value={formData.convenio}>{formData.convenio}</option>
+                  )}
+                  {dbConvenios.map((conv) => (
+                    <option key={conv} value={conv}>{conv}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row justify-between items-start mb-8 gap-6">
+              <div className="flex flex-col gap-6 flex-1 w-full max-w-4xl">
+                {/* Campo Telefone da Empresa Utilizado (exibido no formulário de Abrir Chamado geral, exceto Corretores PJ) */}
+                {!isModal && !isCorretorPJ && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div ref={empresaPhoneRef} className="space-y-2 relative">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                        Telefone da Empresa Utilizado <span className="text-red-500">*</span>
+                      </label>
+                      <div
+                        onClick={() => setIsEmpresaPhoneOpen(prev => !prev)}
+                        className={cn(
+                          "w-full h-[34px] px-3 rounded-lg border text-[12px] font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer flex items-center justify-between shadow-2xs select-none",
+                          validationError?.includes("TELEFONE DA EMPRESA")
+                            ? "border-red-400 bg-red-50/40 ring-1 ring-red-400"
+                            : "border-slate-200 bg-[#E8E8E8]"
+                        )}
+                      >
+                        <span className={selectedEmpresaPhone ? "text-slate-800 font-semibold" : "text-slate-500 font-normal"}>
+                          {selectedEmpresaPhone || "Selecione"}
+                        </span>
+                        <ChevronDown className={cn("w-4 h-4 text-slate-500 transition-transform", isEmpresaPhoneOpen && "rotate-180")} />
+                      </div>
+
+                      {/* Dropdown com Campo de Busca e Opções visíveis com rolagem */}
+                      {isEmpresaPhoneOpen && (
+                        <div className="w-full absolute left-0 top-[100%] mt-1.5 bg-white border border-slate-200 rounded-lg shadow-lg p-2 space-y-2 animate-in fade-in duration-100 z-50">
+                          {/* Campo de Busca por número pelos 4 últimos dígitos */}
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={searchEmpresaPhone}
+                              onChange={(e) => setSearchEmpresaPhone(e.target.value)}
+                              placeholder="Buscar por 4 dígitos, número ou setor..."
+                              autoFocus
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-full h-8 px-2.5 text-[12px] font-medium rounded-md border border-slate-200 bg-slate-50 placeholder:text-slate-400 text-slate-800 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20"
+                            />
+                          </div>
+
+                          {/* Lista de Opções: mostra pelo menos 3 e barra de rolagem para os demais */}
+                          <div className="max-h-[140px] overflow-y-auto space-y-0.5 divide-y divide-slate-100 pr-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedEmpresaPhone("")
+                                setIsEmpresaPhoneOpen(false)
+                              }}
+                              className={cn(
+                                "w-full text-left px-2.5 py-1.5 text-[12px] rounded-md transition-colors flex items-center justify-between cursor-pointer",
+                                !selectedEmpresaPhone ? "bg-slate-100 text-slate-900 font-bold" : "text-slate-600 hover:bg-slate-50"
+                              )}
+                            >
+                              <span>Selecione</span>
+                            </button>
+                            {(() => {
+                              const term = searchEmpresaPhone.trim().toLowerCase()
+                              const cleanSearch = searchEmpresaPhone.replace(/\D/g, "")
+                              const activePhones = empresaPhonesList.filter(t => t.ativo !== false)
+                              const filteredList = activePhones.filter(tel => {
+                                if (!term) return true
+                                const cleanPhone = tel.numero.replace(/\D/g, "")
+                                const matchDigits = cleanSearch.length > 0 && (
+                                  cleanPhone.endsWith(cleanSearch) || 
+                                  cleanPhone.includes(cleanSearch)
+                                )
+                                const matchText = tel.numero.toLowerCase().includes(term) ||
+                                  Boolean(tel.descricao && tel.descricao.toLowerCase().includes(term))
+                                return matchDigits || matchText
+                              })
+
+                              if (filteredList.length === 0) {
+                                return (
+                                  <p className="text-[11px] text-slate-400 italic px-2.5 py-2 text-center">Nenhum telefone encontrado</p>
+                                )
+                              }
+
+                              return filteredList.map(tel => {
+                                const isSelected = selectedEmpresaPhone === tel.numero
+                                return (
+                                  <button
+                                    key={tel.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedEmpresaPhone(tel.numero)
+                                      setIsEmpresaPhoneOpen(false)
+                                      if (validationError) setValidationError(null)
+                                    }}
+                                    className={cn(
+                                      "w-full text-left px-2.5 py-2 text-[12px] rounded-md transition-colors flex items-center justify-between cursor-pointer",
+                                      isSelected ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-800 hover:bg-slate-50 font-semibold"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2 truncate">
+                                      <span>{tel.numero}</span>
+                                    </div>
+                                    {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                                  </button>
+                                )
+                              })
+                            })()}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Row 1: Origem and Equipe */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      Origem do Cliente <span className="text-red-500">*</span>
+                    </label>
+                    <select 
+                      value={formData.origem}
+                      onChange={(e) => handleInputChange("origem", e.target.value)}
+                      className="w-full h-[34px] px-3 rounded-lg border border-slate-100 bg-[#E8E8E8] text-[12px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none"
+                    >
+                      <option value="">Selecione</option>
+                      <option value="DISPARO">DISPARO</option>
+                      <option value="TRÁFEGO">TRÁFEGO</option>
+                      <option value="INDICAÇÃO">INDICAÇÃO</option>
+                      <option value="CLIENTE DA CASA">CLIENTE DA CASA</option>
+                      <option value="3C - DISCADOR">3C - DISCADOR</option>
+                      <option value="LISTA MANUAL">LISTA MANUAL</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      EQUIPE COMERCIAL <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select 
+                        value={formData.equipe}
+                        onChange={(e) => handleInputChange("equipe", e.target.value)}
+                        className="w-full h-[34px] px-3 pr-8 rounded-lg border border-slate-100 bg-[#E8E8E8] text-[12px] focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="">Selecione</option>
+                        <option value="Nenhum">Nenhum</option>
+                        {formData.equipe && 
+                          formData.equipe !== "Nenhum" && 
+                          !formData.equipe.toLowerCase().includes("endrio") &&
+                          !equipesList.some(eq => eq.nome.trim().toUpperCase() === formData.equipe.trim().toUpperCase()) && (
+                          <option value={formData.equipe}>{formData.equipe}</option>
+                        )}
+                        {equipesList.map((item) => (
+                          <option key={item.id || item.nome} value={item.nome}>
+                            {item.nome}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Row 2: Nome and CPF */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <div className="sm:col-span-2 space-y-2">
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      Nome do Cliente <span className="text-red-500">*</span>
+                    </label>
+                    <Input 
+                      value={formData.nome}
+                      onChange={(e) => handleInputChange("nome", e.target.value)}
+                      placeholder="Digite o nome completo" 
+                      className="h-[34px] border-slate-100 bg-[#E8E8E8] text-[12px]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      CPF <span className="text-red-500">*</span>
+                    </label>
+                    <Input 
+                      value={formData.cpf}
+                      onChange={(e) => handleInputChange("cpf", e.target.value)}
+                      placeholder="000.000.000-00" 
+                      className="h-[34px] border-slate-100 bg-[#E8E8E8] text-[12px]"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 3: Telefones */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      Telefone 1 <span className="text-red-500">*</span>
+                    </label>
+                    <Input 
+                      value={formData.tel1}
+                      onChange={(e) => handleInputChange("tel1", e.target.value)}
+                      placeholder="(00) 00000-0000" 
+                      className="h-[34px] border-slate-100 bg-[#E8E8E8] text-[12px]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      Telefone 2
+                    </label>
+                    <Input 
+                      value={formData.tel2}
+                      onChange={(e) => handleInputChange("tel2", e.target.value)}
+                      placeholder="(00) 00000-0000" 
+                      className="h-[34px] border-slate-100 bg-[#E8E8E8] text-[12px]"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                      Telefone 3
+                    </label>
+                    <Input 
+                      value={formData.tel3}
+                      onChange={(e) => handleInputChange("tel3", e.target.value)}
+                      placeholder="(00) 00000-0000" 
+                      className="h-[34px] border-slate-100 bg-[#E8E8E8] text-[12px]"
+                    />
+                  </div>
+                </div>
+
+                {/* Row 4: Margens */}
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold text-primary mb-1 uppercase tracking-wider">Selecione ou digite a margem para qual você deseja abrir esse chamado.</p>
+                  <div className="flex flex-col gap-4">
+                    {getMarginLabel('margem') && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                            <span className="whitespace-nowrap">{getMarginLabel('margem')}</span>
+                          </label>
+                          {isFromClient && originalMargins.margem ? (
+                            <button
+                              id="btn-original-margin"
+                              type="button"
+                              onClick={() => toggleMargin("margem", originalMargins.margem)}
+                              className={cn(
+                                "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
+                                getMarginClasses(originalMargins.margem, !!formData.margem)
+                              )}
+                            >
+                              {formData.margem && <Check className="w-3.5 h-3.5 shrink-0" />}
+                              <span className="truncate">{originalMargins.margem}</span>
+                            </button>
+                          ) : (
+                            <Input 
+                              id="input-margin-35"
+                              value={formData.margem}
+                              onChange={(e) => handleMarginInputChange("margem", e.target.value)}
+                              placeholder="R$ 0,00" 
+                              className={cn(
+                                "h-[34px] text-[12px] transition-all",
+                                getMarginClasses(formData.margem, !!formData.margem)
+                              )}
+                            />
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            COEFICIENTE
+                          </label>
+                          <Input
+                            id="coeficiente-margem"
+                            value={coefficients.margem}
+                            readOnly
+                            placeholder="0,0000"
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.margem || originalMargins.margem, !!(formData.margem || originalMargins.margem))
+                            )}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            VALOR OPERAÇÃO
+                          </label>
+                          <Input
+                            id="valor-operacao-margem"
+                            value={calculateValorOperacao(formData.margem || originalMargins.margem, coefficients.margem)}
+                            readOnly
+                            placeholder="R$ 0,00"
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.margem || originalMargins.margem, !!(formData.margem || originalMargins.margem))
+                            )}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {getMarginLabel('liquida5') && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                            <span>{getMarginLabel('liquida5')}</span>
+                          </label>
+                          {isFromClient && originalMargins.liquida5 ? (
+                            <button
+                              id="btn-original-liquida5"
+                              type="button"
+                              onClick={() => toggleMargin("liquida5", originalMargins.liquida5)}
+                              className={cn(
+                                "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
+                                getMarginClasses(originalMargins.liquida5, !!formData.liquida5)
+                              )}
+                            >
+                              {formData.liquida5 && <Check className="w-3.5 h-3.5 shrink-0" />}
+                              <span className="truncate">{originalMargins.liquida5}</span>
+                            </button>
+                          ) : (
+                            <Input 
+                              id="input-margin-liquida5"
+                              value={formData.liquida5}
+                              onChange={(e) => handleMarginInputChange("liquida5", e.target.value)}
+                              placeholder="R$ 0,00" 
+                              className={cn(
+                                "h-[34px] text-[12px] transition-all",
+                                getMarginClasses(formData.liquida5, !!formData.liquida5)
+                              )}
+                            />
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            COEFICIENTE
+                          </label>
+                          <Input
+                            id="coeficiente-liquida5"
+                            value={coefficients.liquida5}
+                            readOnly
+                            placeholder="0,0000"
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.liquida5 || originalMargins.liquida5, !!(formData.liquida5 || originalMargins.liquida5))
+                            )}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            VALOR OPERAÇÃO
+                          </label>
+                          <Input
+                            id="valor-operacao-liquida5"
+                            value={calculateValorOperacao(formData.liquida5 || originalMargins.liquida5, coefficients.liquida5)}
+                            readOnly
+                            placeholder="R$ 0,00"
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.liquida5 || originalMargins.liquida5, !!(formData.liquida5 || originalMargins.liquida5))
+                            )}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {getMarginLabel('beneficio5') && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                            <span>{getMarginLabel('beneficio5')}</span>
+                          </label>
+                          {isFromClient && originalMargins.beneficio5 ? (
+                            <button
+                              id="btn-original-beneficio5"
+                              type="button"
+                              onClick={() => toggleMargin("beneficio5", originalMargins.beneficio5)}
+                              className={cn(
+                                "w-full h-[34px] rounded-lg border text-[12px] font-bold transition-all flex items-center justify-start px-4 gap-2",
+                                getMarginClasses(originalMargins.beneficio5, !!formData.beneficio5)
+                              )}
+                            >
+                              {formData.beneficio5 && <Check className="w-3.5 h-3.5 shrink-0" />}
+                              <span className="truncate">{originalMargins.beneficio5}</span>
+                            </button>
+                          ) : (
+                            <Input 
+                              id="input-margin-beneficio5"
+                              value={formData.beneficio5}
+                              onChange={(e) => handleMarginInputChange("beneficio5", e.target.value)}
+                              placeholder="R$ 0,00" 
+                              className={cn(
+                                "h-[34px] text-[12px] transition-all",
+                                getMarginClasses(formData.beneficio5, !!formData.beneficio5)
+                              )}
+                            />
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            COEFICIENTE
+                          </label>
+                          <Input
+                            id="coeficiente-beneficio5"
+                            value={coefficients.beneficio5}
+                            readOnly
+                            placeholder="0,0000"
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.beneficio5 || originalMargins.beneficio5, !!(formData.beneficio5 || originalMargins.beneficio5))
+                            )}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            VALOR OPERAÇÃO
+                          </label>
+                          <Input
+                            id="valor-operacao-beneficio5"
+                            value={calculateValorOperacao(formData.beneficio5 || originalMargins.beneficio5, coefficients.beneficio5)}
+                            readOnly
+                            placeholder="R$ 0,00"
+                            className={cn(
+                              "h-[34px] text-[12px] transition-all",
+                              getMarginClasses(formData.beneficio5 || originalMargins.beneficio5, !!(formData.beneficio5 || originalMargins.beneficio5))
+                            )}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          <div className="space-y-2 mb-6">
+              <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                Descrição <span className="text-red-500">*</span>
+              </label>
+              <p className="text-[11px] text-slate-400 mb-2">Descrição detalhada do ticket</p>
+              
+              <div className="border border-slate-100 rounded-lg overflow-hidden">
+                <div className="bg-slate-50 border-bottom border-slate-200 p-2 flex flex-wrap gap-1">
+                  <ToolbarButton 
+                    onClick={() => applyFormat("**")} 
+                    icon={<Bold className="w-3.5 h-3.5" />} 
+                  />
+                  <ToolbarButton 
+                    onClick={() => applyFormat("_")} 
+                    icon={<Italic className="w-3.5 h-3.5" />} 
+                  />
+                  <ToolbarButton 
+                    onClick={() => applyFormat("<u>", "</u>")} 
+                    icon={<Underline className="w-3.5 h-3.5" />} 
+                  />
+                  <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
+                  <ToolbarButton 
+                    onClick={() => applyFormat("> ")} 
+                    icon={<Quote className="w-3.5 h-3.5" />} 
+                  />
+                  <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
+                  <ToolbarButton 
+                    onClick={() => applyFormat("\n- ")} 
+                    icon={<List className="w-3.5 h-3.5" />} 
+                  />
+                  <ToolbarButton 
+                    onClick={() => applyFormat("\n1. ")} 
+                    icon={<ListOrdered className="w-3.5 h-3.5" />} 
+                  />
+                  <div className="w-px h-4 bg-slate-200 mx-1 self-center" />
+                  <ToolbarButton 
+                    onClick={() => applyFormat("[", "](url)")} 
+                    icon={<Link2 className="w-3.5 h-3.5" />} 
+                  />
+                </div>
+                <textarea 
+                  ref={textareaRef}
+                  className="w-full min-h-[200px] p-4 text-[12px] focus:outline-none resize-none bg-[#E8E8E8]"
+                  placeholder="Descreva aqui a solicitação..."
+                  value={description}
+                  onPaste={handlePaste}
+                  onChange={(e) => {
+                    setDescription(e.target.value)
+                    if (validationError) setValidationError(null)
+                  }}
+                />
+                {pastedImages.length > 0 && (
+                  <div className="p-3 border-t border-slate-200 bg-slate-50/50 flex flex-wrap gap-3">
+                    {pastedImages.map((file, idx) => (
+                      <div key={idx} className="relative group w-24 h-24 rounded-lg overflow-hidden border border-slate-300 shadow-sm animate-in zoom-in-95 duration-200">
+                        <Image 
+                          src={URL.createObjectURL(file)} 
+                          alt="Preview" 
+                          fill 
+                          className="object-cover" 
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <button 
+                             type="button"
+                             onClick={() => setPastedImages(prev => prev.filter((_, i) => i !== idx))}
+                             className="bg-white rounded-full p-1 border border-slate-100 hover:bg-red-50 hover:text-red-500 transition-all shadow-lg"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-[10px] font-bold text-primary mb-1 uppercase tracking-wider">Anexar RG VERSO somente se não tiver enviado um CNH.</p>
+              <p className="text-[10px] text-slate-400">Você pode enviar arquivos com tamanho máximo de 20 mb dos tipos jpg, jpeg, png, webp, gif, pdf, doc, docx, ppt, pptx, pps, ppsx, odt, xls, xlsx.</p>
+            </div>
+
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                   { label: "RG ou CNH (FRENTE)", id: "frente", ref: fileRefs.frente, required: false },
+                   { label: "RG (VERSO)", id: "verso", ref: fileRefs.verso, required: false },
+                   { label: "CONTRA CHEQUE", id: "contracheque", ref: fileRefs.contracheque, required: false },
+                   { label: "EXTRATO DE CONSIGNAÇÃO", id: "extrato", ref: fileRefs.extrato, required: false },
+                   { label: "OUTROS", id: "outros", ref: fileRefs.outros, required: false },
+                   { label: "OUTROS", id: "outros_2", ref: fileRefs.outros_2, required: false }
+                ].map((field) => (
+                  <div key={field.id} className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                      {field.label} {field.required && <span className="text-red-500">*</span>}
+                    </label>
+                    <div 
+                      onClick={() => handleFileClick(field.ref)}
+                      className={cn(
+                        "w-full h-[34px] px-3 rounded-lg border text-[12px] flex items-center gap-2 cursor-pointer transition-all",
+                        selectedFiles[field.id]
+                          ? "bg-[#171717] text-white border-[#171717] shadow-sm"
+                          : "bg-[#E8E8E8] text-slate-500 border-slate-100 hover:bg-slate-200"
+                      )}
+                    >
+                      <UploadCloud className={cn("w-4 h-4", selectedFiles[field.id] ? "text-white" : "text-slate-500")} />
+                      <span className={cn("truncate", selectedFiles[field.id] ? "text-white font-medium" : "text-slate-500")}>
+                        {selectedFiles[field.id] ? selectedFiles[field.id]?.name : "Selecionar arquivo..."}
+                      </span>
+                    </div>
+                    <input 
+                      type="file" 
+                      ref={field.ref} 
+                      className="hidden" 
+                      accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.ppt,.pptx,.pps,.ppsx,.odt,.xls,.xlsx"
+                      onChange={(e) => handleFileChange(field.id, e)}
+                    />
+                  </div>
+                ))}
+              </div>
+              
+              <div className="flex items-center gap-4">
+                <Button 
+                  onClick={handleSubmit}
+                  disabled={isSubmitting}
+                  className="bg-primary hover:bg-primary/90 text-white px-8 h-10 text-xs font-bold rounded-lg shadow-lg shadow-primary/20 flex items-center gap-2 cursor-pointer"
+                >
+                  {isSubmitting && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {isSubmitting ? "ENVIANDO..." : "ENVIAR"}
+                </Button>
+                {isModal && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onCloseModal}
+                    className="h-10 px-6 text-xs font-bold rounded-lg cursor-pointer"
+                  >
+                    CANCELAR
+                  </Button>
+                )}
+                {validationError && (
+                  <span className="text-red-500 text-[10px] font-bold uppercase tracking-widest animate-in fade-in slide-in-from-left-2 duration-300">
+                    {validationError}
+                  </span>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  )
+}
+
+function ToolbarButton({ icon, onClick }: { icon: React.ReactNode, onClick?: () => void }) {
+  return (
+    <button 
+      type="button"
+      onClick={onClick}
+      className="p-1.5 hover:bg-white hover:shadow-sm rounded transition-all text-slate-500 hover:text-primary"
+    >
+      {icon}
+    </button>
+  )
+}
+
+export default function NewTicketPage() {
+  return (
+    <Suspense fallback={<div className="flex-1 flex items-center justify-center">Carregando...</div>}>
+      <NewTicketForm />
+    </Suspense>
+  )
+}

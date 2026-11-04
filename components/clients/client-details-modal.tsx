@@ -320,7 +320,6 @@ export function ClientDetailsModal({
         const { data, error } = await supabase
           .from("chamados")
           .select("id, user_id, user_nome, cliente_cpf")
-          .gte("created_at", "2026-10-30T00:00:00")
           .in("cliente_cpf", variants)
 
         if (!isMounted) return

@@ -64,7 +64,7 @@ import {
   ProximaAcaoConfig, 
   calcularVencimentoComSla 
 } from "@/lib/kanban-proximas-acoes"
-import { hasProposalDigitacao, syncKanbanForClosedProposal, isDigitacaoAposDataCorte } from "@/lib/sync-kanban-propostas"
+import { hasProposalDigitacao, syncKanbanForClosedProposal } from "@/lib/sync-kanban-propostas"
 
 // Definição das Etapas do Kanban Comercial
 export type KanbanStage = 
@@ -927,9 +927,8 @@ function inferKanbanStage(
   const prop = propInfo || ticket.proposta_info
   const pStatus = (prop?.status || "").toUpperCase().trim()
   const hasDigitacao = Boolean(
-    (prop?.ade && prop.ade.trim() && prop.ade.trim() !== "-") && 
-    (prop?.data_digitacao && prop.data_digitacao.trim() && prop.data_digitacao.trim() !== "-") &&
-    isDigitacaoAposDataCorte(prop.data_digitacao)
+    (prop?.ade && prop.ade.trim()) && 
+    (prop?.data_digitacao && prop.data_digitacao.trim())
   )
 
   // 1. Proposta digitada no banco deste operador que foi cancelada no banco vai automaticamente para PERDIDO
@@ -1923,7 +1922,6 @@ export default function KanbanPage() {
             status_chamados:status_id (nome)
           `)
           .eq('cliente_cpf', cleanCpf)
-          .gte('created_at', '2026-10-30T00:00:00')
           .order('created_at', { ascending: false })
 
         if (!fetchErr && isMounted) {
@@ -2395,7 +2393,6 @@ export default function KanbanPage() {
               .from("chamados")
               .select("id, cliente_cpf, user_id, margem, margem_liquida_5, margem_beneficio_5, valor_operacao, created_at")
               .in("cliente_cpf", chunk)
-              .gte("created_at", "2026-10-30T00:00:00")
               .order("created_at", { ascending: false })
           )
         ).then(responses => {
@@ -2510,7 +2507,6 @@ export default function KanbanPage() {
                 const sameCpf = cCpf && pCpf && cCpf === pCpf
                 const sameLead = p.id_lead && String(p.id_lead).trim() === String(t.id).trim()
                 if (!sameCpf && !sameLead) return false
-                if (!hasProposalDigitacao(p)) return false
 
                 return matchesProposalUser(p, t)
               })
