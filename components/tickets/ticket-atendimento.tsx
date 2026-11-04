@@ -37,6 +37,7 @@ import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import ReactMarkdown from "react-markdown"
 import { Input } from "@/components/ui/input"
+import { CoeficienteTabelaSelector } from "@/components/chamados/coeficiente-tabela-selector"
 
 interface Attachment {
   name: string
@@ -145,10 +146,16 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
     beneficio5: ""
   })
 
-  const [ticketCoefficients, setTicketCoefficients] = useState({
-    margem: "0,028",
-    liquida5: "0,053",
-    beneficio5: "0,053"
+  const [ticketCoefficients, setTicketCoefficients] = useState<{ margem: string; liquida5: string; beneficio5: string }>({
+    margem: "",
+    liquida5: "",
+    beneficio5: ""
+  })
+
+  const [ticketTabelaLabels, setTicketTabelaLabels] = useState<{ margem: string; liquida5: string; beneficio5: string }>({
+    margem: "",
+    liquida5: "",
+    beneficio5: ""
   })
 
   const [ticketOperations, setTicketOperations] = useState({
@@ -190,9 +197,15 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
     const liquidaVal = toCurrencyStr(meta?.liquida5 || initialLiquida);
     const beneficioVal = toCurrencyStr(meta?.beneficio5 || initialBeneficio);
 
-    const coefMargem = meta?.coeficiente_margem || "0,028";
-    const coefLiquida = meta?.coeficiente_liquida5 || "0,053";
-    const coefBeneficio = meta?.coeficiente_beneficio5 || "0,053";
+    const coefMargem = meta?.coeficiente_margem || "";
+    const coefLiquida = meta?.coeficiente_liquida5 || "";
+    const coefBeneficio = meta?.coeficiente_beneficio5 || "";
+
+    setTicketTabelaLabels({
+      margem: meta?.tabela_margem || "",
+      liquida5: meta?.tabela_liquida5 || "",
+      beneficio5: meta?.tabela_beneficio5 || ""
+    });
 
     const calculateOpVal = (marginValStr: string, coefStr: string) => {
       const marginNum = parseCurrencyToNumber(marginValStr);
@@ -311,6 +324,11 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
     setTicketOperations(prev => ({ ...prev, [field]: formatted }));
   };
 
+  const handleSelectTabela = (field: 'margem' | 'liquida5' | 'beneficio5', coef: string, label: string) => {
+    handleCoefChange(field, coef);
+    setTicketTabelaLabels(prev => ({ ...prev, [field]: label }));
+  };
+
   const handleSaveMargins = async () => {
     setIsSavingMargins(true);
     try {
@@ -321,6 +339,9 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
         coeficiente_margem: ticketCoefficients.margem,
         coeficiente_liquida5: ticketCoefficients.liquida5,
         coeficiente_beneficio5: ticketCoefficients.beneficio5,
+        tabela_margem: ticketTabelaLabels.margem,
+        tabela_liquida5: ticketTabelaLabels.liquida5,
+        tabela_beneficio5: ticketTabelaLabels.beneficio5,
         valor_operacao_margem: ticketOperations.margem,
         valor_operacao_liquida5: ticketOperations.liquida5,
         valor_operacao_beneficio5: ticketOperations.beneficio5,
@@ -1226,16 +1247,13 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                 <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
                   COEFICIENTE
                 </label>
-                <Input
+                <CoeficienteTabelaSelector
                   id="coef-val-margem"
+                  convenio={ticket.convenio}
                   value={ticketCoefficients.margem}
-                  onChange={(e) => handleCoefChange('margem', e.target.value)}
-                  readOnly={!canEditMargins}
-                  placeholder="0,0000"
-                  className={cn(
-                    "h-[34px] text-[12px] font-bold transition-all",
-                    getMarginStyleClasses(ticketMargins.margem)
-                  )}
+                  selectedLabel={ticketTabelaLabels.margem}
+                  disabled={!canEditMargins}
+                  onChange={(coef, label) => handleSelectTabela('margem', coef, label)}
                 />
               </div>
 
@@ -1305,16 +1323,13 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                 <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
                   COEFICIENTE
                 </label>
-                <Input
+                <CoeficienteTabelaSelector
                   id="coef-val-liquida5"
+                  convenio={ticket.convenio}
                   value={ticketCoefficients.liquida5}
-                  onChange={(e) => handleCoefChange('liquida5', e.target.value)}
-                  readOnly={!canEditMargins}
-                  placeholder="0,0000"
-                  className={cn(
-                    "h-[34px] text-[12px] font-bold transition-all",
-                    getMarginStyleClasses(ticketMargins.liquida5)
-                  )}
+                  selectedLabel={ticketTabelaLabels.liquida5}
+                  disabled={!canEditMargins}
+                  onChange={(coef, label) => handleSelectTabela('liquida5', coef, label)}
                 />
               </div>
 
@@ -1384,16 +1399,13 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                 <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
                   COEFICIENTE
                 </label>
-                <Input
+                <CoeficienteTabelaSelector
                   id="coef-val-beneficio5"
+                  convenio={ticket.convenio}
                   value={ticketCoefficients.beneficio5}
-                  onChange={(e) => handleCoefChange('beneficio5', e.target.value)}
-                  readOnly={!canEditMargins}
-                  placeholder="0,0000"
-                  className={cn(
-                    "h-[34px] text-[12px] font-bold transition-all",
-                    getMarginStyleClasses(ticketMargins.beneficio5)
-                  )}
+                  selectedLabel={ticketTabelaLabels.beneficio5}
+                  disabled={!canEditMargins}
+                  onChange={(coef, label) => handleSelectTabela('beneficio5', coef, label)}
                 />
               </div>
 

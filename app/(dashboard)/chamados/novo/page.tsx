@@ -27,6 +27,7 @@ import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
 import { withRetry, cn } from "@/lib/utils"
 import { TelefoneEmpresa, getLocalTelefonesEmpresa, fetchTelefonesEmpresa, EVENT_TELEFONES_UPDATED } from "@/lib/telefones-empresa"
+import { CoeficienteTabelaSelector } from "@/components/chamados/coeficiente-tabela-selector"
 
 export interface NewTicketFormProps {
   isModal?: boolean;
@@ -106,10 +107,16 @@ export function NewTicketForm({
     beneficio5: getParam("beneficio5") || ""
   })
 
-  const [coefficients, setCoefficients] = useState({
-    margem: "0,028",
-    liquida5: "0,053",
-    beneficio5: "0,053"
+  const [coefficients, setCoefficients] = useState<{ margem: string; liquida5: string; beneficio5: string }>({
+    margem: "",
+    liquida5: "",
+    beneficio5: ""
+  })
+
+  const [tabelaLabels, setTabelaLabels] = useState<{ margem: string; liquida5: string; beneficio5: string }>({
+    margem: "",
+    liquida5: "",
+    beneficio5: ""
   })
 
   const parseCurrencyToFloat = (val: string) => {
@@ -508,7 +515,10 @@ export function NewTicketForm({
     return "";
   }, [formData.convenio]);
 
-  const updateDescription = useCallback((margins: { margem: string, liquida5: string, beneficio5: string }) => {
+  const updateDescription = useCallback((
+    margins: { margem: string, liquida5: string, beneficio5: string },
+    customCoefs?: { margem: string, liquida5: string, beneficio5: string }
+  ) => {
     let introText = "";
     let activeField: 'margem' | 'liquida5' | 'beneficio5' | null = null;
     
@@ -516,9 +526,11 @@ export function NewTicketForm({
     else if (margins.liquida5) activeField = 'liquida5';
     else if (margins.beneficio5) activeField = 'beneficio5';
 
+    const currentCoefs = customCoefs || coefficients;
+
     if (activeField) {
       const label = getMarginLabel(activeField);
-      const valOperacao = calculateValorOperacao(margins[activeField], coefficients[activeField]);
+      const valOperacao = calculateValorOperacao(margins[activeField], currentCoefs[activeField]);
       introText = `Esse chamado é para a ${label} com valor de operação ${valOperacao}.`;
     }
 
@@ -540,6 +552,17 @@ export function NewTicketForm({
       return lines.join("\n");
     });
   }, [getMarginLabel, coefficients]);
+
+  const handleSelectTabela = (field: 'margem' | 'liquida5' | 'beneficio5', coef: string, label: string) => {
+    const updated = { ...coefficients, [field]: coef };
+    setCoefficients(updated);
+    setTabelaLabels(prev => ({ ...prev, [field]: label }));
+    updateDescription({
+      margem: formData.margem,
+      liquida5: formData.liquida5,
+      beneficio5: formData.beneficio5
+    }, updated);
+  };
 
   // Monitor convenio changes to sync description labels
   useEffect(() => {
@@ -862,6 +885,9 @@ export function NewTicketForm({
         coeficiente_margem: coefficients.margem,
         coeficiente_liquida5: coefficients.liquida5,
         coeficiente_beneficio5: coefficients.beneficio5,
+        tabela_margem: tabelaLabels.margem || undefined,
+        tabela_liquida5: tabelaLabels.liquida5 || undefined,
+        tabela_beneficio5: tabelaLabels.beneficio5 || undefined,
         valor_operacao_margem: valOpMargemStr,
         valor_operacao_liquida5: valOpLiquida5Str,
         valor_operacao_beneficio5: valOpBeneficio5Str,
@@ -1338,15 +1364,12 @@ export function NewTicketForm({
                           <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                             COEFICIENTE
                           </label>
-                          <Input
+                          <CoeficienteTabelaSelector
                             id="coeficiente-margem"
+                            convenio={formData.convenio}
                             value={coefficients.margem}
-                            readOnly
-                            placeholder="0,0000"
-                            className={cn(
-                              "h-[34px] text-[12px] transition-all",
-                              getMarginClasses(formData.margem || originalMargins.margem, !!(formData.margem || originalMargins.margem))
-                            )}
+                            selectedLabel={tabelaLabels.margem}
+                            onChange={(coef, label) => handleSelectTabela('margem', coef, label)}
                           />
                         </div>
 
@@ -1405,15 +1428,12 @@ export function NewTicketForm({
                           <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                             COEFICIENTE
                           </label>
-                          <Input
+                          <CoeficienteTabelaSelector
                             id="coeficiente-liquida5"
+                            convenio={formData.convenio}
                             value={coefficients.liquida5}
-                            readOnly
-                            placeholder="0,0000"
-                            className={cn(
-                              "h-[34px] text-[12px] transition-all",
-                              getMarginClasses(formData.liquida5 || originalMargins.liquida5, !!(formData.liquida5 || originalMargins.liquida5))
-                            )}
+                            selectedLabel={tabelaLabels.liquida5}
+                            onChange={(coef, label) => handleSelectTabela('liquida5', coef, label)}
                           />
                         </div>
 
@@ -1472,15 +1492,12 @@ export function NewTicketForm({
                           <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                             COEFICIENTE
                           </label>
-                          <Input
+                          <CoeficienteTabelaSelector
                             id="coeficiente-beneficio5"
+                            convenio={formData.convenio}
                             value={coefficients.beneficio5}
-                            readOnly
-                            placeholder="0,0000"
-                            className={cn(
-                              "h-[34px] text-[12px] transition-all",
-                              getMarginClasses(formData.beneficio5 || originalMargins.beneficio5, !!(formData.beneficio5 || originalMargins.beneficio5))
-                            )}
+                            selectedLabel={tabelaLabels.beneficio5}
+                            onChange={(coef, label) => handleSelectTabela('beneficio5', coef, label)}
                           />
                         </div>
 

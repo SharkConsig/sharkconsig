@@ -16,11 +16,52 @@ export interface ProposalSyncInfo {
   user_id?: string | null
 }
 
+export const DATA_CORTE_REGRA_DIGITACAO = "2026-10-30"
+
+/**
+ * Valida se a data de digitação do ADE pertence ao período ativo da regra (a partir de 30/10/2026).
+ * Datas de digitação do dia 29/10/2026 para trás são desconsideradas.
+ */
+export function isDigitacaoAposDataCorte(dataDigitacao?: string | null): boolean {
+  if (!dataDigitacao) return false
+  const str = String(dataDigitacao).trim()
+  if (!str || str === "-") return false
+
+  // Formato ISO: YYYY-MM-DD
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (isoMatch) {
+    const ymd = `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`
+    return ymd >= DATA_CORTE_REGRA_DIGITACAO
+  }
+
+  // Formato BR: DD/MM/YYYY
+  const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+  if (brMatch) {
+    const ymd = `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`
+    return ymd >= DATA_CORTE_REGRA_DIGITACAO
+  }
+
+  // Fallback com Date
+  try {
+    const d = new Date(str)
+    if (!isNaN(d.getTime())) {
+      const corte = new Date(2026, 9, 30, 0, 0, 0)
+      return d.getTime() >= corte.getTime()
+    }
+  } catch {}
+
+  return false
+}
+
 export const hasProposalDigitacao = (proposal: any): boolean => {
   if (!proposal) return false
   const ade = String(proposal.ade || "").trim()
   const dataDigitacao = String(proposal.data_digitacao || "").trim()
-  return Boolean(ade && ade !== "-" && dataDigitacao && dataDigitacao !== "-")
+  const hasValidFields = Boolean(ade && ade !== "-" && dataDigitacao && dataDigitacao !== "-")
+  if (!hasValidFields) return false
+
+  // Regra de negócio: desconsiderar CPFs com ADE gerado antes de 30/10/2026
+  return isDigitacaoAposDataCorte(dataDigitacao)
 }
 
 import { supabase } from "@/lib/supabase"
@@ -34,6 +75,7 @@ export const syncKanbanForClosedProposal = async (info: ProposalSyncInfo): Promi
     const ade = String(info.ade || "").trim()
     const dataDigitacao = String(info.data_digitacao || "").trim()
     if (!ade || ade === "-" || !dataDigitacao || dataDigitacao === "-") return
+    if (!isDigitacaoAposDataCorte(dataDigitacao)) return
 
     const conditions: string[] = []
     if (cleanCpf) {
