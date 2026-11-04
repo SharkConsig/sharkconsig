@@ -787,17 +787,13 @@ export default function TicketsPage() {
             status_chamados:status_id (id, nome, cor)
           `, withCount ? { count: 'exact' } : undefined)
 
-        // Regra de Data de Corte: todos os chamados do dia 29/10/2026 para trás devem ser ignorados
-        const DATA_CORTE_CHAMADOS = "2026-10-30"
-        const effectiveStart = (startDate && startDate.length === 10 && startDate >= DATA_CORTE_CHAMADOS)
-          ? startDate
-          : DATA_CORTE_CHAMADOS
-
-        const localStart = new Date(`${effectiveStart}T00:00:00`)
-        if (!isNaN(localStart.getTime())) {
-          q = q.gte('created_at', localStart.toISOString())
-        } else {
-          q = q.gte('created_at', `${effectiveStart}T00:00:00Z`)
+        if (startDate && startDate.length === 10) {
+          const localStart = new Date(`${startDate}T00:00:00`)
+          if (!isNaN(localStart.getTime())) {
+            q = q.gte('created_at', localStart.toISOString())
+          } else {
+            q = q.gte('created_at', `${startDate}T00:00:00Z`)
+          }
         }
 
         if (endDate && endDate.length === 10) {
@@ -993,8 +989,9 @@ export default function TicketsPage() {
           .select('cliente_cpf', { count: 'exact' })
           .eq('tabulacao', 'CLIENTE CHAMADO');
 
-        const effectiveStartDate = (startDate && startDate.length === 10 && startDate >= '2026-10-30') ? startDate : '2026-10-30';
-        ccQuery = ccQuery.gte('data_chamado', effectiveStartDate);
+        if (startDate && startDate.length === 10) {
+          ccQuery = ccQuery.gte('data_chamado', startDate);
+        }
         if (endDate && endDate.length === 10) {
           ccQuery = ccQuery.lte('data_chamado', endDate);
         }
@@ -1046,8 +1043,9 @@ export default function TicketsPage() {
           .eq('tabulacao', 'CLIENTE CHAMADO')
           .neq('cliente_cpf', '00000000000');
 
-        const effectiveStartDate = (startDate && startDate.length === 10 && startDate >= '2026-10-30') ? startDate : '2026-10-30';
-        caQuery = caQuery.gte('created_at', `${effectiveStartDate}T00:00:00.000Z`);
+        if (startDate && startDate.length === 10) {
+          caQuery = caQuery.gte('created_at', `${startDate}T00:00:00.000Z`);
+        }
         if (endDate && endDate.length === 10) {
           caQuery = caQuery.lte('created_at', `${endDate}T23:59:59.999Z`);
         }
@@ -1370,38 +1368,31 @@ export default function TicketsPage() {
         if (maxVal !== null && opVal > maxVal) return false
       }
 
-      // Regra de Data de Corte: todos os chamados do dia 29/10/2026 para trás devem ser ignorados
-      const DATA_CORTE_CHAMADOS = "2026-10-30"
-      const ticketDateStr = (() => {
-        const raw = ticket.created_at || ticket.updated_at
-        if (!raw) return null
-        const str = String(raw).trim()
-        if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
-          const [day, month, year] = str.split('/')
-          return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
-        }
-        if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-          return str.slice(0, 10)
-        }
-        try {
-          const d = new Date(str.includes(' ') && !str.includes('T') ? str.replace(' ', 'T') : str)
-          if (!isNaN(d.getTime())) {
-            const year = d.getFullYear()
-            const month = String(d.getMonth() + 1).padStart(2, '0')
-            const day = String(d.getDate()).padStart(2, '0')
-            return `${year}-${month}-${day}`
-          }
-        } catch {}
-        return null
-      })()
-
-      // Ignora rigorosamente chamados anteriores à data de corte 30/10/2026
-      if (ticketDateStr && ticketDateStr < DATA_CORTE_CHAMADOS) {
-        return false
-      }
-
       // Filtro de Período (Data selecionado pelo usuário)
       if (startDate || endDate) {
+        const ticketDateStr = (() => {
+          const raw = ticket.created_at || ticket.updated_at
+          if (!raw) return null
+          const str = String(raw).trim()
+          if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+            const [day, month, year] = str.split('/')
+            return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+          }
+          if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+            return str.slice(0, 10)
+          }
+          try {
+            const d = new Date(str.includes(' ') && !str.includes('T') ? str.replace(' ', 'T') : str)
+            if (!isNaN(d.getTime())) {
+              const year = d.getFullYear()
+              const month = String(d.getMonth() + 1).padStart(2, '0')
+              const day = String(d.getDate()).padStart(2, '0')
+              return `${year}-${month}-${day}`
+            }
+          } catch {}
+          return null
+        })()
+
         if (ticketDateStr) {
           if (startDate && ticketDateStr < startDate) return false
           if (endDate && ticketDateStr > endDate) return false
@@ -2073,7 +2064,6 @@ export default function TicketsPage() {
                       <div className="relative">
                         <Input 
                           type="date"
-                          min="2026-10-30"
                           value={startDate}
                           onChange={(e) => setStartDate(e.target.value)}
                           className="h-[38px] w-[130px] px-3 bg-slate-50/50 border-slate-100 text-[11px] font-normal text-slate-600 focus-visible:ring-0 appearance-none rounded-lg"
@@ -2085,7 +2075,6 @@ export default function TicketsPage() {
                       <div className="relative">
                         <Input 
                           type="date"
-                          min="2026-10-30"
                           value={endDate}
                           onChange={(e) => setEndDate(e.target.value)}
                           className="h-[38px] w-[130px] px-3 bg-slate-50/50 border-slate-100 text-[11px] font-normal text-slate-600 focus-visible:ring-0 appearance-none rounded-lg"
