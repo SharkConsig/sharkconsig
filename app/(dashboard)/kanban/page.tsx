@@ -3193,6 +3193,11 @@ export default function KanbanPage() {
         historico_kanban: novoHistorico
       }
 
+      // Ao mover para uma nova etapa, limpar explicitamente agendamentos expirados anteriores e régua
+      delete (updatedMeta as any).agendamento_data
+      delete (updatedMeta as any).agendamento_obs
+      delete (updatedMeta as any).regua_proximo_vencimento
+
       const newDesc = stringifyWithMetadata(novaObservacao, updatedMeta)
       
       if (ticket.source_table === "kanban_fichas") {
@@ -3251,6 +3256,18 @@ export default function KanbanPage() {
           historico_movimentacoes: novoHistorico
         } : null)
       }
+
+      setTickets(prev => prev.map(t => {
+        if (t.id === ticket.id) {
+          return {
+            ...t,
+            status: destinoEtapa,
+            descricao: newDesc,
+            historico_movimentacoes: novoHistorico
+          }
+        }
+        return t
+      }))
 
       toast.success(`Ficha movida para "${destinoEtapa}"!`)
       fetchChamados(true)
@@ -3433,31 +3450,77 @@ export default function KanbanPage() {
         .filter(Boolean)
         .join("\n\n")
 
+      const etapaAtual = inferKanbanStage(atendimentoModalTicket, currentMeta)
+      const isEtapaAtiva = etapaAtual !== "FECHADO" && etapaAtual !== "PERDIDO" && etapaAtual !== "SEM INTERESSE"
+
       const updatedMeta: TicketMetadata = {
         ...currentMeta,
         observacoes_historico: updatedHistoricoObs,
         observacao_data: nowIso
       }
 
+      if (isEtapaAtiva) {
+        // Se a etapa for ativa (ex: "EM NEGOCIAÇÃO"), garantir que o prazo da próxima ação seja renovado conforme o SLA
+        const vencimentoTimestamp = currentMeta.vencimento_acao ? new Date(currentMeta.vencimento_acao).getTime() : 0
+        const isVencido = !currentMeta.vencimento_acao || vencimentoTimestamp <= Date.now()
+
+        if (isVencido) {
+          const acaoConfig = proximasAcoesConfig.find(a => a.ativo && (a.etapa_kanban === etapaAtual || (etapaAtual === "ENTRADA DO SITE" && a.etapa_kanban === "EM ABORDAGEM")))
+          const novoVencimento = acaoConfig 
+            ? calcularVencimentoComSla(acaoConfig.sla_minutos, acaoConfig.apenas_dias_uteis).toISOString()
+            : new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+          updatedMeta.vencimento_acao = novoVencimento
+        }
+
+        updatedMeta.alerta_atrasado = false
+        updatedMeta.kanban_stage = etapaAtual
+        delete (updatedMeta as any).agendamento_data
+        delete (updatedMeta as any).agendamento_obs
+        delete (updatedMeta as any).regua_proximo_vencimento
+      }
+
       const metaParaSalvar = { ...updatedMeta }
       delete (metaParaSalvar as any).historico_kanban
       delete (metaParaSalvar as any).historico_movimentacoes
 
-      await supabase
-        .from("kanban_fichas")
-        .update({
-          observacoes: observacoesAcumuladas,
-          metadata: metaParaSalvar,
-          updated_at: nowIso
-        })
-        .eq("id", atendimentoModalTicket.id)
-
       const novaDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+
+      if (atendimentoModalTicket.source_table === "kanban_fichas") {
+        await supabase
+          .from("kanban_fichas")
+          .update({
+            observacoes: observacoesAcumuladas,
+            metadata: metaParaSalvar,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+      } else {
+        await supabase
+          .from("chamados")
+          .update({
+            descricao: novaDesc,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+      }
+
       atendimentoModalTicket.descricao = novaDesc
       setAtendimentoModalTicket(prev => prev ? {
         ...prev,
+        status: etapaAtual,
         descricao: novaDesc
       } : null)
+
+      setTickets(prev => prev.map(t => {
+        if (t.id === atendimentoModalTicket.id) {
+          return {
+            ...t,
+            status: etapaAtual,
+            descricao: novaDesc
+          }
+        }
+        return t
+      }))
 
       toast.success("Observação registrada na ficha com sucesso!")
       setAtendimentoMensagem("")

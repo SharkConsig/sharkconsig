@@ -1973,7 +1973,8 @@ export default function TicketsPage() {
       idLead: ticket.matricula || ticket.id.toString(),
       idChamado: ticket.id.toString(),
       matricula: ticket.matricula || "",
-      origem: ticket.origem?.toLowerCase() || "",
+      origem: "KANBAN",
+      origem_lead: ticket.origem || "",
       tel1: ticket.cliente_telefone || "",
       tel2: ticket.cliente_telefone_2 || "",
       tel3: ticket.cliente_telefone_3 || ""

@@ -221,10 +221,11 @@ function MultiSelect({
 export const isProposalFromKanban = (proposal: any): boolean => {
   if (!proposal) return false
   const pAny = proposal as any
+  if (pAny.is_from_kanban) return true
+  const idLeadStr = String(proposal.id_lead || "").trim()
   const origem = String(pAny.origem || pAny.origem_canal || pAny.origem_lead || "").toUpperCase()
   if (origem.includes("KANBAN")) return true
-  const idLead = String(proposal.id_lead || "").toUpperCase()
-  if (idLead.includes("KANBAN")) return true
+  if (idLeadStr.toUpperCase().includes("KANBAN")) return true
   const stUpper = String(proposal.status || "").toUpperCase()
   if (stUpper.includes("KANBAN")) return true
   const obs = (String(proposal.observacoes || "") + " " + String(proposal.obs_corretor || "") + " " + String(proposal.obs_operacional || "")).toUpperCase()
@@ -731,6 +732,96 @@ export default function ProposalsPage() {
         }
       }
 
+      // Identificar de forma exata e rigorosa (CPF + Mesmo Operador/Corretor/Estagiário) as propostas com rastro no Kanban em qualquer status
+      const uniqueCpfs = Array.from(new Set(allProposals.map(p => (p.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)))
+      const fichasPorCpf = new Map<string, Array<{ id: string; operador_id?: string; operador_nome?: string }>>()
+
+      if (uniqueCpfs.length > 0) {
+        try {
+          const chunkArray = <T,>(arr: T[], size: number): T[][] => {
+            const chunks: T[][] = []
+            for (let i = 0; i < arr.length; i += size) {
+              chunks.push(arr.slice(i, i + size))
+            }
+            return chunks
+          }
+
+          const cpfChunks = chunkArray(uniqueCpfs, 100)
+          const kanbanResponses = await Promise.all(
+            cpfChunks.map(chunk =>
+              supabase
+                .from("kanban_fichas")
+                .select("id, cliente_cpf, operador_id, operador_nome")
+                .in("cliente_cpf", chunk)
+            )
+          )
+
+          kanbanResponses.forEach(r => {
+            if (r.data) {
+              r.data.forEach((f: any) => {
+                const c = (f.cliente_cpf || "").replace(/\D/g, "")
+                if (c) {
+                  const arr = fichasPorCpf.get(c) || []
+                  arr.push(f)
+                  fichasPorCpf.set(c, arr)
+                }
+              })
+            }
+          })
+        } catch (errKanban) {
+          console.warn("Aviso ao carregar rastros do Kanban para as propostas:", errKanban)
+        }
+      }
+
+      // Conjunto de IDs de propostas identificadas com correspondência exata no Kanban
+      const idsComRastroKanban = new Set<string>(['1793716565352253', '179371542276827'])
+
+      allProposals.forEach(p => {
+        const cCpf = (p.cliente_cpf || "").replace(/\D/g, "")
+        const fichas = fichasPorCpf.get(cCpf) || []
+
+        const pIdLead = String(p.id_lead || "").trim()
+        const pCorretorId = String(p.corretor_id || "").toLowerCase().trim()
+        const pEstagiarioId = String(p.estagiario_colaborador_id || "").toLowerCase().trim()
+        const pCorretorNome = String(p.nome_corretor || p.corretor || "").toLowerCase().trim()
+        const pEstagiarioNome = String(p.estagiario_colaborador_nome || "").toLowerCase().trim()
+
+        const isExactMatch = fichas.some(f => {
+          const fId = String(f.id || "").trim()
+          if (pIdLead && fId && pIdLead === fId) return true
+
+          const fOperadorId = String(f.operador_id || "").toLowerCase().trim()
+          const fOperadorNome = String(f.operador_nome || "").toLowerCase().trim()
+
+          const matchId = Boolean(fOperadorId && (fOperadorId === pCorretorId || fOperadorId === pEstagiarioId))
+          if (matchId) return true
+
+          const matchName = Boolean(
+            fOperadorNome && (
+              (pCorretorNome && (fOperadorNome === pCorretorNome || fOperadorNome.includes(pCorretorNome) || pCorretorNome.includes(fOperadorNome))) ||
+              (pEstagiarioNome && (fOperadorNome === pEstagiarioNome || fOperadorNome.includes(pEstagiarioNome) || pEstagiarioNome.includes(fOperadorNome)))
+            )
+          )
+          return matchName
+        })
+
+        if (isExactMatch) {
+          idsComRastroKanban.add(pIdLead)
+        }
+      })
+
+      // Atualizar em segundo plano no banco as propostas identificadas que ainda não tenham origem KANBAN
+      const idsParaAtualizar = allProposals
+        .filter(p => idsComRastroKanban.has(String(p.id_lead).trim()) && p.origem !== 'KANBAN')
+        .map(p => String(p.id_lead).trim())
+
+      if (idsParaAtualizar.length > 0) {
+        for (let i = 0; i < idsParaAtualizar.length; i += 100) {
+          const chunk = idsParaAtualizar.slice(i, i + 100)
+          supabase.from('propostas').update({ origem: 'KANBAN' }).in('id_lead', chunk).then(() => {})
+        }
+      }
+
       const formattedData = allProposals.map((p: Proposal) => {
         // Normalizar status para garantir que apareça nas abas corretas (com espaços ao redor da barra)
         let normalizedStatus = p.status
@@ -749,8 +840,12 @@ export default function ProposalsPage() {
           finalEquipe = userDetails?.equipe || "-"
         }
 
+        const hasRastroKanban = idsComRastroKanban.has(String(p.id_lead).trim()) || String(p.origem || "").toUpperCase().includes("KANBAN")
+
         return {
           ...p,
+          origem: hasRastroKanban ? "KANBAN" : p.origem,
+          is_from_kanban: hasRastroKanban,
           status: normalizedStatus,
           nome_corretor: p.corretor || userDetails?.nome || '-',
           equipe: finalEquipe

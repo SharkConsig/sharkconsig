@@ -523,34 +523,59 @@ export function ClientDetailsModal({
     try {
       const digits = cpf.replace(/\D/g, "")
       const paddedCpf = digits.padStart(11, '0')
+      const formattedCpf = paddedCpf.length === 11 
+        ? `${paddedCpf.slice(0, 3)}.${paddedCpf.slice(3, 6)}.${paddedCpf.slice(6, 9)}-${paddedCpf.slice(9)}`
+        : ""
+      const cpfVariants = Array.from(new Set([digits, paddedCpf, formattedCpf, cpf.trim()].filter(Boolean)))
+      const cpfOrFilter = cpfVariants.map(c => `cpf.eq.${c}`).join(",")
       const foundProfiles: ConvenioProfile[] = []
 
       // Pré-filtro concorrente paralelo: localiza simultaneamente em ~120ms os convênios que possuem cadastro
       const tableCheckList: { type: string; table: string }[] = [
         { type: 'siape', table: 'clientes' },
+        { type: 'siape', table: 'base_consulta_siape' },
         { type: 'governo_sp', table: 'governo_sp_clientes' },
+        { type: 'governo_sp', table: 'base_consulta_governo_sp' },
         { type: 'prefeitura_sp', table: 'prefeitura_sp_clientes' },
+        { type: 'prefeitura_sp', table: 'base_consulta_prefeitura_sp' },
         { type: 'governo_pi', table: 'governo_pi_clientes' },
+        { type: 'governo_pi', table: 'base_consulta_governo_pi' },
         { type: 'governo_ma', table: 'governo_ma_clientes' },
+        { type: 'governo_ma', table: 'base_consulta_governo_ma' },
         { type: 'governo_rr', table: 'governo_rr_clientes' },
+        { type: 'governo_rr', table: 'base_consulta_governo_rr' },
         { type: 'governo_rj', table: 'governo_rj_clientes' },
+        { type: 'governo_rj', table: 'base_consulta_governo_rj' },
         { type: 'prefeitura_santo_andre', table: 'prefeitura_santo_andre_clientes' },
+        { type: 'prefeitura_santo_andre', table: 'base_consulta_prefeitura_santo_andre' },
         { type: 'prefeitura_contagem', table: 'prefeitura_contagem_clientes' },
+        { type: 'prefeitura_contagem', table: 'base_consulta_prefeitura_contagem' },
         { type: 'governo_mg', table: 'governo_mg_clientes' },
+        { type: 'governo_mg', table: 'base_consulta_governo_mg' },
+        { type: 'governo_ms', table: 'governo_ms_clientes' },
+        { type: 'governo_ms', table: 'base_consulta_governo_ms' },
         { type: 'prefeitura_natal', table: 'prefeitura_natal_clientes' },
+        { type: 'prefeitura_natal', table: 'base_consulta_prefeitura_natal' },
         { type: 'prefeitura_porto_velho', table: 'prefeitura_porto_velho_clientes' },
+        { type: 'prefeitura_porto_velho', table: 'base_consulta_prefeitura_porto_velho' },
         { type: 'governo_ba', table: 'governo_ba_clientes' },
+        { type: 'governo_ba', table: 'base_consulta_governo_ba' },
         { type: 'governo_am', table: 'governo_am_clientes' },
+        { type: 'governo_am', table: 'base_consulta_governo_am' },
         { type: 'governo_ce', table: 'governo_ce_clientes' },
+        { type: 'governo_ce', table: 'base_consulta_governo_ce' },
         { type: 'governo_ro', table: 'governo_ro_clientes' },
+        { type: 'governo_ro', table: 'base_consulta_governo_ro' },
         { type: 'prefeitura_ponta_grossa', table: 'prefeitura_ponta_grossa_clientes' },
-        { type: 'amazon_prev', table: 'amazon_prev_clientes' }
+        { type: 'prefeitura_ponta_grossa', table: 'base_consulta_prefeitura_ponta_grossa' },
+        { type: 'amazon_prev', table: 'amazon_prev_clientes' },
+        { type: 'amazon_prev', table: 'base_consulta_amazon_prev' }
       ]
 
       const checkResults = await Promise.all(
         tableCheckList.map(async ({ type, table }) => {
           try {
-            const { data } = await supabase.from(table).select('id').or(`cpf.eq.${paddedCpf},cpf.eq.${digits}`).limit(1).maybeSingle()
+            const { data } = await supabase.from(table).select('cpf').or(cpfOrFilter).limit(1).maybeSingle()
             return data ? type : null
           } catch {
             return null
@@ -560,15 +585,6 @@ export function ClientDetailsModal({
       const matchedTypes = new Set(checkResults.filter(Boolean) as string[])
 
       if (matchedTypes.size === 0) {
-        const [hasAmazon, hasPg] = await Promise.all([
-          supabase.from('base_consulta_amazon_prev').select('id').or(`cpf.eq.${paddedCpf},cpf.eq.${digits}`).limit(1).maybeSingle().then(r => !!r.data).catch(() => false),
-          supabase.from('base_consulta_prefeitura_ponta_grossa').select('id').or(`cpf.eq.${paddedCpf},cpf.eq.${digits}`).limit(1).maybeSingle().then(r => !!r.data).catch(() => false)
-        ])
-        if (hasAmazon) matchedTypes.add('amazon_prev')
-        if (hasPg) matchedTypes.add('prefeitura_ponta_grossa')
-      }
-
-      if (matchedTypes.size === 0) {
         setIsLoading(false)
         setError("Cliente não encontrado.")
         return
@@ -576,10 +592,37 @@ export function ClientDetailsModal({
 
       // 1. Try search in SIAPE Clients
       const { data: siapeData } = matchedTypes.has('siape')
-        ? await withRetry<ClientData | null>(async () => await supabase.from('clientes').select('*').eq('cpf', paddedCpf).maybeSingle())
+        ? await withRetry<ClientData | null>(async () => await supabase.from('clientes').select('*').or(cpfOrFilter).maybeSingle())
         : { data: null }
 
-      if (siapeData) {
+      let resolvedSiapeData = siapeData
+      if (!resolvedSiapeData && matchedTypes.has('siape')) {
+        const { data: baseSiape } = await withRetry(async () => await supabase.from('base_consulta_siape').select('*').or(cpfOrFilter).maybeSingle())
+        if (baseSiape) {
+          resolvedSiapeData = {
+            id: (baseSiape.id as string) || (baseSiape.cpf as string),
+            nome: baseSiape.nome as string | null,
+            cpf: baseSiape.cpf as string,
+            data_nascimento: baseSiape.data_nascimento as string | null,
+            idade: (baseSiape.idade as number | undefined) ?? null,
+            telefone_1: baseSiape.telefone_1 as string | null,
+            telefone_2: baseSiape.telefone_2 as string | null,
+            telefone_3: baseSiape.telefone_3 as string | null,
+          } as ClientData
+        }
+      }
+
+      if (resolvedSiapeData) {
+        const siapeCpfVariants = Array.from(new Set([
+          resolvedSiapeData.cpf,
+          resolvedSiapeData.cpf.replace(/\D/g, ""),
+          resolvedSiapeData.cpf.replace(/\D/g, "").padStart(11, '0'),
+          digits,
+          paddedCpf,
+          formattedCpf
+        ].filter(Boolean)))
+        const siapeMatriculasOr = siapeCpfVariants.map(c => `cliente_cpf.eq.${c}`).join(",")
+
         const { data: regData, error: regError } = await withRetry<Record<string, unknown>[] | null>(async () => 
           await supabase
             .from('matriculas')
@@ -590,14 +633,34 @@ export function ClientDetailsModal({
                 itens_credito (*)
               )
             `)
-            .eq('cliente_cpf', (siapeData as ClientData).cpf)
+            .or(siapeMatriculasOr)
         )
+
+        let finalRegs = (regData as Registration[]) || []
+        if (finalRegs.length === 0) {
+          const { data: baseSiapeRegs } = await withRetry(async () => await supabase.from('base_consulta_siape').select('*').or(cpfOrFilter))
+          if (baseSiapeRegs && baseSiapeRegs.length > 0) {
+            finalRegs = baseSiapeRegs.map((b: any) => ({
+              ...b,
+              id: b.id || b.matricula || '---',
+              numero_matricula: b.matricula || '---',
+              matricula: b.matricula || '---',
+              orgao: b.orgao || "SIAPE (FEDERAL)",
+              situacao: b.situacao || null,
+              vinculo: b.vinculo || b.situacao || null,
+              margem_total: b.margem_total || 0,
+              margem_disponivel: b.margem_disponivel || 0,
+              uf: b.uf || 'DF',
+              instituidores: []
+            })) as unknown as Registration[]
+          }
+        }
 
         if (regError) console.error("Erro ao buscar matrículas SIAPE:", regError)
         foundProfiles.push({
           type: 'siape',
-          client: siapeData,
-          registrations: (regData as Registration[]) || []
+          client: resolvedSiapeData,
+          registrations: finalRegs
         })
       }
 
