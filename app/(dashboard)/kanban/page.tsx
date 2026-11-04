@@ -64,7 +64,7 @@ import {
   ProximaAcaoConfig, 
   calcularVencimentoComSla 
 } from "@/lib/kanban-proximas-acoes"
-import { hasProposalDigitacao, syncKanbanForClosedProposal } from "@/lib/sync-kanban-propostas"
+import { hasProposalDigitacao, syncKanbanForClosedProposal, isDigitacaoAposDataCorte } from "@/lib/sync-kanban-propostas"
 
 // Definição das Etapas do Kanban Comercial
 export type KanbanStage = 
@@ -927,8 +927,9 @@ function inferKanbanStage(
   const prop = propInfo || ticket.proposta_info
   const pStatus = (prop?.status || "").toUpperCase().trim()
   const hasDigitacao = Boolean(
-    (prop?.ade && prop.ade.trim()) && 
-    (prop?.data_digitacao && prop.data_digitacao.trim())
+    (prop?.ade && prop.ade.trim() && prop.ade.trim() !== "-") && 
+    (prop?.data_digitacao && prop.data_digitacao.trim() && prop.data_digitacao.trim() !== "-") &&
+    isDigitacaoAposDataCorte(prop.data_digitacao)
   )
 
   // 1. Proposta digitada no banco deste operador que foi cancelada no banco vai automaticamente para PERDIDO
@@ -2507,6 +2508,7 @@ export default function KanbanPage() {
                 const sameCpf = cCpf && pCpf && cCpf === pCpf
                 const sameLead = p.id_lead && String(p.id_lead).trim() === String(t.id).trim()
                 if (!sameCpf && !sameLead) return false
+                if (!hasProposalDigitacao(p)) return false
 
                 return matchesProposalUser(p, t)
               })
