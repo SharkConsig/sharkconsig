@@ -2485,7 +2485,7 @@ export default function KanbanPage() {
             cpfChunks.map(chunk =>
               supabase
                 .from("propostas")
-                .select("id, id_lead, cliente_cpf, ade, data_digitacao, status, corretor_id, corretor, nome_corretor, estagiario_colaborador_id, estagiario_colaborador_nome")
+                .select("id, id_lead, cliente_cpf, ade, data_digitacao, status, corretor_id, corretor, estagiario_colaborador_id, estagiario_colaborador_nome")
                 .in("cliente_cpf", chunk)
                 .order("updated_at", { ascending: false })
             )
