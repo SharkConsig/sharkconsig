@@ -1923,6 +1923,7 @@ export default function KanbanPage() {
             status_chamados:status_id (nome)
           `)
           .eq('cliente_cpf', cleanCpf)
+          .gte('created_at', '2026-10-30T00:00:00')
           .order('created_at', { ascending: false })
 
         if (!fetchErr && isMounted) {
@@ -2394,6 +2395,7 @@ export default function KanbanPage() {
               .from("chamados")
               .select("id, cliente_cpf, user_id, margem, margem_liquida_5, margem_beneficio_5, valor_operacao, created_at")
               .in("cliente_cpf", chunk)
+              .gte("created_at", "2026-10-30T00:00:00")
               .order("created_at", { ascending: false })
           )
         ).then(responses => {
