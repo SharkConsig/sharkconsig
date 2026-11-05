@@ -137,6 +137,64 @@ interface ProdutoConfig {
   convenios: { nome: string } | null;
 }
 
+function normalizeConvenio(name: string | null | undefined): string {
+  if (!name) return ""
+  const upper = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .trim()
+
+  const isCartaoBeneficio = upper.includes("CARTAO BENEFICIO") || upper.includes("CARTAO BENEF")
+
+  if (
+    upper.includes("PREF SAO PAULO") ||
+    upper.includes("PREFEITURA SP") ||
+    upper.includes("PREF SP") ||
+    upper.includes("PMSP") ||
+    (upper.includes("PREFEITURA") && upper.includes("SAO PAULO"))
+  ) {
+    return isCartaoBeneficio ? "PREF SAO PAULO CARTÃO BENEFICIO" : "PREF SAO PAULO"
+  }
+
+  if (upper.includes("GOVERNO SP") || upper.includes("GOV SP") || upper.includes("SPPREV")) {
+    return isCartaoBeneficio ? "GOVERNO SP CARTÃO BENEFÍCIO" : "GOVERNO SP"
+  }
+
+  if (upper.includes("GOVERNO RJ") || upper.includes("GOV RJ") || upper.includes("RIO DE JANEIRO")) {
+    return "GOVERNO RIO DE JANEIRO"
+  }
+
+  if (upper.includes("GOVERNO MG") || upper.includes("GOV MG") || upper.includes("MINAS GERAIS")) {
+    return "GOVERNO MINAS GERAIS"
+  }
+
+  if (upper.includes("GOVERNO PIAUI") || upper.includes("GOVERNO PI") || upper.includes("GOV PI")) {
+    return isCartaoBeneficio ? "GOVERNO PI  CARTÃO BENEFICIO" : "GOVERNO PIAUI"
+  }
+
+  if (upper.includes("SIAPE") || upper === "FEDERAL") {
+    return isCartaoBeneficio ? "FEDERAL CARTÃO BENEFÍCIO" : "FEDERAL"
+  }
+
+  return upper
+}
+
+function isMatchingConvenio(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false
+  if (a === b) return true
+  const normA = normalizeConvenio(a)
+  const normB = normalizeConvenio(b)
+  if (normA && normB && normA === normB) return true
+  if (
+    (normA === "PREF SAO PAULO" && normB.startsWith("PREF SAO PAULO")) ||
+    (normB === "PREF SAO PAULO" && normA.startsWith("PREF SAO PAULO"))
+  ) {
+    return true
+  }
+  return false
+}
+
 export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { proposal: Proposal; onRefresh: () => void }) {
   const { perfil: user, isAdmin, isDeveloper, isOperational, isCorretor, isSupervisor, isMonitoramento } = useAuth()
 
@@ -404,7 +462,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       ? dbProdutosConfigs.filter(cfg => {
           if (cfg.ativo === false) return false
           const convNome = cfg.convenios?.nome || dbConvenios.find(c => c.id === cfg.convenio_id)?.nome
-          return convNome === selection.convenio
+          return isMatchingConvenio(convNome, selection.convenio) || cfg.convenio_id === selection.convenio
         })
       : dbProdutosConfigs
 
@@ -430,7 +488,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
       if (cfg.ativo === false) return false
       if (selection.convenio) {
         const convNome = cfg.convenios?.nome || dbConvenios.find(c => c.id === cfg.convenio_id)?.nome
-        if (convNome && convNome !== selection.convenio) return false
+        if (convNome && !isMatchingConvenio(convNome, selection.convenio) && cfg.convenio_id !== selection.convenio) return false
       }
       if (selection.banco) {
         const bancoObj = dbBancos.find(b => b.id === cfg.banco_id || b.nome === cfg.banco_id)
@@ -831,10 +889,10 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
           dbBancos.find(b => b.id === config.banco_id || b.nome === config.banco_id)?.nome === curBanco ||
           dbBancos.find(b => b.nome === curBanco)?.id === config.banco_id ||
           config.banco_id === curBanco;
+        const configConvNome = config.convenios?.nome || dbConvenios.find(c => c.id === config.convenio_id || c.nome === config.convenio_id)?.nome;
         const matchConvenio = !curConvenio || 
-          dbConvenios.find(c => c.id === config.convenio_id || c.nome === config.convenio_id)?.nome === curConvenio ||
+          isMatchingConvenio(configConvNome, curConvenio) ||
           dbConvenios.find(c => c.id === curConvenio)?.id === config.convenio_id ||
-          config.convenios?.nome === curConvenio ||
           config.convenio_id === curConvenio;
         const matchOperacao = !curOperacao || 
           (config.operacoes && Array.isArray(config.operacoes) && config.operacoes.some((op: string) => 
@@ -1589,10 +1647,10 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
               dbBancos.find(b => b.id === config.banco_id || b.nome === config.banco_id)?.nome === curBanco ||
               dbBancos.find(b => b.nome === curBanco)?.id === config.banco_id ||
               config.banco_id === curBanco;
+            const configConvNome = config.convenios?.nome || dbConvenios.find(c => c.id === config.convenio_id || c.nome === config.convenio_id)?.nome;
             const matchConvenio = !curConvenio || 
-              dbConvenios.find(c => c.id === config.convenio_id || c.nome === config.convenio_id)?.nome === curConvenio ||
+              isMatchingConvenio(configConvNome, curConvenio) ||
               dbConvenios.find(c => c.id === curConvenio)?.id === config.convenio_id ||
-              config.convenios?.nome === curConvenio ||
               config.convenio_id === curConvenio;
             const matchOperacao = !curOperacao || 
               (config.operacoes && Array.isArray(config.operacoes) && config.operacoes.some((op: string) => 
@@ -2411,14 +2469,25 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                       <div className="overflow-y-auto custom-scrollbar p-1">
                         {(() => {
                           const bancoId = dbBancos.find(b => b.nome === selection.banco)?.id
-                          const convenioId = dbConvenios.find(c => c.nome === selection.convenio)?.id
                           const operacaoId = dbOperacoes.find(o => o.nome === selection.operacao)?.id
 
                           const options = (dbProdutosConfigs as ProdutoConfig[]).flatMap(config => {
                             // Aplicar mesma regra de filtragem da área 'DIGITAR PROPOSTA'
-                            const matchBanco = !bancoId || config.banco_id === bancoId;
-                            const matchConvenio = !convenioId || config.convenio_id === convenioId;
-                            const matchOperacao = !operacaoId || (config.operacoes && config.operacoes.includes(operacaoId));
+                            const configConvNome = config.convenios?.nome || dbConvenios.find(c => c.id === config.convenio_id)?.nome;
+                            const matchBanco = !selection.banco || 
+                              config.banco_id === bancoId || 
+                              config.banco_id === selection.banco ||
+                              dbBancos.find(b => b.id === config.banco_id)?.nome === selection.banco;
+                            const matchConvenio = !selection.convenio || 
+                              isMatchingConvenio(configConvNome, selection.convenio) || 
+                              config.convenio_id === selection.convenio;
+                            const matchOperacao = !selection.operacao || !operacaoId || (
+                              config.operacoes && Array.isArray(config.operacoes) && config.operacoes.some(op => 
+                                op === operacaoId || 
+                                op === selection.operacao || 
+                                dbOperacoes.find(o => o.id === op)?.nome === selection.operacao
+                              )
+                            );
                             
                             if (!matchBanco || !matchConvenio || !matchOperacao) return [];
 
@@ -2428,7 +2497,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                                 .map((regra: Regra, idx: number) => ({
                                   id: `${config.id}-rule-${idx}`,
                                   nome_tabela: config.nome_tabela,
-                                  convenioNome: config.convenios?.nome,
+                                  convenioNome: configConvNome,
                                   prazo: typeof regra.prazo === 'string' ? parseInt(regra.prazo) : regra.prazo,
                                   coeficiente: typeof regra.coeficiente === 'string' ? parseFloat(regra.coeficiente.replace(',', '.')) : regra.coeficiente,
                                   percentual_producao: typeof regra.percentual_producao === 'string' ? parseFloat(regra.percentual_producao.replace(',', '.')) : regra.percentual_producao,
@@ -2438,14 +2507,17 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                             return [{
                               id: config.id,
                               nome_tabela: config.nome_tabela,
-                              convenioNome: config.convenios?.nome,
+                              convenioNome: configConvNome,
                               prazo: config.prazo || 0,
                               coeficiente: config.coeficiente || 0,
                               percentual_producao: config.percentual_producao || 0,
                               percentual_comissao: config.percentual_comissao || undefined,
                             }];
                           }).filter(opt => {
-                            const searchStr = `${opt.nome_tabela || ''} ${opt.prazo || ''} ${opt.coeficiente || ''} ${opt.convenioNome || ''}`.toLowerCase()
+                            const isPrefSp = (opt.convenioNome && /pref.*sao paulo|prefeitura/i.test(opt.convenioNome)) || 
+                              (opt.nome_tabela && /pref.*sao paulo|prefeitura/i.test(opt.nome_tabela));
+                            const aliasStr = isPrefSp ? ' prefeitura sp prefeitura de sao paulo pref sp pmsp' : '';
+                            const searchStr = `${opt.nome_tabela || ''} ${opt.prazo || ''} ${opt.coeficiente || ''} ${opt.convenioNome || ''}${aliasStr}`.toLowerCase()
                             return searchStr.includes(coefSearchTerm.toLowerCase())
                           });
 

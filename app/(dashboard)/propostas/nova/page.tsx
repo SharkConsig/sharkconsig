@@ -1356,8 +1356,21 @@ export function NewProposalForm({
   }
 
   const matchesConvenio = (config: ProdutoConfig, convId: string, convNome?: string) => {
-    if (config.convenio_id === convId) return true
+    if (convId && config.convenio_id === convId) return true
     if (convNome && config.convenios?.nome === convNome) return true
+    if (convNome) {
+      const norm = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().trim()
+      const n1 = norm(convNome)
+      const n2 = norm(config.convenios?.nome || '')
+      if (
+        (n1.includes("PREFEITURA SP") || n1.includes("PREF SAO PAULO") || n1.includes("PREF SP") || n1.includes("PMSP")) &&
+        (n2.includes("PREF SAO PAULO") || n2.includes("PREFEITURA SP"))
+      ) return true
+      if (
+        (n1.includes("GOVERNO SP") || n1.includes("GOV SP") || n1.includes("SPPREV")) &&
+        (n2.includes("GOVERNO SP") || n2.includes("GOV SP"))
+      ) return true
+    }
     return false
   }
 
@@ -2328,14 +2341,21 @@ export function NewProposalForm({
                         const filteredConfigs = dbProdutosConfigs
                           .filter(config => {
                             const matchBanco = config.banco_id === selection.bancoId || config.bancos?.id === selection.bancoId;
-                            const matchConvenio = config.convenio_id === selection.convenioId;
-                            const matchOperacao = config.operacoes && (config.operacoes.includes(selection.operacaoId) || config.operacoes.includes(selection.operacao));
+                            const matchConvenio = !selection.convenioId && !selection.convenio
+                              ? true
+                              : matchesConvenio(config, selection.convenioId, selection.convenio);
+                            const matchOperacao = !selection.operacaoId && !selection.operacao
+                              ? true
+                              : config.operacoes && (config.operacoes.includes(selection.operacaoId) || config.operacoes.includes(selection.operacao));
                             
                             if (!matchBanco || !matchConvenio || !matchOperacao) return false;
                             if (isPJ && !hasValidPJCommission(config)) return false;
 
                             const rulesStr = config.regras?.map(r => `${r.prazo} ${r.coeficiente}`).join(' ') || '';
-                            const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''} ${rulesStr}`.toLowerCase()
+                            const isPrefSp = (config.convenios?.nome && /pref.*sao paulo|prefeitura/i.test(config.convenios.nome)) ||
+                              (config.nome_tabela && /pref.*sao paulo|prefeitura/i.test(config.nome_tabela));
+                            const aliasStr = isPrefSp ? ' prefeitura sp prefeitura de sao paulo pref sp pmsp' : '';
+                            const searchStr = `${config.nome_tabela || ''} ${config.prazo || ''} ${config.coeficiente || ''} ${config.convenios?.nome || ''} ${rulesStr}${aliasStr}`.toLowerCase()
                             return searchStr.includes(coefSearchTerm.toLowerCase())
                           });
 

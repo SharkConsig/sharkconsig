@@ -43,6 +43,37 @@ function normalizeStr(str: string): string {
     .trim()
 }
 
+function isMatchingConvenio(a: string, b: string): boolean {
+  if (!a || !b) return false
+  const normA = normalizeStr(a)
+  const normB = normalizeStr(b)
+  if (normA === normB || normA.includes(normB) || normB.includes(normA)) return true
+
+  const isPrefSp = (s: string) => 
+    s.includes("pref sao paulo") || 
+    s.includes("prefeitura sp") || 
+    s.includes("pref sp") || 
+    s.includes("pmsp") || 
+    (s.includes("prefeitura") && s.includes("sao paulo"))
+
+  if (isPrefSp(normA) && isPrefSp(normB)) return true
+
+  const isGovSp = (s: string) =>
+    s.includes("governo sp") ||
+    s.includes("gov sp") ||
+    s.includes("spprev") ||
+    (s.includes("governo") && s.includes("sao paulo"))
+
+  if (isGovSp(normA) && isGovSp(normB)) return true
+
+  const isFederal = (s: string) =>
+    s.includes("siape") || s.includes("federal")
+
+  if (isFederal(normA) && isFederal(normB)) return true
+
+  return false
+}
+
 export function CoeficienteTabelaSelector({
   id,
   convenio = "",
@@ -137,9 +168,9 @@ export function CoeficienteTabelaSelector({
     const matchingConfigs = cachedConfigs.filter(cfg => {
       if (!cleanConv) return true // Se nenhum convênio foi informado, mostra todas as tabelas
       const convNome = cachedConvenios?.get(String(cfg.convenio_id)) || ""
-      const normConvNome = normalizeStr(convNome)
-      if (!normConvNome) return false
-      return normConvNome === cleanConv || normConvNome.includes(cleanConv) || cleanConv.includes(normConvNome)
+      if (convNome && isMatchingConvenio(convNome, convenio)) return true
+      if (cfg.nome_tabela && isMatchingConvenio(cfg.nome_tabela, convenio)) return true
+      return false
     })
 
     const result: TabelaOption[] = []
@@ -200,11 +231,12 @@ export function CoeficienteTabelaSelector({
   const filteredOptions = useMemo(() => {
     if (!searchTerm.trim()) return options
     const term = normalizeStr(searchTerm)
-    return options.filter(opt => 
-      normalizeStr(opt.label).includes(term) ||
-      normalizeStr(opt.coeficiente).includes(term) ||
-      String(opt.prazo).includes(term)
-    )
+    return options.filter(opt => {
+      const isPrefSp = normalizeStr(opt.label).includes("pref sao paulo") || normalizeStr(opt.nomeTabela).includes("pref sao paulo")
+      const aliasStr = isPrefSp ? " prefeitura sp prefeitura de sao paulo pref sp pmsp" : ""
+      const fullText = (normalizeStr(opt.label) + " " + normalizeStr(opt.coeficiente) + " " + opt.prazo + aliasStr)
+      return fullText.includes(term)
+    })
   }, [options, searchTerm])
 
   const displayText = useMemo(() => {

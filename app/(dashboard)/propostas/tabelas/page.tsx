@@ -152,7 +152,14 @@ export default function TabelasRegrasPage() {
 
     const prodText = `${prod.prazo || ''} ${prod.prazo ? prod.prazo + 'x' : ''} ${prod.coeficiente || ''}`
 
-    const searchableStr = `${bankName} ${convName} ${tableName} ${opNames} ${regrasText} ${prodText}`.toLowerCase()
+    let aliases = ''
+    if (convName.includes('pref sao paulo') || tableName.includes('pref sao paulo') || convName.includes('prefeitura') || tableName.includes('prefeitura')) {
+      aliases += ' prefeitura sp prefeitura de sao paulo prefeitura de são paulo pref sp pmsp'
+    } else if (convName.includes('gov sp') || tableName.includes('gov sp') || convName.includes('governo sp') || tableName.includes('governo sp')) {
+      aliases += ' governo de sao paulo spprev governo sp gov sp'
+    }
+
+    const searchableStr = `${bankName} ${convName} ${tableName} ${opNames} ${regrasText} ${prodText} ${aliases}`.toLowerCase()
 
     return searchTerms.every(term => searchableStr.includes(term))
   }
