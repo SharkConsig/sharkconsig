@@ -65,6 +65,8 @@ import {
   calcularVencimentoComSla 
 } from "@/lib/kanban-proximas-acoes"
 import { hasProposalDigitacao, syncKanbanForClosedProposal, isDigitacaoAposDataCorte } from "@/lib/sync-kanban-propostas"
+import ExcelJS from "exceljs"
+import { saveAs } from "file-saver"
 
 // Definição das Etapas do Kanban Comercial
 export type KanbanStage = 
@@ -1171,7 +1173,8 @@ function checkIsDevEnvironment(): boolean {
 }
 
 export default function KanbanPage() {
-  const { user, perfil, isAdmin, isDeveloper } = useAuth()
+  const { user, perfil, isAdmin, isDeveloper, isSupervisor, isOperational, isMonitoramento } = useAuth()
+  const [isExportingExcel, setIsExportingExcel] = useState(false)
 
   // Verificação de ambiente (Desenvolvimento no AI Studio vs Produção)
   const [isDevEnv, setIsDevEnv] = useState<boolean>(true)
@@ -1184,6 +1187,23 @@ export default function KanbanPage() {
 
   // Determinar se o usuário atual é gestor ou operador de execução
   const userRole = (perfil?.role || "").trim()
+  const userFuncao = (perfil?.funcao || "").trim().toLowerCase()
+
+  // Permissão de exportação para Excel: Operacional, Supervisor, Monitoramento, Administrador, Desenvolvedor
+  const canExportExcel = Boolean(
+    isAdmin ||
+    isDeveloper ||
+    isSupervisor ||
+    isOperational ||
+    isMonitoramento ||
+    userRole === "Operacional" ||
+    userRole === "Supervisor" ||
+    userRole === "Monitoramento" ||
+    userRole === "Administrador" ||
+    userRole === "Desenvolvedor" ||
+    ["operacional", "supervisor", "monitoramento", "administrador", "desenvolvedor"].includes(userFuncao)
+  )
+
   const isGestor = Boolean(
     isAdmin || 
     userRole === "Administrador" || 
@@ -2866,6 +2886,145 @@ export default function KanbanPage() {
       totalFechados
     }
   }, [filteredTickets, groupedColumns])
+
+  // Exportar atendimentos do Kanban para planilha Excel
+  const handleExportExcel = async () => {
+    if (filteredTickets.length === 0) {
+      toast.error("Não há atendimentos para exportar no momento.")
+      return
+    }
+
+    setIsExportingExcel(true)
+    const loadingToast = toast.loading("Gerando planilha Excel dos atendimentos...")
+
+    try {
+      const workbook = new ExcelJS.Workbook()
+      workbook.creator = "SharkConsig"
+      workbook.created = new Date()
+
+      const worksheet = workbook.addWorksheet("Atendimentos Kanban", {
+        views: [{ showGridLines: true }]
+      })
+
+      worksheet.columns = [
+        { header: "Etapa", key: "etapa", width: 28 },
+        { header: "Responsável", key: "responsavel", width: 26 },
+        { header: "Cliente", key: "cliente", width: 34 },
+        { header: "CPF", key: "cpf", width: 18 },
+        { header: "Telefone do Cliente", key: "telefone", width: 22 },
+        { header: "Valor Operação", key: "valor_operacao", width: 20 },
+        { header: "Produto/Modalidade", key: "produto_modalidade", width: 26 },
+      ]
+
+      const STAGE_TITLES: Record<string, string> = {
+        "EM RETOMADA": "Em interação ou retomada",
+        "EM ABORDAGEM": "Em interação ou retomada",
+        "ENTRADA DO SITE": "Em interação ou retomada",
+        "EM NEGOCIAÇÃO": "Em negociação",
+        "EM REATIVAÇÃO": "Em reativação",
+        "SEM INTERESSE": "Sem interesse",
+        "FECHADO": "Fechado",
+        "PERDIDO": "Perdido",
+      }
+
+      const formatFullCpf = (raw?: string | null) => {
+        if (!raw) return ""
+        const digits = String(raw).replace(/\D/g, "")
+        if (digits.length === 11) {
+          return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
+        }
+        return digits || String(raw)
+      }
+
+      const formatFullPhone = (raw?: string | null, raw2?: string | null) => {
+        const p = raw || raw2 || ""
+        const digits = String(p).replace(/\D/g, "")
+        if (digits.length === 11) {
+          return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+        }
+        if (digits.length === 10) {
+          return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+        }
+        return digits || String(p)
+      }
+
+      filteredTickets.forEach(t => {
+        const meta = parseMetadata(t.descricao)
+        const prop = propostasPorCpf[t.id] || t.proposta_info
+        let stageKey = inferKanbanStage(t, meta, prop)
+        if (stageKey === "EM ABORDAGEM" || (stageKey as string) === "ENTRADA DO SITE") {
+          stageKey = "EM RETOMADA"
+        }
+        const etapaLabel = STAGE_TITLES[stageKey] || stageKey
+
+        const responsavel = 
+          t.responsavel_nome || 
+          t.user_nome || 
+          meta.user_nome || 
+          (t as any).operador_nome || 
+          (meta as any).operador_nome || 
+          (t as any).corretor_nome || 
+          "Não atribuído"
+
+        const clienteNome = t.cliente_nome || meta.cliente_nome || "Não informado"
+        const cpfFull = formatFullCpf(t.cliente_cpf || meta.cliente_cpf)
+        const telFull = formatFullPhone(t.cliente_telefone || meta.cliente_telefone, t.cliente_telefone_2 || meta.cliente_telefone_2)
+
+        const opData = getValorOperacaoDeAbertura(t)
+        const opNum = parseValorToNumber(opData.valor)
+        const valorNum = opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0)
+        const valorFormatado = valorNum > 0 
+          ? valorNum.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) 
+          : (opData.valor || "R$ 0,00")
+
+        const produtoModalidade = 
+          (opData.label && opData.label !== "Valor Operação" 
+            ? opData.label.toUpperCase() 
+            : (meta.produto_modalidade || (meta as any).modalidade || t.tipo_solicitacao || t.convenio || "---"))
+
+        worksheet.addRow({
+          etapa: etapaLabel,
+          responsavel: responsavel,
+          cliente: clienteNome,
+          cpf: cpfFull,
+          telefone: telFull,
+          valor_operacao: valorFormatado,
+          produto_modalidade: produtoModalidade,
+        })
+      })
+
+      // Estilização do cabeçalho
+      const headerRow = worksheet.getRow(1)
+      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 }
+      headerRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF0F172A" }
+      }
+      headerRow.alignment = { vertical: "middle", horizontal: "center" }
+      headerRow.height = 28
+
+      // Alinhamento das linhas
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return
+        row.height = 22
+        row.alignment = { vertical: "middle" }
+        row.getCell(4).alignment = { vertical: "middle", horizontal: "center" } // CPF
+        row.getCell(5).alignment = { vertical: "middle", horizontal: "center" } // Telefone
+        row.getCell(6).alignment = { vertical: "middle", horizontal: "right" }  // Valor Operação
+      })
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+      saveAs(blob, `SharkConsig_Kanban_Atendimentos_${format(new Date(), "ddMMyyyy_HHmm")}.xlsx`)
+      toast.success("Planilha de atendimentos exportada com sucesso!", { id: loadingToast })
+    } catch (error) {
+      console.error("Erro ao exportar atendimentos para Excel:", error)
+      toast.error("Erro ao gerar arquivo Excel de atendimentos.", { id: loadingToast })
+    } finally {
+      setIsExportingExcel(false)
+    }
+  }
 
   // Copiar para clipboard
   const handleCopy = (text: string, label: string) => {
@@ -6229,36 +6388,57 @@ export default function KanbanPage() {
       <main className="flex-1 pt-2 px-3 sm:px-4 pb-2 sm:pb-3 space-y-2.5 overflow-hidden flex flex-col bg-[#FDFDFD] min-h-0">
         {/* Barra de Gavetas e Seletor de Modo (Quadro x Lista) */}
         <div className="flex items-center justify-between gap-2.5 shrink-0 overflow-x-auto pb-0.5 no-scrollbar">
-          {/* Seletor de Modo: Quadro vs Lista (Alinhado à esquerda no início da linha) */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/90 shadow-2xs shrink-0 select-none">
-            <button
-              type="button"
-              onClick={() => setDisplayMode("QUADRO")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
-                displayMode === "QUADRO"
-                  ? "bg-white text-slate-900 shadow-xs border border-slate-200/80 font-black"
-                  : "text-slate-500 hover:text-slate-800"
-              )}
-              title="Visualização em Quadro (Colunas com cartões)"
-            >
-              <LayoutGrid className="w-3.5 h-3.5 text-slate-700" />
-              <span>Quadro</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setDisplayMode("LISTA")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
-                displayMode === "LISTA"
-                  ? "bg-white text-sky-950 shadow-xs border border-sky-300 font-black"
-                  : "text-slate-500 hover:text-slate-800"
-              )}
-              title="Visualização em Lista (Linhas sequenciais de etapas)"
-            >
-              <List className="w-3.5 h-3.5 text-sky-700" />
-              <span>Lista</span>
-            </button>
+          {/* Lado Esquerdo: Modo (Quadro x Lista) e Botão Exportar Excel */}
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Seletor de Modo: Quadro vs Lista (Alinhado à esquerda no início da linha) */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/90 shadow-2xs shrink-0 select-none">
+              <button
+                type="button"
+                onClick={() => setDisplayMode("QUADRO")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                  displayMode === "QUADRO"
+                    ? "bg-white text-slate-900 shadow-xs border border-slate-200/80 font-black"
+                    : "text-slate-500 hover:text-slate-800"
+                )}
+                title="Visualização em Quadro (Colunas com cartões)"
+              >
+                <LayoutGrid className="w-3.5 h-3.5 text-slate-700" />
+                <span>Quadro</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDisplayMode("LISTA")}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                  displayMode === "LISTA"
+                    ? "bg-white text-sky-950 shadow-xs border border-sky-300 font-black"
+                    : "text-slate-500 hover:text-slate-800"
+                )}
+                title="Visualização em Lista (Linhas sequenciais de etapas)"
+              >
+                <List className="w-3.5 h-3.5 text-sky-700" />
+                <span>Lista</span>
+              </button>
+            </div>
+
+            {/* Botão Exportar Excel ao lado direito dos seletores Quadro / Lista */}
+            {canExportExcel && (
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={isExportingExcel}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs disabled:opacity-50 cursor-pointer shrink-0 border border-emerald-700 select-none"
+                title="Exportar atendimentos do Kanban para planilha Excel"
+              >
+                {isExportingExcel ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5 text-white" />
+                )}
+                <span>Exportar Excel</span>
+              </button>
+            )}
           </div>
 
           {/* Gavetas de WhatsApp Arquivado */}
