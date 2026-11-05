@@ -3331,7 +3331,40 @@ export default function KanbanPage() {
         .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
         .trim()
       const deveLimparSemInteresse = isSaindoDeSemInteresse && cleanObs === "Sem interesse"
-      const novaObservacao = deveLimparSemInteresse ? "" : cleanObs
+      let novaObservacao = deveLimparSemInteresse ? "" : cleanObs
+
+      const motivoTrim = motivo ? motivo.trim() : ""
+      let updatedHistoricoObs = Array.isArray(meta.observacoes_historico) ? [...meta.observacoes_historico] : []
+
+      if (motivoTrim) {
+        // Se havia observação anterior não catalogada no array de histórico
+        if (cleanObs && !updatedHistoricoObs.some(item => item?.texto?.trim() === cleanObs)) {
+          const partes = cleanObs.split(/\n\s*\n/)
+          partes.forEach(p => {
+            const tr = p.trim()
+            if (tr && !updatedHistoricoObs.some(item => item?.texto?.trim() === tr)) {
+              updatedHistoricoObs.push({
+                texto: tr,
+                data: meta.observacao_data || ticket.updated_at || new Date().toISOString(),
+                autor: perfil?.nome || "Colaborador"
+              })
+            }
+          })
+        }
+
+        updatedHistoricoObs.push({
+          texto: motivoTrim,
+          data: new Date().toISOString(),
+          autor: perfil?.nome || "Colaborador"
+        })
+
+        novaObservacao = updatedHistoricoObs
+          .slice()
+          .reverse()
+          .map(item => item.texto.trim())
+          .filter(Boolean)
+          .join("\n\n")
+      }
 
       const historicoAtual = Array.isArray(ticket.historico_movimentacoes)
         ? ticket.historico_movimentacoes
@@ -3353,7 +3386,9 @@ export default function KanbanPage() {
         proxima_acao: proximaAcaoPadrao,
         vencimento_acao: vencimentoCalculado,
         alerta_atrasado: false,
-        historico_kanban: novoHistorico
+        historico_kanban: novoHistorico,
+        observacoes_historico: updatedHistoricoObs,
+        observacao_data: motivoTrim ? new Date().toISOString() : meta.observacao_data
       }
 
       // Ao mover para uma nova etapa, limpar explicitamente agendamentos expirados anteriores e régua
@@ -3377,6 +3412,11 @@ export default function KanbanPage() {
         }
         if (deveLimparSemInteresse) {
           updatePayload.observacoes = ""
+        } else if (motivoTrim) {
+          updatePayload.observacoes = novaObservacao
+        }
+        if (destinoEtapa === "PERDIDO" && motivoTrim) {
+          updatePayload.motivo_perda = motivoTrim
         }
 
         const { error } = await supabase
@@ -3415,6 +3455,7 @@ export default function KanbanPage() {
         setAtendimentoModalTicket(prev => prev ? {
           ...prev,
           status: destinoEtapa,
+          observacoes: novaObservacao,
           descricao: newDesc,
           historico_movimentacoes: novoHistorico
         } : null)
@@ -3425,6 +3466,7 @@ export default function KanbanPage() {
           return {
             ...t,
             status: destinoEtapa,
+            observacoes: novaObservacao,
             descricao: newDesc,
             historico_movimentacoes: novoHistorico
           }
@@ -7841,6 +7883,22 @@ export default function KanbanPage() {
                           data: dataAg || meta.observacao_data || atendimentoModalTicket.updated_at
                         })
                       }
+
+                      // 4. Do histórico de movimentações (motivo registrado ao mover de etapa)
+                      const movs = Array.isArray(atendimentoModalTicket.historico_movimentacoes)
+                        ? atendimentoModalTicket.historico_movimentacoes
+                        : (Array.isArray(meta.historico_kanban) ? meta.historico_kanban : [])
+                      movs.forEach((m: any) => {
+                        if (m?.motivo && isUserObservation(m.motivo)) {
+                          const trimmed = String(m.motivo).trim()
+                          if (trimmed) {
+                            itensBrutos.push({
+                              texto: trimmed,
+                              data: m.data
+                            })
+                          }
+                        }
+                      })
 
                       // Deduplicação estrita por texto normalizado
                       const seen = new Set<string>()
