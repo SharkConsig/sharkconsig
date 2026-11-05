@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS public.governo_mg_clientes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     cpf TEXT UNIQUE NOT NULL,
     nome TEXT,
+    data_nascimento DATE,
     telefone_1 TEXT,
     telefone_2 TEXT,
     telefone_3 TEXT,
@@ -23,7 +24,10 @@ CREATE TABLE IF NOT EXISTS public.governo_mg_matriculas (
     cliente_id UUID REFERENCES public.governo_mg_clientes(id) ON DELETE CASCADE,
     matricula TEXT NOT NULL,
     orgao TEXT,
+    margem_70 NUMERIC(15, 2) DEFAULT 0.00,
     margem_emprestimo NUMERIC(15, 2) DEFAULT 0.00,
+    cartao_credito NUMERIC(15, 2) DEFAULT 0.00,
+    cartao_beneficio NUMERIC(15, 2) DEFAULT 0.00,
     margem_beneficio NUMERIC(15, 2) DEFAULT 0.00,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -34,12 +38,16 @@ CREATE TABLE IF NOT EXISTS public.governo_mg_matriculas (
 CREATE TABLE IF NOT EXISTS public.base_consulta_governo_mg (
     cpf TEXT,
     nome TEXT,
+    data_nascimento DATE,
     matricula TEXT,
     orgao TEXT,
     telefone_1 TEXT,
     telefone_2 TEXT,
     telefone_3 TEXT,
+    margem_70 NUMERIC(15, 2) DEFAULT 0.00,
     margem_emprestimo NUMERIC(15, 2) DEFAULT 0.00,
+    cartao_credito NUMERIC(15, 2) DEFAULT 0.00,
+    cartao_beneficio NUMERIC(15, 2) DEFAULT 0.00,
     margem_beneficio NUMERIC(15, 2) DEFAULT 0.00,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -84,10 +92,10 @@ BEGIN
     TRUNCATE TABLE public.base_consulta_governo_mg;
     
     INSERT INTO public.base_consulta_governo_mg (
-        cpf, nome, matricula, orgao, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_beneficio
+        cpf, nome, data_nascimento, matricula, orgao, telefone_1, telefone_2, telefone_3, margem_70, margem_emprestimo, cartao_credito, cartao_beneficio, margem_beneficio
     )
     SELECT 
-        c.cpf, c.nome, m.matricula, m.orgao, c.telefone_1, c.telefone_2, c.telefone_3, m.margem_emprestimo, m.margem_beneficio
+        c.cpf, c.nome, c.data_nascimento, m.matricula, m.orgao, c.telefone_1, c.telefone_2, c.telefone_3, COALESCE(m.margem_70, 0.00), COALESCE(m.margem_emprestimo, 0.00), COALESCE(m.cartao_credito, 0.00), COALESCE(m.cartao_beneficio, m.margem_beneficio, 0.00), COALESCE(m.margem_beneficio, m.cartao_beneficio, 0.00)
     FROM public.governo_mg_clientes c
     INNER JOIN public.governo_mg_matriculas m ON c.id = m.cliente_id;
 

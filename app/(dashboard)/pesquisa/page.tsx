@@ -1113,23 +1113,46 @@ export default function SearchClientPage() {
         }
       }) as unknown as Registration[]
     } else if (type === 'governo_mg') {
+      let rawRegs: Record<string, unknown>[] = []
       const { data: regData, error: regError } = await withRetry(async () => 
         await supabase.from('governo_mg_matriculas').select('*').eq('cliente_id', clientData.id)
       )
-      if (regError) throw regError
-      return (regData || []).map((r: Record<string, unknown>) => {
+      if (!regError && Array.isArray(regData) && regData.length > 0) {
+        rawRegs = regData as Record<string, unknown>[]
+      }
+
+      const cleanCpf = (clientData.cpf || '').replace(/\D/g, '')
+      const paddedCpf = cleanCpf.padStart(11, '0')
+      if (rawRegs.length === 0 || rawRegs.every(r => !r.cartao_credito && !r.cartao_beneficio && !r.margem_beneficio)) {
+        const { data: baseData } = await withRetry(async () => 
+          await supabase.from('base_consulta_governo_mg').select('*').eq('cpf', paddedCpf)
+        )
+        if (Array.isArray(baseData) && baseData.length > 0) {
+          rawRegs = baseData as Record<string, unknown>[]
+        }
+      }
+
+      return rawRegs.map((r: Record<string, unknown>) => {
+        const rmc = Number(r.cartao_credito ?? r.margem_cartao_credito ?? r.margem_cartao ?? 0)
+        const rcc = Number(r.cartao_beneficio ?? r.margem_beneficio ?? r.margem_cartao_beneficio ?? 0)
+        const s70 = Number(r.margem_70 ?? r.saldo_70 ?? 0)
+        const emp = Number(r.margem_emprestimo ?? r.margem_disponivel_emprestimo ?? 0)
         return {
           ...r,
-          id: r.id as string,
+          id: (r.id as string) || (r.matricula as string) || '---',
           numero_matricula: (r.matricula as string) || '---',
           matricula: (r.matricula as string) || '---',
           orgao: r.orgao as string | null,
           uf: 'MG',
-          margem_70: r.margem_70 || 0.00,
-          margem_emprestimo: r.margem_emprestimo || 0.00,
-          cartao_credito: r.cartao_credito || 0.00,
-          cartao_beneficio: r.cartao_beneficio || r.margem_beneficio || 0.00,
-          margem_beneficio: r.cartao_beneficio || r.margem_beneficio || 0.00,
+          margem_70: s70,
+          saldo_70: s70,
+          margem_emprestimo: emp,
+          cartao_credito: rmc,
+          margem_cartao_credito: rmc,
+          margem_cartao: rmc,
+          cartao_beneficio: rcc,
+          margem_beneficio: rcc,
+          margem_cartao_beneficio: rcc,
           instituidores: []
         }
       }) as unknown as Registration[]
@@ -1423,6 +1446,28 @@ export default function SearchClientPage() {
             type: type as ConvenioProfile['type'],
             client: clientObj,
             registrations: regs
+          }
+        } else if (type === 'governo_mg') {
+          const { data: baseData } = await withRetry(async () =>
+            await supabase.from('base_consulta_governo_mg').select('*').eq('cpf', cpf).maybeSingle()
+          )
+          if (baseData) {
+            const clientObj: ClientData = {
+              id: (baseData.id as string) || (baseData.cpf as string),
+              nome: baseData.nome as string | null,
+              cpf: baseData.cpf as string,
+              data_nascimento: baseData.data_nascimento as string | null,
+              idade: (baseData.idade as number | undefined) ?? null,
+              telefone_1: baseData.telefone_1 as string | null,
+              telefone_2: baseData.telefone_2 as string | null,
+              telefone_3: (baseData.telefone_3 as string | null) || null,
+            }
+            const regs = await fetchRegistrationsForType('governo_mg', clientObj)
+            return {
+              type: 'governo_mg',
+              client: clientObj,
+              registrations: regs
+            }
           }
         } else if (type === 'amazon_prev') {
           const { data: baseData } = await withRetry(async () =>

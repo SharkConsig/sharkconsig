@@ -2476,17 +2476,18 @@ export default function ImportBatchPage() {
   };
 
   const processGovernoMgChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
-    // cpf,nome,telefone,orgao,matricula,margem_70,margem_emprestimo,cartao_credito,cartao_beneficio
+    // cpf,nome,data_nascimento,telefone_1,telefone_2,orgao,matricula,margem_70,margem_emprestimo,cartao_credito,cartao_beneficio
     const normalizedRows = results.map(row => {
       const normRow = normalizeRowKeys(row);
       return {
         cpf: normalizeCPF(normRow.cpf || normRow.cpf_numero || ""),
         nome: normalizeText(normRow.nome || normRow.nome_completo || ""),
+        data_nascimento: normalizeDate(normRow.data_nascimento || normRow.data_de_nascimento || normRow.nascimento || ""),
         matricula: normalizeText(normRow.matricula || normRow.numero_matricula || ""),
         orgao: normalizeText(normRow.orgao || normRow.orgao_nome || ""),
-        telefone_1: normalizePhone(normRow.telefone || normRow.telefone1 || normRow.telefone_1 || ""),
-        telefone_2: normalizePhone(normRow.telefone2 || normRow.telefone_2 || ""),
-        telefone_3: normalizePhone(normRow.telefone3 || normRow.telefone_3 || ""),
+        telefone_1: normalizePhone(normRow.telefone_1 || normRow.telefone1 || normRow.telefone || ""),
+        telefone_2: normalizePhone(normRow.telefone_2 || normRow.telefone2 || ""),
+        telefone_3: normalizePhone(normRow.telefone_3 || normRow.telefone3 || ""),
         margem_70: normalizeMoney(normRow.margem_70 || normRow.margem70 || normRow.saldo_70 || "0"),
         margem_emprestimo: normalizeMoney(normRow.margem_emprestimo || normRow.margememprestimo || "0"),
         cartao_credito: normalizeMoney(normRow.cartao_credito || normRow.cartaocredito || normRow.margem_cartao || "0"),
@@ -2529,6 +2530,7 @@ export default function ImportBatchPage() {
       }
 
       // Anti-Null/Zero para os demais campos de clientes (se vier nulo/vazio, não sobrescreve dado do banco)
+      const data_nascimento = !shouldPreserve(row.data_nascimento) ? row.data_nascimento : ((existingInMap?.data_nascimento || dbClient?.data_nascimento || null) as string | null);
       const telefone_1 = !shouldPreserve(row.telefone_1) ? row.telefone_1 : ((existingInMap?.telefone_1 || dbClient?.telefone_1 || null) as string | null);
       const telefone_2 = !shouldPreserve(row.telefone_2) ? row.telefone_2 : ((existingInMap?.telefone_2 || dbClient?.telefone_2 || null) as string | null);
       const telefone_3 = !shouldPreserve(row.telefone_3) ? row.telefone_3 : ((existingInMap?.telefone_3 || dbClient?.telefone_3 || null) as string | null);
@@ -2536,6 +2538,7 @@ export default function ImportBatchPage() {
       clientMap.set(row.cpf, {
         cpf: row.cpf,
         nome,
+        data_nascimento,
         telefone_1,
         telefone_2,
         telefone_3,
@@ -2588,8 +2591,42 @@ export default function ImportBatchPage() {
 
     const identRows = Array.from(identMap.values());
     const { error: identErr } = await withRetry(async () => {
-      return await supabase.from('governo_mg_matriculas')
+      const res = await supabase.from('governo_mg_matriculas')
         .upsert(identRows, { onConflict: 'cliente_id,matricula' });
+
+      if (res.error && res.error.message && res.error.message.includes("in the schema cache")) {
+        const fallbackRows = identRows.map((r: Record<string, unknown>) => {
+          const rowCopy: Record<string, unknown> = {
+            cliente_id: r.cliente_id,
+            matricula: r.matricula,
+            orgao: r.orgao,
+            margem_emprestimo: r.margem_emprestimo,
+            margem_beneficio: r.cartao_beneficio ?? r.margem_beneficio ?? 0.00,
+            updated_at: r.updated_at
+          };
+          if (!res.error.message.includes("'margem_70'")) rowCopy.margem_70 = r.margem_70;
+          if (!res.error.message.includes("'cartao_credito'")) rowCopy.cartao_credito = r.cartao_credito;
+          return rowCopy;
+        });
+
+        const retryRes = await supabase.from('governo_mg_matriculas')
+          .upsert(fallbackRows, { onConflict: 'cliente_id,matricula' });
+
+        if (retryRes.error && retryRes.error.message && retryRes.error.message.includes("in the schema cache")) {
+          const minimalRows = identRows.map((r: Record<string, unknown>) => ({
+            cliente_id: r.cliente_id,
+            matricula: r.matricula,
+            orgao: r.orgao,
+            margem_emprestimo: r.margem_emprestimo,
+            margem_beneficio: r.cartao_beneficio ?? r.margem_beneficio ?? 0.00,
+            updated_at: r.updated_at
+          }));
+          return await supabase.from('governo_mg_matriculas')
+            .upsert(minimalRows, { onConflict: 'cliente_id,matricula' });
+        }
+        return retryRes;
+      }
+      return res;
     });
 
     if (identErr) throw new Error(`Erro ao salvar matrículas MG: ${identErr?.message}`);
@@ -3881,7 +3918,7 @@ export default function ImportBatchPage() {
       headers = "cpf,nome,data_de_nascimento,telefone_1,telefone_2,orgao,matricula,data_de_admissao,situacao_do_funcionario,margem_emprestimo_bruta,margem_emprestimo_liquida,margem_cartao_bruta,margem_cartao_liquida";
       filename = "modelo_prefeitura_contagem.csv";
     } else if (type === 'governo_mg') {
-      headers = "cpf,nome,telefone,orgao,matricula,margem_70,margem_emprestimo,cartao_credito,cartao_beneficio";
+      headers = "cpf,nome,data_nascimento,telefone_1,telefone_2,orgao,matricula,margem_70,margem_emprestimo,cartao_credito,cartao_beneficio";
       filename = "modelo_governo_mg.csv";
     } else if (type === 'governo_ms') {
       headers = "cpf,nome,matricula,orgao,telefone_1,telefone_2,telefone_3";

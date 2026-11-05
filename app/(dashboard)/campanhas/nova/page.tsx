@@ -157,7 +157,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'cpf', 'nome', 'data_nascimento', 'matricula', 'orgao', 'secretaria', 'cargo', 'vinculo', 'salario', 'margem_emprestimo', 'margem_cartao', 'margem_cartao_beneficio', 'telefone_1', 'telefone_2', 'telefone_3'
   ],
   'base_consulta_governo_mg': [
-    'cpf', 'nome', 'telefone_1', 'telefone_2', 'telefone_3', 'matricula', 'orgao', 'margem_70', 'margem_emprestimo', 'cartao_credito', 'cartao_beneficio'
+    'cpf', 'nome', 'data_nascimento', 'telefone_1', 'telefone_2', 'telefone_3', 'matricula', 'orgao', 'margem_70', 'margem_emprestimo', 'cartao_credito', 'cartao_beneficio', 'margem_beneficio'
   ],
   'base_consulta_prefeitura_ponta_grossa': [
     'cpf', 'nome', 'idade', 'matricula', 'origem', 'situacao', 'vinculo', 'margem_total', 'margem_disponivel', 'telefone_1', 'telefone_2', 'telefone_3'

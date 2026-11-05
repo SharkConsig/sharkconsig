@@ -264,6 +264,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
     ];
 
     const cartaoConsignadoKeys = [
+      "cartao_credito",
+      "margem_cartao_credito",
       "liquida_5",
       "liquida_5%",
       "margem_cartao_liquida",
@@ -281,6 +283,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
     ];
 
     const cartaoBeneficioKeys = [
+      "cartao_beneficio",
       "beneficio_liquida_5",
       "beneficio_liquida_5%",
       "margem_cartao_beneficio",

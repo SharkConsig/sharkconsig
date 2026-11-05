@@ -1127,26 +1127,95 @@ export function ClientDetailsModal({
         )
         if (regError) console.error("Erro ao buscar matrículas Governo MG:", regError)
 
-        const mappedRegs = (regData || []).map((r: Record<string, unknown>) => ({
-          ...r,
-          id: r.id as string,
-          numero_matricula: (r.matricula as string) || '---',
-          matricula: (r.matricula as string) || '---',
-          orgao: r.orgao as string | null,
-          uf: 'MG',
-          margem_70: r.margem_70 || 0.00,
-          margem_emprestimo: r.margem_emprestimo || 0.00,
-          cartao_credito: r.cartao_credito || 0.00,
-          cartao_beneficio: r.cartao_beneficio || r.margem_beneficio || 0.00,
-          margem_beneficio: r.cartao_beneficio || r.margem_beneficio || 0.00,
-          instituidores: []
-        }))
+        let rawRegs = (regData && regData.length > 0) ? regData : []
+        if (rawRegs.length === 0 || rawRegs.every(r => !r.cartao_credito && !r.cartao_beneficio && !r.margem_beneficio)) {
+          const { data: baseRegs } = await withRetry<Record<string, unknown>[] | null>(async () =>
+            await supabase.from('base_consulta_governo_mg').select('*').eq('cpf', paddedCpf)
+          )
+          if (baseRegs && baseRegs.length > 0) {
+            rawRegs = baseRegs
+          }
+        }
+
+        const mappedRegs = (rawRegs || []).map((r: Record<string, unknown>) => {
+          const emp = Number(r.margem_emprestimo ?? r.margem_disponivel_emprestimo ?? 0)
+          const rmc = Number(r.cartao_credito ?? r.margem_cartao_credito ?? r.margem_cartao ?? r.margem_cartao_consignado ?? 0)
+          const rcc = Number(r.cartao_beneficio ?? r.margem_beneficio ?? r.margem_cartao_beneficio ?? 0)
+          const s70 = r.margem_70 !== undefined && r.margem_70 !== null ? Number(r.margem_70) : (r.saldo_70 !== undefined && r.saldo_70 !== null ? Number(r.saldo_70) : null)
+          return {
+            ...r,
+            id: (r.id as string) || (r.matricula as string) || '1',
+            numero_matricula: (r.matricula as string) || '---',
+            matricula: (r.matricula as string) || '---',
+            orgao: r.orgao as string | null,
+            uf: 'MG',
+            margem_70: s70,
+            saldo_70: s70,
+            margem_emprestimo: emp,
+            margem_disponivel_emprestimo: emp,
+            cartao_credito: rmc,
+            margem_cartao_credito: rmc,
+            margem_cartao_consignado: rmc,
+            cartao_beneficio: rcc,
+            margem_beneficio: rcc,
+            margem_cartao_beneficio: rcc,
+            instituidores: []
+          }
+        })
 
         foundProfiles.push({
           type: 'governo_mg',
           client: mgData,
           registrations: mappedRegs as unknown as Registration[]
         })
+      } else if (matchedTypes.has('governo_mg')) {
+        const { data: baseData } = await withRetry<Record<string, unknown> | null>(async () =>
+          await supabase.from('base_consulta_governo_mg').select('*').eq('cpf', paddedCpf).maybeSingle()
+        )
+        if (baseData) {
+          const clientData: ClientData = {
+            id: (baseData.id as string) || (baseData.cpf as string),
+            cpf: baseData.cpf as string,
+            nome: (baseData.nome as string) || null,
+            data_nascimento: (baseData.data_nascimento as string) || null,
+            telefone_1: (baseData.telefone_1 as string) || null,
+            telefone_2: (baseData.telefone_2 as string) || null,
+            telefone_3: (baseData.telefone_3 as string) || null,
+          }
+          const { data: baseRegs } = await withRetry<Record<string, unknown>[] | null>(async () =>
+            await supabase.from('base_consulta_governo_mg').select('*').eq('cpf', paddedCpf)
+          )
+          const mappedRegs = (baseRegs || [baseData]).map((r: Record<string, unknown>) => {
+            const emp = Number(r.margem_emprestimo ?? r.margem_disponivel_emprestimo ?? 0)
+            const rmc = Number(r.cartao_credito ?? r.margem_cartao_credito ?? r.margem_cartao ?? r.margem_cartao_consignado ?? 0)
+            const rcc = Number(r.cartao_beneficio ?? r.margem_beneficio ?? r.margem_cartao_beneficio ?? 0)
+            const s70 = r.margem_70 !== undefined && r.margem_70 !== null ? Number(r.margem_70) : (r.saldo_70 !== undefined && r.saldo_70 !== null ? Number(r.saldo_70) : null)
+            return {
+              ...r,
+              id: (r.id as string) || (r.matricula as string) || '1',
+              numero_matricula: (r.matricula as string) || '---',
+              matricula: (r.matricula as string) || '---',
+              orgao: (r.orgao as string) || null,
+              uf: 'MG',
+              margem_70: s70,
+              saldo_70: s70,
+              margem_emprestimo: emp,
+              margem_disponivel_emprestimo: emp,
+              cartao_credito: rmc,
+              margem_cartao_credito: rmc,
+              margem_cartao_consignado: rmc,
+              cartao_beneficio: rcc,
+              margem_beneficio: rcc,
+              margem_cartao_beneficio: rcc,
+              instituidores: []
+            }
+          })
+          foundProfiles.push({
+            type: 'governo_mg',
+            client: clientData,
+            registrations: mappedRegs as unknown as Registration[]
+          })
+        }
       }
 
       // 11. Try search in Prefeitura Natal Clients
@@ -1751,9 +1820,9 @@ export function ClientDetailsModal({
       tel3: (client.telefone_3 || "").replace(/\D/g, ""),
       origem: selectedOrigemValue,
       telefone_empresa: selectedEmpresaPhone || "",
-      margem: formatCurrency(Number(reg.margem_35 || reg.margem_emprestimo || 0)),
-      liquida5: formatCurrency(Number(reg.liquida_5 || reg.margem_cartao || 0)),
-      beneficio5: formatCurrency(Number(reg.beneficio_liquida_5 || reg.margem_cartao_beneficio || 0)),
+      margem: formatCurrency(Number(reg.margem_35 || reg.margem_emprestimo || (reg as any).margem_disponivel || (reg as any).margem_liquida_emprestimo || 0)),
+      liquida5: formatCurrency(Number((reg as any).cartao_credito || (reg as any).margem_cartao_credito || reg.liquida_5 || reg.margem_cartao || (reg as any).margem_cartao_consignado || 0)),
+      beneficio5: formatCurrency(Number((reg as any).cartao_beneficio || (reg as any).margem_beneficio || (reg as any).margem_cartao_beneficio || reg.beneficio_liquida_5 || 0)),
       convenio: resolvedConvenio,
       matricula: String(reg.numero_matricula || reg.identificacao || reg.matricula || ""),
       from_kanban: "true"
@@ -1903,12 +1972,15 @@ export function ClientDetailsModal({
               margemRccDisp = Number(l.md_cartao_beneficio ?? l.margem_cartao_beneficio ?? 0);
               margemRccBruta = Number(l.mb_cartao_beneficio ?? l.margem_cartao_beneficio ?? margemRccDisp);
             } else {
-              margemEmpDisp = Number(anyReg.margem_disponivel_emprestimo ?? anyReg.margem_liquida_emprestimo ?? anyReg.margem_disponivel ?? anyReg.margem_emprestimo ?? anyReg.margem_consignavel ?? anyReg.margem_35 ?? 0);
+              saldo70Val = anyReg.saldo_70 !== undefined && anyReg.saldo_70 !== null 
+                ? Number(anyReg.saldo_70) 
+                : (anyReg.margem_70 !== undefined && anyReg.margem_70 !== null ? Number(anyReg.margem_70) : null);
+              margemEmpDisp = Number(anyReg.margem_emprestimo ?? anyReg.margem_disponivel_emprestimo ?? anyReg.margem_liquida_emprestimo ?? anyReg.margem_disponivel ?? anyReg.margem_consignavel ?? anyReg.margem_35 ?? 0);
               margemEmpBruta = Number(anyReg.margem_bruta_emprestimo ?? anyReg.margem_bruta ?? anyReg.margem_total ?? margemEmpDisp);
-              margemRmcDisp = Number(anyReg.margem_cartao_consignado ?? anyReg.margem_cartao_credito ?? anyReg.margem_cartao ?? anyReg.margem_rmc ?? anyReg.liquida_5 ?? 0);
-              margemRmcBruta = Number(anyReg.margem_bruta_cartao ?? anyReg.bruta_5 ?? margemRmcDisp);
-              margemRccDisp = Number(anyReg.margem_cartao_beneficio ?? anyReg.margem_rcc ?? anyReg.beneficio_liquida_5 ?? 0);
-              margemRccBruta = Number(anyReg.margem_bruta_beneficio ?? anyReg.beneficio_bruta_5 ?? margemRccDisp);
+              margemRmcDisp = Number(anyReg.cartao_credito ?? anyReg.margem_cartao_credito ?? anyReg.margem_cartao_consignado ?? anyReg.margem_cartao ?? anyReg.margem_rmc ?? anyReg.liquida_5 ?? 0);
+              margemRmcBruta = Number(anyReg.cartao_credito ?? anyReg.margem_cartao_credito ?? anyReg.margem_bruta_cartao ?? anyReg.bruta_5 ?? margemRmcDisp);
+              margemRccDisp = Number(anyReg.cartao_beneficio ?? anyReg.margem_beneficio ?? anyReg.margem_cartao_beneficio ?? anyReg.margem_rcc ?? anyReg.beneficio_liquida_5 ?? 0);
+              margemRccBruta = Number(anyReg.cartao_beneficio ?? anyReg.margem_beneficio ?? anyReg.margem_cartao_beneficio ?? anyReg.margem_bruta_beneficio ?? anyReg.beneficio_bruta_5 ?? margemRccDisp);
             }
           }
 
