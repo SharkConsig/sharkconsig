@@ -37,7 +37,7 @@ import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import ReactMarkdown from "react-markdown"
 import { Input } from "@/components/ui/input"
-import { CoeficienteTabelaSelector } from "@/components/chamados/coeficiente-tabela-selector"
+import { CoeficienteTabelaSelector, calculateValorProducao } from "@/components/chamados/coeficiente-tabela-selector"
 
 interface Attachment {
   name: string
@@ -97,6 +97,7 @@ interface TicketAtendimentoProps {
   }
   onMessageSent?: () => void
   onMarginsSaved?: () => void
+  onMarginsLiveChange?: (totals: { totalOperacao: number; totalProducao: number; selectedLabels: string[] }) => void
 }
 
 // Helper to extract metadata from description
@@ -125,7 +126,7 @@ const updateDescriptionWithMetadata = (desc: string, metadata: Record<string, un
   return cleaned + metadataBlock;
 };
 
-export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: TicketAtendimentoProps) {
+export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved, onMarginsLiveChange }: TicketAtendimentoProps) {
   const router = useRouter()
   const { perfil, user, isEstagio } = useAuth()
   const [isRedirectingProposta, setIsRedirectingProposta] = useState(false)
@@ -133,12 +134,18 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
   const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
 
   const canEditMargins = useMemo(() => {
-    const role = perfil?.role?.toLowerCase()
-    return role === 'supervisor' || role === 'operacional' || role === 'admin' || role === 'diretoria' || role === 'supervisor/coordenador' || role === 'desenvolvedor' || role === 'dev' || role === 'administrador'
-  }, [perfil?.role])
+    // Permite que corretores, estágios, supervisores e demais perfis selecionem e editem margens
+    return true
+  }, [])
 
   // States for margins, coefficients, operations
-  const [selectedOperationType, setSelectedOperationType] = useState<'margem' | 'liquida5' | 'beneficio5' | null>(null)
+  const [selectedOperationTypes, setSelectedOperationTypes] = useState<('margem' | 'liquida5' | 'beneficio5')[]>([])
+  const [ticketProdPercents, setTicketProdPercents] = useState<{ margem: number; liquida5: number; beneficio5: number }>({
+    margem: 0,
+    liquida5: 0,
+    beneficio5: 0
+  })
+  const selectedOperationType = selectedOperationTypes[0] || null
 
   const [ticketMargins, setTicketMargins] = useState({
     margem: "",
@@ -246,8 +253,47 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
       detectedType = 'beneficio5';
     }
     
-    setSelectedOperationType(meta?.selected_operation_type || detectedType || null);
+    let initialSelected: ('margem' | 'liquida5' | 'beneficio5')[] = [];
+    if (Array.isArray(meta?.selected_operation_types)) {
+      initialSelected = meta.selected_operation_types;
+    } else if (meta?.selected_operation_type) {
+      const parts = String(meta.selected_operation_type).split(",").map(s => s.trim()) as any[];
+      initialSelected = parts.filter(p => ['margem', 'liquida5', 'beneficio5'].includes(p));
+    } else if (detectedType) {
+      initialSelected = [detectedType];
+    }
+    
+    setSelectedOperationTypes(initialSelected);
   }, [ticket.id, ticket.descricao, ticket.margem, ticket.margem_liquida_5, ticket.margem_beneficio_5])
+
+  // Notifica o componente pai em tempo real sobre alterações nos totais de operação e produção
+  const onMarginsLiveChangeRef = useRef(onMarginsLiveChange);
+  useEffect(() => {
+    onMarginsLiveChangeRef.current = onMarginsLiveChange;
+  }, [onMarginsLiveChange]);
+
+  const lastTotalsKeyRef = useRef<string>("");
+
+  useEffect(() => {
+    if (!onMarginsLiveChangeRef.current) return;
+    const totalOp = selectedOperationTypes.reduce((acc, curr) => acc + parseCurrencyToNumber(ticketOperations[curr]), 0);
+    const totalProd = selectedOperationTypes.reduce((acc, curr) => acc + calculateValorProducao(ticketOperations[curr], ticketProdPercents[curr]), 0);
+    const labelsMap: Record<string, string> = {
+      margem: 'Margem 35%',
+      liquida5: 'Líquida 5%',
+      beneficio5: 'Benefício 5%'
+    };
+    const selectedLabels = selectedOperationTypes.map(t => labelsMap[t] || t);
+    const key = `${totalOp}_${totalProd}_${selectedLabels.join(',')}`;
+    if (lastTotalsKeyRef.current === key) return;
+    lastTotalsKeyRef.current = key;
+
+    onMarginsLiveChangeRef.current({
+      totalOperacao: totalOp,
+      totalProducao: totalProd,
+      selectedLabels
+    });
+  }, [selectedOperationTypes, ticketOperations, ticketProdPercents]);
 
   const formatAsCurrency = (value: string) => {
     const isNegative = value.includes("-");
@@ -324,14 +370,37 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
     setTicketOperations(prev => ({ ...prev, [field]: formatted }));
   };
 
-  const handleSelectTabela = (field: 'margem' | 'liquida5' | 'beneficio5', coef: string, label: string) => {
+  const handleSelectTabela = (field: 'margem' | 'liquida5' | 'beneficio5', coef: string, label: string, prodPercent?: number) => {
     handleCoefChange(field, coef);
     setTicketTabelaLabels(prev => ({ ...prev, [field]: label }));
+    if (typeof prodPercent === 'number') {
+      setTicketProdPercents(prev => ({ ...prev, [field]: prodPercent }));
+    }
+  };
+
+  const toggleSelectOperation = (type: 'margem' | 'liquida5' | 'beneficio5') => {
+    if (!canEditMargins) return;
+    setSelectedOperationTypes(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
+
+  const formatAsCurrencyNumber = (num: number) => {
+    if (!num) return "R$ 0,00";
+    return "R$ " + num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   const handleSaveMargins = async () => {
     setIsSavingMargins(true);
     try {
+      // Soma de todos os valores de operação selecionados
+      let selectedValNum: number | null = null;
+      if (selectedOperationTypes.length > 0) {
+        selectedValNum = selectedOperationTypes.reduce((acc, curr) => {
+          return acc + parseCurrencyToNumber(ticketOperations[curr]);
+        }, 0);
+      }
+
       const metadata = {
         margem: ticketMargins.margem,
         liquida5: ticketMargins.liquida5,
@@ -345,69 +414,67 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
         valor_operacao_margem: ticketOperations.margem,
         valor_operacao_liquida5: ticketOperations.liquida5,
         valor_operacao_beneficio5: ticketOperations.beneficio5,
-        selected_operation_type: selectedOperationType
+        valor_producao_margem: formatAsCurrencyNumber(calculateValorProducao(ticketOperations.margem, ticketProdPercents.margem)),
+        valor_producao_liquida5: formatAsCurrencyNumber(calculateValorProducao(ticketOperations.liquida5, ticketProdPercents.liquida5)),
+        valor_producao_beneficio5: formatAsCurrencyNumber(calculateValorProducao(ticketOperations.beneficio5, ticketProdPercents.beneficio5)),
+        selected_operation_type: selectedOperationTypes.join(','),
+        selected_operation_types: selectedOperationTypes
       };
 
       const updatedDescription = updateDescriptionWithMetadata(ticket.descricao || ticket.description || ticket.content || "", metadata);
 
-      // Find selected operation value numeric to store in public.chamados.valor_operacao
-      let selectedValNum = null;
-      if (selectedOperationType === 'margem') {
-        selectedValNum = parseCurrencyToNumber(ticketOperations.margem);
-      } else if (selectedOperationType === 'liquida5') {
-        selectedValNum = parseCurrencyToNumber(ticketOperations.liquida5);
-      } else if (selectedOperationType === 'beneficio5') {
-        selectedValNum = parseCurrencyToNumber(ticketOperations.beneficio5);
-      }
-
       const nowIso = new Date().toISOString();
-      const { error } = await supabase
-        .from('chamados')
-        .update({
-          // Não alteramos a coluna 'margem' (nem margem_liquida_5, nem margem_beneficio_5) para não alterar a margem do cliente no banco de dados.
-          descricao: updatedDescription,
-          valor_operacao: selectedValNum,
-          updated_at: nowIso
-        })
-        .eq('id', ticket.id);
+      if ((ticket as any).source_table === 'kanban_fichas') {
+        const { error: kError } = await supabase
+          .from('kanban_fichas')
+          .update({
+            metadata: metadata,
+            valor_solicitado: selectedValNum,
+            updated_at: nowIso
+          })
+          .eq('id', ticket.id);
+        if (kError) throw kError;
+      } else {
+        const { error } = await supabase
+          .from('chamados')
+          .update({
+            descricao: updatedDescription,
+            valor_operacao: selectedValNum,
+            updated_at: nowIso
+          })
+          .eq('id', ticket.id);
 
-      if (error) throw error;
+        if (error) throw error;
+      }
       ticket.updated_at = nowIso;
 
       initializedTicketIdRef.current = null;
 
       // Check if selected operation has been changed to insert a notification in messages
       const oldMeta = parseDescriptionMetadata(ticket.descricao || ticket.description || ticket.content || "");
-      const oldType = oldMeta?.selected_operation_type;
+      const oldTypes = Array.isArray(oldMeta?.selected_operation_types)
+        ? oldMeta.selected_operation_types
+        : (oldMeta?.selected_operation_type ? String(oldMeta.selected_operation_type).split(',').map(s => s.trim()) : []);
       
       let changed = false;
+      if (selectedOperationTypes.length !== oldTypes.length || selectedOperationTypes.some(t => !oldTypes.includes(t))) {
+        changed = true;
+      } else {
+        changed = selectedOperationTypes.some(t => {
+          return ticketMargins[t] !== (oldMeta?.[t] || "") || ticketOperations[t] !== (oldMeta?.[`valor_operacao_${t}`] || "");
+        });
+      }
+
       let selectionStr = "";
-
-      if (selectedOperationType) {
-        if (selectedOperationType !== oldType) {
-          changed = true;
-        } else {
-          if (selectedOperationType === 'margem') {
-            if (ticketMargins.margem !== (oldMeta?.margem || "") || ticketOperations.margem !== (oldMeta?.valor_operacao_margem || "")) {
-              changed = true;
-            }
-          } else if (selectedOperationType === 'liquida5') {
-            if (ticketMargins.liquida5 !== (oldMeta?.liquida5 || "") || ticketOperations.liquida5 !== (oldMeta?.valor_operacao_liquida5 || "")) {
-              changed = true;
-            }
-          } else if (selectedOperationType === 'beneficio5') {
-            if (ticketMargins.beneficio5 !== (oldMeta?.beneficio5 || "") || ticketOperations.beneficio5 !== (oldMeta?.valor_operacao_beneficio5 || "")) {
-              changed = true;
-            }
-          }
-        }
-
-        if (selectedOperationType === 'margem') {
-          selectionStr = `Margem 35% - ${ticketMargins.margem || "R$ 0,00"} (Valor Operação: ${ticketOperations.margem || "R$ 0,00"})`;
-        } else if (selectedOperationType === 'liquida5') {
-          selectionStr = `Líquida 5% - ${ticketMargins.liquida5 || "R$ 0,00"} (Valor Operação: ${ticketOperations.liquida5 || "R$ 0,00"})`;
-        } else if (selectedOperationType === 'beneficio5') {
-          selectionStr = `Benefício 5% - ${ticketMargins.beneficio5 || "R$ 0,00"} (Valor Operação: ${ticketOperations.beneficio5 || "R$ 0,00"})`;
+      if (selectedOperationTypes.length > 0) {
+        const labelsMap: Record<string, string> = {
+          margem: `Margem 35% - ${ticketMargins.margem || "R$ 0,00"} (Op: ${ticketOperations.margem || "R$ 0,00"} | Prod: ${formatAsCurrencyNumber(calculateValorProducao(ticketOperations.margem, ticketProdPercents.margem))})`,
+          liquida5: `Líquida 5% - ${ticketMargins.liquida5 || "R$ 0,00"} (Op: ${ticketOperations.liquida5 || "R$ 0,00"} | Prod: ${formatAsCurrencyNumber(calculateValorProducao(ticketOperations.liquida5, ticketProdPercents.liquida5))})`,
+          beneficio5: `Benefício 5% - ${ticketMargins.beneficio5 || "R$ 0,00"} (Op: ${ticketOperations.beneficio5 || "R$ 0,00"} | Prod: ${formatAsCurrencyNumber(calculateValorProducao(ticketOperations.beneficio5, ticketProdPercents.beneficio5))})`
+        };
+        selectionStr = selectedOperationTypes.map(t => labelsMap[t]).join(" + ");
+        if (selectedValNum !== null) {
+          selectionStr += ` | TOTAL OPERAÇÃO: R$ ${selectedValNum.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
       }
 
@@ -1225,7 +1292,7 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
           <div className="space-y-4 pt-2 border-t border-slate-100 animate-in fade-in duration-200">
             {/* Margem principal / 35% */}
           {getMarginLabel('margem') && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
                   {getMarginLabel('margem')}
@@ -1253,7 +1320,8 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                   value={ticketCoefficients.margem}
                   selectedLabel={ticketTabelaLabels.margem}
                   disabled={!canEditMargins}
-                  onChange={(coef, label) => handleSelectTabela('margem', coef, label)}
+                  onChange={(coef, label, prodPerc) => handleSelectTabela('margem', coef, label, prodPerc)}
+                  onPercentualProducaoResolved={(p) => setTicketProdPercents(prev => ({ ...prev, margem: p }))}
                 />
               </div>
 
@@ -1261,39 +1329,52 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                 <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
                   VALOR OPERAÇÃO
                 </label>
+                <Input
+                  id="op-val-margem"
+                  value={ticketOperations.margem}
+                  onChange={(e) => handleOpChange('margem', e.target.value)}
+                  readOnly={!canEditMargins}
+                  placeholder="R$ 0,00"
+                  className={cn(
+                    "h-[34px] text-[12px] font-bold transition-all",
+                    getMarginStyleClasses(ticketMargins.margem)
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  VALOR DE PRODUÇÃO
+                </label>
                 <div className="flex items-center gap-2">
                   <Input
-                    id="op-val-margem"
-                    value={ticketOperations.margem}
-                    onChange={(e) => handleOpChange('margem', e.target.value)}
-                    readOnly={!canEditMargins}
+                    id="prod-val-margem"
+                    value={formatAsCurrencyNumber(calculateValorProducao(ticketOperations.margem, ticketProdPercents.margem))}
+                    readOnly
                     placeholder="R$ 0,00"
-                    className={cn(
-                      "h-[34px] text-[12px] font-bold transition-all flex-1",
-                      getMarginStyleClasses(ticketMargins.margem)
-                    )}
+                    className="h-[34px] text-[12px] font-bold transition-all flex-1 bg-emerald-50/60 text-emerald-800 border-emerald-200"
                   />
-                  <label 
+                  <div 
                     onClick={(e) => {
                       e.stopPropagation()
-                      setSelectedOperationType('margem')
+                      toggleSelectOperation('margem')
                     }}
                     className={cn(
                       "flex items-center gap-1.5 cursor-pointer select-none px-2.5 h-[34px] rounded-lg border transition-all text-[10px] font-bold shrink-0",
-                      selectedOperationType === 'margem'
+                      selectedOperationTypes.includes('margem')
                         ? "bg-primary text-white border-primary shadow-xs"
                         : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700"
                     )}
                   >
                     <input
-                      type="radio"
-                      name={`selected_operation_${ticket.id}`}
-                      checked={selectedOperationType === 'margem'}
-                      onChange={() => setSelectedOperationType('margem')}
-                      className="w-3 h-3 text-primary border-slate-300 focus:ring-primary cursor-pointer"
+                      type="checkbox"
+                      checked={selectedOperationTypes.includes('margem')}
+                      readOnly
+                      tabIndex={-1}
+                      className="w-3.5 h-3.5 text-primary rounded border-slate-300 focus:ring-primary pointer-events-none cursor-pointer"
                     />
                     <span>SELECIONAR ESSE</span>
-                  </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1301,7 +1382,7 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
 
           {/* Margem Líquida 5% */}
           {getMarginLabel('liquida5') && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
                   {getMarginLabel('liquida5')}
@@ -1329,7 +1410,8 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                   value={ticketCoefficients.liquida5}
                   selectedLabel={ticketTabelaLabels.liquida5}
                   disabled={!canEditMargins}
-                  onChange={(coef, label) => handleSelectTabela('liquida5', coef, label)}
+                  onChange={(coef, label, prodPerc) => handleSelectTabela('liquida5', coef, label, prodPerc)}
+                  onPercentualProducaoResolved={(p) => setTicketProdPercents(prev => ({ ...prev, liquida5: p }))}
                 />
               </div>
 
@@ -1337,39 +1419,52 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                 <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
                   VALOR OPERAÇÃO
                 </label>
+                <Input
+                  id="op-val-liquida5"
+                  value={ticketOperations.liquida5}
+                  onChange={(e) => handleOpChange('liquida5', e.target.value)}
+                  readOnly={!canEditMargins}
+                  placeholder="R$ 0,00"
+                  className={cn(
+                    "h-[34px] text-[12px] font-bold transition-all",
+                    getMarginStyleClasses(ticketMargins.liquida5)
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  VALOR DE PRODUÇÃO
+                </label>
                 <div className="flex items-center gap-2">
                   <Input
-                    id="op-val-liquida5"
-                    value={ticketOperations.liquida5}
-                    onChange={(e) => handleOpChange('liquida5', e.target.value)}
-                    readOnly={!canEditMargins}
+                    id="prod-val-liquida5"
+                    value={formatAsCurrencyNumber(calculateValorProducao(ticketOperations.liquida5, ticketProdPercents.liquida5))}
+                    readOnly
                     placeholder="R$ 0,00"
-                    className={cn(
-                      "h-[34px] text-[12px] font-bold transition-all flex-1",
-                      getMarginStyleClasses(ticketMargins.liquida5)
-                    )}
+                    className="h-[34px] text-[12px] font-bold transition-all flex-1 bg-emerald-50/60 text-emerald-800 border-emerald-200"
                   />
-                  <label 
+                  <div 
                     onClick={(e) => {
                       e.stopPropagation()
-                      setSelectedOperationType('liquida5')
+                      toggleSelectOperation('liquida5')
                     }}
                     className={cn(
                       "flex items-center gap-1.5 cursor-pointer select-none px-2.5 h-[34px] rounded-lg border transition-all text-[10px] font-bold shrink-0",
-                      selectedOperationType === 'liquida5'
+                      selectedOperationTypes.includes('liquida5')
                         ? "bg-primary text-white border-primary shadow-xs"
                         : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700"
                     )}
                   >
                     <input
-                      type="radio"
-                      name={`selected_operation_${ticket.id}`}
-                      checked={selectedOperationType === 'liquida5'}
-                      onChange={() => setSelectedOperationType('liquida5')}
-                      className="w-3 h-3 text-primary border-slate-300 focus:ring-primary cursor-pointer"
+                      type="checkbox"
+                      checked={selectedOperationTypes.includes('liquida5')}
+                      readOnly
+                      tabIndex={-1}
+                      className="w-3.5 h-3.5 text-primary rounded border-slate-300 focus:ring-primary pointer-events-none cursor-pointer"
                     />
                     <span>SELECIONAR ESSE</span>
-                  </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1377,7 +1472,7 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
 
           {/* Margem Benefício 5% */}
           {getMarginLabel('beneficio5') && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
                   {getMarginLabel('beneficio5')}
@@ -1405,7 +1500,8 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                   value={ticketCoefficients.beneficio5}
                   selectedLabel={ticketTabelaLabels.beneficio5}
                   disabled={!canEditMargins}
-                  onChange={(coef, label) => handleSelectTabela('beneficio5', coef, label)}
+                  onChange={(coef, label, prodPerc) => handleSelectTabela('beneficio5', coef, label, prodPerc)}
+                  onPercentualProducaoResolved={(p) => setTicketProdPercents(prev => ({ ...prev, beneficio5: p }))}
                 />
               </div>
 
@@ -1413,40 +1509,71 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved }: Tic
                 <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
                   VALOR OPERAÇÃO
                 </label>
+                <Input
+                  id="op-val-beneficio5"
+                  value={ticketOperations.beneficio5}
+                  onChange={(e) => handleOpChange('beneficio5', e.target.value)}
+                  readOnly={!canEditMargins}
+                  placeholder="R$ 0,00"
+                  className={cn(
+                    "h-[34px] text-[12px] font-bold transition-all",
+                    getMarginStyleClasses(ticketMargins.beneficio5)
+                  )}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">
+                  VALOR DE PRODUÇÃO
+                </label>
                 <div className="flex items-center gap-2">
                   <Input
-                    id="op-val-beneficio5"
-                    value={ticketOperations.beneficio5}
-                    onChange={(e) => handleOpChange('beneficio5', e.target.value)}
-                    readOnly={!canEditMargins}
+                    id="prod-val-beneficio5"
+                    value={formatAsCurrencyNumber(calculateValorProducao(ticketOperations.beneficio5, ticketProdPercents.beneficio5))}
+                    readOnly
                     placeholder="R$ 0,00"
-                    className={cn(
-                      "h-[34px] text-[12px] font-bold transition-all flex-1",
-                      getMarginStyleClasses(ticketMargins.beneficio5)
-                    )}
+                    className="h-[34px] text-[12px] font-bold transition-all flex-1 bg-emerald-50/60 text-emerald-800 border-emerald-200"
                   />
-                  <label 
+                  <div 
                     onClick={(e) => {
                       e.stopPropagation()
-                      setSelectedOperationType('beneficio5')
+                      toggleSelectOperation('beneficio5')
                     }}
                     className={cn(
                       "flex items-center gap-1.5 cursor-pointer select-none px-2.5 h-[34px] rounded-lg border transition-all text-[10px] font-bold shrink-0",
-                      selectedOperationType === 'beneficio5'
+                      selectedOperationTypes.includes('beneficio5')
                         ? "bg-primary text-white border-primary shadow-xs"
                         : "bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700"
                     )}
                   >
                     <input
-                      type="radio"
-                      name={`selected_operation_${ticket.id}`}
-                      checked={selectedOperationType === 'beneficio5'}
-                      onChange={() => setSelectedOperationType('beneficio5')}
-                      className="w-3 h-3 text-primary border-slate-300 focus:ring-primary cursor-pointer"
+                      type="checkbox"
+                      checked={selectedOperationTypes.includes('beneficio5')}
+                      readOnly
+                      tabIndex={-1}
+                      className="w-3.5 h-3.5 text-primary rounded border-slate-300 focus:ring-primary pointer-events-none cursor-pointer"
                     />
                     <span>SELECIONAR ESSE</span>
-                  </label>
+                  </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Resumo quando houver seleção múltipla */}
+          {selectedOperationTypes.length > 0 && (
+            <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-lg text-xs flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-[10px] uppercase tracking-wider text-blue-900 bg-blue-100 px-2 py-0.5 rounded">
+                  {selectedOperationTypes.length > 1 ? `Margens Selecionadas (${selectedOperationTypes.length})` : 'Margem Selecionada'}
+                </span>
+                <span className="font-semibold text-blue-950">
+                  {selectedOperationTypes.map(t => t === 'margem' ? 'Margem 35%' : t === 'liquida5' ? 'Líquida 5%' : 'Benefício 5%').join(' + ')}
+                </span>
+              </div>
+              <div className="flex items-center gap-4 text-xs">
+                <span>Total Operação: <strong className="text-slate-900 font-black">R$ {selectedOperationTypes.reduce((acc, curr) => acc + parseCurrencyToNumber(ticketOperations[curr]), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
+                <span>Total Produção: <strong className="text-emerald-700 font-black">R$ {selectedOperationTypes.reduce((acc, curr) => acc + calculateValorProducao(ticketOperations[curr], ticketProdPercents[curr]), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
               </div>
             </div>
           )}

@@ -321,15 +321,227 @@ const formatValorBrl = (val: any): string => {
   return "R$ " + num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-const parseValorToNumber = (valStr: string) => {
-  if (!valStr) return 0
-  const clean = valStr.replace("R$", "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".")
-  const num = parseFloat(clean)
-  return isNaN(num) ? 0 : num
-}
+const parseValorToNumber = (valStr: any): number => {
+  if (valStr === null || valStr === undefined) return 0;
+  if (typeof valStr === "number") return isNaN(valStr) ? 0 : valStr;
+  const str = String(valStr).trim();
+  if (!str) return 0;
+  const clean = str.replace("R$", "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+  const num = parseFloat(clean);
+  return isNaN(num) ? 0 : num;
+};
 
-// Regra idêntica à lista de chamados da área 'CHAMADOS' para cálculo e exibição do Valor da Operação
+const parseCleanFloat = (val: string | number | null | undefined): number | null => {
+  if (val === null || val === undefined) return null;
+  if (typeof val === "number") return val;
+  const str = String(val).trim();
+  if (!str) return null;
+  let cleaned = str.replace(/[^0-9.,-]/g, "").trim();
+  if (!cleaned) return null;
+  if (cleaned.includes(",")) {
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  } else {
+    const parts = cleaned.split(".");
+    if (parts.length > 2) {
+      cleaned = parts.slice(0, -1).join("") + "." + parts[parts.length - 1];
+    }
+  }
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? null : parsed;
+};
+
+// Regra unificada para cálculo de Operação e Produção idêntica à de Chamados
+const getValoresOperacaoEProducao = (ticket: any) => {
+  if (!ticket) {
+    return {
+      valorOperacao: "R$ 0,00",
+      numOperacao: 0,
+      valorProducao: "R$ 0,00",
+      numProducao: 0,
+      label: "Valor Operação",
+      color: "text-slate-400"
+    };
+  }
+  const desc = ticket.descricao || ticket.description || ticket.content || "";
+  const meta = parseMetadata(desc);
+  const conv = (ticket.convenio || meta.convenio || "")?.toUpperCase();
+  const isSantoAndre = conv.includes("SANTO ANDRÉ") || conv.includes("SANTO ANDRE");
+
+  // Tipos de operação selecionados na ficha
+  let selectedTypes: ('margem' | 'liquida5' | 'beneficio5')[] = [];
+  if (Array.isArray(meta?.selected_operation_types) && meta.selected_operation_types.length > 0) {
+    selectedTypes = meta.selected_operation_types.filter((t: any) => ['margem', 'liquida5', 'beneficio5'].includes(t));
+  } else if (meta?.selected_operation_type) {
+    selectedTypes = String(meta.selected_operation_type)
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => ['margem', 'liquida5', 'beneficio5'].includes(s)) as any;
+  }
+
+  const labelsMap: Record<string, string> = {
+    margem: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%",
+    liquida5: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%",
+    beneficio5: isSantoAndre ? "Margem Benefício" : "Benefício 5%"
+  };
+  const colorsMap: Record<string, string> = {
+    margem: "text-amber-600",
+    liquida5: "text-emerald-600",
+    beneficio5: "text-blue-600"
+  };
+
+  // Se houver seleção explícita de uma ou mais margens
+  if (selectedTypes.length > 0) {
+    let sumOperacao = 0;
+    let sumProducao = 0;
+
+    selectedTypes.forEach(t => {
+      let opVal = parseValorToNumber(meta?.[`valor_operacao_${t}`]);
+      if (!opVal) {
+        const mVal = parseValorToNumber(meta?.[t] || (t === 'margem' ? ticket.margem : t === 'liquida5' ? ticket.margem_liquida_5 : ticket.margem_beneficio_5));
+        const cVal = parseCleanFloat(meta?.[`coeficiente_${t}`]) || (t === 'margem' ? 0.028 : 0.053);
+        if (mVal && cVal) opVal = mVal / cVal;
+      }
+      sumOperacao += opVal;
+
+      let prodVal = parseValorToNumber(meta?.[`valor_producao_${t}`]);
+      sumProducao += prodVal;
+    });
+
+    if (sumOperacao === 0 && ticket.valor_operacao) {
+      sumOperacao = parseValorToNumber(ticket.valor_operacao);
+    }
+
+    const valorOpStr = "R$ " + sumOperacao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const valorProdStr = "R$ " + sumProducao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    let label = "";
+    let color = "text-primary";
+    if (selectedTypes.length === 1) {
+      label = labelsMap[selectedTypes[0]];
+      color = colorsMap[selectedTypes[0]];
+    } else {
+      label = `Margens (${selectedTypes.length})`;
+      color = "text-indigo-600 font-extrabold";
+    }
+
+    return {
+      valorOperacao: valorOpStr,
+      numOperacao: sumOperacao,
+      valorProducao: valorProdStr,
+      numProducao: sumProducao,
+      label,
+      color
+    };
+  }
+
+  // 1. Fallback se valor_operacao estiver no chamado
+  if (ticket.valor_operacao !== null && ticket.valor_operacao !== undefined && ticket.valor_operacao !== 0) {
+    const sumOp = parseValorToNumber(ticket.valor_operacao);
+    const prodVal = meta?.valor_producao ? parseValorToNumber(meta.valor_producao) : 0;
+    return {
+      valorOperacao: "R$ " + sumOp.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numOperacao: sumOp,
+      valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numProducao: prodVal,
+      label: "Valor Operação",
+      color: "text-slate-900"
+    };
+  }
+
+  // 2. Fallbacks de margens da descrição ou colunas
+  const descNorm = desc ? desc.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() : "";
+  let textSelectedType: 'margem' | 'liquida5' | 'beneficio5' | null = null;
+  if (descNorm.includes("MARGEM 35%") || descNorm.includes("MARGEM LIQUIDA EMPRESTIMO") || descNorm.includes("MARGEM LÍQUIDA EMPRÉSTIMO")) {
+    textSelectedType = 'margem';
+  } else if (descNorm.includes("LIQUIDA 5%") || descNorm.includes("LÍQUIDA 5%") || descNorm.includes("MARGEM LIQUIDA CARTAO") || descNorm.includes("MARGEM LÍQUIDA CARTÃO")) {
+    textSelectedType = 'liquida5';
+  } else if (descNorm.includes("BENEFICIO 5%") || descNorm.includes("BENEFÍCIO 5%") || descNorm.includes("CARTAO BENEFICIO") || descNorm.includes("CARTÃO BENEFÍCIO") || descNorm.includes("CARTAO CONSIGINADO") || descNorm.includes("CARTÃO CONSIGINADO") || descNorm.includes("CARTAO") || descNorm.includes("CARTÃO")) {
+    textSelectedType = 'beneficio5';
+  }
+
+  if (textSelectedType) {
+    const t = textSelectedType;
+    let opVal = parseValorToNumber(meta?.[`valor_operacao_${t}`]);
+    if (!opVal) {
+      const mVal = parseValorToNumber(meta?.[t] || (t === 'margem' ? ticket.margem : t === 'liquida5' ? ticket.margem_liquida_5 : ticket.margem_beneficio_5));
+      const cVal = t === 'margem' ? 0.028 : 0.053;
+      if (mVal && cVal) opVal = mVal / cVal;
+    }
+    const prodVal = parseValorToNumber(meta?.[`valor_producao_${t}`]) || 0;
+    return {
+      valorOperacao: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numOperacao: opVal,
+      valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numProducao: prodVal,
+      label: labelsMap[t],
+      color: colorsMap[t]
+    };
+  }
+
+  // 3. Checar campos de meta
+  if (meta) {
+    if (meta.margem && meta.margem !== "" && meta.margem !== "R$ 0,00") {
+      const opVal = parseValorToNumber(meta.valor_operacao_margem);
+      const prodVal = parseValorToNumber(meta.valor_producao_margem);
+      return {
+        valorOperacao: meta.valor_operacao_margem || "R$ 0,00",
+        numOperacao: opVal,
+        valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        numProducao: prodVal,
+        label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%",
+        color: "text-amber-600"
+      };
+    }
+    if (meta.liquida5 && meta.liquida5 !== "" && meta.liquida5 !== "R$ 0,00") {
+      const opVal = parseValorToNumber(meta.valor_operacao_liquida5);
+      const prodVal = parseValorToNumber(meta.valor_producao_liquida5);
+      return {
+        valorOperacao: meta.valor_operacao_liquida5 || "R$ 0,00",
+        numOperacao: opVal,
+        valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        numProducao: prodVal,
+        label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%",
+        color: "text-emerald-600"
+      };
+    }
+    if (meta.beneficio5 && meta.beneficio5 !== "" && meta.beneficio5 !== "R$ 0,00") {
+      const opVal = parseValorToNumber(meta.valor_operacao_beneficio5);
+      const prodVal = parseValorToNumber(meta.valor_producao_beneficio5);
+      return {
+        valorOperacao: meta.valor_operacao_beneficio5 || "R$ 0,00",
+        numOperacao: opVal,
+        valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        numProducao: prodVal,
+        label: isSantoAndre ? "Margem Benefício" : "Benefício 5%",
+        color: "text-blue-600"
+      };
+    }
+  }
+
+  // 4. Default 0
+  return {
+    valorOperacao: "R$ 0,00",
+    numOperacao: 0,
+    valorProducao: "R$ 0,00",
+    numProducao: 0,
+    label: "Valor Operação",
+    color: "text-slate-400"
+  };
+};
+
 const getValorOperacaoDeAbertura = (ticket: any) => {
+  const res = getValoresOperacaoEProducao(ticket);
+  return {
+    valor: res.valorOperacao,
+    label: res.label,
+    color: res.color,
+    num: res.numOperacao,
+    valorProducao: res.valorProducao,
+    numProducao: res.numProducao
+  };
+};
+
+const _unused_legacy_getValorOperacaoDeAbertura = (ticket: any) => {
   if (!ticket) return { valor: "R$ 0,00", label: "Valor Operação", color: "text-slate-400" }
   const desc = ticket.descricao || ticket.description || ticket.content || ""
   const meta = parseMetadata(desc)
@@ -1291,7 +1503,8 @@ export default function KanbanPage() {
   // Modo de Exibição das Etapas: "QUADRO" (colunas de cartões) ou "LISTA" (linhas sequenciais)
   const [displayMode, setDisplayMode] = useState<"QUADRO" | "LISTA">("QUADRO")
   const [listSortBy, setListSortBy] = useState<"vencimento" | "valor" | "nome">("vencimento")
-  const [listFilterStage, setListFilterStage] = useState<string>("ALL")
+  const [listFilterStages, setListFilterStages] = useState<string[]>([])
+  const isStageSelected = (stageId: string) => listFilterStages.length === 0 || listFilterStages.includes("ALL") || listFilterStages.includes(stageId)
   const [listSearch, setListSearch] = useState<string>("")
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
 
@@ -5227,17 +5440,32 @@ export default function KanbanPage() {
     })
 
     const calcValor = (list: TicketItem[]) => list.reduce((acc, t) => {
-      const opData = getValorOperacaoDeAbertura(t)
-      const opNum = parseValorToNumber(opData.valor)
-      return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-    }, 0)
+      const v = getValoresOperacaoEProducao(t)
+      return {
+        operacao: acc.operacao + v.numOperacao,
+        producao: acc.producao + v.numProducao
+      }
+    }, { operacao: 0, producao: 0 })
 
-    const valorAgora = calcValor(agora)
-    const valorVencidas = calcValor(vencidas.map(i => i.ticket))
-    const valorFuturas = calcValor(futuras)
-    const valorAcaoEspecial = calcValor(acaoEspecial)
+    const agoraVals = calcValor(agora)
+    const vencidasVals = calcValor(vencidas.map(i => i.ticket))
+    const futurasVals = calcValor(futuras)
+    const acaoEspecialVals = calcValor(acaoEspecial)
 
-    return { agora, vencidas, futuras, acaoEspecial, valorAgora, valorVencidas, valorFuturas, valorAcaoEspecial }
+    return { 
+      agora, 
+      vencidas, 
+      futuras, 
+      acaoEspecial, 
+      valorAgora: agoraVals.operacao, 
+      prodAgora: agoraVals.producao,
+      valorVencidas: vencidasVals.operacao, 
+      prodVencidas: vencidasVals.producao,
+      valorFuturas: futurasVals.operacao, 
+      prodFuturas: futurasVals.producao,
+      valorAcaoEspecial: acaoEspecialVals.operacao,
+      prodAcaoEspecial: acaoEspecialVals.producao
+    }
   }, [filteredTickets, propostasPorCpf])
 
   // Função reutilizável para renderizar exatamente o mesmo Cartão de Tarefa em ambas as visões
@@ -5711,6 +5939,12 @@ export default function KanbanPage() {
                   {opData.valor}
                 </span>
               </div>
+              <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
+                <span className="text-slate-500">Valor Produção:</span>
+                <span className="font-bold text-emerald-700 leading-tight">
+                  {opData.valorProducao}
+                </span>
+              </div>
               {isGestor && (
                 <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
                   <span className="text-slate-500">Responsável:</span>
@@ -5887,7 +6121,8 @@ export default function KanbanPage() {
           icon: CheckCircle2,
           iconColor: "text-emerald-600",
           tickets: filaCategorias.agora,
-          totalValor: filaCategorias.valorAgora
+          totalValor: filaCategorias.valorAgora,
+          totalProducao: filaCategorias.prodAgora
         },
         {
           id: "vencidas",
@@ -5899,7 +6134,8 @@ export default function KanbanPage() {
           icon: AlertCircle,
           iconColor: "text-rose-600",
           tickets: filaCategorias.vencidas.map(i => i.ticket),
-          totalValor: filaCategorias.valorVencidas
+          totalValor: filaCategorias.valorVencidas,
+          totalProducao: filaCategorias.prodVencidas
         },
         {
           id: "futuras",
@@ -5911,7 +6147,8 @@ export default function KanbanPage() {
           icon: Clock,
           iconColor: "text-sky-600",
           tickets: filaCategorias.futuras,
-          totalValor: filaCategorias.valorFuturas
+          totalValor: filaCategorias.valorFuturas,
+          totalProducao: filaCategorias.prodFuturas
         },
         {
           id: "acao_especial",
@@ -5923,17 +6160,20 @@ export default function KanbanPage() {
           icon: Zap,
           iconColor: "text-amber-600",
           tickets: filaCategorias.acaoEspecial,
-          totalValor: filaCategorias.valorAcaoEspecial
+          totalValor: filaCategorias.valorAcaoEspecial,
+          totalProducao: filaCategorias.prodAcaoEspecial
         }
       ]
     } else {
       return KANBAN_COLUMNS.map(col => {
         const colTickets = groupedColumns[col.id] || []
-        const totalColValor = colTickets.reduce((acc, t) => {
-          const opData = getValorOperacaoDeAbertura(t)
-          const opNum = parseValorToNumber(opData.valor)
-          return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-        }, 0)
+        let totalColValor = 0
+        let totalColProducao = 0
+        colTickets.forEach(t => {
+          const v = getValoresOperacaoEProducao(t)
+          totalColValor += v.numOperacao
+          totalColProducao += v.numProducao
+        })
         return {
           id: col.id,
           title: col.title ? col.title.charAt(0).toUpperCase() + col.title.slice(1).toLowerCase() : col.title,
@@ -5944,65 +6184,76 @@ export default function KanbanPage() {
           icon: Kanban,
           iconColor: "text-slate-700",
           tickets: colTickets,
-          totalValor: totalColValor
+          totalValor: totalColValor,
+          totalProducao: totalColProducao
         }
       })
     }
   }, [activeView, filaCategorias, groupedColumns])
 
   // Agrupamento com filtros e busca aplicados
-  const { totalListLeads, totalListValor, filteredListSections } = useMemo(() => {
+  const { totalListLeads, totalListValor, totalListProducao, filteredListSections } = useMemo(() => {
     let leadsCount = 0
     let valorSum = 0
+    let producaoSum = 0
 
     const sections = listSections.map(sec => {
       let secTickets = filterTicketsBySearch(sec.tickets)
       secTickets = sortTickets(secTickets)
 
-      const secVal = secTickets.reduce((acc, t) => {
-        const opData = getValorOperacaoDeAbertura(t)
-        const opNum = parseValorToNumber(opData.valor)
-        return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-      }, 0)
+      let secVal = 0
+      let secProd = 0
+      secTickets.forEach(t => {
+        const v = getValoresOperacaoEProducao(t)
+        secVal += v.numOperacao
+        secProd += v.numProducao
+      })
 
       // Nos totais não deve ser contabilizado os cartões de atendimento que estiverem nas colunas 'Fechado' e 'Perdido'
       const isExcludedFromTotals = sec.id === "FECHADO" || sec.id === "PERDIDO"
       if (!isExcludedFromTotals) {
         leadsCount += secTickets.length
         valorSum += secVal
+        producaoSum += secProd
       }
 
       return {
         ...sec,
         displayTickets: secTickets,
-        displayValor: secVal
+        displayValor: secVal,
+        displayProducao: secProd
       }
     })
 
-    const finalSections = listFilterStage === "ALL" 
+    const isFiltered = listFilterStages.length > 0 && !listFilterStages.includes("ALL")
+    const finalSections = !isFiltered 
       ? sections 
-      : sections.filter(s => s.id === listFilterStage)
+      : sections.filter(s => listFilterStages.includes(s.id))
 
     let displayLeadsCount = leadsCount
     let displayValorSum = valorSum
+    let displayProducaoSum = producaoSum
 
-    if (listFilterStage !== "ALL") {
-      const selectedSec = finalSections[0]
-      if (selectedSec && selectedSec.id !== "FECHADO" && selectedSec.id !== "PERDIDO") {
-        displayLeadsCount = selectedSec.displayTickets.length
-        displayValorSum = selectedSec.displayValor
-      } else {
-        displayLeadsCount = 0
-        displayValorSum = 0
-      }
+    if (isFiltered) {
+      displayLeadsCount = 0
+      displayValorSum = 0
+      displayProducaoSum = 0
+      finalSections.forEach(sec => {
+        if (sec.id !== "FECHADO" && sec.id !== "PERDIDO") {
+          displayLeadsCount += sec.displayTickets.length
+          displayValorSum += sec.displayValor
+          displayProducaoSum += sec.displayProducao
+        }
+      })
     }
 
     return {
       totalListLeads: displayLeadsCount,
       totalListValor: displayValorSum,
+      totalListProducao: displayProducaoSum,
       filteredListSections: finalSections
     }
-  }, [listSections, filterTicketsBySearch, sortTickets, listFilterStage])
+  }, [listSections, filterTicketsBySearch, sortTickets, listFilterStages])
 
   // Renderizador do Item em Modo Lista (Linha sequencial de etapa)
   const renderTicketListItem = (ticket: TicketItem) => {
@@ -6720,23 +6971,25 @@ export default function KanbanPage() {
                 onClick={() => setStageDropdownOpen(prev => !prev)}
                 className={cn(
                   "h-8.5 px-3 rounded-lg text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap",
-                  listFilterStage !== "ALL"
+                  listFilterStages.length > 0 && !listFilterStages.includes("ALL")
                     ? "bg-sky-50 border-sky-400 text-sky-900 shadow-2xs"
                     : "bg-slate-50 hover:bg-slate-100 border-slate-300 text-slate-700"
                 )}
                 title="Filtrar por Etapa"
               >
-                <Filter className={cn("w-3.5 h-3.5", listFilterStage !== "ALL" ? "text-sky-600" : "text-slate-500")} />
+                <Filter className={cn("w-3.5 h-3.5", listFilterStages.length > 0 && !listFilterStages.includes("ALL") ? "text-sky-600" : "text-slate-500")} />
                 <span className="truncate max-w-[130px] sm:max-w-[180px]">
-                  {listFilterStage === "ALL"
+                  {listFilterStages.length === 0 || listFilterStages.includes("ALL")
                     ? "Etapa"
-                    : (listSections.find(s => s.id === listFilterStage)?.title || "Etapa")}
+                    : listFilterStages.length === 1
+                      ? (listSections.find(s => s.id === listFilterStages[0])?.title || "1 etapa")
+                      : `Etapas (${listFilterStages.length})`}
                 </span>
-                {listFilterStage !== "ALL" ? (
+                {listFilterStages.length > 0 && !listFilterStages.includes("ALL") ? (
                   <span
                     onClick={(e) => {
                       e.stopPropagation()
-                      setListFilterStage("ALL")
+                      setListFilterStages([])
                     }}
                     className="w-4 h-4 rounded-full bg-sky-200/70 hover:bg-sky-300 text-sky-800 flex items-center justify-center text-[10px] ml-0.5"
                     title="Limpar filtro de etapa"
@@ -6755,12 +7008,11 @@ export default function KanbanPage() {
                     <span className="font-bold text-[11px] text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                       <Filter className="w-3.5 h-3.5 text-slate-500" /> ETAPAS
                     </span>
-                    {listFilterStage !== "ALL" && (
+                    {listFilterStages.length > 0 && !listFilterStages.includes("ALL") && (
                       <button
                         type="button"
                         onClick={() => {
-                          setListFilterStage("ALL")
-                          setStageDropdownOpen(false)
+                          setListFilterStages([])
                         }}
                         className="text-[10.5px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
                       >
@@ -6774,12 +7026,11 @@ export default function KanbanPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setListFilterStage("ALL")
-                        setStageDropdownOpen(false)
+                        setListFilterStages([])
                       }}
                       className={cn(
                         "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
-                        listFilterStage === "ALL"
+                        listFilterStages.length === 0 || listFilterStages.includes("ALL")
                           ? "bg-sky-50 text-sky-900 font-bold"
                           : "text-slate-700 hover:bg-slate-50 font-medium"
                       )}
@@ -6787,9 +7038,9 @@ export default function KanbanPage() {
                       <span className="flex items-center gap-2">
                         <span className={cn(
                           "w-4 h-4 rounded border flex items-center justify-center text-[10px]",
-                          listFilterStage === "ALL" ? "border-sky-600 bg-sky-600 text-white" : "border-slate-300 bg-white"
+                          listFilterStages.length === 0 || listFilterStages.includes("ALL") ? "border-sky-600 bg-sky-600 text-white" : "border-slate-300 bg-white"
                         )}>
-                          {listFilterStage === "ALL" && <Check className="w-3 h-3 stroke-[3]" />}
+                          {(listFilterStages.length === 0 || listFilterStages.includes("ALL")) && <Check className="w-3 h-3 stroke-[3]" />}
                         </span>
                         Todas as etapas
                       </span>
@@ -6802,14 +7053,20 @@ export default function KanbanPage() {
 
                     {/* Lista das etapas individuais */}
                     {listSections.map(sec => {
-                      const isSelected = listFilterStage === sec.id
+                      const isSelected = listFilterStages.includes(sec.id)
                       return (
                         <button
                           key={sec.id}
                           type="button"
                           onClick={() => {
-                            setListFilterStage(sec.id)
-                            setStageDropdownOpen(false)
+                            setListFilterStages(prev => {
+                              const clean = prev.filter(p => p !== "ALL")
+                              if (clean.includes(sec.id)) {
+                                return clean.filter(p => p !== sec.id)
+                              } else {
+                                return [...clean, sec.id]
+                              }
+                            })
                           }}
                           className={cn(
                             "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
@@ -6937,58 +7194,67 @@ export default function KanbanPage() {
           </div>
 
           {/* Totais Gerais */}
-          <div className="flex items-center gap-2 shrink-0 text-sm pl-2 sm:border-l border-slate-200 self-end md:self-center">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1.5 sm:gap-3 shrink-0 text-xs sm:text-sm pl-2 sm:border-l border-slate-200 self-end md:self-center">
             <span className="font-medium text-slate-600">
               <strong className="text-slate-900 font-bold">{totalListLeads}</strong> {totalListLeads === 1 ? "atendimento" : "atendimentos"}
             </span>
-            <span className="text-slate-300">•</span>
-            <span className="font-medium text-slate-600">
-              Total: <strong className="text-slate-950 font-black">{totalListValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
-            </span>
+            <span className="hidden sm:inline text-slate-300">•</span>
+            <div className="flex flex-col items-start sm:items-end text-xs">
+              <span className="font-medium text-slate-600 leading-tight">
+                Total Valor Operação: <strong className="text-slate-950 font-black">{totalListValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
+              </span>
+              <span className="font-medium text-emerald-800 leading-tight mt-0.5">
+                Total Valor Produção: <strong className="text-emerald-700 font-black">{totalListProducao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>
+              </span>
+            </div>
           </div>
         </div>
 
         {/* Visão 1: Minha Fila (4 Colunas Simultâneas: Agora, Vencidas, Futuras e Ação Especial) em Modo Quadro */}
         {activeView === "MINHA_FILA" && displayMode === "QUADRO" && (() => {
           const ticketsAgoraAll = filterTicketsBySearch(filaCategorias.agora)
-          const valorAgoraAll = ticketsAgoraAll.reduce((acc, t) => {
-            const opData = getValorOperacaoDeAbertura(t)
-            const opNum = parseValorToNumber(opData.valor)
-            return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-          }, 0)
+          let valorAgoraAll = 0
+          let prodAgoraAll = 0
+          ticketsAgoraAll.forEach(t => {
+            const v = getValoresOperacaoEProducao(t)
+            valorAgoraAll += v.numOperacao
+            prodAgoraAll += v.numProducao
+          })
 
           const filteredVencidasAll = filaCategorias.vencidas.filter(item => filterTicketsBySearch([item.ticket]).length > 0)
-          const valorVencidasAll = filteredVencidasAll.reduce((acc, i) => {
-            const opData = getValorOperacaoDeAbertura(i.ticket)
-            const opNum = parseValorToNumber(opData.valor)
-            return acc + (opNum > 0 ? opNum : Number(i.ticket.valor_operacao || i.ticket.margem || 0))
-          }, 0)
+          let valorVencidasAll = 0
+          let prodVencidasAll = 0
+          filteredVencidasAll.forEach(i => {
+            const v = getValoresOperacaoEProducao(i.ticket)
+            valorVencidasAll += v.numOperacao
+            prodVencidasAll += v.numProducao
+          })
 
           const ticketsFuturasAll = filterTicketsBySearch(filaCategorias.futuras)
-          const valorFuturasAll = ticketsFuturasAll.reduce((acc, t) => {
-            const opData = getValorOperacaoDeAbertura(t)
-            const opNum = parseValorToNumber(opData.valor)
-            return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-          }, 0)
+          let valorFuturasAll = 0
+          let prodFuturasAll = 0
+          ticketsFuturasAll.forEach(t => {
+            const v = getValoresOperacaoEProducao(t)
+            valorFuturasAll += v.numOperacao
+            prodFuturasAll += v.numProducao
+          })
 
           const ticketsAcaoAll = filterTicketsBySearch(filaCategorias.acaoEspecial)
-          const valorAcaoAll = ticketsAcaoAll.reduce((acc, t) => {
-            const opData = getValorOperacaoDeAbertura(t)
-            const opNum = parseValorToNumber(opData.valor)
-            return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-          }, 0)
-
-          const totalMinhaFilaLeads = ticketsAgoraAll.length + filteredVencidasAll.length + ticketsFuturasAll.length + ticketsAcaoAll.length
-          const totalMinhaFilaValor = valorAgoraAll + valorVencidasAll + valorFuturasAll + valorAcaoAll
+          let valorAcaoAll = 0
+          let prodAcaoAll = 0
+          ticketsAcaoAll.forEach(t => {
+            const v = getValoresOperacaoEProducao(t)
+            valorAcaoAll += v.numOperacao
+            prodAcaoAll += v.numProducao
+          })
 
           return (
             <div className="flex-1 flex flex-col md:flex-row gap-3.5 sm:gap-4 h-full min-h-0 overflow-x-auto overflow-y-hidden">
                 {/* Coluna 1: AGORA */}
-                {(listFilterStage === "ALL" || listFilterStage === "agora") && (() => {
+                {isStageSelected("agora") && (() => {
                   const ticketsAgora = sortTickets(ticketsAgoraAll)
                   const valorAgora = valorAgoraAll
-                  const pctAgoraLeads = totalMinhaFilaLeads > 0 ? ((ticketsAgora.length / totalMinhaFilaLeads) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
-                  const pctAgoraValor = totalMinhaFilaValor > 0 ? ((valorAgora / totalMinhaFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
+                  const prodAgora = prodAgoraAll
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-200/80 shadow-2xs overflow-hidden bg-emerald-50/70">
                       {/* Cabeçalho da Coluna Agora */}
@@ -7007,13 +7273,23 @@ export default function KanbanPage() {
                         </p>
 
                         {/* Totais Acumulados para Gestão e Operação */}
-                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px] gap-1">
-                          <span className="font-semibold text-slate-800 whitespace-nowrap">
-                            {ticketsAgora.length} {ticketsAgora.length === 1 ? "lead" : "leads"} <span className="font-bold text-slate-600">({pctAgoraLeads})</span>
-                          </span>
-                          <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                            {valorAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} <span className="font-bold text-slate-600">({pctAgoraValor})</span>
-                          </span>
+                        <div className="pt-2 border-t border-black/10 text-[11px] space-y-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-slate-700 whitespace-nowrap">
+                              Valor Operação:
+                            </span>
+                            <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
+                              {valorAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-emerald-800 whitespace-nowrap">
+                              Valor Produção:
+                            </span>
+                            <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
+                              {prodAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -7032,11 +7308,10 @@ export default function KanbanPage() {
                 })()}
 
                 {/* Coluna 2: VENCIDAS */}
-                {(listFilterStage === "ALL" || listFilterStage === "vencidas") && (() => {
+                {isStageSelected("vencidas") && (() => {
                   const filteredVencidas = filteredVencidasAll
                   const valorVencidas = valorVencidasAll
-                  const pctVencidasLeads = totalMinhaFilaLeads > 0 ? ((filteredVencidas.length / totalMinhaFilaLeads) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
-                  const pctVencidasValor = totalMinhaFilaValor > 0 ? ((valorVencidas / totalMinhaFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
+                  const prodVencidas = prodVencidasAll
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-rose-200/80 shadow-2xs overflow-hidden bg-rose-50/70">
                       {/* Cabeçalho da Coluna Vencidas */}
@@ -7055,13 +7330,23 @@ export default function KanbanPage() {
                         </p>
 
                         {/* Totais Acumulados para Gestão e Operação */}
-                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px] gap-1">
-                          <span className="font-semibold text-slate-800 whitespace-nowrap">
-                            {filteredVencidas.length} {filteredVencidas.length === 1 ? "lead" : "leads"} <span className="font-bold text-slate-600">({pctVencidasLeads})</span>
-                          </span>
-                          <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                            {valorVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} <span className="font-bold text-slate-600">({pctVencidasValor})</span>
-                          </span>
+                        <div className="pt-2 border-t border-black/10 text-[11px] space-y-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-slate-700 whitespace-nowrap">
+                              Valor Operação:
+                            </span>
+                            <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
+                              {valorVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-emerald-800 whitespace-nowrap">
+                              Valor Produção:
+                            </span>
+                            <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
+                              {prodVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -7080,11 +7365,10 @@ export default function KanbanPage() {
                 })()}
 
                 {/* Coluna 3: FUTURAS */}
-                {(listFilterStage === "ALL" || listFilterStage === "futuras") && (() => {
+                {isStageSelected("futuras") && (() => {
                   const ticketsFuturas = sortTickets(ticketsFuturasAll)
                   const valorFuturas = valorFuturasAll
-                  const pctFuturasLeads = totalMinhaFilaLeads > 0 ? ((ticketsFuturas.length / totalMinhaFilaLeads) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
-                  const pctFuturasValor = totalMinhaFilaValor > 0 ? ((valorFuturas / totalMinhaFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
+                  const prodFuturas = prodFuturasAll
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-indigo-200/80 shadow-2xs overflow-hidden bg-indigo-50/70">
                       {/* Cabeçalho da Coluna Futuras */}
@@ -7103,13 +7387,23 @@ export default function KanbanPage() {
                         </p>
 
                         {/* Totais Acumulados para Gestão e Operação */}
-                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px] gap-1">
-                          <span className="font-semibold text-slate-800 whitespace-nowrap">
-                            {ticketsFuturas.length} {ticketsFuturas.length === 1 ? "lead" : "leads"} <span className="font-bold text-slate-600">({pctFuturasLeads})</span>
-                          </span>
-                          <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                            {valorFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} <span className="font-bold text-slate-600">({pctFuturasValor})</span>
-                          </span>
+                        <div className="pt-2 border-t border-black/10 text-[11px] space-y-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-slate-700 whitespace-nowrap">
+                              Valor Operação:
+                            </span>
+                            <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
+                              {valorFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-emerald-800 whitespace-nowrap">
+                              Valor Produção:
+                            </span>
+                            <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
+                              {prodFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -7128,11 +7422,10 @@ export default function KanbanPage() {
                 })()}
 
                 {/* Coluna 4: AÇÃO ESPECIAL */}
-                {(listFilterStage === "ALL" || listFilterStage === "acao_especial") && (() => {
+                {isStageSelected("acao_especial") && (() => {
                   const ticketsAcao = sortTickets(ticketsAcaoAll)
                   const valorAcao = valorAcaoAll
-                  const pctAcaoLeads = totalMinhaFilaLeads > 0 ? ((ticketsAcao.length / totalMinhaFilaLeads) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
-                  const pctAcaoValor = totalMinhaFilaValor > 0 ? ((valorAcao / totalMinhaFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0%"
+                  const prodAcao = prodAcaoAll
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-amber-300/80 shadow-2xs overflow-hidden bg-amber-50/70">
                       {/* Cabeçalho da Coluna Ação Especial */}
@@ -7151,13 +7444,23 @@ export default function KanbanPage() {
                         </p>
 
                         {/* Totais Acumulados para Gestão e Operação */}
-                        <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px] gap-1">
-                          <span className="font-semibold text-slate-800 whitespace-nowrap">
-                            {ticketsAcao.length} {ticketsAcao.length === 1 ? "lead" : "leads"} <span className="font-bold text-slate-600">({pctAcaoLeads})</span>
-                          </span>
-                          <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                            {valorAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} <span className="font-bold text-slate-600">({pctAcaoValor})</span>
-                          </span>
+                        <div className="pt-2 border-t border-black/10 text-[11px] space-y-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-slate-700 whitespace-nowrap">
+                              Valor Operação:
+                            </span>
+                            <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
+                              {valorAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-semibold text-emerald-800 whitespace-nowrap">
+                              Valor Produção:
+                            </span>
+                            <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
+                              {prodAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -7197,23 +7500,18 @@ export default function KanbanPage() {
             <div className="flex-1 overflow-x-auto pb-1 min-h-0 h-full">
               <div className="flex items-stretch gap-3.5 sm:gap-4 w-full min-w-max h-full">
                 {KANBAN_COLUMNS
-                  .filter(col => listFilterStage === "ALL" || col.id === listFilterStage)
+                  .filter(col => isStageSelected(col.id))
                   .map(col => {
                     let colTickets = groupedColumns[col.id] || []
                     colTickets = filterTicketsBySearch(colTickets)
                     colTickets = sortTickets(colTickets)
-                    const totalColValor = colTickets.reduce((acc, t) => {
-                      const opData = getValorOperacaoDeAbertura(t)
-                      const opNum = parseValorToNumber(opData.valor)
-                      return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
-                    }, 0)
-
-                    const pctLeads = kanbanAllColumnsTotalLeads > 0
-                      ? ((colTickets.length / kanbanAllColumnsTotalLeads) * 100).toFixed(1).replace(".", ",") + "%"
-                      : "0%"
-                    const pctValor = kanbanAllColumnsTotalValor > 0
-                      ? ((totalColValor / kanbanAllColumnsTotalValor) * 100).toFixed(1).replace(".", ",") + "%"
-                      : "0%"
+                    let totalColValor = 0
+                    let totalColProducao = 0
+                    colTickets.forEach(t => {
+                      const v = getValoresOperacaoEProducao(t)
+                      totalColValor += v.numOperacao
+                      totalColProducao += v.numProducao
+                    })
 
                     return (
                       <div
@@ -7263,13 +7561,23 @@ export default function KanbanPage() {
                       </p>
 
                       {/* Totais Acumulados para Gestão e Operação */}
-                      <div className="flex items-center justify-between pt-2 border-t border-black/10 text-[11px] gap-1">
-                        <span className="font-semibold text-slate-800 whitespace-nowrap">
-                          {colTickets.length} {colTickets.length === 1 ? "lead" : "leads"} <span className="font-bold text-slate-600">({pctLeads})</span>
-                        </span>
-                        <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                          {totalColValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} <span className="font-bold text-slate-600">({pctValor})</span>
-                        </span>
+                      <div className="pt-2 border-t border-black/10 text-[11px] space-y-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-semibold text-slate-700 whitespace-nowrap">
+                            Valor Operação:
+                          </span>
+                          <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
+                            {totalColValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="font-semibold text-emerald-800 whitespace-nowrap">
+                            Valor Produção:
+                          </span>
+                          <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
+                            {totalColProducao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                          </span>
+                        </div>
                       </div>
                     </div>
 

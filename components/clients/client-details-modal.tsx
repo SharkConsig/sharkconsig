@@ -1812,6 +1812,49 @@ export function ClientDetailsModal({
     const reg = activeRegistration || allRegs[activeRegIndex] || ({} as Registration)
     const selectedOrigemValue = (clienteOrigem && clienteOrigem !== "KANBAN") ? clienteOrigem : ((client as any)?.origem || "")
 
+    // Extração normalizada de margens conforme padrão do convênio / lotações
+    const anyReg = (reg || {}) as Record<string, unknown>;
+    let margemEmpDisp = 0;
+    let margemRmcDisp = 0;
+    let margemRccDisp = 0;
+
+    if (clientType === "siape") {
+      margemEmpDisp = Number(anyReg.margem_35 ?? anyReg.margem_disponivel ?? anyReg.margem_emprestimo) || 0;
+      margemRmcDisp = Number(anyReg.liquida_5 ?? anyReg.margem_cartao_credito ?? anyReg.cartao_credito) || 0;
+      margemRccDisp = Number(anyReg.beneficio_liquida_5 ?? anyReg.margem_cartao_beneficio ?? anyReg.cartao_beneficio) || 0;
+    } else {
+      const lotacoes = (
+        anyReg.governo_sp_lotacoes || 
+        anyReg.prefeitura_sp_lotacoes || 
+        anyReg.governo_pi_lotacoes || 
+        anyReg.governo_ma_lotacoes ||
+        anyReg.prefeitura_natal_lotacoes ||
+        anyReg.prefeitura_porto_velho_lotacoes ||
+        (anyReg as any).lotacoes
+      ) as Lotacao[] | undefined;
+
+      if (Array.isArray(lotacoes) && lotacoes.length > 0) {
+        const l = lotacoes[0];
+        margemEmpDisp = Number(l.md_consignacoes ?? l.margem_disponivel_emprestimo ?? l.margem_disponivel ?? l.liquida_consignacoes ?? 0) || 0;
+        margemRmcDisp = Number(l.md_cartao_credito ?? l.margem_cartao_consignado ?? l.liquida_cartao ?? 0) || 0;
+        margemRccDisp = Number(l.md_cartao_beneficio ?? l.margem_cartao_beneficio ?? l.liquida_beneficio ?? 0) || 0;
+      } else {
+        margemEmpDisp = Number(anyReg.md_consignacoes ?? anyReg.margem_emprestimo ?? anyReg.margem_disponivel_emprestimo ?? anyReg.margem_liquida_emprestimo ?? anyReg.margem_disponivel ?? anyReg.margem_consignavel ?? anyReg.margem_35 ?? 0) || 0;
+        margemRmcDisp = Number(anyReg.md_cartao_credito ?? anyReg.cartao_credito ?? anyReg.margem_cartao_credito ?? anyReg.margem_cartao_consignado ?? anyReg.margem_cartao ?? anyReg.margem_rmc ?? anyReg.liquida_5 ?? 0) || 0;
+        margemRccDisp = Number(anyReg.md_cartao_beneficio ?? anyReg.cartao_beneficio ?? anyReg.margem_beneficio ?? anyReg.margem_cartao_beneficio ?? anyReg.margem_rcc ?? anyReg.beneficio_liquida_5 ?? 0) || 0;
+      }
+    }
+
+    if (margemEmpDisp === 0) {
+      margemEmpDisp = Number(anyReg.md_consignacoes ?? anyReg.margem_emprestimo ?? anyReg.margem_disponivel_emprestimo ?? anyReg.margem_liquida_emprestimo ?? anyReg.margem_disponivel ?? anyReg.margem_consignavel ?? anyReg.margem_35 ?? (client as any)?.margem_consignavel ?? 0) || 0;
+    }
+    if (margemRmcDisp === 0) {
+      margemRmcDisp = Number(anyReg.md_cartao_credito ?? anyReg.cartao_credito ?? anyReg.margem_cartao_credito ?? anyReg.margem_cartao_consignado ?? anyReg.margem_cartao ?? anyReg.margem_rmc ?? anyReg.liquida_5 ?? 0) || 0;
+    }
+    if (margemRccDisp === 0) {
+      margemRccDisp = Number(anyReg.md_cartao_beneficio ?? anyReg.cartao_beneficio ?? anyReg.margem_beneficio ?? anyReg.margem_cartao_beneficio ?? anyReg.margem_rcc ?? anyReg.beneficio_liquida_5 ?? 0) || 0;
+    }
+
     const initialData = {
       nome: client.nome || "NOME NÃO INFORMADO",
       cpf: formattedCpf,
@@ -1820,9 +1863,9 @@ export function ClientDetailsModal({
       tel3: (client.telefone_3 || "").replace(/\D/g, ""),
       origem: selectedOrigemValue,
       telefone_empresa: selectedEmpresaPhone || "",
-      margem: formatCurrency(Number(reg.margem_35 || reg.margem_emprestimo || (reg as any).margem_disponivel || (reg as any).margem_liquida_emprestimo || 0)),
-      liquida5: formatCurrency(Number((reg as any).cartao_credito || (reg as any).margem_cartao_credito || reg.liquida_5 || reg.margem_cartao || (reg as any).margem_cartao_consignado || 0)),
-      beneficio5: formatCurrency(Number((reg as any).cartao_beneficio || (reg as any).margem_beneficio || (reg as any).margem_cartao_beneficio || reg.beneficio_liquida_5 || 0)),
+      margem: formatCurrency(margemEmpDisp),
+      liquida5: formatCurrency(margemRmcDisp),
+      beneficio5: formatCurrency(margemRccDisp),
       convenio: resolvedConvenio,
       matricula: String(reg.numero_matricula || reg.identificacao || reg.matricula || ""),
       from_kanban: "true"

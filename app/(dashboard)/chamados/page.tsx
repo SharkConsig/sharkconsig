@@ -178,9 +178,12 @@ function formatTempoParadoAmigavel(startDateISO?: string): string {
   return `${diaText} e ${remHours} ${remHours === 1 ? 'hora' : 'horas'}`
 }
 
-const parseValorToNumber = (valStr: string) => {
-  if (!valStr) return 0;
-  const clean = valStr.replace("R$", "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+const parseValorToNumber = (valStr: any): number => {
+  if (valStr === null || valStr === undefined) return 0;
+  if (typeof valStr === "number") return isNaN(valStr) ? 0 : valStr;
+  const str = String(valStr).trim();
+  if (!str) return 0;
+  const clean = str.replace("R$", "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
   const num = parseFloat(clean);
   return isNaN(num) ? 0 : num;
 };
@@ -274,33 +277,94 @@ const extractTicketOperationValues = (t: any) => {
   return { opValMargem, opValCartao }
 };
 
-const getValorOperacaoDeAbertura = (ticket: any) => {
+const getValoresOperacaoEProducao = (ticket: any) => {
   const desc = ticket.descricao || ticket.description || ticket.content || "";
   const meta = parseDescriptionMetadata(desc);
   const conv = ticket.convenio?.toUpperCase() || "";
   const isSantoAndre = conv.includes("SANTO ANDRÉ") || conv.includes("SANTO ANDRE");
-  
-  // 1. If we have a selected type in metadata
-  const selectedType = meta?.selected_operation_type;
-  if (selectedType) {
-    if (selectedType === 'margem') {
-      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" };
-    }
-    if (selectedType === 'liquida5') {
-      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" };
-    }
-    if (selectedType === 'beneficio5') {
-      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" };
-    }
+
+  // Tipos de operação selecionados na ficha
+  let selectedTypes: ('margem' | 'liquida5' | 'beneficio5')[] = [];
+  if (Array.isArray(meta?.selected_operation_types) && meta.selected_operation_types.length > 0) {
+    selectedTypes = meta.selected_operation_types.filter((t: any) => ['margem', 'liquida5', 'beneficio5'].includes(t));
+  } else if (meta?.selected_operation_type) {
+    selectedTypes = String(meta.selected_operation_type)
+      .split(',')
+      .map(s => s.trim())
+      .filter(s => ['margem', 'liquida5', 'beneficio5'].includes(s)) as any;
   }
 
-  // 2. Fallback to check if valor_operacao is directly in the DB column
+  const labelsMap: Record<string, string> = {
+    margem: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%",
+    liquida5: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%",
+    beneficio5: isSantoAndre ? "Margem Benefício" : "Benefício 5%"
+  };
+  const colorsMap: Record<string, string> = {
+    margem: "text-amber-600",
+    liquida5: "text-emerald-600",
+    beneficio5: "text-blue-600"
+  };
+
+  // Se houver seleção explícita de uma ou mais margens
+  if (selectedTypes.length > 0) {
+    let sumOperacao = 0;
+    let sumProducao = 0;
+
+    selectedTypes.forEach(t => {
+      let opVal = parseValorToNumber(meta?.[`valor_operacao_${t}`]);
+      if (!opVal) {
+        const mVal = parseValorToNumber(meta?.[t] || (t === 'margem' ? ticket.margem : t === 'liquida5' ? ticket.margem_liquida_5 : ticket.margem_beneficio_5));
+        const cVal = parseCleanFloat(meta?.[`coeficiente_${t}`]) || (t === 'margem' ? 0.028 : 0.053);
+        if (mVal && cVal) opVal = mVal / cVal;
+      }
+      sumOperacao += opVal;
+
+      let prodVal = parseValorToNumber(meta?.[`valor_producao_${t}`]);
+      sumProducao += prodVal;
+    });
+
+    if (sumOperacao === 0 && ticket.valor_operacao) {
+      sumOperacao = parseValorToNumber(ticket.valor_operacao);
+    }
+
+    const valorOpStr = "R$ " + sumOperacao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const valorProdStr = "R$ " + sumProducao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    let label = "";
+    let color = "text-primary";
+    if (selectedTypes.length === 1) {
+      label = labelsMap[selectedTypes[0]];
+      color = colorsMap[selectedTypes[0]];
+    } else {
+      label = `Margens (${selectedTypes.length})`;
+      color = "text-indigo-600 font-extrabold";
+    }
+
+    return {
+      valorOperacao: valorOpStr,
+      numOperacao: sumOperacao,
+      valorProducao: valorProdStr,
+      numProducao: sumProducao,
+      label,
+      color
+    };
+  }
+
+  // 1. Fallback se valor_operacao estiver no chamado
   if (ticket.valor_operacao !== null && ticket.valor_operacao !== undefined && ticket.valor_operacao !== 0) {
-    const valStr = "R$ " + Number(ticket.valor_operacao).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return { valor: valStr, label: "Valor Operação", color: "text-slate-900" };
+    const sumOp = parseValorToNumber(ticket.valor_operacao);
+    const prodVal = meta?.valor_producao ? parseValorToNumber(meta.valor_producao) : 0;
+    return {
+      valorOperacao: "R$ " + sumOp.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numOperacao: sumOp,
+      valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numProducao: prodVal,
+      label: "Valor Operação",
+      color: "text-slate-900"
+    };
   }
 
-  // 3. Fallback to original description text selection
+  // 2. Fallbacks de margens da descrição ou colunas
   let textSelectedType: 'margem' | 'liquida5' | 'beneficio5' | null = null;
   if (desc.includes("MARGEM 35%") || desc.includes("MARGEM LÍQUIDA EMPRÉSTIMO")) {
     textSelectedType = 'margem';
@@ -311,78 +375,78 @@ const getValorOperacaoDeAbertura = (ticket: any) => {
   }
 
   if (textSelectedType) {
-    if (textSelectedType === 'margem') {
-      if (meta && meta.valor_operacao_margem) return { valor: meta.valor_operacao_margem, label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" };
-      const mVal = ticket.margem || 0;
-      const opVal = mVal / 0.028;
-      return { 
-        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-        label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
-        color: "text-amber-600" 
-      };
+    const t = textSelectedType;
+    let opVal = parseValorToNumber(meta?.[`valor_operacao_${t}`]);
+    if (!opVal) {
+      const mVal = parseValorToNumber(meta?.[t] || (t === 'margem' ? ticket.margem : t === 'liquida5' ? ticket.margem_liquida_5 : ticket.margem_beneficio_5));
+      const cVal = t === 'margem' ? 0.028 : 0.053;
+      if (mVal && cVal) opVal = mVal / cVal;
     }
-    if (textSelectedType === 'liquida5') {
-      if (meta && meta.valor_operacao_liquida5) return { valor: meta.valor_operacao_liquida5, label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" };
-      const mVal = ticket.margem_liquida_5 || 0;
-      const opVal = mVal / 0.053;
-      return { 
-        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-        label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", 
-        color: "text-emerald-600" 
-      };
-    }
-    if (textSelectedType === 'beneficio5') {
-      if (meta && meta.valor_operacao_beneficio5) return { valor: meta.valor_operacao_beneficio5, label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" };
-      const mVal = ticket.margem_beneficio_5 || 0;
-      const opVal = mVal / 0.053;
-      return { 
-        valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-        label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
-        color: "text-blue-600" 
-      };
-    }
+    const prodVal = parseValorToNumber(meta?.[`valor_producao_${t}`]) || 0;
+    return {
+      valorOperacao: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numOperacao: opVal,
+      valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numProducao: prodVal,
+      label: labelsMap[t],
+      color: colorsMap[t]
+    };
   }
 
-  // 4. Check meta fields without selection
+  // 3. Checar campos de meta
   if (meta) {
     if (meta.margem && meta.margem !== "" && meta.margem !== "R$ 0,00") {
-      return { valor: meta.valor_operacao_margem || "R$ 0,00", label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", color: "text-amber-600" };
+      const opVal = parseValorToNumber(meta.valor_operacao_margem);
+      const prodVal = parseValorToNumber(meta.valor_producao_margem);
+      return {
+        valorOperacao: meta.valor_operacao_margem || "R$ 0,00",
+        numOperacao: opVal,
+        valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        numProducao: prodVal,
+        label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%",
+        color: "text-amber-600"
+      };
     }
     if (meta.liquida5 && meta.liquida5 !== "" && meta.liquida5 !== "R$ 0,00") {
-      return { valor: meta.valor_operacao_liquida5 || "R$ 0,00", label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", color: "text-emerald-600" };
+      const opVal = parseValorToNumber(meta.valor_operacao_liquida5);
+      const prodVal = parseValorToNumber(meta.valor_producao_liquida5);
+      return {
+        valorOperacao: meta.valor_operacao_liquida5 || "R$ 0,00",
+        numOperacao: opVal,
+        valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        numProducao: prodVal,
+        label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%",
+        color: "text-emerald-600"
+      };
     }
     if (meta.beneficio5 && meta.beneficio5 !== "" && meta.beneficio5 !== "R$ 0,00") {
-      return { valor: meta.valor_operacao_beneficio5 || "R$ 0,00", label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", color: "text-blue-600" };
+      const opVal = parseValorToNumber(meta.valor_operacao_beneficio5);
+      const prodVal = parseValorToNumber(meta.valor_producao_beneficio5);
+      return {
+        valorOperacao: meta.valor_operacao_beneficio5 || "R$ 0,00",
+        numOperacao: opVal,
+        valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        numProducao: prodVal,
+        label: isSantoAndre ? "Margem Benefício" : "Benefício 5%",
+        color: "text-blue-600"
+      };
     }
   }
 
-  // 5. Final database fallbacks
-  if (typeof ticket.margem === 'number' && ticket.margem !== 0) {
-    const opVal = ticket.margem / 0.028;
-    return { 
-      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-      label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%", 
-      color: "text-amber-600" 
-    };
-  }
-  if (typeof ticket.margem_liquida_5 === 'number' && ticket.margem_liquida_5 !== 0) {
-    const opVal = ticket.margem_liquida_5 / 0.053;
-    return { 
-      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-      label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%", 
-      color: "text-emerald-600" 
-    };
-  }
-  if (typeof ticket.margem_beneficio_5 === 'number' && ticket.margem_beneficio_5 !== 0) {
-    const opVal = ticket.margem_beneficio_5 / 0.053;
-    return { 
-      valor: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), 
-      label: isSantoAndre ? "Margem Benefício" : "Benefício 5%", 
-      color: "text-blue-600" 
-    };
-  }
+  // 4. Default 0
+  return {
+    valorOperacao: "R$ 0,00",
+    numOperacao: 0,
+    valorProducao: "R$ 0,00",
+    numProducao: 0,
+    label: "Valor Operação",
+    color: "text-slate-400"
+  };
+};
 
-  return { valor: "R$ 0,00", label: "Valor Operação", color: "text-slate-400" };
+const getValorOperacaoDeAbertura = (ticket: any) => {
+  const res = getValoresOperacaoEProducao(ticket);
+  return { valor: res.valorOperacao, label: res.label, color: res.color };
 };
 
 function MultiSelect({ 
@@ -496,6 +560,7 @@ export default function TicketsPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [isClientModalOpen, setIsClientModalOpen] = useState(false)
   const [selectedClientCpf, setSelectedClientCpf] = useState("")
+  const [liveMarginsMap, setLiveMarginsMap] = useState<Record<string, { totalOperacao: number; totalProducao: number; selectedLabels: string[] }>>({})
 
   const [selectedTicketIds, setSelectedTicketIds] = useState<string[]>([])
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false)
@@ -2478,6 +2543,7 @@ export default function TicketsPage() {
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[130px]">CPF</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-[120px]">Telefone</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right min-w-[140px]">Valor Operação</th>
+                    <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right min-w-[140px]">Valor Produção</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[150px]">Equipe</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aberto</th>
                     <th className="px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Ações</th>
@@ -2486,7 +2552,7 @@ export default function TicketsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {isLoading && tickets.length === 0 ? (
                     <tr>
-                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0) + (!isCorretorPJ ? 1 : 0)} className="px-4 py-12 text-center">
+                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11) + (canChangeStatusBulk ? 1 : 0) + (!isCorretorPJ ? 1 : 0)} className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
                           <Loader2 className="w-6 h-6 text-primary animate-spin" />
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Carregando chamados...</span>
@@ -2665,17 +2731,53 @@ export default function TicketsPage() {
                           </td>
                           <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{ticket.cliente_cpf}</td>
                           <td className="px-4 py-4 text-[12px] font-medium text-slate-500">{ticket.cliente_telefone}</td>
+                          {/* Coluna: Valor Operação */}
                           <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">
                             <div className="flex flex-col items-end">
                               {(() => {
-                                const opData = getValorOperacaoDeAbertura(ticket);
+                                const liveData = liveMarginsMap[ticket.id.toString()];
+                                const opData = getValoresOperacaoEProducao(ticket);
+                                const valorOpStr = liveData !== undefined
+                                  ? "R$ " + liveData.totalOperacao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                  : opData.valorOperacao;
+                                const labelStr = liveData !== undefined
+                                  ? (liveData.selectedLabels.length === 1 ? liveData.selectedLabels[0] : (liveData.selectedLabels.length > 1 ? `Margens (${liveData.selectedLabels.length})` : "Sem seleção"))
+                                  : opData.label;
+                                const colorStr = liveData !== undefined
+                                  ? (liveData.selectedLabels.length > 1 ? "text-indigo-600 font-extrabold" : opData.color)
+                                  : opData.color;
+
                                 return (
                                   <span className="flex flex-col items-end">
                                     <span className="text-[11.5px] leading-tight font-black text-slate-900">
-                                      {opData.valor}
+                                      {valorOpStr}
                                     </span>
-                                    <span className={cn("text-[8px] uppercase font-black tracking-tighter mt-0.5", opData.color)}>
-                                      {opData.label}
+                                    <span className={cn("text-[8px] uppercase font-black tracking-tighter mt-0.5", colorStr)}>
+                                      {labelStr}
+                                    </span>
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          </td>
+
+                          {/* Coluna: Valor Produção */}
+                          <td className="px-4 py-4 text-[11.5px] font-bold text-right">
+                            <div className="flex flex-col items-end">
+                              {(() => {
+                                const liveData = liveMarginsMap[ticket.id.toString()];
+                                const opData = getValoresOperacaoEProducao(ticket);
+                                const valorProdStr = liveData !== undefined
+                                  ? "R$ " + liveData.totalProducao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                                  : opData.valorProducao;
+
+                                return (
+                                  <span className="flex flex-col items-end">
+                                    <span className="text-[11.5px] leading-tight font-black text-emerald-700">
+                                      {valorProdStr}
+                                    </span>
+                                    <span className="text-[8px] uppercase font-black tracking-tighter text-emerald-600/80 mt-0.5">
+                                      Produção
                                     </span>
                                   </span>
                                 );
@@ -2798,7 +2900,7 @@ export default function TicketsPage() {
                         </tr>
                         {expandedTicketId === ticket.id.toString() && (
                           <tr className={cn(index % 2 === 0 ? "bg-slate-100" : "bg-white")}>
-                            <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0) + (!isCorretorPJ ? 1 : 0)} className="p-0 border-b border-slate-200">
+                            <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11) + (canChangeStatusBulk ? 1 : 0) + (!isCorretorPJ ? 1 : 0)} className="p-0 border-b border-slate-200">
                               <div className="animate-in slide-in-from-top-2 duration-300">
                                 <TicketAtendimento 
                                   ticket={{
@@ -2835,6 +2937,24 @@ export default function TicketsPage() {
                                   onMarginsSaved={() => {
                                     fetchTickets(true);
                                   }}
+                                  onMarginsLiveChange={(totals) => {
+                                    setLiveMarginsMap(prev => {
+                                      const cur = prev[ticket.id.toString()];
+                                      if (
+                                        cur &&
+                                        cur.totalOperacao === totals.totalOperacao &&
+                                        cur.totalProducao === totals.totalProducao &&
+                                        cur.selectedLabels.length === totals.selectedLabels.length &&
+                                        cur.selectedLabels.every((l, i) => l === totals.selectedLabels[i])
+                                      ) {
+                                        return prev;
+                                      }
+                                      return {
+                                        ...prev,
+                                        [ticket.id.toString()]: totals
+                                      };
+                                    });
+                                  }}
                                 />
                                 <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
                                   <Button 
@@ -2853,7 +2973,7 @@ export default function TicketsPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 11 : 10) + (canChangeStatusBulk ? 1 : 0) + (!isCorretorPJ ? 1 : 0)} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
+                      <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11) + (canChangeStatusBulk ? 1 : 0) + (!isCorretorPJ ? 1 : 0)} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
                         Nenhum chamado encontrado.
                       </td>
                     </tr>

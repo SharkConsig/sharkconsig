@@ -27,7 +27,7 @@ import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
 import { withRetry, cn } from "@/lib/utils"
 import { TelefoneEmpresa, getLocalTelefonesEmpresa, fetchTelefonesEmpresa, EVENT_TELEFONES_UPDATED } from "@/lib/telefones-empresa"
-import { CoeficienteTabelaSelector } from "@/components/chamados/coeficiente-tabela-selector"
+import { CoeficienteTabelaSelector, calculateValorProducao } from "@/components/chamados/coeficiente-tabela-selector"
 
 export interface NewTicketFormProps {
   isModal?: boolean;
@@ -118,6 +118,17 @@ export function NewTicketForm({
     liquida5: "",
     beneficio5: ""
   })
+
+  const [tabelaProdPercents, setTabelaProdPercents] = useState<{ margem: number; liquida5: number; beneficio5: number }>({
+    margem: 0,
+    liquida5: 0,
+    beneficio5: 0
+  })
+
+  const formatCurrencyValue = (num: number) => {
+    if (!num) return "R$ 0,00"
+    return "R$ " + num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
 
   const parseCurrencyToFloat = (val: string) => {
     if (!val) return 0;
@@ -553,16 +564,26 @@ export function NewTicketForm({
     });
   }, [getMarginLabel, coefficients]);
 
-  const handleSelectTabela = (field: 'margem' | 'liquida5' | 'beneficio5', coef: string, label: string) => {
+  const handleSelectTabela = (field: 'margem' | 'liquida5' | 'beneficio5', coef: string, label: string, prodPercent?: number) => {
     const updated = { ...coefficients, [field]: coef };
     setCoefficients(updated);
     setTabelaLabels(prev => ({ ...prev, [field]: label }));
+    if (typeof prodPercent === 'number') {
+      setTabelaProdPercents(prev => ({ ...prev, [field]: prodPercent }));
+    }
     updateDescription({
       margem: formData.margem,
       liquida5: formData.liquida5,
       beneficio5: formData.beneficio5
     }, updated);
   };
+
+  const handlePercentualResolved = useCallback((field: 'margem' | 'liquida5' | 'beneficio5', p: number) => {
+    setTabelaProdPercents(prev => {
+      if (prev[field] === p) return prev;
+      return { ...prev, [field]: p };
+    });
+  }, []);
 
   // Monitor convenio changes to sync description labels
   useEffect(() => {
@@ -669,12 +690,8 @@ export function NewTicketForm({
     const isSelected = !!formData[field as keyof typeof formData];
     
     setFormData(prev => {
-      // Quando selecionamos uma margem, limpamos todas as outras primeiro (seleção exclusiva)
       const nextData = { 
         ...prev, 
-        margem: "", 
-        liquida5: "", 
-        beneficio5: "",
         [field]: isSelected ? "" : value 
       };
       
@@ -891,6 +908,9 @@ export function NewTicketForm({
         valor_operacao_margem: valOpMargemStr,
         valor_operacao_liquida5: valOpLiquida5Str,
         valor_operacao_beneficio5: valOpBeneficio5Str,
+        valor_producao_margem: formatCurrencyValue(calculateValorProducao(valOpMargemStr, tabelaProdPercents.margem)),
+        valor_producao_liquida5: formatCurrencyValue(calculateValorProducao(valOpLiquida5Str, tabelaProdPercents.liquida5)),
+        valor_producao_beneficio5: formatCurrencyValue(calculateValorProducao(valOpBeneficio5Str, tabelaProdPercents.beneficio5)),
         valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : undefined,
         selected_operation_type: selectedOpType,
         from_kanban: isFromKanban,
@@ -1327,15 +1347,16 @@ export function NewTicketForm({
                 <div className="space-y-4">
                   <p className="text-[10px] font-bold text-primary mb-1 uppercase tracking-wider">Selecione ou digite a margem para qual você deseja abrir esse chamado.</p>
                   <div className="flex flex-col gap-4">
+                    {/* Margem Principal / 35% */}
                     {getMarginLabel('margem') && (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                            <span className="whitespace-nowrap">{getMarginLabel('margem')}</span>
+                            <span>{getMarginLabel('margem')}</span>
                           </label>
                           {isFromClient && originalMargins.margem ? (
                             <button
-                              id="btn-original-margin"
+                              id="btn-original-margem"
                               type="button"
                               onClick={() => toggleMargin("margem", originalMargins.margem)}
                               className={cn(
@@ -1369,7 +1390,8 @@ export function NewTicketForm({
                             convenio={formData.convenio}
                             value={coefficients.margem}
                             selectedLabel={tabelaLabels.margem}
-                            onChange={(coef, label) => handleSelectTabela('margem', coef, label)}
+                            onChange={(coef, label, prodPerc) => handleSelectTabela('margem', coef, label, prodPerc)}
+                            onPercentualProducaoResolved={(p) => handlePercentualResolved('margem', p)}
                           />
                         </div>
 
@@ -1388,11 +1410,24 @@ export function NewTicketForm({
                             )}
                           />
                         </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            VALOR DE PRODUÇÃO
+                          </label>
+                          <Input
+                            id="valor-producao-margem"
+                            value={formatCurrencyValue(calculateValorProducao(calculateValorOperacao(formData.margem || originalMargins.margem, coefficients.margem), tabelaProdPercents.margem))}
+                            readOnly
+                            placeholder="R$ 0,00"
+                            className="h-[34px] text-[12px] font-bold bg-emerald-50/60 text-emerald-800 border-emerald-200"
+                          />
+                        </div>
                       </div>
                     )}
 
                     {getMarginLabel('liquida5') && (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
                             <span>{getMarginLabel('liquida5')}</span>
@@ -1433,7 +1468,8 @@ export function NewTicketForm({
                             convenio={formData.convenio}
                             value={coefficients.liquida5}
                             selectedLabel={tabelaLabels.liquida5}
-                            onChange={(coef, label) => handleSelectTabela('liquida5', coef, label)}
+                            onChange={(coef, label, prodPerc) => handleSelectTabela('liquida5', coef, label, prodPerc)}
+                            onPercentualProducaoResolved={(p) => handlePercentualResolved('liquida5', p)}
                           />
                         </div>
 
@@ -1452,11 +1488,24 @@ export function NewTicketForm({
                             )}
                           />
                         </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            VALOR DE PRODUÇÃO
+                          </label>
+                          <Input
+                            id="valor-producao-liquida5"
+                            value={formatCurrencyValue(calculateValorProducao(calculateValorOperacao(formData.liquida5 || originalMargins.liquida5, coefficients.liquida5), tabelaProdPercents.liquida5))}
+                            readOnly
+                            placeholder="R$ 0,00"
+                            className="h-[34px] text-[12px] font-bold bg-emerald-50/60 text-emerald-800 border-emerald-200"
+                          />
+                        </div>
                       </div>
                     )}
 
                     {getMarginLabel('beneficio5') && (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
                             <span>{getMarginLabel('beneficio5')}</span>
@@ -1497,7 +1546,8 @@ export function NewTicketForm({
                             convenio={formData.convenio}
                             value={coefficients.beneficio5}
                             selectedLabel={tabelaLabels.beneficio5}
-                            onChange={(coef, label) => handleSelectTabela('beneficio5', coef, label)}
+                            onChange={(coef, label, prodPerc) => handleSelectTabela('beneficio5', coef, label, prodPerc)}
+                            onPercentualProducaoResolved={(p) => handlePercentualResolved('beneficio5', p)}
                           />
                         </div>
 
@@ -1514,6 +1564,19 @@ export function NewTicketForm({
                               "h-[34px] text-[12px] transition-all",
                               getMarginClasses(formData.beneficio5 || originalMargins.beneficio5, !!(formData.beneficio5 || originalMargins.beneficio5))
                             )}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                            VALOR DE PRODUÇÃO
+                          </label>
+                          <Input
+                            id="valor-producao-beneficio5"
+                            value={formatCurrencyValue(calculateValorProducao(calculateValorOperacao(formData.beneficio5 || originalMargins.beneficio5, coefficients.beneficio5), tabelaProdPercents.beneficio5))}
+                            readOnly
+                            placeholder="R$ 0,00"
+                            className="h-[34px] text-[12px] font-bold bg-emerald-50/60 text-emerald-800 border-emerald-200"
                           />
                         </div>
                       </div>

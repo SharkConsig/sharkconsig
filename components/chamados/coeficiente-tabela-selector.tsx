@@ -12,6 +12,7 @@ export interface TabelaOption {
   prazo: number
   coeficiente: string
   coeficienteNum: number
+  percentualProducao: number
   label: string
 }
 
@@ -20,11 +21,34 @@ interface CoeficienteTabelaSelectorProps {
   convenio?: string
   value: string
   selectedLabel?: string
-  onChange: (coeficiente: string, label: string) => void
+  onChange: (coeficiente: string, label: string, percentualProducao?: number) => void
+  onPercentualProducaoResolved?: (percentualProducao: number) => void
   readOnly?: boolean
   disabled?: boolean
   className?: string
   placeholder?: string
+}
+
+export function calculateValorProducao(valorOperacao: number | string, percentualProducao: number): number {
+  let num = 0
+  if (typeof valorOperacao === 'number') {
+    num = valorOperacao
+  } else {
+    const raw = String(valorOperacao || '').trim()
+    if (raw.includes(',')) {
+      const cleaned = raw.replace(/[^\d,-]/g, '').replace(',', '.')
+      num = parseFloat(cleaned) || 0
+    } else {
+      const cleaned = raw.replace(/[^\d.-]/g, '')
+      num = parseFloat(cleaned) || 0
+    }
+  }
+  const perc = typeof percentualProducao === 'number'
+    ? percentualProducao
+    : (parseFloat(String(percentualProducao || '').replace('%', '').replace(',', '.')) || 0)
+
+  if (!num || !perc) return 0
+  return (num * perc) / 100
 }
 
 // Cache em memória a nível de módulo para evitar consultas redundantes ao Supabase
@@ -80,6 +104,7 @@ export function CoeficienteTabelaSelector({
   value = "",
   selectedLabel = "",
   onChange,
+  onPercentualProducaoResolved,
   readOnly = false,
   disabled = false,
   className = "",
@@ -91,6 +116,7 @@ export function CoeficienteTabelaSelector({
   const [dataLoaded, setDataLoaded] = useState(Boolean(cachedConfigs))
   const [isLoading, setIsLoading] = useState(!cachedConfigs && isFetchingData)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const lastResolvedValRef = useRef<{ value: string; percentual: number } | null>(null)
 
   useEffect(() => {
     if (cachedConfigs) {
@@ -111,7 +137,7 @@ export function CoeficienteTabelaSelector({
       Promise.all([
         supabase.from("convenios").select("id, nome").order("nome"),
         supabase.from("bancos").select("id, nome").order("nome"),
-        supabase.from("produtos_config").select("id, nome_tabela, prazo, coeficiente, convenio_id, banco_id, regras, ativo")
+        supabase.from("produtos_config").select("id, nome_tabela, prazo, coeficiente, percentual_producao, convenio_id, banco_id, regras, ativo")
       ]).then(([convRes, bancoRes, prodRes]) => {
         const cMap = new Map<string, string>()
         if (convRes.data) {
@@ -189,6 +215,16 @@ export function CoeficienteTabelaSelector({
           if (!cNum) return
 
           const cStr = cNum.toString().replace(".", ",")
+          const extractPercentual = (val: any): number => {
+            if (typeof val === "number") return val
+            if (!val) return 0
+            const clean = String(val).replace("%", "").replace(",", ".").trim()
+            return parseFloat(clean) || 0
+          }
+
+          const prodPerc = extractPercentual(
+            r.percentual_producao ?? r.producao ?? r.prod ?? r.percentual_prod ?? cfg.percentual_producao ?? cfg.producao
+          )
           const label = `${bancoNome ? `${bancoNome} - ` : ""}${nomeTabela} (${p}x | ${cStr})`
 
           result.push({
@@ -198,6 +234,7 @@ export function CoeficienteTabelaSelector({
             prazo: p,
             coeficiente: cStr,
             coeficienteNum: cNum,
+            percentualProducao: prodPerc,
             label
           })
         })
@@ -208,6 +245,15 @@ export function CoeficienteTabelaSelector({
           : parseFloat(String(cfg.coeficiente || "").replace(",", ".")) || 0
         if (cNum) {
           const cStr = cNum.toString().replace(".", ",")
+          const extractPercentual = (val: any): number => {
+            if (typeof val === "number") return val
+            if (!val) return 0
+            const clean = String(val).replace("%", "").replace(",", ".").trim()
+            return parseFloat(clean) || 0
+          }
+          const prodPerc = extractPercentual(
+            cfg.percentual_producao ?? cfg.producao ?? cfg.prod ?? cfg.percentual_prod
+          )
           const label = `${bancoNome ? `${bancoNome} - ` : ""}${nomeTabela} (${p}x | ${cStr})`
 
           result.push({
@@ -217,6 +263,7 @@ export function CoeficienteTabelaSelector({
             prazo: p,
             coeficiente: cStr,
             coeficienteNum: cNum,
+            percentualProducao: prodPerc,
             label
           })
         }
@@ -226,6 +273,19 @@ export function CoeficienteTabelaSelector({
     result.sort((a, b) => a.label.localeCompare(b.label, "pt-BR", { sensitivity: "base" }))
     return result
   }, [convenio, dataLoaded])
+
+  // Sincroniza percentual_producao com callback quando value estiver definido
+  useEffect(() => {
+    if (!value || !onPercentualProducaoResolved || options.length === 0) return
+    const match = options.find(o => o.coeficiente === value || o.coeficiente.replace(",", ".") === value.replace(",", "."))
+    if (match && typeof match.percentualProducao === "number") {
+      if (lastResolvedValRef.current?.value === value && lastResolvedValRef.current?.percentual === match.percentualProducao) {
+        return
+      }
+      lastResolvedValRef.current = { value, percentual: match.percentualProducao }
+      onPercentualProducaoResolved(match.percentualProducao)
+    }
+  }, [value, options, onPercentualProducaoResolved])
 
   // Filtra por termo de busca interno
   const filteredOptions = useMemo(() => {
@@ -250,7 +310,8 @@ export function CoeficienteTabelaSelector({
   }, [selectedLabel, value, options, convenio, placeholder])
 
   const handleSelect = (opt: TabelaOption) => {
-    onChange(opt.coeficiente, opt.label)
+    onChange(opt.coeficiente, opt.label, opt.percentualProducao)
+    onPercentualProducaoResolved?.(opt.percentualProducao)
     setIsOpen(false)
     setSearchTerm("")
   }

@@ -381,10 +381,23 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     return { ...section, items }
   })
 
+  const isCLTUser = regimeUpper.includes("CLT")
+
   const filteredMenuItems = processedMenuItems
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
+        // Ocultar 'ABRIR CHAMADO' e 'ACESSAR CLIENTE' exclusivamente para regime CLT (somente sidebar)
+        if (
+          isCLTUser &&
+          (item.name === "ABRIR CHAMADO" ||
+            item.href === "/chamados/novo" ||
+            item.name === "ACESSAR CLIENTE" ||
+            item.href === "/pesquisa")
+        ) {
+          return false
+        }
+
         // ACERTO FÁCIL, IGNORE/INGNORE e MARKETING: visíveis apenas em ambiente de desenvolvimento (ocultos em produção)
         if (
           item.name === "ACERTO FÁCIL" || 
