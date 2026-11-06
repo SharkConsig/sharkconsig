@@ -387,15 +387,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
-        // Ocultar 'ABRIR CHAMADO' e 'ACESSAR CLIENTE' exclusivamente para regime CLT (somente sidebar)
+        // Ocultar 'ABRIR CHAMADO' exclusivamente para regime CLT (somente sidebar)
         if (
           isCLTUser &&
           (item.name === "ABRIR CHAMADO" ||
-            item.href === "/chamados/novo" ||
-            item.name === "ACESSAR CLIENTE" ||
-            item.href === "/pesquisa")
+            item.href === "/chamados/novo")
         ) {
           return false
+        }
+
+        // ACESSAR CLIENTE visível para todos os usuários do sistema (CLT, Estágio e PJ)
+        if (item.name === "ACESSAR CLIENTE" || item.href === "/pesquisa") {
+          return true
         }
 
         // ACERTO FÁCIL, IGNORE/INGNORE e MARKETING: visíveis apenas em ambiente de desenvolvimento (ocultos em produção)
