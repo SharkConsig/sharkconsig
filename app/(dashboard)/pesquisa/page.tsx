@@ -1954,7 +1954,15 @@ export default function SearchClientPage() {
     : registrations;
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col pesquisa-client-page">
+      {/* Oculta os botões ABRIR CHAMADO e DIGITAR PROPOSTA exclusivamente na tela ACESSAR CLIENTE */}
+      <style>{`
+        .pesquisa-client-page div.pt-10.border-t.border-slate-50 > button:nth-of-type(2),
+        .pesquisa-client-page div.pt-10.border-t.border-slate-50 > button:nth-of-type(3),
+        .pesquisa-client-page div.pt-10.border-t.border-slate-50 > button:not(:first-child) {
+          display: none !important;
+        }
+      `}</style>
       <Header title="ACESSAR CLIENTE" />
       
       <div className="p-3 sm:p-4 lg:p-8 space-y-6 max-w-[1400px] mx-auto w-full">
