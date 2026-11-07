@@ -125,8 +125,18 @@ const TABLES_WITHOUT_TELEFONE_3 = new Set([
 
 export default function SearchClientPage() {
   const router = useRouter()
-  const { perfil, isEstagio } = useAuth()
+  const { perfil, user, isEstagio } = useAuth()
   const isUserEstagio = isEstagio || perfil?.role?.toLowerCase() === 'estágio' || perfil?.role?.toLowerCase() === 'estagio'
+  const regimeStr = String(
+    (perfil as any)?.regime_contratacao ||
+    (perfil as any)?.regime_trabalho ||
+    (perfil as any)?.regime ||
+    user?.user_metadata?.regime_contratacao ||
+    (perfil as any)?.funcao ||
+    perfil?.role ||
+    ""
+  ).toUpperCase().trim()
+  const isUserPJ = regimeStr.includes("PJ")
   const [searchQuery, setSearchQuery] = useState("")
   const [showProfile, setShowProfile] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -1955,14 +1965,16 @@ export default function SearchClientPage() {
 
   return (
     <div className="flex-1 flex flex-col pesquisa-client-page">
-      {/* Oculta os botões ABRIR CHAMADO e DIGITAR PROPOSTA exclusivamente na tela ACESSAR CLIENTE */}
-      <style>{`
-        .pesquisa-client-page div.pt-10.border-t.border-slate-50 > button:nth-of-type(2),
-        .pesquisa-client-page div.pt-10.border-t.border-slate-50 > button:nth-of-type(3),
-        .pesquisa-client-page div.pt-10.border-t.border-slate-50 > button:not(:first-child) {
-          display: none !important;
-        }
-      `}</style>
+      {/* Oculta os botões ABRIR CHAMADO e DIGITAR PROPOSTA na tela ACESSAR CLIENTE apenas para usuários CLT e Estágio (visível para PJ) */}
+      {!isUserPJ && (
+        <style>{`
+          .pesquisa-client-page div.pt-10.border-t.border-slate-50 > button:nth-of-type(2),
+          .pesquisa-client-page div.pt-10.border-t.border-slate-50 > button:nth-of-type(3),
+          .pesquisa-client-page div.pt-10.border-t.border-slate-50 > button:not(:first-child) {
+            display: none !important;
+          }
+        `}</style>
+      )}
       <Header title="ACESSAR CLIENTE" />
       
       <div className="p-3 sm:p-4 lg:p-8 space-y-6 max-w-[1400px] mx-auto w-full">

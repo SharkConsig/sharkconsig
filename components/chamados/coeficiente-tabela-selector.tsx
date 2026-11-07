@@ -58,6 +58,140 @@ let cachedConvenios: Map<string, string> | null = null
 let isFetchingData = false
 const subscribers: (() => void)[] = []
 
+export async function loadTabelasConfigCache(): Promise<void> {
+  if (cachedConfigs && cachedConvenios && cachedBancos) return;
+  if (isFetchingData) {
+    return new Promise(resolve => {
+      subscribers.push(() => resolve());
+    });
+  }
+  isFetchingData = true;
+  try {
+    const [convRes, bancoRes, prodRes] = await Promise.all([
+      supabase.from("convenios").select("id, nome").order("nome"),
+      supabase.from("bancos").select("id, nome").order("nome"),
+      supabase.from("produtos_config").select("id, nome_tabela, prazo, coeficiente, percentual_producao, convenio_id, banco_id, regras, ativo")
+    ]);
+    const cMap = new Map<string, string>();
+    if (convRes.data) convRes.data.forEach((c: any) => cMap.set(String(c.id), c.nome));
+    cachedConvenios = cMap;
+
+    const bMap = new Map<string, string>();
+    if (bancoRes.data) bancoRes.data.forEach((b: any) => bMap.set(String(b.id), b.nome));
+    cachedBancos = bMap;
+
+    cachedConfigs = (prodRes.data || []).filter((p: any) => p.ativo !== false);
+  } catch (err) {
+    console.error("Erro ao carregar tabelas de produtos para coeficiente:", err);
+  } finally {
+    isFetchingData = false;
+    subscribers.forEach(cb => cb());
+    subscribers.length = 0;
+  }
+}
+
+export function resolvePercentualProducaoSync(convenio: string = "", coeficiente: string = "", tabelaLabel: string = ""): number {
+  // 1. Tenta extrair diretamente do texto do rótulo da tabela (ex: "NOVO - 15,00%" ou "15%")
+  if (tabelaLabel) {
+    const match = String(tabelaLabel).match(/([\d]+(?:[,\.][\d]+)?)\s*%/);
+    if (match && match[1]) {
+      const perc = parseFloat(match[1].replace(",", "."));
+      if (perc > 0) return perc;
+    }
+  }
+
+  // Se o coeficiente não foi informado diretamente, tenta extrair de tabelaLabel (ex: "BANCO DAYCOVAL - NOVO (84x | 0,028)")
+  let effCoef = (coeficiente || "").trim();
+  if (!effCoef && tabelaLabel) {
+    const matchCoef = String(tabelaLabel).match(/\|\s*([0-9.,]+)\s*\)/) || String(tabelaLabel).match(/\(\s*([0-9.,]+)\s*\)/);
+    if (matchCoef && matchCoef[1]) {
+      effCoef = matchCoef[1].trim();
+    }
+  }
+
+  // 2. Se as tabelas estiverem no cache em memória, busca na lista de produtos/regras
+  if (cachedConfigs && cachedConvenios) {
+    const cleanCoef = effCoef.replace(".", ",");
+    const cleanCoefDot = effCoef.replace(",", ".");
+    const cleanConv = normalizeStr(convenio);
+
+    const matchingConfigs = cachedConfigs.filter(cfg => {
+      if (!cleanConv) return true;
+      const convNome = cachedConvenios?.get(String(cfg.convenio_id)) || "";
+      if (convNome && isMatchingConvenio(convNome, convenio)) return true;
+      if (cfg.nome_tabela && isMatchingConvenio(cfg.nome_tabela, convenio)) return true;
+      return false;
+    });
+
+    const extractPercentual = (val: any): number => {
+      if (typeof val === "number") return val;
+      if (!val) return 0;
+      const clean = String(val).replace("%", "").replace(",", ".").trim();
+      return parseFloat(clean) || 0;
+    };
+
+    // A. Busca nas regras das configurações do convênio
+    for (const cfg of matchingConfigs) {
+      if (cfg.regras && Array.isArray(cfg.regras) && cfg.regras.length > 0) {
+        for (const r of cfg.regras) {
+          if (r.ativo === false) continue;
+          const rCoefStr = String(r.coeficiente || "").replace(".", ",");
+          const rCoefDot = String(r.coeficiente || "").replace(",", ".");
+          if (cleanCoef && (rCoefStr === cleanCoef || rCoefDot === cleanCoefDot || (cleanCoefDot && parseFloat(rCoefDot) === parseFloat(cleanCoefDot)))) {
+            const perc = extractPercentual(r.percentual_producao ?? r.producao ?? r.prod ?? cfg.percentual_producao ?? cfg.producao);
+            if (perc > 0) return perc;
+          }
+        }
+      } else if (cfg.coeficiente) {
+        const cStr = String(cfg.coeficiente || "").replace(".", ",");
+        const cDot = String(cfg.coeficiente || "").replace(",", ".");
+        if (cleanCoef && (cStr === cleanCoef || cDot === cleanCoefDot || (cleanCoefDot && parseFloat(cDot) === parseFloat(cleanCoefDot)))) {
+          const perc = extractPercentual(cfg.percentual_producao ?? cfg.producao ?? cfg.prod);
+          if (perc > 0) return perc;
+        }
+      }
+    }
+
+    // B. Se cleanCoef não bateu exato mas tabelaLabel bate com nome da tabela ou regra
+    if (tabelaLabel) {
+      const normTab = normalizeStr(tabelaLabel);
+      for (const cfg of matchingConfigs) {
+        const normCfgName = normalizeStr(cfg.nome_tabela || "");
+        if (normCfgName && (normTab.includes(normCfgName) || normCfgName.includes(normTab))) {
+          const perc = extractPercentual(cfg.percentual_producao ?? cfg.producao ?? cfg.prod);
+          if (perc > 0) return perc;
+        }
+      }
+    }
+
+    // C. Se ainda não achou, pega qualquer percentual válido associado ao convênio
+    for (const cfg of matchingConfigs) {
+      const perc = extractPercentual(cfg.percentual_producao ?? cfg.producao ?? cfg.prod);
+      if (perc > 0) return perc;
+      if (cfg.regras && Array.isArray(cfg.regras)) {
+        for (const r of cfg.regras) {
+          const rPerc = extractPercentual(r.percentual_producao ?? r.producao ?? r.prod);
+          if (rPerc > 0) return rPerc;
+        }
+      }
+    }
+
+    // D. Se matchingConfigs estava vazio, busca em todas as configs cujo nome_tabela ou convênio bate
+    if (matchingConfigs.length === 0 && (convenio || tabelaLabel)) {
+      for (const cfg of cachedConfigs) {
+        const convNome = cachedConvenios?.get(String(cfg.convenio_id)) || "";
+        if ((convenio && (isMatchingConvenio(convNome, convenio) || isMatchingConvenio(cfg.nome_tabela, convenio))) ||
+            (tabelaLabel && (isMatchingConvenio(convNome, tabelaLabel) || isMatchingConvenio(cfg.nome_tabela, tabelaLabel)))) {
+          const perc = extractPercentual(cfg.percentual_producao ?? cfg.producao ?? cfg.prod);
+          if (perc > 0) return perc;
+        }
+      }
+    }
+  }
+
+  return 0;
+}
+
 function normalizeStr(str: string): string {
   if (!str) return ""
   return str

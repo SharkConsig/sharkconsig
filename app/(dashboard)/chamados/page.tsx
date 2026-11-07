@@ -26,6 +26,7 @@ import {
 } from "lucide-react"
 import { cn, withRetry } from "@/lib/utils"
 import { TicketAtendimento } from "@/components/tickets/ticket-atendimento"
+import { loadTabelasConfigCache, resolvePercentualProducaoSync } from "@/components/chamados/coeficiente-tabela-selector"
 import { ClientDetailsModal } from "@/components/clients/client-details-modal"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/context/auth-context"
@@ -320,11 +321,30 @@ const getValoresOperacaoEProducao = (ticket: any) => {
       sumOperacao += opVal;
 
       let prodVal = parseValorToNumber(meta?.[`valor_producao_${t}`]);
+      if (!prodVal && opVal > 0) {
+        const coefVal = meta?.[`coeficiente_${t}`] || (t === 'margem' ? '0.028' : '0.053');
+        const tabVal = meta?.[`tabela_${t}`] || '';
+        const convVal = ticket.convenio || meta?.convenio || '';
+        const perc = resolvePercentualProducaoSync(convVal, coefVal, tabVal);
+        if (perc > 0) {
+          prodVal = (opVal * perc) / 100;
+        }
+      }
       sumProducao += prodVal;
     });
 
     if (sumOperacao === 0 && ticket.valor_operacao) {
       sumOperacao = parseValorToNumber(ticket.valor_operacao);
+    }
+
+    if (sumProducao === 0 && sumOperacao > 0) {
+      const convVal = ticket.convenio || meta?.convenio || '';
+      const coefVal = meta?.coeficiente_margem || meta?.coeficiente_liquida5 || meta?.coeficiente_beneficio5 || '';
+      const tabVal = meta?.tabela_margem || meta?.tabela_liquida5 || meta?.tabela_beneficio5 || '';
+      const perc = resolvePercentualProducaoSync(convVal, coefVal, tabVal);
+      if (perc > 0) {
+        sumProducao = (sumOperacao * perc) / 100;
+      }
     }
 
     const valorOpStr = "R$ " + sumOperacao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -353,7 +373,16 @@ const getValoresOperacaoEProducao = (ticket: any) => {
   // 1. Fallback se valor_operacao estiver no chamado
   if (ticket.valor_operacao !== null && ticket.valor_operacao !== undefined && ticket.valor_operacao !== 0) {
     const sumOp = parseValorToNumber(ticket.valor_operacao);
-    const prodVal = meta?.valor_producao ? parseValorToNumber(meta.valor_producao) : 0;
+    let prodVal = meta?.valor_producao ? parseValorToNumber(meta.valor_producao) : 0;
+    if (!prodVal && sumOp > 0) {
+      const convVal = ticket.convenio || meta?.convenio || '';
+      const coefVal = meta?.coeficiente_margem || meta?.coeficiente_liquida5 || meta?.coeficiente_beneficio5 || '';
+      const tabVal = meta?.tabela_margem || meta?.tabela_liquida5 || meta?.tabela_beneficio5 || '';
+      const perc = resolvePercentualProducaoSync(convVal, coefVal, tabVal);
+      if (perc > 0) {
+        prodVal = (sumOp * perc) / 100;
+      }
+    }
     return {
       valorOperacao: "R$ " + sumOp.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       numOperacao: sumOp,
@@ -382,7 +411,16 @@ const getValoresOperacaoEProducao = (ticket: any) => {
       const cVal = t === 'margem' ? 0.028 : 0.053;
       if (mVal && cVal) opVal = mVal / cVal;
     }
-    const prodVal = parseValorToNumber(meta?.[`valor_producao_${t}`]) || 0;
+    let prodVal = parseValorToNumber(meta?.[`valor_producao_${t}`]) || 0;
+    if (!prodVal && opVal > 0) {
+      const coefVal = meta?.[`coeficiente_${t}`] || (t === 'margem' ? '0.028' : '0.053');
+      const tabVal = meta?.[`tabela_${t}`] || '';
+      const convVal = ticket.convenio || meta?.convenio || '';
+      const perc = resolvePercentualProducaoSync(convVal, coefVal, tabVal);
+      if (perc > 0) {
+        prodVal = (opVal * perc) / 100;
+      }
+    }
     return {
       valorOperacao: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       numOperacao: opVal,
@@ -397,7 +435,14 @@ const getValoresOperacaoEProducao = (ticket: any) => {
   if (meta) {
     if (meta.margem && meta.margem !== "" && meta.margem !== "R$ 0,00") {
       const opVal = parseValorToNumber(meta.valor_operacao_margem);
-      const prodVal = parseValorToNumber(meta.valor_producao_margem);
+      let prodVal = parseValorToNumber(meta.valor_producao_margem);
+      if (!prodVal && opVal > 0) {
+        const coefVal = meta.coeficiente_margem || '0.028';
+        const tabVal = meta.tabela_margem || '';
+        const convVal = ticket.convenio || meta?.convenio || '';
+        const perc = resolvePercentualProducaoSync(convVal, coefVal, tabVal);
+        if (perc > 0) prodVal = (opVal * perc) / 100;
+      }
       return {
         valorOperacao: meta.valor_operacao_margem || "R$ 0,00",
         numOperacao: opVal,
@@ -409,7 +454,14 @@ const getValoresOperacaoEProducao = (ticket: any) => {
     }
     if (meta.liquida5 && meta.liquida5 !== "" && meta.liquida5 !== "R$ 0,00") {
       const opVal = parseValorToNumber(meta.valor_operacao_liquida5);
-      const prodVal = parseValorToNumber(meta.valor_producao_liquida5);
+      let prodVal = parseValorToNumber(meta.valor_producao_liquida5);
+      if (!prodVal && opVal > 0) {
+        const coefVal = meta.coeficiente_liquida5 || '0.053';
+        const tabVal = meta.tabela_liquida5 || '';
+        const convVal = ticket.convenio || meta?.convenio || '';
+        const perc = resolvePercentualProducaoSync(convVal, coefVal, tabVal);
+        if (perc > 0) prodVal = (opVal * perc) / 100;
+      }
       return {
         valorOperacao: meta.valor_operacao_liquida5 || "R$ 0,00",
         numOperacao: opVal,
@@ -421,7 +473,14 @@ const getValoresOperacaoEProducao = (ticket: any) => {
     }
     if (meta.beneficio5 && meta.beneficio5 !== "" && meta.beneficio5 !== "R$ 0,00") {
       const opVal = parseValorToNumber(meta.valor_operacao_beneficio5);
-      const prodVal = parseValorToNumber(meta.valor_producao_beneficio5);
+      let prodVal = parseValorToNumber(meta.valor_producao_beneficio5);
+      if (!prodVal && opVal > 0) {
+        const coefVal = meta.coeficiente_beneficio5 || '0.053';
+        const tabVal = meta.tabela_beneficio5 || '';
+        const convVal = ticket.convenio || meta?.convenio || '';
+        const perc = resolvePercentualProducaoSync(convVal, coefVal, tabVal);
+        if (perc > 0) prodVal = (opVal * perc) / 100;
+      }
       return {
         valorOperacao: meta.valor_operacao_beneficio5 || "R$ 0,00",
         numOperacao: opVal,
@@ -561,6 +620,13 @@ export default function TicketsPage() {
   const [isClientModalOpen, setIsClientModalOpen] = useState(false)
   const [selectedClientCpf, setSelectedClientCpf] = useState("")
   const [liveMarginsMap, setLiveMarginsMap] = useState<Record<string, { totalOperacao: number; totalProducao: number; selectedLabels: string[] }>>({})
+  const [, setTabelasConfigVersion] = useState(0)
+
+  useEffect(() => {
+    loadTabelasConfigCache().then(() => {
+      setTabelasConfigVersion(v => v + 1)
+    })
+  }, [])
 
   const [selectedTicketIds, setSelectedTicketIds] = useState<string[]>([])
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false)

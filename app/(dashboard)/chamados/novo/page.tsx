@@ -988,19 +988,30 @@ export function NewTicketForm({
 
             for (const ficha of fichasParaAtualizar) {
               const prevMeta = (ficha.metadata && typeof ficha.metadata === 'object') ? ficha.metadata : {};
+              const valProdMargemStr = formatCurrencyValue(calculateValorProducao(valOpMargemStr, tabelaProdPercents.margem));
+              const valProdLiquida5Str = formatCurrencyValue(calculateValorProducao(valOpLiquida5Str, tabelaProdPercents.liquida5));
+              const valProdBeneficio5Str = formatCurrencyValue(calculateValorProducao(valOpBeneficio5Str, tabelaProdPercents.beneficio5));
+
               const updatedMeta = {
                 ...prevMeta,
                 margem: margemStr || prevMeta.margem,
                 liquida5: liquida5Str || prevMeta.liquida5,
                 beneficio5: beneficio5Str || prevMeta.beneficio5,
-                coeficiente_margem: coefficients.margem,
-                coeficiente_liquida5: coefficients.liquida5,
-                coeficiente_beneficio5: coefficients.beneficio5,
+                coeficiente_margem: coefficients.margem || prevMeta.coeficiente_margem,
+                coeficiente_liquida5: coefficients.liquida5 || prevMeta.coeficiente_liquida5,
+                coeficiente_beneficio5: coefficients.beneficio5 || prevMeta.coeficiente_beneficio5,
+                tabela_margem: tabelaLabels.margem || prevMeta.tabela_margem,
+                tabela_liquida5: tabelaLabels.liquida5 || prevMeta.tabela_liquida5,
+                tabela_beneficio5: tabelaLabels.beneficio5 || prevMeta.tabela_beneficio5,
                 valor_operacao_margem: valOpMargemStr || prevMeta.valor_operacao_margem,
                 valor_operacao_liquida5: valOpLiquida5Str || prevMeta.valor_operacao_liquida5,
                 valor_operacao_beneficio5: valOpBeneficio5Str || prevMeta.valor_operacao_beneficio5,
+                valor_producao_margem: valProdMargemStr || prevMeta.valor_producao_margem,
+                valor_producao_liquida5: valProdLiquida5Str || prevMeta.valor_producao_liquida5,
+                valor_producao_beneficio5: valProdBeneficio5Str || prevMeta.valor_producao_beneficio5,
                 valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : prevMeta.valor_operacao,
                 selected_operation_type: selectedOpType || prevMeta.selected_operation_type,
+                selected_operation_types: selectedOpType ? [selectedOpType] : (prevMeta.selected_operation_types || undefined),
                 convenio: formData.convenio || prevMeta.convenio,
                 telefone_empresa: selectedEmpresaPhone || prevMeta.telefone_empresa || undefined,
                 ultimo_chamado_aberto_em: new Date().toISOString()
