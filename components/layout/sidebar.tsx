@@ -181,7 +181,7 @@ const allMenuItems = [
         name: "PDI", 
         href: "/pdi", 
         icon: Target, 
-        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor"] 
+        roles: ["Recursos Humanos", "Administrador", "Desenvolvedor", "Operacional", "Supervisor"] 
       },
       { 
         name: "ENTREVISTAS", 

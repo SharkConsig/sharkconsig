@@ -35,7 +35,12 @@ import {
   LayoutGrid,
   List,
   ChevronDown,
-  X
+  X,
+  Bold,
+  Italic,
+  Underline,
+  Highlighter,
+  Palette
 } from "lucide-react"
 
 // Types
@@ -44,6 +49,7 @@ export type EtapaProfissional =
   | "Desenvolvimento" 
   | "Acompanhamento" 
   | "Preparação para Promoção/Efetivação"
+  | "Outros"
 
 export interface WeeklyLog {
   acaoPrevista: string
@@ -250,6 +256,357 @@ function createBlankPDIData(colab?: Partial<CollaboratorBasic>): PDIData {
   }
 }
 
+function toDateInputValue(val?: string): string {
+  if (!val) return ""
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val
+  const parts = val.split("/")
+  if (parts.length === 3) {
+    const [d, m, y] = parts
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`
+  }
+  return ""
+}
+
+function formatDateBR(val?: string): string {
+  if (!val) return ""
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+    const [y, m, d] = val.split("-")
+    return `${d}/${m}/${y}`
+  }
+  return val
+}
+
+function renderFormattedFeedbackText(text: string) {
+  if (!text) return "—"
+  if (text.includes("<") && text.includes(">")) {
+    return (
+      <div 
+        className="font-normal text-slate-800 whitespace-pre-wrap break-words leading-relaxed [&_mark]:px-1 [&_mark]:py-0.5 [&_mark]:rounded [&_span]:inline"
+        dangerouslySetInnerHTML={{ __html: text }}
+      />
+    )
+  }
+  return <p className="font-normal text-slate-800 whitespace-pre-wrap break-words">{text}</p>
+}
+
+function FormattedFeedbackField({
+  label,
+  labelColor,
+  value,
+  onChange,
+  placeholder,
+  rows = 3
+}: {
+  label: string
+  labelColor: string
+  value: string
+  onChange: (val: string) => void
+  placeholder: string
+  rows?: number
+}) {
+  const editorRef = React.useRef<HTMLDivElement>(null)
+  const [showColorPicker, setShowColorPicker] = useState(false)
+  const [showBgPicker, setShowBgPicker] = useState(false)
+
+  const fontColors = [
+    { name: "Preto", hex: "#0f172a" },
+    { name: "Azul", hex: "#2563eb" },
+    { name: "Verde", hex: "#16a34a" },
+    { name: "Vermelho", hex: "#dc2626" },
+    { name: "Laranja", hex: "#ea580c" },
+    { name: "Roxo", hex: "#9333ea" },
+  ]
+
+  const bgColors = [
+    { name: "Amarelo", hex: "#fef08a" },
+    { name: "Verde", hex: "#bbf7d0" },
+    { name: "Azul", hex: "#bfdbfe" },
+    { name: "Rosa", hex: "#fbcfe8" },
+    { name: "Laranja", hex: "#fed7aa" },
+  ]
+
+  // Sincroniza o innerHTML com o value externo (abertura de modal, edições externas)
+  useEffect(() => {
+    if (editorRef.current) {
+      const currentHtml = editorRef.current.innerHTML
+      const cleanVal = value || ""
+      if (currentHtml !== cleanVal) {
+        editorRef.current.innerHTML = cleanVal
+      }
+    }
+  }, [value])
+
+  const handleInput = () => {
+    if (!editorRef.current) return
+    const rawHtml = editorRef.current.innerHTML
+    if (rawHtml === "<br>" || rawHtml === "<p><br></p>" || editorRef.current.innerText.trim() === "") {
+      onChange("")
+    } else {
+      onChange(rawHtml)
+    }
+  }
+
+  const execCmd = (command: string, val: string | undefined = undefined) => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    document.execCommand(command, false, val)
+    handleInput()
+  }
+
+  const applyBullet = () => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0) {
+      editor.innerHTML = (editor.innerHTML || "") + "•&nbsp;"
+      handleInput()
+      return
+    }
+    const range = sel.getRangeAt(0)
+    const bulletNode = document.createTextNode("• ")
+    range.insertNode(bulletNode)
+    range.setStartAfter(bulletNode)
+    range.setEndAfter(bulletNode)
+    sel.removeAllRanges()
+    sel.addRange(range)
+    handleInput()
+  }
+
+  const applyColor = (hex: string) => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      const span = document.createElement("span")
+      span.setAttribute("style", `color: ${hex}`)
+      span.textContent = "texto"
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0)
+        range.insertNode(span)
+        range.selectNodeContents(span)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      } else {
+        editor.appendChild(span)
+      }
+    } else {
+      const range = sel.getRangeAt(0)
+      const selectedContent = range.extractContents()
+      const span = document.createElement("span")
+      span.setAttribute("style", `color: ${hex}`)
+      span.appendChild(selectedContent)
+      range.insertNode(span)
+      sel.removeAllRanges()
+      const newRange = document.createRange()
+      newRange.selectNode(span)
+      sel.addRange(newRange)
+    }
+    handleInput()
+  }
+
+  const applyHighlight = (hex: string) => {
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+      const mark = document.createElement("mark")
+      mark.setAttribute("style", `background-color: ${hex}; padding: 1px 4px; border-radius: 4px`)
+      mark.textContent = "destaque"
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0)
+        range.insertNode(mark)
+        range.selectNodeContents(mark)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      } else {
+        editor.appendChild(mark)
+      }
+    } else {
+      const range = sel.getRangeAt(0)
+      const selectedContent = range.extractContents()
+      const mark = document.createElement("mark")
+      mark.setAttribute("style", `background-color: ${hex}; padding: 1px 4px; border-radius: 4px`)
+      mark.appendChild(selectedContent)
+      range.insertNode(mark)
+      sel.removeAllRanges()
+      const newRange = document.createRange()
+      newRange.selectNode(mark)
+      sel.addRange(newRange)
+    }
+    handleInput()
+  }
+
+  const minHeightPx = Math.max(76, rows * 24)
+
+  return (
+    <div className="space-y-1">
+      {(showColorPicker || showBgPicker) && (
+        <div 
+          className="fixed inset-0 z-40 bg-transparent" 
+          onClick={() => { setShowColorPicker(false); setShowBgPicker(false); }} 
+        />
+      )}
+      <div className="flex items-center justify-between">
+        <label className={cn("font-bold block text-xs", labelColor)}>{label}</label>
+      </div>
+
+      <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50 focus-within:border-[#00D492] focus-within:bg-white transition-all shadow-xs">
+        {/* Barra de Ferramentas */}
+        <div className="bg-slate-100/90 border-b border-slate-200 px-2 py-1 flex items-center gap-1 flex-wrap select-none relative">
+          <button
+            type="button"
+            title="Negrito"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              execCmd("bold")
+            }}
+            className="w-6 h-6 rounded flex items-center justify-center hover:bg-white text-slate-700 hover:text-slate-900 border border-transparent hover:border-slate-300 transition-colors cursor-pointer text-xs font-bold"
+          >
+            <Bold className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            type="button"
+            title="Itálico"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              execCmd("italic")
+            }}
+            className="w-6 h-6 rounded flex items-center justify-center hover:bg-white text-slate-700 hover:text-slate-900 border border-transparent hover:border-slate-300 transition-colors cursor-pointer text-xs"
+          >
+            <Italic className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            type="button"
+            title="Sublinhado"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              execCmd("underline")
+            }}
+            className="w-6 h-6 rounded flex items-center justify-center hover:bg-white text-slate-700 hover:text-slate-900 border border-transparent hover:border-slate-300 transition-colors cursor-pointer text-xs"
+          >
+            <Underline className="w-3.5 h-3.5" />
+          </button>
+
+          <div className="w-px h-3.5 bg-slate-300 mx-0.5" />
+
+          <button
+            type="button"
+            title="Marcadores"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              applyBullet()
+            }}
+            className="w-6 h-6 rounded flex items-center justify-center hover:bg-white text-slate-700 hover:text-slate-900 border border-transparent hover:border-slate-300 transition-colors cursor-pointer text-xs"
+          >
+            <List className="w-3.5 h-3.5" />
+          </button>
+
+          <div className="w-px h-3.5 bg-slate-300 mx-0.5" />
+
+          {/* Cor da Fonte */}
+          <div className="relative">
+            <button
+              type="button"
+              title="Cor da Fonte"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setShowColorPicker(prev => !prev)
+                setShowBgPicker(false)
+              }}
+              className="px-1.5 h-6 rounded flex items-center gap-1 hover:bg-white text-slate-700 hover:text-slate-900 border border-transparent hover:border-slate-300 transition-colors cursor-pointer text-[11px]"
+            >
+              <Palette className="w-3.5 h-3.5 text-blue-600" />
+              <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+            </button>
+
+            {showColorPicker && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-1.5 flex gap-1 z-50 animate-in fade-in zoom-in-95">
+                {fontColors.map(c => (
+                  <button
+                    key={c.hex}
+                    type="button"
+                    title={c.name}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      applyColor(c.hex)
+                      setShowColorPicker(false)
+                    }}
+                    className="w-5 h-5 rounded-full border border-slate-300 hover:scale-110 transition-transform cursor-pointer"
+                    style={{ backgroundColor: c.hex }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Cor do Fundo (Marca-texto) */}
+          <div className="relative">
+            <button
+              type="button"
+              title="Cor do Fundo do Texto"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setShowBgPicker(prev => !prev)
+                setShowColorPicker(false)
+              }}
+              className="px-1.5 h-6 rounded flex items-center gap-1 hover:bg-white text-slate-700 hover:text-slate-900 border border-transparent hover:border-slate-300 transition-colors cursor-pointer text-[11px]"
+            >
+              <Highlighter className="w-3.5 h-3.5 text-amber-500" />
+              <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+            </button>
+
+            {showBgPicker && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-1.5 flex gap-1 z-50 animate-in fade-in zoom-in-95">
+                {bgColors.map(c => (
+                  <button
+                    key={c.hex}
+                    type="button"
+                    title={c.name}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      applyHighlight(c.hex)
+                      setShowBgPicker(false)
+                    }}
+                    className="w-5 h-5 rounded-full border border-slate-300 hover:scale-110 transition-transform cursor-pointer"
+                    style={{ backgroundColor: c.hex }}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Editor WYSIWYG ContentEditable formatado em tempo real */}
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={handleInput}
+          onBlur={() => {
+            if (editorRef.current && (editorRef.current.innerHTML === "<br>" || editorRef.current.innerText.trim() === "")) {
+              editorRef.current.innerHTML = ""
+              onChange("")
+            }
+          }}
+          data-placeholder={placeholder}
+          style={{ minHeight: `${minHeightPx}px`, resize: "vertical" }}
+          className={cn(
+            "w-full bg-transparent p-2.5 text-xs text-slate-800 focus:outline-none overflow-y-auto resize-y leading-relaxed font-normal break-words whitespace-pre-wrap cursor-text",
+            "[&_mark]:px-1 [&_mark]:py-0.5 [&_mark]:rounded [&_span]:inline",
+            "empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:font-normal empty:before:pointer-events-none"
+          )}
+        />
+      </div>
+    </div>
+  )
+}
+
 export default function PDIPage() {
   const [collaborators, setCollaborators] = useState<CollaboratorBasic[]>([])
   const [loading, setLoading] = useState(true)
@@ -269,7 +626,7 @@ export default function PDIPage() {
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null)
   const [showAddFeedbackModal, setShowAddFeedbackModal] = useState(false)
   const [newFeedbackData, setNewFeedbackData] = useState<Partial<PDIFeedback>>({
-    data: new Date().toLocaleDateString("pt-BR"),
+    data: new Date().toISOString().split("T")[0],
     responsavel: "",
     contexto: "",
     percepcaoFuncionario: "",
@@ -278,6 +635,8 @@ export default function PDIPage() {
     combinados: "",
     dataRetorno: ""
   })
+  const [feedbackParaExcluir, setFeedbackParaExcluir] = useState<{ feedback: PDIFeedback; index: number } | null>(null)
+  const [isDeletingFeedback, setIsDeletingFeedback] = useState(false)
 
   const [showAddComportamentoModal, setShowAddComportamentoModal] = useState(false)
   const [newCompData, setNewCompData] = useState<Partial<PDIComportamento>>({
@@ -728,6 +1087,29 @@ export default function PDIPage() {
     toast.success("Evidência adicionada e salva na tabela pdi!")
   }
 
+  const handleConfirmDeleteFeedback = async () => {
+    if (!selectedColab?.pdiData || feedbackParaExcluir === null) return
+    setIsDeletingFeedback(true)
+    try {
+      const updatedFeedbacks = selectedColab.pdiData.feedbacks.filter((fb, i) => {
+        if (feedbackParaExcluir.feedback.id && fb.id) {
+          return fb.id !== feedbackParaExcluir.feedback.id
+        }
+        return i !== feedbackParaExcluir.index
+      })
+      await handleUpdatePDIData({
+        ...selectedColab.pdiData,
+        feedbacks: updatedFeedbacks
+      }, true)
+      setFeedbackParaExcluir(null)
+      toast.success("Feedback excluído com sucesso!")
+    } catch (e) {
+      toast.error("Erro ao excluir feedback.")
+    } finally {
+      setIsDeletingFeedback(false)
+    }
+  }
+
   const handleSaveExplicitly = async () => {
     if (!selectedColab?.pdiData) return
     setSaving(true)
@@ -857,6 +1239,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
         return "bg-purple-50 text-purple-700 border-purple-200"
       case "Preparação para Promoção/Efetivação":
         return "bg-amber-50 text-amber-700 border-amber-200"
+      case "Outros":
+        return "bg-slate-100 text-slate-700 border-slate-200"
       default:
         return "bg-slate-50 text-slate-700 border-slate-200"
     }
@@ -961,7 +1345,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     { key: "Integração", label: "Integração" },
                     { key: "Desenvolvimento", label: "Desenvolvimento" },
                     { key: "Acompanhamento", label: "Acompanhamento" },
-                    { key: "Preparação para Promoção/Efetivação", label: "Promoção / Efetivação" }
+                    { key: "Preparação para Promoção/Efetivação", label: "Promoção / Efetivação" },
+                    { key: "Outros", label: "Outros" }
                   ].map((chip) => (
                     <button
                       key={chip.key}
@@ -1428,6 +1813,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         <option value="Desenvolvimento">Desenvolvimento (Consolidação de metas)</option>
                         <option value="Acompanhamento">Acompanhamento (Rotina e reciclagem)</option>
                         <option value="Preparação para Promoção/Efetivação">Preparação para Promoção / Efetivação</option>
+                        <option value="Outros">Outros</option>
                       </select>
                     </div>
                   </div>
@@ -1855,7 +2241,19 @@ Registrado no SharkConsig CRM - Módulo PDI`
 
                   <button
                     type="button"
-                    onClick={() => setShowAddFeedbackModal(true)}
+                    onClick={() => {
+                      setNewFeedbackData({
+                        data: new Date().toISOString().split("T")[0],
+                        responsavel: "",
+                        contexto: "",
+                        percepcaoFuncionario: "",
+                        pontosPositivos: "",
+                        pontosMelhoria: "",
+                        combinados: "",
+                        dataRetorno: ""
+                      })
+                      setShowAddFeedbackModal(true)
+                    }}
                     className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-sm self-start sm:self-auto"
                   >
                     <Plus className="w-4 h-4 text-[#00D492]" />
@@ -1879,17 +2277,28 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
                             <div className="flex items-center gap-2">
-                              <span className="text-xs font-black text-slate-900">{fb.data}</span>
+                              <span className="text-xs font-black text-slate-900">{formatDateBR(fb.data)}</span>
                               <span className="text-slate-300">•</span>
                               <span className="text-xs font-semibold text-slate-600">Por: <strong>{fb.responsavel}</strong></span>
                             </div>
 
-                            {fb.dataRetorno && (
-                              <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                <span>Retorno agendado: {fb.dataRetorno}</span>
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {fb.dataRetorno && (
+                                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  <span>Retorno agendado: {formatDateBR(fb.dataRetorno)}</span>
+                                </span>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => setFeedbackParaExcluir({ feedback: fb, index: idx })}
+                                className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Excluir este feedback"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -1906,11 +2315,11 @@ Registrado no SharkConsig CRM - Módulo PDI`
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-2 border-t border-slate-200/80">
                             <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-100">
                               <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">Pontos Positivos</span>
-                              <p className="font-semibold text-slate-800">{fb.pontosPositivos}</p>
+                              <div className="text-slate-800">{renderFormattedFeedbackText(fb.pontosPositivos)}</div>
                             </div>
                             <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-100">
                               <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block mb-1">Pontos de Melhoria</span>
-                              <p className="font-semibold text-slate-800">{fb.pontosMelhoria}</p>
+                              <div className="text-slate-800">{renderFormattedFeedbackText(fb.pontosMelhoria)}</div>
                             </div>
                           </div>
 
@@ -1970,11 +2379,13 @@ Registrado no SharkConsig CRM - Módulo PDI`
                           </div>
                           <div>
                             <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider block">Impacto nos resultados/trabalho:</span>
-                            <p className="font-semibold text-slate-800">{c.impacto}</p>
+                            {renderFormattedFeedbackText(c.impacto)}
                           </div>
                           <div className="bg-emerald-50/70 p-3 rounded-xl border border-emerald-100">
                             <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Comportamento esperado:</span>
-                            <p className="font-bold text-slate-900 mt-0.5">{c.comportamentoEsperado}</p>
+                            <div className="mt-0.5">
+                              {renderFormattedFeedbackText(c.comportamentoEsperado)}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2231,7 +2642,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
                             <td className="py-3 px-3 font-bold text-slate-900">{acao.objetivo}</td>
                             <td className="py-3 px-3 text-slate-600">{acao.acoesPraticas}</td>
                             <td className="py-3 px-3 text-slate-500">{acao.responsavel}</td>
-                            <td className="py-3 px-3 font-bold text-slate-800">{acao.prazo}</td>
+                            <td className="py-3 px-3 font-bold text-slate-800">{formatDateBR(acao.prazo)}</td>
                             <td className="py-3 px-3 text-slate-600">{acao.indicador}</td>
                             <td className="py-3 px-3 text-center">
                               <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border", getStatusBadgeClass(acao.status))}>
@@ -2675,15 +3086,59 @@ Registrado no SharkConsig CRM - Módulo PDI`
       </main>
 
       {/* ============================================================== */}
+      {/* MODAL: CONFIRMAR EXCLUSÃO DE FEEDBACK                          */}
+      {/* ============================================================== */}
+      {feedbackParaExcluir && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1 flex-1">
+                <h3 className="text-base font-black text-slate-900 leading-tight">Confirmar Exclusão</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Tem certeza que deseja excluir o feedback de <strong className="text-slate-900 font-bold">{formatDateBR(feedbackParaExcluir.feedback.data) || "data não informada"}</strong> registrado por <strong className="text-slate-900 font-bold">{feedbackParaExcluir.feedback.responsavel || "responsável não informado"}</strong>?
+                </p>
+                <p className="text-[11px] text-rose-600 font-semibold mt-1">
+                  Esta ação é irreversível e o registro será removido permanentemente do PDI.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isDeletingFeedback}
+                onClick={() => setFeedbackParaExcluir(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingFeedback}
+                onClick={handleConfirmDeleteFeedback}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeletingFeedback ? "Excluindo..." : "Sim, Excluir"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
       {/* MODAL: NOVO FEEDBACK                                           */}
       {/* ============================================================== */}
       {showAddFeedbackModal && selectedColab && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[999]">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 border border-slate-200 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-[#00D492]" />
-                <span>Registrar Novo Feedback (1:1)</span>
+                <span>Registrar Novo Feedback</span>
               </h3>
               <button
                 onClick={() => setShowAddFeedbackModal(false)}
@@ -2698,10 +3153,10 @@ Registrado no SharkConsig CRM - Módulo PDI`
                 <div>
                   <label className="font-bold text-slate-600 block mb-1">Data</label>
                   <input
-                    type="text"
-                    value={newFeedbackData.data}
+                    type="date"
+                    value={toDateInputValue(newFeedbackData.data)}
                     onChange={(e) => setNewFeedbackData({ ...newFeedbackData, data: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-bold"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-bold focus:outline-none focus:border-[#00D492] transition-colors cursor-pointer"
                   />
                 </div>
                 <div>
@@ -2738,27 +3193,23 @@ Registrado no SharkConsig CRM - Módulo PDI`
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-bold text-emerald-700 block mb-1">Pontos Positivos</label>
-                  <textarea
-                    rows={2}
-                    value={newFeedbackData.pontosPositivos}
-                    onChange={(e) => setNewFeedbackData({ ...newFeedbackData, pontosPositivos: e.target.value })}
-                    placeholder="Ex.: Demonstrou dedicação na prospecção e rápida assimilação das orientações..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-slate-800 placeholder:text-slate-400"
-                  />
-                </div>
-                <div>
-                  <label className="font-bold text-amber-700 block mb-1">Pontos de Melhoria</label>
-                  <textarea
-                    rows={2}
-                    value={newFeedbackData.pontosMelhoria}
-                    onChange={(e) => setNewFeedbackData({ ...newFeedbackData, pontosMelhoria: e.target.value })}
-                    placeholder="Ex.: Aprimorar assertividade no fechamento e contorno de objeções de taxas..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-slate-800 placeholder:text-slate-400"
-                  />
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormattedFeedbackField
+                  label="Pontos Positivos"
+                  labelColor="text-emerald-700"
+                  value={newFeedbackData.pontosPositivos}
+                  onChange={(val) => setNewFeedbackData({ ...newFeedbackData, pontosPositivos: val })}
+                  placeholder="Ex.: Demonstrou dedicação na prospecção e rápida assimilação das orientações..."
+                  rows={3}
+                />
+                <FormattedFeedbackField
+                  label="Pontos de Melhoria"
+                  labelColor="text-amber-700"
+                  value={newFeedbackData.pontosMelhoria}
+                  onChange={(val) => setNewFeedbackData({ ...newFeedbackData, pontosMelhoria: val })}
+                  placeholder="Ex.: Aprimorar assertividade no fechamento e contorno de objeções de taxas..."
+                  rows={3}
+                />
               </div>
 
               <div>
@@ -2773,13 +3224,12 @@ Registrado no SharkConsig CRM - Módulo PDI`
               </div>
 
               <div>
-                <label className="font-bold text-slate-600 block mb-1">Data para Retomar o Assunto (Follow-up)</label>
+                <label className="font-bold text-slate-600 block mb-1">Data para Retomar o Assunto</label>
                 <input
-                  type="text"
-                  value={newFeedbackData.dataRetorno}
+                  type="date"
+                  value={toDateInputValue(newFeedbackData.dataRetorno)}
                   onChange={(e) => setNewFeedbackData({ ...newFeedbackData, dataRetorno: e.target.value })}
-                  placeholder="dd/mm/aaaa"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-semibold focus:outline-none focus:border-[#00D492] transition-colors cursor-pointer"
                 />
               </div>
             </div>
@@ -2801,14 +3251,14 @@ Registrado no SharkConsig CRM - Módulo PDI`
                   }
                   const created: PDIFeedback = {
                     id: `fb-${Date.now()}`,
-                    data: newFeedbackData.data || new Date().toLocaleDateString("pt-BR"),
+                    data: formatDateBR(newFeedbackData.data) || new Date().toLocaleDateString("pt-BR"),
                     responsavel: newFeedbackData.responsavel || "",
                     contexto: newFeedbackData.contexto || "",
                     percepcaoFuncionario: newFeedbackData.percepcaoFuncionario || "",
                     pontosPositivos: newFeedbackData.pontosPositivos || "",
                     pontosMelhoria: newFeedbackData.pontosMelhoria || "",
                     combinados: newFeedbackData.combinados || "",
-                    dataRetorno: newFeedbackData.dataRetorno || ""
+                    dataRetorno: formatDateBR(newFeedbackData.dataRetorno) || ""
                   }
                   handleUpdatePDIData({
                     ...selectedColab.pdiData!,
@@ -2831,7 +3281,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
       {/* ============================================================== */}
       {showAddComportamentoModal && selectedColab && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-[999]">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 border border-slate-200 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-[#00D492]" />
@@ -2868,25 +3318,22 @@ Registrado no SharkConsig CRM - Módulo PDI`
                 />
               </div>
 
-              <div>
-                <label className="font-bold text-rose-500 block mb-1">Impacto no trabalho ou resultados</label>
-                <input
-                  type="text"
-                  value={newCompData.impacto}
-                  onChange={(e) => setNewCompData({ ...newCompData, impacto: e.target.value })}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <FormattedFeedbackField
+                  label="Impacto no trabalho ou resultados"
+                  labelColor="text-rose-500"
+                  value={newCompData.impacto || ""}
+                  onChange={(val) => setNewCompData({ ...newCompData, impacto: val })}
                   placeholder="Ex.: Perda de clientes quentes..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800"
+                  rows={3}
                 />
-              </div>
-
-              <div>
-                <label className="font-bold text-emerald-700 block mb-1">Comportamento Esperado</label>
-                <textarea
-                  rows={2}
-                  value={newCompData.comportamentoEsperado}
-                  onChange={(e) => setNewCompData({ ...newCompData, comportamentoEsperado: e.target.value })}
+                <FormattedFeedbackField
+                  label="Comportamento Esperado"
+                  labelColor="text-emerald-700"
+                  value={newCompData.comportamentoEsperado || ""}
+                  onChange={(val) => setNewCompData({ ...newCompData, comportamentoEsperado: val })}
                   placeholder="Padrão de excelência acordado..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-slate-800 font-medium"
+                  rows={3}
                 />
               </div>
 
@@ -3014,11 +3461,10 @@ Registrado no SharkConsig CRM - Módulo PDI`
                 <div>
                   <label className="font-bold text-slate-600 block mb-1">Prazo</label>
                   <input
-                    type="text"
-                    value={newAcaoData.prazo}
+                    type="date"
+                    value={toDateInputValue(newAcaoData.prazo)}
                     onChange={(e) => setNewAcaoData({ ...newAcaoData, prazo: e.target.value })}
-                    placeholder="dd/mm/aaaa"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-bold"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-bold focus:outline-none focus:border-[#00D492] transition-colors cursor-pointer"
                   />
                 </div>
               </div>
@@ -3083,7 +3529,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     objetivo: newAcaoData.objetivo || "",
                     acoesPraticas: newAcaoData.acoesPraticas || "",
                     responsavel: newAcaoData.responsavel || "Colaborador",
-                    prazo: newAcaoData.prazo || "A definir",
+                    prazo: formatDateBR(newAcaoData.prazo) || "A definir",
                     frequencia: newAcaoData.frequencia as any || "Semanal",
                     indicador: newAcaoData.indicador || "",
                     resultadoEsperado: newAcaoData.resultadoEsperado || "",
