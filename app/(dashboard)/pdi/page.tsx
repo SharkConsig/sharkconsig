@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { Header } from "@/components/layout/header"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
+import { FilePreviewModal } from "@/components/propostas/file-preview-modal"
 import { 
   Target, 
   Search, 
@@ -40,7 +41,13 @@ import {
   Italic,
   Underline,
   Highlighter,
-  Palette
+  Palette,
+  Paperclip,
+  FileText,
+  Film,
+  Volume2,
+  Loader2,
+  Download
 } from "lucide-react"
 
 // Types
@@ -58,6 +65,14 @@ export interface WeeklyLog {
   proximoPasso: string
 }
 
+export interface PDIAttachment {
+  id: string
+  name: string
+  url: string
+  type: string
+  size?: number
+}
+
 export interface PDIFeedback {
   id: string
   data: string
@@ -68,6 +83,7 @@ export interface PDIFeedback {
   pontosMelhoria: string
   combinados: string
   dataRetorno: string
+  anexos?: PDIAttachment[]
 }
 
 export interface PDIComportamento {
@@ -274,6 +290,31 @@ function formatDateBR(val?: string): string {
     return `${d}/${m}/${y}`
   }
   return val
+}
+
+function getAttachmentIcon(type?: string) {
+  if (!type) return <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+  const lower = type.toLowerCase()
+  if (lower.startsWith("image/") || lower.includes("png") || lower.includes("jpg") || lower.includes("jpeg")) {
+    return <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+  }
+  if (lower.startsWith("video/") || lower.includes("mp4") || lower.includes("mov")) {
+    return <Film className="w-3.5 h-3.5 text-purple-500" />
+  }
+  if (lower.startsWith("audio/") || lower.includes("mp3") || lower.includes("wav") || lower.includes("ogg")) {
+    return <Volume2 className="w-3.5 h-3.5 text-emerald-500" />
+  }
+  if (lower.includes("pdf") || lower.includes("doc") || lower.includes("sheet") || lower.includes("text")) {
+    return <FileText className="w-3.5 h-3.5 text-rose-500" />
+  }
+  return <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+}
+
+function formatFileSize(bytes?: number): string {
+  if (!bytes || bytes <= 0) return ""
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function renderFormattedFeedbackText(text: string) {
@@ -624,6 +665,7 @@ export default function PDIPage() {
   
   // New entry modals & states
   const [previewPhoto, setPreviewPhoto] = useState<{ url: string; name: string } | null>(null)
+  const [previewAttachment, setPreviewAttachment] = useState<PDIAttachment | null>(null)
   const [showAddFeedbackModal, setShowAddFeedbackModal] = useState(false)
   const [newFeedbackData, setNewFeedbackData] = useState<Partial<PDIFeedback>>({
     data: new Date().toISOString().split("T")[0],
@@ -633,10 +675,52 @@ export default function PDIPage() {
     pontosPositivos: "",
     pontosMelhoria: "",
     combinados: "",
-    dataRetorno: ""
+    dataRetorno: "",
+    anexos: []
   })
   const [feedbackParaExcluir, setFeedbackParaExcluir] = useState<{ feedback: PDIFeedback; index: number } | null>(null)
   const [isDeletingFeedback, setIsDeletingFeedback] = useState(false)
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false)
+
+  const handleUploadFeedbackFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0 || !selectedColab) return
+
+    setIsUploadingAttachments(true)
+
+    try {
+      const formData = new FormData()
+      formData.append("colaboradorId", String(selectedColab.id))
+      for (let i = 0; i < files.length; i++) {
+        formData.append("files", files[i])
+      }
+
+      const res = await fetch("/api/pdi/upload", {
+        method: "POST",
+        body: formData
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao fazer upload dos arquivos.")
+      }
+
+      if (data.attachments && data.attachments.length > 0) {
+        setNewFeedbackData(prev => ({
+          ...prev,
+          anexos: [...(prev.anexos || []), ...data.attachments]
+        }))
+        toast.success(`${data.attachments.length} anexo(s) adicionado(s) com sucesso!`)
+      }
+    } catch (err: any) {
+      console.error("Erro no upload de anexos:", err)
+      toast.error(err.message || "Erro ao enviar anexos.")
+    } finally {
+      setIsUploadingAttachments(false)
+      e.target.value = ""
+    }
+  }
 
   const [showAddComportamentoModal, setShowAddComportamentoModal] = useState(false)
   const [newCompData, setNewCompData] = useState<Partial<PDIComportamento>>({
@@ -2250,7 +2334,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         pontosPositivos: "",
                         pontosMelhoria: "",
                         combinados: "",
-                        dataRetorno: ""
+                        dataRetorno: "",
+                        anexos: []
                       })
                       setShowAddFeedbackModal(true)
                     }}
@@ -2276,10 +2361,29 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         {/* Feedback Card */}
                         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-black text-slate-900">{formatDateBR(fb.data)}</span>
                               <span className="text-slate-300">•</span>
                               <span className="text-xs font-semibold text-slate-600">Por: <strong>{fb.responsavel}</strong></span>
+
+                              {/* Anexos vinculados ao feedback (ao lado direito da data e responsável) */}
+                              {fb.anexos && fb.anexos.length > 0 && (
+                                <div className="flex items-center gap-1.5 flex-wrap ml-1 pl-2 border-l border-slate-200">
+                                  {fb.anexos.map((att, attIdx) => (
+                                    <button
+                                      key={att.id || attIdx}
+                                      type="button"
+                                      onClick={() => setPreviewAttachment(att)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-white hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 text-slate-700 border border-slate-200 transition-all shadow-xs cursor-pointer group"
+                                      title={`Visualizar anexo: ${att.name}`}
+                                    >
+                                      {getAttachmentIcon(att.type)}
+                                      <span className="max-w-[130px] truncate">{att.name}</span>
+                                      <ExternalLink className="w-2.5 h-2.5 opacity-40 group-hover:opacity-100 transition-opacity shrink-0" />
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-2">
@@ -3166,7 +3270,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     value={newFeedbackData.responsavel}
                     onChange={(e) => setNewFeedbackData({ ...newFeedbackData, responsavel: e.target.value })}
                     placeholder="Nome do Líder / RH"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-bold"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-slate-800"
                   />
                 </div>
               </div>
@@ -3210,6 +3314,101 @@ Registrado no SharkConsig CRM - Módulo PDI`
                   placeholder="Ex.: Aprimorar assertividade no fechamento e contorno de objeções de taxas..."
                   rows={3}
                 />
+              </div>
+
+              {/* Anexos do Feedback (fotos, documentos, áudios, vídeos) */}
+              <div className="space-y-2 p-3.5 rounded-xl border border-slate-200 bg-slate-50/70">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <Paperclip className="w-4 h-4 text-slate-600" />
+                    <label className="font-bold text-slate-800 text-xs">
+                      Anexos do Feedback
+                    </label>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      (imagens, documentos, áudios ou vídeos)
+                    </span>
+                  </div>
+
+                  <label className={cn(
+                    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-slate-900 hover:bg-[#00D492] hover:text-slate-950 cursor-pointer transition-all shadow-xs select-none",
+                    isUploadingAttachments && "opacity-50 pointer-events-none"
+                  )}>
+                    {isUploadingAttachments ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Enviando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Anexar Arquivo</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                      onChange={handleUploadFeedbackFiles}
+                      className="hidden"
+                      disabled={isUploadingAttachments}
+                    />
+                  </label>
+                </div>
+
+                {newFeedbackData.anexos && newFeedbackData.anexos.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {newFeedbackData.anexos.map((att, i) => (
+                      <div 
+                        key={att.id || i}
+                        className="flex items-center justify-between gap-2 p-2 rounded-xl bg-white border border-slate-200 shadow-2xs group"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="p-1.5 rounded-lg bg-slate-50 border border-slate-100 shrink-0">
+                            {getAttachmentIcon(att.type)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold text-slate-800 truncate" title={att.name}>
+                              {att.name}
+                            </p>
+                            {att.size && (
+                              <p className="text-[9px] text-slate-400 font-medium">
+                                {formatFileSize(att.size)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewAttachment(att)}
+                            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                            title="Visualizar anexo"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewFeedbackData(prev => ({
+                                ...prev,
+                                anexos: prev.anexos?.filter((_, idx) => idx !== i)
+                              }))
+                            }}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Remover anexo"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 italic">
+                    Nenhum arquivo anexado a este feedback ainda.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -3258,7 +3457,8 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     pontosPositivos: newFeedbackData.pontosPositivos || "",
                     pontosMelhoria: newFeedbackData.pontosMelhoria || "",
                     combinados: newFeedbackData.combinados || "",
-                    dataRetorno: formatDateBR(newFeedbackData.dataRetorno) || ""
+                    dataRetorno: formatDateBR(newFeedbackData.dataRetorno) || "",
+                    anexos: newFeedbackData.anexos || []
                   }
                   handleUpdatePDIData({
                     ...selectedColab.pdiData!,
@@ -3601,6 +3801,171 @@ Registrado no SharkConsig CRM - Módulo PDI`
               >
                 Fechar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Visualizador de PDF (renderizado via canvas com react-pdf, sem bloqueio de iframe de navegador) */}
+      {previewAttachment && (
+        (previewAttachment.type || "").toLowerCase().includes("pdf") ||
+        (previewAttachment.name || "").toLowerCase().endsWith(".pdf")
+      ) && (
+        <FilePreviewModal
+          isOpen={true}
+          onClose={() => setPreviewAttachment(null)}
+          url={previewAttachment.url}
+          label={previewAttachment.name}
+          extension="PDF"
+        />
+      )}
+
+      {/* Modal Visualizador de Imagens, Vídeos, Áudios e outros Anexos */}
+      {previewAttachment && !(
+        (previewAttachment.type || "").toLowerCase().includes("pdf") ||
+        (previewAttachment.name || "").toLowerCase().endsWith(".pdf")
+      ) && (
+        <div 
+          className="fixed inset-0 z-[1100] flex items-center justify-center p-3 sm:p-6 bg-slate-950/75 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setPreviewAttachment(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80">
+              <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                <div className="p-2 rounded-xl bg-white border border-slate-200 shadow-2xs shrink-0">
+                  {getAttachmentIcon(previewAttachment.type)}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-black text-slate-900 truncate" title={previewAttachment.name}>
+                    {previewAttachment.name}
+                  </h3>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
+                    <span>{previewAttachment.type || "Arquivo"}</span>
+                    {previewAttachment.size ? (
+                      <>
+                        <span>•</span>
+                        <span>{formatFileSize(previewAttachment.size)}</span>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={previewAttachment.url}
+                  download={previewAttachment.name}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors shadow-2xs"
+                  title="Baixar ou abrir original"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Baixar / Abrir</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewAttachment(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
+                  title="Fechar"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content Preview */}
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-slate-900/5 min-h-[300px] max-h-[75vh]">
+              {(() => {
+                const type = (previewAttachment.type || "").toLowerCase()
+                const url = previewAttachment.url
+                const name = (previewAttachment.name || "").toLowerCase()
+
+                const isImage = type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(name)
+                const isVideo = type.startsWith("video/") || /\.(mp4|webm|mov|mkv)$/i.test(name)
+                const isAudio = type.startsWith("audio/") || /\.(mp3|wav|ogg|m4a|aac)$/i.test(name)
+                const isPdf = type.includes("pdf") || /\.pdf$/i.test(name)
+
+                if (isImage) {
+                  return (
+                    <div className="relative max-h-[70vh] flex items-center justify-center">
+                      <img 
+                        src={url} 
+                        alt={previewAttachment.name}
+                        className="max-h-[70vh] max-w-full rounded-xl object-contain shadow-md"
+                      />
+                    </div>
+                  )
+                }
+
+                if (isVideo) {
+                  return (
+                    <video 
+                      controls 
+                      autoPlay={false}
+                      src={url}
+                      className="max-h-[70vh] max-w-full rounded-xl shadow-md bg-black"
+                    >
+                      Seu navegador não suporta reprodução deste vídeo.
+                    </video>
+                  )
+                }
+
+                if (isAudio) {
+                  return (
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-md max-w-md w-full space-y-4 text-center">
+                      <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-100">
+                        <Volume2 className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">{previewAttachment.name}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">{formatFileSize(previewAttachment.size)}</p>
+                      </div>
+                      <audio controls src={url} className="w-full">
+                        Seu navegador não suporta reprodução de áudio.
+                      </audio>
+                    </div>
+                  )
+                }
+
+                if (isPdf) {
+                  return (
+                    <iframe 
+                      src={url} 
+                      title={previewAttachment.name}
+                      className="w-full h-[70vh] rounded-xl border border-slate-200 bg-white shadow-sm"
+                    />
+                  )
+                }
+
+                return (
+                  <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-md text-center max-w-md w-full space-y-4">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center mx-auto border border-slate-200">
+                      <FileText className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">{previewAttachment.name}</h4>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Este formato não possui pré-visualização direta integrada.
+                      </p>
+                    </div>
+                    <a
+                      href={url}
+                      download={previewAttachment.name}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-[#00D492] hover:text-slate-950 text-white font-bold text-xs transition-all shadow-sm"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Baixar Documento</span>
+                    </a>
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>
