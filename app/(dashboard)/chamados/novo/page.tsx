@@ -765,7 +765,7 @@ export function NewTicketForm({
       setValidationError("POR FAVOR, INFORME O CPF DO CLIENTE");
       return;
     }
-    if (!formData.tel1) {
+    if (!formData.tel1 && formData.origem !== "DISPARO") {
       setValidationError("POR FAVOR, INFORME O TELEFONE DO CLIENTE");
       return;
     }
@@ -935,7 +935,7 @@ export function NewTicketForm({
           origem: formData.origem,
           cliente_nome: formData.nome,
           cliente_cpf: cleanCPF(formData.cpf),
-          cliente_telefone: formData.tel1,
+          cliente_telefone: formData.tel1 || null,
           cliente_telefone_2: formData.tel2 || null,
           cliente_telefone_3: formData.tel3 || null,
           margem: cleanMoney(formData.margem || originalMargins.margem),
@@ -971,22 +971,163 @@ export function NewTicketForm({
           // Filtrar por CPF (suporta formato com ou sem zeros à esquerda)
           const { data: fichasRelacionadas } = await supabase
             .from('kanban_fichas')
-            .select('id, metadata, margem_disponivel, valor_solicitado, operador_id, operador_nome')
+            .select('id, metadata, operador_id, operador_nome')
             .or(`cliente_cpf.eq.${cleanCpfDigits},cliente_cpf.eq.${paddedCpf}`);
 
-          if (fichasRelacionadas && fichasRelacionadas.length > 0) {
-            // Identificar ficha do operador logado ou ficha sem operador previamente vinculado
-            const fichasDoOperador = fichasRelacionadas.filter(f => {
+          const isDisparo = formData.origem === "DISPARO";
+
+          if (isDisparo) {
+            // Isolamento estrito por operador no contexto DISPARO:
+            // 1. Se o operador logado já possui sua própria ficha, atualiza apenas a dele para EM NEGOCIAÇÃO.
+            // 2. Se o operador logado NÃO possui ficha, cria uma NOVA ficha exclusiva para ele,
+            //    PRESERVANDO integralmente cartões de outros operadores já existentes para o mesmo cliente.
+            const fichasDoOperador = (fichasRelacionadas || []).filter(f => {
               const mesmoId = user?.id && f.operador_id === user.id;
               const mesmoNome = perfil?.nome && f.operador_nome && f.operador_nome.trim().toLowerCase() === perfil.nome.trim().toLowerCase();
               return mesmoId || mesmoNome;
             });
 
-            const fichasParaAtualizar = fichasDoOperador.length > 0
-              ? fichasDoOperador
-              : (fichasRelacionadas.length === 1 ? fichasRelacionadas : fichasRelacionadas.filter(f => !f.operador_id && !f.operador_nome));
+            const outrosOperadoresNomes = Array.from(new Set(
+              (fichasRelacionadas || [])
+                .filter(f => f.operador_nome && f.operador_nome.trim().toLowerCase() !== (perfil?.nome || "").trim().toLowerCase())
+                .map(o => o.operador_nome)
+                .filter(Boolean)
+            ));
 
-            for (const ficha of fichasParaAtualizar) {
+            if (fichasDoOperador.length > 0) {
+              for (const ficha of fichasDoOperador) {
+                const prevMeta = (ficha.metadata && typeof ficha.metadata === 'object') ? ficha.metadata : {};
+                const valProdMargemStr = formatCurrencyValue(calculateValorProducao(valOpMargemStr, tabelaProdPercents.margem));
+                const valProdLiquida5Str = formatCurrencyValue(calculateValorProducao(valOpLiquida5Str, tabelaProdPercents.liquida5));
+                const valProdBeneficio5Str = formatCurrencyValue(calculateValorProducao(valOpBeneficio5Str, tabelaProdPercents.beneficio5));
+
+                const updatedMeta = {
+                  ...prevMeta,
+                  kanban_stage: "EM NEGOCIAÇÃO",
+                  proxima_acao: "Trabalhar proposta do chamado",
+                  origem: "DISPARO",
+                  margem: margemStr || prevMeta.margem,
+                  liquida5: liquida5Str || prevMeta.liquida5,
+                  beneficio5: beneficio5Str || prevMeta.beneficio5,
+                  coeficiente_margem: coefficients.margem || prevMeta.coeficiente_margem,
+                  coeficiente_liquida5: coefficients.liquida5 || prevMeta.coeficiente_liquida5,
+                  coeficiente_beneficio5: coefficients.beneficio5 || prevMeta.coeficiente_beneficio5,
+                  tabela_margem: tabelaLabels.margem || prevMeta.tabela_margem,
+                  tabela_liquida5: tabelaLabels.liquida5 || prevMeta.tabela_liquida5,
+                  tabela_beneficio5: tabelaLabels.beneficio5 || prevMeta.tabela_beneficio5,
+                  valor_operacao_margem: valOpMargemStr || prevMeta.valor_operacao_margem,
+                  valor_operacao_liquida5: valOpLiquida5Str || prevMeta.valor_operacao_liquida5,
+                  valor_operacao_beneficio5: valOpBeneficio5Str || prevMeta.valor_operacao_beneficio5,
+                  valor_producao_margem: valProdMargemStr || prevMeta.valor_producao_margem,
+                  valor_producao_liquida5: valProdLiquida5Str || prevMeta.valor_producao_liquida5,
+                  valor_producao_beneficio5: valProdBeneficio5Str || prevMeta.valor_producao_beneficio5,
+                  valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : prevMeta.valor_operacao,
+                  selected_operation_type: selectedOpType || prevMeta.selected_operation_type,
+                  selected_operation_types: selectedOpType ? [selectedOpType] : (prevMeta.selected_operation_types || undefined),
+                  convenio: formData.convenio || prevMeta.convenio,
+                  telefone_empresa: selectedEmpresaPhone || prevMeta.telefone_empresa || undefined,
+                  ultimo_chamado_aberto_em: new Date().toISOString()
+                };
+
+                const updatePayload: any = {
+                  etapa: "EM NEGOCIAÇÃO",
+                  motivo_perda: null,
+                  metadata: updatedMeta,
+                  updated_at: new Date().toISOString()
+                };
+
+                if (formData.convenio) updatePayload.convenio = formData.convenio;
+
+                await supabase.from('kanban_fichas').update(updatePayload).eq('id', ficha.id);
+              }
+            } else {
+              const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+              const validOperadorId = isUuid(user?.id) ? user.id : null;
+              const operadorNome = perfil?.nome || user?.email || "Corretor";
+              const primaryPhone = formData.tel1 || formData.tel2 || formData.tel3 || "NÃO INFORMADO";
+
+              const newMeta: any = {
+                kanban_stage: "EM NEGOCIAÇÃO",
+                proxima_acao: "Trabalhar proposta do chamado",
+                vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+                prioridade: "NORMAL",
+                user_id: user?.id,
+                user_nome: operadorNome,
+                origem: "DISPARO",
+                convenio: formData.convenio,
+                margem: margemStr,
+                liquida5: liquida5Str,
+                beneficio5: beneficio5Str,
+                margem_disponivel: margemSelecionadaNum > 0 ? margemSelecionadaNum : null,
+                valor_solicitado: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : null,
+                valor_operacao: valorOperacaoCalculado > 0 ? valorOperacaoCalculado : null,
+                telefone_empresa: selectedEmpresaPhone || undefined,
+                cliente_telefone_2: formData.tel2 || undefined,
+                cliente_telefone_3: formData.tel3 || undefined,
+                telefones: [formData.tel1, formData.tel2, formData.tel3].filter(Boolean),
+                telefones_contatados: [formData.tel1, formData.tel2, formData.tel3].filter(Boolean),
+                conflito_titularidade: outrosOperadoresNomes.length > 0,
+                concorrencia_outros_operadores: outrosOperadoresNomes,
+                historico_kanban: [{
+                  data: new Date().toISOString(),
+                  etapa_nova: "EM NEGOCIAÇÃO",
+                  autor: operadorNome,
+                  motivo: "Chamado aberto com origem DISPARO"
+                }]
+              };
+
+              const baseInsertPayload: any = {
+                cliente_nome: formData.nome || "Cliente sem Nome",
+                cliente_cpf: cleanCpfDigits.padStart(11, "0"),
+                cliente_telefone: primaryPhone,
+                operador_id: validOperadorId,
+                operador_nome: operadorNome,
+                etapa: "EM NEGOCIAÇÃO",
+                motivo_perda: null,
+                convenio: formData.convenio || null,
+                metadata: newMeta,
+                observacoes: "Atendimento iniciado via abertura de chamado (DISPARO)"
+              };
+
+              let { error: insertErr } = await supabase.from('kanban_fichas').insert(baseInsertPayload);
+
+              if (insertErr) {
+                console.warn("Aviso na inserção padrão de kanban_fichas, executando fallback mínimo:", insertErr?.message || insertErr);
+                const minPayload: any = {
+                  cliente_nome: formData.nome || "Cliente sem Nome",
+                  cliente_cpf: cleanCpfDigits.padStart(11, "0"),
+                  cliente_telefone: primaryPhone,
+                  operador_id: validOperadorId,
+                  operador_nome: operadorNome,
+                  etapa: "EM NEGOCIAÇÃO",
+                  motivo_perda: null,
+                  metadata: newMeta
+                };
+                const fallback = await supabase.from('kanban_fichas').insert(minPayload);
+                insertErr = fallback.error;
+              }
+
+              if (insertErr) {
+                console.error("Erro ao inserir ficha no kanban_fichas:", insertErr?.message || insertErr?.details || JSON.stringify(insertErr));
+              }
+
+              try {
+                await supabase.from("clientes_chamados").insert({
+                  usuario_id: validOperadorId || user?.id,
+                  usuario_nome: operadorNome,
+                  usuario_funcao: perfil?.role || perfil?.funcao || "Corretor",
+                  cliente_cpf: cleanCpfDigits.padStart(11, "0"),
+                  cliente_nome: formData.nome || "Cliente sem Nome",
+                  telefones_contatados: [formData.tel1, formData.tel2, formData.tel3].filter(Boolean),
+                  tabulacao: "CHAMADO ABERTO",
+                  origem: "DISPARO",
+                  data_chamado: new Date().toISOString().split("T")[0]
+                });
+              } catch {}
+            }
+          } else if (fichasRelacionadas && fichasRelacionadas.length > 0) {
+            // Para outras origens de cliente: atualiza as fichas existentes para EM NEGOCIAÇÃO
+            for (const ficha of fichasRelacionadas) {
               const prevMeta = (ficha.metadata && typeof ficha.metadata === 'object') ? ficha.metadata : {};
               const valProdMargemStr = formatCurrencyValue(calculateValorProducao(valOpMargemStr, tabelaProdPercents.margem));
               const valProdLiquida5Str = formatCurrencyValue(calculateValorProducao(valOpLiquida5Str, tabelaProdPercents.liquida5));
@@ -994,6 +1135,8 @@ export function NewTicketForm({
 
               const updatedMeta = {
                 ...prevMeta,
+                kanban_stage: "EM NEGOCIAÇÃO",
+                proxima_acao: "Trabalhar proposta do chamado",
                 margem: margemStr || prevMeta.margem,
                 liquida5: liquida5Str || prevMeta.liquida5,
                 beneficio5: beneficio5Str || prevMeta.beneficio5,
@@ -1018,33 +1161,15 @@ export function NewTicketForm({
               };
 
               const updatePayload: any = {
+                etapa: "EM NEGOCIAÇÃO",
+                motivo_perda: null,
                 metadata: updatedMeta,
                 updated_at: new Date().toISOString()
               };
 
-              if (selectedEmpresaPhone) {
-                updatePayload.telefone_empresa = selectedEmpresaPhone;
-              }
-              if (valorOperacaoCalculado > 0) {
-                updatePayload.valor_solicitado = valorOperacaoCalculado;
-              }
-              if (margemSelecionadaNum > 0) {
-                updatePayload.margem_disponivel = margemSelecionadaNum;
-              }
-              if (formData.convenio) {
-                updatePayload.convenio = formData.convenio;
-              }
-              if (!ficha.operador_id && user?.id) {
-                updatePayload.operador_id = user.id;
-              }
-              if (!ficha.operador_nome && (perfil?.nome || user?.email)) {
-                updatePayload.operador_nome = perfil?.nome || user?.email;
-              }
+              if (formData.convenio) updatePayload.convenio = formData.convenio;
 
-              await supabase
-                .from('kanban_fichas')
-                .update(updatePayload)
-                .eq('id', ficha.id);
+              await supabase.from('kanban_fichas').update(updatePayload).eq('id', ficha.id);
             }
           }
         } catch (syncErr) {
@@ -1057,7 +1182,7 @@ export function NewTicketForm({
       toast.dismiss(loadingToast);
       toast.success("Chamado aberto com sucesso!");
       if (isModal) {
-        if (onSuccessModal) onSuccessModal();
+        if (onSuccessModal) await onSuccessModal();
         if (onCloseModal) onCloseModal();
       } else {
         router.push("/chamados");
@@ -1321,7 +1446,7 @@ export function NewTicketForm({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      Telefone 1 <span className="text-red-500">*</span>
+                      Telefone 1 {formData.origem !== "DISPARO" && <span className="text-red-500">*</span>}
                     </label>
                     <Input 
                       value={formData.tel1}

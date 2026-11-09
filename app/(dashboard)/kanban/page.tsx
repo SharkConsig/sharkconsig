@@ -7530,6 +7530,9 @@ export default function KanbanPage() {
             prodAcaoAll += v.numProducao
           })
 
+          const totalFilaValor = valorAgoraAll + valorVencidasAll + valorFuturasAll + valorAcaoAll
+          const totalFilaProducao = prodAgoraAll + prodVencidasAll + prodFuturasAll + prodAcaoAll
+
           return (
             <div className="flex-1 flex flex-col md:flex-row gap-3.5 sm:gap-4 h-full min-h-0 overflow-x-auto overflow-y-hidden">
                 {/* Coluna 1: AGORA */}
@@ -7537,6 +7540,8 @@ export default function KanbanPage() {
                   const ticketsAgora = sortTickets(ticketsAgoraAll)
                   const valorAgora = valorAgoraAll
                   const prodAgora = prodAgoraAll
+                  const pctAgoraValor = totalFilaValor > 0 ? ((valorAgora / totalFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0,0%"
+                  const pctAgoraProd = totalFilaProducao > 0 ? ((prodAgora / totalFilaProducao) * 100).toFixed(1).replace(".", ",") + "%" : "0,0%"
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-emerald-200/80 shadow-2xs overflow-hidden bg-emerald-50/70">
                       {/* Cabeçalho da Coluna Agora */}
@@ -7561,7 +7566,8 @@ export default function KanbanPage() {
                               Valor Operação:
                             </span>
                             <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                              {valorAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {valorAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
+                              <span>({pctAgoraValor})</span>
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-1">
@@ -7569,7 +7575,8 @@ export default function KanbanPage() {
                               Valor Produção:
                             </span>
                             <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
-                              {prodAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {prodAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
+                              <span>({pctAgoraProd})</span>
                             </span>
                           </div>
                         </div>
@@ -7594,6 +7601,8 @@ export default function KanbanPage() {
                   const filteredVencidas = filteredVencidasAll
                   const valorVencidas = valorVencidasAll
                   const prodVencidas = prodVencidasAll
+                  const pctVencidasValor = totalFilaValor > 0 ? ((valorVencidas / totalFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0,0%"
+                  const pctVencidasProd = totalFilaProducao > 0 ? ((prodVencidas / totalFilaProducao) * 100).toFixed(1).replace(".", ",") + "%" : "0,0%"
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-rose-200/80 shadow-2xs overflow-hidden bg-rose-50/70">
                       {/* Cabeçalho da Coluna Vencidas */}
@@ -7618,7 +7627,8 @@ export default function KanbanPage() {
                               Valor Operação:
                             </span>
                             <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                              {valorVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {valorVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
+                              <span>({pctVencidasValor})</span>
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-1">
@@ -7626,7 +7636,8 @@ export default function KanbanPage() {
                               Valor Produção:
                             </span>
                             <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
-                              {prodVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {prodVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
+                              <span>({pctVencidasProd})</span>
                             </span>
                           </div>
                         </div>
@@ -7651,6 +7662,8 @@ export default function KanbanPage() {
                   const ticketsFuturas = sortTickets(ticketsFuturasAll)
                   const valorFuturas = valorFuturasAll
                   const prodFuturas = prodFuturasAll
+                  const pctFuturasValor = totalFilaValor > 0 ? ((valorFuturas / totalFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0,0%"
+                  const pctFuturasProd = totalFilaProducao > 0 ? ((prodFuturas / totalFilaProducao) * 100).toFixed(1).replace(".", ",") + "%" : "0,0%"
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-indigo-200/80 shadow-2xs overflow-hidden bg-indigo-50/70">
                       {/* Cabeçalho da Coluna Futuras */}
@@ -7675,7 +7688,8 @@ export default function KanbanPage() {
                               Valor Operação:
                             </span>
                             <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                              {valorFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {valorFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
+                              <span>({pctFuturasValor})</span>
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-1">
@@ -7683,7 +7697,8 @@ export default function KanbanPage() {
                               Valor Produção:
                             </span>
                             <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
-                              {prodFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {prodFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
+                              <span>({pctFuturasProd})</span>
                             </span>
                           </div>
                         </div>
@@ -7708,6 +7723,8 @@ export default function KanbanPage() {
                   const ticketsAcao = sortTickets(ticketsAcaoAll)
                   const valorAcao = valorAcaoAll
                   const prodAcao = prodAcaoAll
+                  const pctAcaoValor = totalFilaValor > 0 ? ((valorAcao / totalFilaValor) * 100).toFixed(1).replace(".", ",") + "%" : "0,0%"
+                  const pctAcaoProd = totalFilaProducao > 0 ? ((prodAcao / totalFilaProducao) * 100).toFixed(1).replace(".", ",") + "%" : "0,0%"
                   return (
                     <div className="flex-1 min-w-[260px] flex flex-col h-full min-h-0 rounded-xl border border-amber-300/80 shadow-2xs overflow-hidden bg-amber-50/70">
                       {/* Cabeçalho da Coluna Ação Especial */}
@@ -7732,7 +7749,8 @@ export default function KanbanPage() {
                               Valor Operação:
                             </span>
                             <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                              {valorAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {valorAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
+                              <span>({pctAcaoValor})</span>
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-1">
@@ -7740,7 +7758,8 @@ export default function KanbanPage() {
                               Valor Produção:
                             </span>
                             <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
-                              {prodAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {prodAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
+                              <span>({pctAcaoProd})</span>
                             </span>
                           </div>
                         </div>
@@ -7794,6 +7813,16 @@ export default function KanbanPage() {
                       totalColValor += v.numOperacao
                       totalColProducao += v.numProducao
                     })
+
+                    const basePipelineValor = totalsMode === "cpfs" ? totalUniqueValor : totalListValor
+                    const basePipelineProducao = totalsMode === "cpfs" ? totalUniqueProducao : totalListProducao
+
+                    const isExcluded = col.id === "FECHADO" || col.id === "PERDIDO"
+                    const baseColValor = isExcluded ? (basePipelineValor + totalColValor) : basePipelineValor
+                    const baseColProducao = isExcluded ? (basePipelineProducao + totalColProducao) : basePipelineProducao
+
+                    const pctColValor = baseColValor > 0 ? ((totalColValor / baseColValor) * 100).toFixed(1).replace(".", ",") + "%" : "0,0%"
+                    const pctColProducao = baseColProducao > 0 ? ((totalColProducao / baseColProducao) * 100).toFixed(1).replace(".", ",") + "%" : "0,0%"
 
                     return (
                       <div
@@ -7849,7 +7878,8 @@ export default function KanbanPage() {
                             Valor Operação:
                           </span>
                           <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                            {totalColValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            {totalColValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
+                            <span>({pctColValor})</span>
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-1">
@@ -7857,7 +7887,8 @@ export default function KanbanPage() {
                             Valor Produção:
                           </span>
                           <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
-                            {totalColProducao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            {totalColProducao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
+                            <span>({pctColProducao})</span>
                           </span>
                         </div>
                       </div>

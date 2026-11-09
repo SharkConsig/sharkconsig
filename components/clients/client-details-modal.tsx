@@ -1871,7 +1871,7 @@ export function ClientDetailsModal({
       from_kanban: "true"
     }
 
-    if (showPipelineActionButtons) {
+    if (showPipelineActionButtons || isEmAbordagem || isKanbanLeadModal || clienteOrigem === "DISPARO") {
       setChamadoModalData(initialData)
       setIsNovoChamadoModalOpen(true)
       return
@@ -2251,7 +2251,7 @@ export function ClientDetailsModal({
                       )}
 
                       {/* Card ambar de orientação para marcação dos telefones (exclusivo para o Kanban / Informações sobre o Lead) */}
-                      {isKanbanLeadModal && !hidePhoneSelectionBanner && (
+                      {isKanbanLeadModal && !hidePhoneSelectionBanner && clienteOrigem !== "DISPARO" && (
                         <div className="col-span-full -mb-4 bg-amber-50/90 border border-amber-200/90 rounded-lg p-3 flex items-center gap-2.5 text-amber-900 shadow-xs">
                           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                           <p className="text-xs font-semibold text-amber-900 leading-none">
@@ -2340,7 +2340,7 @@ export function ClientDetailsModal({
                       </div>
 
                       {/* Card de orientação: Selecione o telefone da Acerto Fácil que você usou (exclusivo para EM ABORDAGEM) */}
-                      {isEmAbordagem && (
+                      {isEmAbordagem && clienteOrigem !== "DISPARO" && (
                         <div className="col-span-full -mb-4 bg-amber-50/90 border border-amber-200/90 rounded-lg p-3 flex items-center gap-2.5 text-amber-900 shadow-xs">
                           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                           <p className="text-xs font-semibold text-amber-900 leading-none">
@@ -3007,7 +3007,91 @@ export function ClientDetailsModal({
               {/* Footer */}
               {hasTabulacoes && (
                 <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-end gap-6 bg-[#FBFBFB] shrink-0 flex-wrap">
-                  {(["CLIENTE CHAMADO", "NÃO EXISTE WHATSAPP", "WHATSAPP DIVERGENTE"] as const).map((status) => {
+                  {/* Se a origem for DISPARO, a caixa seletora (CLIENTE CHAMADO) é substituída pelo botão ABRIR CHAMADO */}
+                  {clienteOrigem === "DISPARO" ? (
+                    <Button
+                      type="button"
+                      onClick={() => handleAbrirChamado(activeReg)}
+                      className="w-full sm:w-auto h-11 px-8 text-[11px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                      ABRIR CHAMADO
+                    </Button>
+                  ) : (
+                    <label
+                      className="flex items-center gap-2 cursor-pointer select-none group py-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!selectedStatuses["CLIENTE CHAMADO"]}
+                        onChange={async (e) => {
+                          const checked = e.target.checked;
+                          if (checked) {
+                            if (isEmAbordagem && (!clienteOrigem || !clienteOrigem.trim())) {
+                              toast.error("É obrigatório selecionar a 'ORIGEM DO CLIENTE' para tabular 'CLIENTE CHAMADO'.");
+                              return;
+                            }
+                            if (!selectedPhones || selectedPhones.length === 0) {
+                              toast.error("É obrigatório marcar pelo menos 1 telefone contatado do cliente para poder selecionar a tabulação 'CLIENTE CHAMADO'.");
+                              return;
+                            }
+                            if (isEmAbordagem && (!selectedEmpresaPhone || !selectedEmpresaPhone.trim())) {
+                              toast.error("É obrigatório selecionar o 'TELEFONE DA EMPRESA UTILIZADO' para tabular 'CLIENTE CHAMADO'.");
+                              return;
+                            }
+                            setSelectedStatuses({ ["CLIENTE CHAMADO"]: true });
+                            if (onSelectTabulacao) {
+                              const phones = client ? [client.telefone_1, client.telefone_2, client.telefone_3].filter(
+                                (p): p is string => Boolean(p && p !== '0' && p !== 'NÃO INFORMADO')
+                              ) : [];
+                              const activeConvenio = 
+                                clientType === 'siape' ? 'SIAPE' :
+                                clientType === 'governo_sp' ? 'Governo São Paulo' :
+                                clientType === 'prefeitura_sp' ? 'Prefeitura de São Paulo' :
+                                clientType === 'governo_pi' ? 'Governo Piauí' :
+                                clientType === 'governo_ma' ? 'Governo Maranhão' :
+                                clientType === 'governo_rr' ? 'Governo Roraima' :
+                                clientType === 'governo_rj' ? 'Governo Rio de Janeiro' :
+                                clientType === 'prefeitura_santo_andre' ? 'Prefeitura Santo André' :
+                                clientType === 'prefeitura_contagem' ? 'Prefeitura Contagem' :
+                                clientType === 'governo_mg' ? 'Governo Minas Gerais' : 
+                                clientType === 'governo_ms' ? 'Governo Mato Grosso do Sul' : 
+                                clientType === 'prefeitura_natal' ? 'Prefeitura de Natal' :
+                                clientType === 'prefeitura_porto_velho' ? 'Prefeitura de Porto Velho' :
+                                clientType === 'governo_ba' ? 'Governo Bahia' :
+                                clientType === 'governo_am' ? 'Governo Amazonas' :
+                                clientType === 'governo_ce' ? 'Governo Ceará' :
+                                clientType === 'governo_ro' ? 'Governo Rondônia' :
+                                clientType === 'prefeitura_ponta_grossa' ? 'Prefeitura Ponta Grossa' :
+                                clientType === 'amazon_prev' ? 'Amazon Prev' : (clientType ? String(clientType).toUpperCase() : undefined);
+
+                              await onSelectTabulacao("CLIENTE CHAMADO", {
+                                cpf: client?.cpf || cpf,
+                                nome: client?.nome || "Cliente sem Nome",
+                                telefones: phones,
+                                telefones_selecionados: selectedPhones,
+                                convenio: activeConvenio,
+                                origem: clienteOrigem || undefined,
+                                telefone_empresa: selectedEmpresaPhone || undefined
+                              });
+                            }
+                            onClose();
+                          } else {
+                            setSelectedStatuses(prev => ({
+                              ...prev,
+                              ["CLIENTE CHAMADO"]: false
+                            }));
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-slate-300 text-slate-900 focus:ring-0 cursor-pointer accent-[#171717]"
+                      />
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 group-hover:text-slate-900 transition-colors">
+                        CLIENTE CHAMADO
+                      </span>
+                    </label>
+                  )}
+
+                  {(["NÃO EXISTE WHATSAPP", "WHATSAPP DIVERGENTE"] as const).map((status) => {
                     const isChecked = !!selectedStatuses[status];
                     return (
                       <label
@@ -3020,20 +3104,6 @@ export function ClientDetailsModal({
                           onChange={async (e) => {
                             const checked = e.target.checked;
                             if (checked) {
-                              if (status === "CLIENTE CHAMADO") {
-                                if (isEmAbordagem && (!clienteOrigem || !clienteOrigem.trim())) {
-                                  toast.error("É obrigatório selecionar a 'ORIGEM DO CLIENTE' para tabular 'CLIENTE CHAMADO'.");
-                                  return;
-                                }
-                                if (!selectedPhones || selectedPhones.length === 0) {
-                                  toast.error("É obrigatório marcar pelo menos 1 telefone contatado do cliente para poder selecionar a tabulação 'CLIENTE CHAMADO'.");
-                                  return;
-                                }
-                                if (isEmAbordagem && (!selectedEmpresaPhone || !selectedEmpresaPhone.trim())) {
-                                  toast.error("É obrigatório selecionar o 'TELEFONE DA EMPRESA UTILIZADO' para tabular 'CLIENTE CHAMADO'.");
-                                  return;
-                                }
-                              }
                               setSelectedStatuses({ [status]: true });
                               if (onSelectTabulacao) {
                                 const phones = client ? [client.telefone_1, client.telefone_2, client.telefone_3].filter(
@@ -3110,9 +3180,15 @@ export function ClientDetailsModal({
             isOpen={isNovoChamadoModalOpen}
             onClose={() => setIsNovoChamadoModalOpen(false)}
             initialData={chamadoModalData}
-            onSuccess={() => {
+            onSuccess={async () => {
               setInternalHasChamado(true)
               setDbHasChamado(true)
+              setIsNovoChamadoModalOpen(false)
+
+              if (clienteOrigem === "DISPARO" || chamadoModalData?.origem === "DISPARO") {
+                toast.success("Cartão de atendimento criado em 'Em negociação' no Kanban!")
+                onClose()
+              }
             }}
           />
         )}

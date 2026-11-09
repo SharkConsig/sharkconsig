@@ -38,8 +38,8 @@ export function NovoChamadoModal({ isOpen, onClose, initialData, onSuccess }: No
             isModal={true}
             modalInitialData={initialData}
             onCloseModal={onClose}
-            onSuccessModal={() => {
-              if (onSuccess) onSuccess()
+            onSuccessModal={async () => {
+              if (onSuccess) await onSuccess()
               onClose()
             }}
           />
