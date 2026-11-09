@@ -387,13 +387,19 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     .map(section => ({
       ...section,
       items: section.items.filter(item => {
-        // ABRIR CHAMADO e ACESSAR CLIENTE visíveis para todos os usuários do sistema (CLT, Estágio e PJ)
-        if (
-          item.name === "ABRIR CHAMADO" ||
-          item.href === "/chamados/novo" ||
-          item.name === "ACESSAR CLIENTE" ||
-          item.href === "/pesquisa"
-        ) {
+        // ACESSAR CLIENTE visível para todos os usuários do sistema
+        if (item.name === "ACESSAR CLIENTE" || item.href === "/pesquisa") {
+          return true
+        }
+
+        // ABRIR CHAMADO: visível para PJ e liberado no regime CLT exclusivamente para o usuário 'Monitoramento' (e Admins/Devs)
+        if (item.name === "ABRIR CHAMADO" || item.href === "/chamados/novo") {
+          const isUserMonitoramento = 
+            (perfil?.role || "").toLowerCase().includes("monitor") || 
+            Boolean((perfil as any)?.funcao && String((perfil as any)?.funcao).toLowerCase().includes("monitor"))
+          if (isCLTUser && !isUserMonitoramento && !isAdmin && !isDevUser) {
+            return false
+          }
           return true
         }
 

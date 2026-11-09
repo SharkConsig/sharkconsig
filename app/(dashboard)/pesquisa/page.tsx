@@ -137,6 +137,8 @@ export default function SearchClientPage() {
     ""
   ).toUpperCase().trim()
   const isUserPJ = regimeStr.includes("PJ")
+  const roleOrFuncaoLower = `${perfil?.role || ""} ${(perfil as any)?.funcao || ""} ${user?.user_metadata?.role || ""}`.toLowerCase()
+  const isUserMonitoramento = roleOrFuncaoLower.includes("monitor") || perfil?.role === 'Administrador' || perfil?.role === 'Desenvolvedor'
   const [searchQuery, setSearchQuery] = useState("")
   const [showProfile, setShowProfile] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -1965,8 +1967,8 @@ export default function SearchClientPage() {
 
   return (
     <div className="flex-1 flex flex-col pesquisa-client-page">
-      {/* Oculta os botões ABRIR CHAMADO e DIGITAR PROPOSTA na tela ACESSAR CLIENTE apenas para usuários CLT e Estágio (visível para PJ) */}
-      {!isUserPJ && (
+      {/* Oculta os botões ABRIR CHAMADO e DIGITAR PROPOSTA na tela ACESSAR CLIENTE apenas para usuários CLT e Estágio (visível para PJ e liberado para Monitoramento) */}
+      {!isUserPJ && !isUserMonitoramento && (
         <style>{`
           .pesquisa-client-page div.pt-10.border-t.border-slate-50 > button:nth-of-type(2),
           .pesquisa-client-page div.pt-10.border-t.border-slate-50 > button:nth-of-type(3),
