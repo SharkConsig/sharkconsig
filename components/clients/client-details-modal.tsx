@@ -3186,7 +3186,7 @@ export function ClientDetailsModal({
               setIsNovoChamadoModalOpen(false)
 
               if (clienteOrigem === "DISPARO" || chamadoModalData?.origem === "DISPARO") {
-                toast.success("Cartão de atendimento criado em 'Em negociação' no Kanban!")
+                toast.success("Cartão de atendimento criado em 'Em interação ou retomada' no Kanban!")
                 onClose()
               }
             }}

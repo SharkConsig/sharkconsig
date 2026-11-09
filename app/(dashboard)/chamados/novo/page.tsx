@@ -978,8 +978,8 @@ export function NewTicketForm({
 
           if (isDisparo) {
             // Isolamento estrito por operador no contexto DISPARO:
-            // 1. Se o operador logado já possui sua própria ficha, atualiza apenas a dele para EM NEGOCIAÇÃO.
-            // 2. Se o operador logado NÃO possui ficha, cria uma NOVA ficha exclusiva para ele,
+            // 1. Se o operador logado já possui sua própria ficha, atualiza apenas a dele para EM RETOMADA ('Em interação ou retomada').
+            // 2. Se o operador logado NÃO possui ficha, cria uma NOVA ficha exclusiva para ele em EM RETOMADA,
             //    PRESERVANDO integralmente cartões de outros operadores já existentes para o mesmo cliente.
             const fichasDoOperador = (fichasRelacionadas || []).filter(f => {
               const mesmoId = user?.id && f.operador_id === user.id;
@@ -1003,7 +1003,7 @@ export function NewTicketForm({
 
                 const updatedMeta = {
                   ...prevMeta,
-                  kanban_stage: "EM NEGOCIAÇÃO",
+                  kanban_stage: "EM RETOMADA",
                   proxima_acao: "Trabalhar proposta do chamado",
                   origem: "DISPARO",
                   margem: margemStr || prevMeta.margem,
@@ -1030,7 +1030,7 @@ export function NewTicketForm({
                 };
 
                 const updatePayload: any = {
-                  etapa: "EM NEGOCIAÇÃO",
+                  etapa: "EM RETOMADA",
                   motivo_perda: null,
                   metadata: updatedMeta,
                   updated_at: new Date().toISOString()
@@ -1047,7 +1047,7 @@ export function NewTicketForm({
               const primaryPhone = formData.tel1 || formData.tel2 || formData.tel3 || "NÃO INFORMADO";
 
               const newMeta: any = {
-                kanban_stage: "EM NEGOCIAÇÃO",
+                kanban_stage: "EM RETOMADA",
                 proxima_acao: "Trabalhar proposta do chamado",
                 vencimento_acao: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
                 prioridade: "NORMAL",
@@ -1070,7 +1070,7 @@ export function NewTicketForm({
                 concorrencia_outros_operadores: outrosOperadoresNomes,
                 historico_kanban: [{
                   data: new Date().toISOString(),
-                  etapa_nova: "EM NEGOCIAÇÃO",
+                  etapa_nova: "EM RETOMADA",
                   autor: operadorNome,
                   motivo: "Chamado aberto com origem DISPARO"
                 }]
@@ -1082,7 +1082,7 @@ export function NewTicketForm({
                 cliente_telefone: primaryPhone,
                 operador_id: validOperadorId,
                 operador_nome: operadorNome,
-                etapa: "EM NEGOCIAÇÃO",
+                etapa: "EM RETOMADA",
                 motivo_perda: null,
                 convenio: formData.convenio || null,
                 metadata: newMeta,
@@ -1099,7 +1099,7 @@ export function NewTicketForm({
                   cliente_telefone: primaryPhone,
                   operador_id: validOperadorId,
                   operador_nome: operadorNome,
-                  etapa: "EM NEGOCIAÇÃO",
+                  etapa: "EM RETOMADA",
                   motivo_perda: null,
                   metadata: newMeta
                 };
