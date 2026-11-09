@@ -4534,6 +4534,80 @@ export default function KanbanPage() {
     }
   }
 
+  const handleClienteInteragiuManterInteracao = async () => {
+    if (!atendimentoModalTicket || !user) return
+    setIsAvancandoCadencia(true)
+    const now = new Date()
+    const nowIso = now.toISOString()
+    const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+    const cadencia = getLeadCadenceState(atendimentoModalTicket, currentMeta)
+
+    const nextDueDate = addBusinessDays(now, 1)
+    nextDueDate.setHours(10, 0, 0, 0)
+    const nextDueFormatted = format(nextDueDate, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+    const obsTexto = `💬 [MOTOR DE CADÊNCIA]: Cliente interagiu e atendimento foi mantido na etapa "Em interação ou retomada", com a régua reiniciada na Retomada 1 (RT1 - Agendada para ${nextDueFormatted}).`
+
+    try {
+      const historicoExistente: Array<{ texto: string; data: string; autor?: string }> = []
+      if (Array.isArray(currentMeta.observacoes_historico)) {
+        historicoExistente.push(...currentMeta.observacoes_historico)
+      }
+      const updatedHistorico = [...historicoExistente, { texto: obsTexto, data: nowIso, autor: perfil?.nome || "Colaborador" }]
+      const observacoesAcumuladas = updatedHistorico.slice().reverse().map(i => i.texto.trim()).filter(Boolean).join("\n\n")
+
+      const updatedMeta: TicketMetadata = {
+        ...currentMeta,
+        cadencia_tipo: currentMeta.cadencia_tipo || cadencia.tipo,
+        regua_etapa: "RT1",
+        regua_proximo_vencimento: nextDueDate.toISOString(),
+        vencimento_acao: nextDueDate.toISOString(),
+        proxima_acao: "Executar Retomada 1 via WhatsApp",
+        regua_ultima_execucao: nowIso,
+        regua_pausada: false,
+        cliente_respondeu: false,
+        kanban_stage: "EM RETOMADA",
+        observacoes_historico: updatedHistorico,
+        observacao_data: nowIso
+      }
+
+      if (atendimentoModalTicket.source_table === "kanban_fichas" || !/^\d+$/.test(atendimentoModalTicket.id)) {
+        const metaParaSalvar = { ...updatedMeta }
+        delete (metaParaSalvar as any).historico_kanban
+        delete (metaParaSalvar as any).historico_movimentacoes
+
+        await supabase
+          .from("kanban_fichas")
+          .update({
+            etapa: "EM RETOMADA",
+            observacoes: observacoesAcumuladas,
+            metadata: metaParaSalvar,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+      } else {
+        const newDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+        await supabase
+          .from("chamados")
+          .update({
+            status: "EM RETOMADA",
+            descricao: newDesc,
+            updated_at: nowIso
+          })
+          .eq("id", atendimentoModalTicket.id)
+      }
+
+      const novaDesc = stringifyWithMetadata(observacoesAcumuladas, updatedMeta)
+      setAtendimentoModalTicket(prev => prev ? { ...prev, status: "EM RETOMADA", descricao: novaDesc } : null)
+      setTickets(prev => prev.map(t => t.id === atendimentoModalTicket.id ? { ...t, status: "EM RETOMADA", descricao: novaDesc } : t))
+      toast.success("Cliente interagiu! Cartão mantido em 'Em interação ou retomada' e régua reiniciada na Retomada 1 (RT1).")
+    } catch (err) {
+      console.error("Erro ao registrar interação e manter em retomada:", err)
+      toast.error("Erro ao registrar interação do cliente.")
+    } finally {
+      setIsAvancandoCadencia(false)
+    }
+  }
+
   const handleClienteRespondeu = async () => {
     if (!atendimentoModalTicket || !user) return
     setIsAvancandoCadencia(true)
@@ -8223,45 +8297,64 @@ export default function KanbanPage() {
                       </div>
 
                       {/* Botões do Motor de Cadência */}
-                      <div className="flex items-center gap-2 flex-wrap pt-1">
+                      <div className="flex flex-col gap-2 pt-1">
                         {modalCadencia.proximaEtapa ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={handleAvancarCadencia}
-                            disabled={isAvancandoCadencia}
-                            className="h-8 text-xs font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm gap-1.5 border border-emerald-700/30 cursor-pointer"
-                            title="Confirma envio da régua atual e agenda a próxima etapa calculada por dias úteis"
-                          >
-                            {isAvancandoCadencia ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                            {formatEtapaLabel(modalCadencia.etapaRegua)} Executada! Agendar {modalCadencia.proximaEtapa === "ESPERA_FINAL" ? "Aguardar Retorno (1,5d)" : formatEtapaLabel(modalCadencia.proximaEtapa)}
-                          </Button>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={handleAvancarCadencia}
+                              disabled={isAvancandoCadencia}
+                              className="h-8 text-xs font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm gap-1.5 border border-emerald-700/30 cursor-pointer"
+                              title="Confirma envio da régua atual e agenda a próxima etapa calculada por dias úteis"
+                            >
+                              {isAvancandoCadencia ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                              {formatEtapaLabel(modalCadencia.etapaRegua)} Executada! Agendar {modalCadencia.proximaEtapa === "ESPERA_FINAL" ? "Aguardar Retorno (1,5d)" : formatEtapaLabel(modalCadencia.proximaEtapa)}
+                            </Button>
+                          </div>
                         ) : modalCadencia.isEsperaFinal ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={handleEncerrarPorEsgotamento}
-                            disabled={isAvancandoCadencia}
-                            className="h-8 text-xs font-extrabold bg-amber-600 hover:bg-amber-700 text-white shadow-sm gap-1.5 border border-amber-700/30 cursor-pointer"
-                            title="Esgotar cadência e mover para Perdido com histórico após 1,5 dia útil"
-                          >
-                            <XCircle className="w-3.5 h-3.5" />
-                            Esgotar Cadência e Mover para Perdido (1,5 dia útil)
-                          </Button>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={handleEncerrarPorEsgotamento}
+                              disabled={isAvancandoCadencia}
+                              className="h-8 text-xs font-extrabold bg-amber-600 hover:bg-amber-700 text-white shadow-sm gap-1.5 border border-amber-700/30 cursor-pointer"
+                              title="Esgotar cadência e mover para Perdido com histórico após 1,5 dia útil"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              Esgotar Cadência e Mover para Perdido (1,5 dia útil)
+                            </Button>
+                          </div>
                         ) : null}
 
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={handleClienteRespondeu}
-                          disabled={isAvancandoCadencia}
-                          className="h-8 text-xs font-bold text-sky-800 bg-sky-50 border-sky-300 hover:bg-sky-100 gap-1.5 shadow-2xs cursor-pointer"
-                          title="Pausa a cadência e avança o lead para Negociação"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5 text-sky-600" />
-                          Cliente Respondeu (Mover para Negociação)
-                        </Button>
+                        <div className="flex flex-col gap-1.5">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleClienteInteragiuManterInteracao}
+                            disabled={isAvancandoCadencia}
+                            className="h-8 text-xs font-bold text-amber-950 bg-amber-100 border-amber-300 hover:bg-amber-200 gap-1.5 shadow-2xs cursor-pointer w-fit"
+                            title="Mantém o atendimento em 'Em interação ou retomada' e reinicia a régua na Retomada 1 (RT1)"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5 text-amber-700" />
+                            Cliente Interagiu e Quero Manter em Interação
+                          </Button>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleClienteRespondeu}
+                            disabled={isAvancandoCadencia}
+                            className="h-8 text-xs font-bold text-sky-800 bg-sky-50 border-sky-300 hover:bg-sky-100 gap-1.5 shadow-2xs cursor-pointer w-fit"
+                            title="Pausa a cadência e avança o lead para Negociação"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5 text-sky-600" />
+                            Cliente Respondeu e Quero Mover para Negociação
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   )}
