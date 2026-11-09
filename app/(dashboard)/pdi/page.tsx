@@ -22,6 +22,7 @@ import {
   Copy, 
   Plus, 
   Trash2, 
+  Pencil, 
   ArrowLeft, 
   Calendar, 
   ChevronRight, 
@@ -124,6 +125,7 @@ export interface PDIEvidencia {
 export interface PDIData {
   // 1. Perfil & Contexto
   etapaProfissional: EtapaProfissional
+  etapaProfissionalOutros?: string
   liderancaDireta: string
   area: string
   cargo: string
@@ -232,6 +234,7 @@ const DEFAULT_WEEKLY_LOG: WeeklyLog = {
 function createBlankPDIData(colab?: Partial<CollaboratorBasic>): PDIData {
   return {
     etapaProfissional: "Desenvolvimento",
+    etapaProfissionalOutros: "",
     liderancaDireta: "",
     area: colab?.area || "",
     cargo: colab?.role || "",
@@ -680,6 +683,11 @@ export default function PDIPage() {
   })
   const [feedbackParaExcluir, setFeedbackParaExcluir] = useState<{ feedback: PDIFeedback; index: number } | null>(null)
   const [isDeletingFeedback, setIsDeletingFeedback] = useState(false)
+  const [editingFeedbackIndex, setEditingFeedbackIndex] = useState<number | null>(null)
+
+  const [comportamentoParaExcluir, setComportamentoParaExcluir] = useState<{ comportamento: PDIComportamento; index: number } | null>(null)
+  const [isDeletingComportamento, setIsDeletingComportamento] = useState(false)
+  const [editingComportamentoIndex, setEditingComportamentoIndex] = useState<number | null>(null)
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false)
 
   const handleUploadFeedbackFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -917,6 +925,7 @@ export default function PDIPage() {
                 const dbDados = (row.dados && typeof row.dados === "object") ? row.dados : {}
                 const parsed: PDIData = {
                   etapaProfissional: row.etapa_profissional || dbDados.etapaProfissional || "Desenvolvimento",
+                  etapaProfissionalOutros: row.etapa_profissional_outros || dbDados.etapaProfissionalOutros || "",
                   prontidao: row.prontidao || dbDados.prontidao || "Em Desenvolvimento Ativo",
                   liderancaDireta: row.lideranca_direta || dbDados.liderancaDireta || "",
                   area: row.area || dbDados.area || "",
@@ -1192,6 +1201,60 @@ export default function PDIPage() {
     } finally {
       setIsDeletingFeedback(false)
     }
+  }
+
+  const handleConfirmDeleteComportamento = async () => {
+    if (!selectedColab?.pdiData || comportamentoParaExcluir === null) return
+    setIsDeletingComportamento(true)
+    try {
+      const updatedComps = selectedColab.pdiData.comportamentos.filter((c, i) => {
+        if (comportamentoParaExcluir.comportamento.id && c.id) {
+          return c.id !== comportamentoParaExcluir.comportamento.id
+        }
+        return i !== comportamentoParaExcluir.index
+      })
+      await handleUpdatePDIData({
+        ...selectedColab.pdiData,
+        comportamentos: updatedComps
+      }, true)
+      setComportamentoParaExcluir(null)
+      toast.success("Comportamento excluído com sucesso!")
+    } catch (e) {
+      toast.error("Erro ao excluir comportamento.")
+    } finally {
+      setIsDeletingComportamento(false)
+    }
+  }
+
+  const handleOpenEditFeedback = (fb: PDIFeedback, index: number) => {
+    setEditingFeedbackIndex(index)
+    setNewFeedbackData({
+      id: fb.id,
+      data: toDateInputValue(fb.data) || fb.data,
+      responsavel: fb.responsavel || "",
+      contexto: fb.contexto || "",
+      percepcaoFuncionario: fb.percepcaoFuncionario || "",
+      pontosPositivos: fb.pontosPositivos || "",
+      pontosMelhoria: fb.pontosMelhoria || "",
+      combinados: fb.combinados || "",
+      dataRetorno: toDateInputValue(fb.dataRetorno) || fb.dataRetorno || "",
+      anexos: fb.anexos ? [...fb.anexos] : []
+    })
+    setShowAddFeedbackModal(true)
+  }
+
+  const handleOpenEditComportamento = (comp: PDIComportamento, index: number) => {
+    setEditingComportamentoIndex(index)
+    setNewCompData({
+      id: comp.id,
+      comportamento: comp.comportamento || "",
+      situacao: comp.situacao || "",
+      impacto: comp.impacto || "",
+      comportamentoEsperado: comp.comportamentoEsperado || "",
+      prioridade: comp.prioridade || "Média",
+      status: comp.status || "Não iniciado"
+    })
+    setShowAddComportamentoModal(true)
   }
 
   const handleSaveExplicitly = async () => {
@@ -1520,7 +1583,9 @@ Registrado no SharkConsig CRM - Módulo PDI`
                             {c.employmentType || "CLT"}
                           </span>
                           <span className={cn("text-[10px] font-bold px-2.5 py-1 rounded-full border", getEtapaBadgeClass(etapa))}>
-                            {etapa}
+                            {etapa === "Outros" && c.pdiData?.etapaProfissionalOutros
+                              ? `Outros: ${c.pdiData.etapaProfissionalOutros}`
+                              : etapa}
                           </span>
                         </div>
 
@@ -1617,7 +1682,9 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         </td>
                         <td className="py-3 px-4">
                           <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border", getEtapaBadgeClass(c.pdiData?.etapaProfissional || "Desenvolvimento"))}>
-                            {c.pdiData?.etapaProfissional || "Desenvolvimento"}
+                            {c.pdiData?.etapaProfissional === "Outros" && c.pdiData?.etapaProfissionalOutros
+                              ? `Outros: ${c.pdiData.etapaProfissionalOutros}`
+                              : (c.pdiData?.etapaProfissional || "Desenvolvimento")}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-center font-bold text-slate-900">{c.pdiData?.acoes?.length || 0}</td>
@@ -1729,7 +1796,9 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         {selectedColab.employmentType || "CLT"}
                       </span>
                       <span className={cn("text-[10px] font-bold px-2.5 py-0.5 rounded-full border", getEtapaBadgeClass(selectedColab.pdiData.etapaProfissional))}>
-                        {selectedColab.pdiData.etapaProfissional}
+                        {selectedColab.pdiData.etapaProfissional === "Outros" && selectedColab.pdiData.etapaProfissionalOutros
+                          ? `Outros: ${selectedColab.pdiData.etapaProfissionalOutros}`
+                          : selectedColab.pdiData.etapaProfissional}
                       </span>
                     </div>
 
@@ -1899,6 +1968,24 @@ Registrado no SharkConsig CRM - Módulo PDI`
                         <option value="Preparação para Promoção/Efetivação">Preparação para Promoção / Efetivação</option>
                         <option value="Outros">Outros</option>
                       </select>
+
+                      {selectedColab.pdiData.etapaProfissional === "Outros" && (
+                        <div className="mt-2.5 animate-in fade-in duration-150">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                            Descrição da Etapa Profissional (Outros)
+                          </label>
+                          <input
+                            type="text"
+                            value={selectedColab.pdiData.etapaProfissionalOutros || ""}
+                            onChange={(e) => handleUpdatePDIData({
+                              ...selectedColab.pdiData,
+                              etapaProfissionalOutros: e.target.value
+                            })}
+                            placeholder="Descreva a etapa profissional..."
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1911,37 +1998,29 @@ Registrado no SharkConsig CRM - Módulo PDI`
                   </div>
 
                   <div className="space-y-4 text-xs">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                        Objetivos Profissionais (Curto e Médio Prazo)
-                      </label>
-                      <textarea
-                        rows={4}
-                        value={selectedColab.pdiData.objetivosProfissionais}
-                        onChange={(e) => handleUpdatePDIData({
-                          ...selectedColab.pdiData,
-                          objetivosProfissionais: e.target.value
-                        })}
-                        placeholder="Ex.: Aprimorar assertividade no fechamento de propostas de portabilidade e alcançar consistência de superação de metas mensais..."
-                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-800 font-medium focus:ring-2 focus:ring-[#00D492]"
-                      />
-                    </div>
+                    <FormattedFeedbackField
+                      label="Objetivos Profissionais (Curto e Médio Prazo)"
+                      labelColor="text-slate-700 font-extrabold uppercase tracking-wider text-[10px]"
+                      value={selectedColab.pdiData.objetivosProfissionais || ""}
+                      onChange={(val) => handleUpdatePDIData({
+                        ...selectedColab.pdiData,
+                        objetivosProfissionais: val
+                      })}
+                      placeholder="Ex.: Aprimorar assertividade no fechamento de propostas de portabilidade e alcançar consistência de superação de metas mensais..."
+                      rows={3}
+                    />
 
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                        Interesses de Crescimento & Próximos Passos na Carreira
-                      </label>
-                      <textarea
-                        rows={4}
-                        value={selectedColab.pdiData.interessesCrescimento}
-                        onChange={(e) => handleUpdatePDIData({
-                          ...selectedColab.pdiData,
-                          interessesCrescimento: e.target.value
-                        })}
-                        placeholder="Ex.: Assumir liderança de equipe júnior de televendas e especializar-se em negociações de alto valor..."
-                        className="w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-800 font-medium focus:ring-2 focus:ring-[#00D492]"
-                      />
-                    </div>
+                    <FormattedFeedbackField
+                      label="Interesses de Crescimento & Próximos Passos na Carreira"
+                      labelColor="text-slate-700 font-extrabold uppercase tracking-wider text-[10px]"
+                      value={selectedColab.pdiData.interessesCrescimento || ""}
+                      onChange={(val) => handleUpdatePDIData({
+                        ...selectedColab.pdiData,
+                        interessesCrescimento: val
+                      })}
+                      placeholder="Ex.: Assumir liderança de equipe júnior de televendas e especializar-se em negociações de alto valor..."
+                      rows={3}
+                    />
                   </div>
                 </div>
 
@@ -2326,6 +2405,7 @@ Registrado no SharkConsig CRM - Módulo PDI`
                   <button
                     type="button"
                     onClick={() => {
+                      setEditingFeedbackIndex(null)
                       setNewFeedbackData({
                         data: new Date().toISOString().split("T")[0],
                         responsavel: "",
@@ -2386,13 +2466,22 @@ Registrado no SharkConsig CRM - Módulo PDI`
                               )}
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1">
                               {fb.dataRetorno && (
-                                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full flex items-center gap-1 mr-1">
                                   <Clock className="w-3 h-3" />
                                   <span>Retorno agendado: {formatDateBR(fb.dataRetorno)}</span>
                                 </span>
                               )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditFeedback(fb, idx)}
+                                className="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
+                                title="Editar este feedback"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
 
                               <button
                                 type="button"
@@ -2457,7 +2546,18 @@ Registrado no SharkConsig CRM - Módulo PDI`
 
                   <button
                     type="button"
-                    onClick={() => setShowAddComportamentoModal(true)}
+                    onClick={() => {
+                      setEditingComportamentoIndex(null)
+                      setNewCompData({
+                        comportamento: "",
+                        situacao: "",
+                        impacto: "",
+                        comportamentoEsperado: "",
+                        prioridade: "Média",
+                        status: "Não iniciado"
+                      })
+                      setShowAddComportamentoModal(true)
+                    }}
                     className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-sm self-start sm:self-auto"
                   >
                     <Plus className="w-4 h-4 text-[#00D492]" />
@@ -2471,9 +2571,27 @@ Registrado no SharkConsig CRM - Módulo PDI`
                       <div className="space-y-3">
                         <div className="flex items-start justify-between gap-2">
                           <h4 className="font-extrabold text-sm text-slate-900">{c.comportamento}</h4>
-                          <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap", getStatusBadgeClass(c.status))}>
-                            {c.status}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap", getStatusBadgeClass(c.status))}>
+                              {c.status}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditComportamento(c, i)}
+                              className="text-slate-400 hover:text-blue-600 p-1 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
+                              title="Editar este comportamento"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setComportamentoParaExcluir({ comportamento: c, index: i })}
+                              className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                              title="Excluir este comportamento"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
 
                         <div className="space-y-2 text-xs">
@@ -2581,50 +2699,42 @@ Registrado no SharkConsig CRM - Módulo PDI`
                   </div>
 
                   {/* 2. Ação prevista */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 block">
-                      Ação prevista
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={selectedColab.pdiData.registroSemanal[selectedSemana].acaoPrevista}
-                      onChange={(e) => {
-                        const curWeek = { ...selectedColab.pdiData.registroSemanal[selectedSemana], acaoPrevista: e.target.value }
-                        handleUpdatePDIData({
-                          ...selectedColab.pdiData,
-                          registroSemanal: {
-                            ...selectedColab.pdiData.registroSemanal,
-                            [selectedSemana]: curWeek
-                          }
-                        })
-                      }}
-                      placeholder="Treinar a objeção 'vou pensar' em duas simulações e aplicar a técnica nas negociações reais."
-                      className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#00D492] focus:border-transparent transition-all shadow-inner"
-                    />
-                  </div>
+                  <FormattedFeedbackField
+                    label="Ação prevista"
+                    labelColor="text-xs font-bold text-slate-700"
+                    value={selectedColab.pdiData.registroSemanal[selectedSemana].acaoPrevista || ""}
+                    onChange={(val) => {
+                      const curWeek = { ...selectedColab.pdiData.registroSemanal[selectedSemana], acaoPrevista: val }
+                      handleUpdatePDIData({
+                        ...selectedColab.pdiData,
+                        registroSemanal: {
+                          ...selectedColab.pdiData.registroSemanal,
+                          [selectedSemana]: curWeek
+                        }
+                      })
+                    }}
+                    placeholder="Treinar a objeção 'vou pensar' em duas simulações e aplicar a técnica nas negociações reais."
+                    rows={2}
+                  />
 
                   {/* 3. Evidência observada */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 block">
-                      Evidência observada
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={selectedColab.pdiData.registroSemanal[selectedSemana].evidenciaObservada}
-                      onChange={(e) => {
-                        const curWeek = { ...selectedColab.pdiData.registroSemanal[selectedSemana], evidenciaObservada: e.target.value }
-                        handleUpdatePDIData({
-                          ...selectedColab.pdiData,
-                          registroSemanal: {
-                            ...selectedColab.pdiData.registroSemanal,
-                            [selectedSemana]: curWeek
-                          }
-                        })
-                      }}
-                      placeholder="Ex.: conduziu duas simulações, identificou a objeção e combinou a retomada..."
-                      className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#00D492] focus:border-transparent transition-all shadow-inner"
-                    />
-                  </div>
+                  <FormattedFeedbackField
+                    label="Evidência observada"
+                    labelColor="text-xs font-bold text-slate-700"
+                    value={selectedColab.pdiData.registroSemanal[selectedSemana].evidenciaObservada || ""}
+                    onChange={(val) => {
+                      const curWeek = { ...selectedColab.pdiData.registroSemanal[selectedSemana], evidenciaObservada: val }
+                      handleUpdatePDIData({
+                        ...selectedColab.pdiData,
+                        registroSemanal: {
+                          ...selectedColab.pdiData.registroSemanal,
+                          [selectedSemana]: curWeek
+                        }
+                      })
+                    }}
+                    placeholder="Ex.: conduziu duas simulações, identificou a objeção e combinou a retomada..."
+                    rows={2}
+                  />
 
                   {/* 4. Status (Radio buttons verticais da Imagem 3) */}
                   <div className="space-y-2">
@@ -2666,27 +2776,23 @@ Registrado no SharkConsig CRM - Módulo PDI`
                   </div>
 
                   {/* 5. Próximo passo / obstáculo identificado */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 block">
-                      Próximo passo / obstáculo identificado
-                    </label>
-                    <input
-                      type="text"
-                      value={selectedColab.pdiData.registroSemanal[selectedSemana].proximoPasso}
-                      onChange={(e) => {
-                        const curWeek = { ...selectedColab.pdiData.registroSemanal[selectedSemana], proximoPasso: e.target.value }
-                        handleUpdatePDIData({
-                          ...selectedColab.pdiData,
-                          registroSemanal: {
-                            ...selectedColab.pdiData.registroSemanal,
-                            [selectedSemana]: curWeek
-                          }
-                        })
-                      }}
-                      placeholder="O que será feito, por quem e até quando?"
-                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-3 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#00D492] focus:border-transparent transition-all shadow-inner"
-                    />
-                  </div>
+                  <FormattedFeedbackField
+                    label="Próximo passo / obstáculo identificado"
+                    labelColor="text-xs font-bold text-slate-700"
+                    value={selectedColab.pdiData.registroSemanal[selectedSemana].proximoPasso || ""}
+                    onChange={(val) => {
+                      const curWeek = { ...selectedColab.pdiData.registroSemanal[selectedSemana], proximoPasso: val }
+                      handleUpdatePDIData({
+                        ...selectedColab.pdiData,
+                        registroSemanal: {
+                          ...selectedColab.pdiData.registroSemanal,
+                          [selectedSemana]: curWeek
+                        }
+                      })
+                    }}
+                    placeholder="O que será feito, por quem e até quando?"
+                    rows={2}
+                  />
 
                   {/* Botão de Rodapé Copiar Registro Semanal (Idêntico ao da imagem 3) */}
                   <div className="pt-2">
@@ -2893,58 +2999,46 @@ Registrado no SharkConsig CRM - Módulo PDI`
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                            Atividades Concluídas
-                          </label>
-                          <textarea
-                            rows={3}
-                            value={ev.atividadesConcluidas}
-                            onChange={(e) => {
-                              const updated = [...selectedColab.pdiData.evidencias]
-                              updated[i] = { ...updated[i], atividadesConcluidas: e.target.value }
-                              handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated })
-                            }}
-                            placeholder="Descreva a aplicação prática das novas rotinas combinadas no PDI..."
-                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
-                          />
-                        </div>
+                        <FormattedFeedbackField
+                          label="Atividades Concluídas"
+                          labelColor="text-[10px] font-bold text-slate-500 uppercase tracking-wider"
+                          value={ev.atividadesConcluidas || ""}
+                          onChange={(val) => {
+                            const updated = [...selectedColab.pdiData.evidencias]
+                            updated[i] = { ...updated[i], atividadesConcluidas: val }
+                            handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated })
+                          }}
+                          placeholder="Descreva a aplicação prática das novas rotinas combinadas no PDI..."
+                          rows={2}
+                        />
 
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                            Situação Real Enfrentada
-                          </label>
-                          <textarea
-                            rows={3}
-                            value={ev.situacaoReal}
-                            onChange={(e) => {
-                              const updated = [...selectedColab.pdiData.evidencias]
-                              updated[i] = { ...updated[i], situacaoReal: e.target.value }
-                              handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated })
-                            }}
-                            placeholder="Atendimento ou projeto com cliente real enfrentado pelo colaborador..."
-                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
-                          />
-                        </div>
+                        <FormattedFeedbackField
+                          label="Situação Real Enfrentada"
+                          labelColor="text-[10px] font-bold text-slate-500 uppercase tracking-wider"
+                          value={ev.situacaoReal || ""}
+                          onChange={(val) => {
+                            const updated = [...selectedColab.pdiData.evidencias]
+                            updated[i] = { ...updated[i], situacaoReal: val }
+                            handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated })
+                          }}
+                          placeholder="Atendimento ou projeto com cliente real enfrentado pelo colaborador..."
+                          rows={2}
+                        />
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-2 border-t border-slate-200/80">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">
-                            Resultado Antes vs Depois
-                          </label>
-                          <textarea
-                            rows={2}
-                            value={ev.resultadoAntesDepois}
-                            onChange={(e) => {
-                              const updated = [...selectedColab.pdiData.evidencias]
-                              updated[i] = { ...updated[i], resultadoAntesDepois: e.target.value }
-                              handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated })
-                            }}
-                            placeholder="Melhoria perceptível na conversão, tempo de resposta e satisfação..."
-                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
-                          />
-                        </div>
+                        <FormattedFeedbackField
+                          label="Resultado Antes vs Depois"
+                          labelColor="text-[10px] font-bold text-emerald-700 uppercase tracking-wider"
+                          value={ev.resultadoAntesDepois || ""}
+                          onChange={(val) => {
+                            const updated = [...selectedColab.pdiData.evidencias]
+                            updated[i] = { ...updated[i], resultadoAntesDepois: val }
+                            handleUpdatePDIData({ ...selectedColab.pdiData, evidencias: updated })
+                          }}
+                          placeholder="Melhoria perceptível na conversão, tempo de resposta e satisfação..."
+                          rows={2}
+                        />
 
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
@@ -2999,66 +3093,58 @@ Registrado no SharkConsig CRM - Módulo PDI`
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
                   <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      Avaliação Inicial (Ponto de Partida)
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={selectedColab.pdiData.avaliacaoInicial}
-                      onChange={(e) => handleUpdatePDIData({
+                    <FormattedFeedbackField
+                      label="Avaliação Inicial (Ponto de Partida)"
+                      labelColor="text-[10px] font-bold text-slate-500 uppercase tracking-wider"
+                      value={selectedColab.pdiData.avaliacaoInicial || ""}
+                      onChange={(val) => handleUpdatePDIData({
                         ...selectedColab.pdiData,
-                        avaliacaoInicial: e.target.value
+                        avaliacaoInicial: val
                       })}
                       placeholder="Ex.: Diagnóstico inicial de competências, postura em atendimento, nível de conhecimento dos produtos consignados e esteiras operacionais..."
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                      rows={3}
                     />
                   </div>
 
                   <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      Revisões Periódicas Realizadas
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={selectedColab.pdiData.revisoesPeriodicas}
-                      onChange={(e) => handleUpdatePDIData({
+                    <FormattedFeedbackField
+                      label="Revisões Periódicas Realizadas"
+                      labelColor="text-[10px] font-bold text-slate-500 uppercase tracking-wider"
+                      value={selectedColab.pdiData.revisoesPeriodicas || ""}
+                      onChange={(val) => handleUpdatePDIData({
                         ...selectedColab.pdiData,
-                        revisoesPeriodicas: e.target.value
+                        revisoesPeriodicas: val
                       })}
                       placeholder="Ex.: Checkpoints periódicos realizados com alinhamento de escutas e acompanhamento da evolução nos indicadores acordados..."
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                      rows={3}
                     />
                   </div>
 
                   <div className="bg-emerald-50/50 border border-emerald-100 p-4 rounded-xl space-y-1.5">
-                    <label className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
-                      Evoluções Percebidas na Rotina
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={selectedColab.pdiData.evolucoesPercebidas}
-                      onChange={(e) => handleUpdatePDIData({
+                    <FormattedFeedbackField
+                      label="Evoluções Percebidas na Rotina"
+                      labelColor="text-[10px] font-bold text-emerald-800 uppercase tracking-wider"
+                      value={selectedColab.pdiData.evolucoesPercebidas || ""}
+                      onChange={(val) => handleUpdatePDIData({
                         ...selectedColab.pdiData,
-                        evolucoesPercebidas: e.target.value
+                        evolucoesPercebidas: val
                       })}
                       placeholder="Ex.: Aumento na assertividade de fechamento de propostas, maior segurança nas negociações e redução de pendências operacionais..."
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                      rows={3}
                     />
                   </div>
 
                   <div className="bg-amber-50/50 border border-amber-100 p-4 rounded-xl space-y-1.5">
-                    <label className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">
-                      Pontos que Continuam Exigindo Atenção
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={selectedColab.pdiData.pontosAtencao}
-                      onChange={(e) => handleUpdatePDIData({
+                    <FormattedFeedbackField
+                      label="Pontos que Continuam Exigindo Atenção"
+                      labelColor="text-[10px] font-bold text-amber-800 uppercase tracking-wider"
+                      value={selectedColab.pdiData.pontosAtencao || ""}
+                      onChange={(val) => handleUpdatePDIData({
                         ...selectedColab.pdiData,
-                        pontosAtencao: e.target.value
+                        pontosAtencao: val
                       })}
                       placeholder="Ex.: Reforçar consistência no follow-up com clientes e atenção ao preenchimento de propostas..."
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                      rows={3}
                     />
                   </div>
                 </div>
@@ -3102,66 +3188,58 @@ Registrado no SharkConsig CRM - Módulo PDI`
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
                   <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      Competências Necessárias para o Próximo Nível
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={selectedColab.pdiData.competenciasProximoNivel}
-                      onChange={(e) => handleUpdatePDIData({
+                    <FormattedFeedbackField
+                      label="Competências Necessárias para o Próximo Nível"
+                      labelColor="text-[10px] font-bold text-slate-500 uppercase tracking-wider"
+                      value={selectedColab.pdiData.competenciasProximoNivel || ""}
+                      onChange={(val) => handleUpdatePDIData({
                         ...selectedColab.pdiData,
-                        competenciasProximoNivel: e.target.value
+                        competenciasProximoNivel: val
                       })}
                       placeholder="Ex.: Visão estratégica das esteiras bancárias, negociação com clientes de alta margem e liderança situacional..."
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                      rows={3}
                     />
                   </div>
 
                   <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      Preparação para Novas Responsabilidades
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={selectedColab.pdiData.preparacaoNovasResponsabilidades}
-                      onChange={(e) => handleUpdatePDIData({
+                    <FormattedFeedbackField
+                      label="Preparação para Novas Responsabilidades"
+                      labelColor="text-[10px] font-bold text-slate-500 uppercase tracking-wider"
+                      value={selectedColab.pdiData.preparacaoNovasResponsabilidades || ""}
+                      onChange={(val) => handleUpdatePDIData({
                         ...selectedColab.pdiData,
-                        preparacaoNovasResponsabilidades: e.target.value
+                        preparacaoNovasResponsabilidades: val
                       })}
                       placeholder="Ex.: Auxiliar na mentoria e apoio técnico aos consultores em fase de onboarding..."
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                      rows={3}
                     />
                   </div>
 
                   <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      Necessidades de Treinamento & Capacitação
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={selectedColab.pdiData.necessidadesTreinamento}
-                      onChange={(e) => handleUpdatePDIData({
+                    <FormattedFeedbackField
+                      label="Necessidades de Treinamento & Capacitação"
+                      labelColor="text-[10px] font-bold text-slate-500 uppercase tracking-wider"
+                      value={selectedColab.pdiData.necessidadesTreinamento || ""}
+                      onChange={(val) => handleUpdatePDIData({
                         ...selectedColab.pdiData,
-                        necessidadesTreinamento: e.target.value
+                        necessidadesTreinamento: val
                       })}
                       placeholder="Ex.: Treinamento avançado em técnicas de persuasão e regras específicas de novos convênios..."
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                      rows={3}
                     />
                   </div>
 
                   <div className="bg-emerald-50/60 border border-emerald-100 p-4 rounded-xl space-y-1.5">
-                    <label className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
-                      Critérios para Efetivação ou Promoção
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={selectedColab.pdiData.criteriosEfetivacao}
-                      onChange={(e) => handleUpdatePDIData({
+                    <FormattedFeedbackField
+                      label="Critérios para Efetivação ou Promoção"
+                      labelColor="text-[10px] font-bold text-emerald-800 uppercase tracking-wider"
+                      value={selectedColab.pdiData.criteriosEfetivacao || ""}
+                      onChange={(val) => handleUpdatePDIData({
                         ...selectedColab.pdiData,
-                        criteriosEfetivacao: e.target.value
+                        criteriosEfetivacao: val
                       })}
                       placeholder="Ex.: Superação contínua de metas, assiduidade exemplar e aderência total aos combinados do PDI..."
-                      className="w-full bg-white border border-slate-200 rounded-lg p-3 text-slate-800 font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#00D492]"
+                      rows={3}
                     />
                   </div>
                 </div>
@@ -3234,6 +3312,50 @@ Registrado no SharkConsig CRM - Módulo PDI`
       )}
 
       {/* ============================================================== */}
+      {/* MODAL: CONFIRMAR EXCLUSÃO DE COMPORTAMENTO                     */}
+      {/* ============================================================== */}
+      {comportamentoParaExcluir && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1 flex-1">
+                <h3 className="text-base font-black text-slate-900 leading-tight">Confirmar Exclusão</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Tem certeza que deseja excluir o comportamento <strong className="text-slate-900 font-bold">{comportamentoParaExcluir.comportamento.comportamento}</strong>?
+                </p>
+                <p className="text-[11px] text-rose-600 font-semibold mt-1">
+                  Esta ação é irreversível e o registro será removido permanentemente do PDI.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-3 flex items-center justify-end gap-3 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isDeletingComportamento}
+                onClick={() => setComportamentoParaExcluir(null)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingComportamento}
+                onClick={handleConfirmDeleteComportamento}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeletingComportamento ? "Excluindo..." : "Sim, Excluir"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
       {/* MODAL: NOVO FEEDBACK                                           */}
       {/* ============================================================== */}
       {showAddFeedbackModal && selectedColab && (
@@ -3241,8 +3363,17 @@ Registrado no SharkConsig CRM - Módulo PDI`
           <div className="bg-white rounded-2xl max-w-3xl w-full p-6 border border-slate-200 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-[#00D492]" />
-                <span>Registrar Novo Feedback</span>
+                {editingFeedbackIndex !== null ? (
+                  <>
+                    <Pencil className="w-4 h-4 text-[#00D492]" />
+                    <span>Editar Feedback</span>
+                  </>
+                ) : (
+                  <>
+                    <MessageSquare className="w-4 h-4 text-[#00D492]" />
+                    <span>Registrar Novo Feedback</span>
+                  </>
+                )}
               </h3>
               <button
                 onClick={() => setShowAddFeedbackModal(false)}
@@ -3448,28 +3579,52 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     toast.error("Preencha ao menos o responsável e o contexto.")
                     return
                   }
-                  const created: PDIFeedback = {
-                    id: `fb-${Date.now()}`,
-                    data: formatDateBR(newFeedbackData.data) || new Date().toLocaleDateString("pt-BR"),
-                    responsavel: newFeedbackData.responsavel || "",
-                    contexto: newFeedbackData.contexto || "",
-                    percepcaoFuncionario: newFeedbackData.percepcaoFuncionario || "",
-                    pontosPositivos: newFeedbackData.pontosPositivos || "",
-                    pontosMelhoria: newFeedbackData.pontosMelhoria || "",
-                    combinados: newFeedbackData.combinados || "",
-                    dataRetorno: formatDateBR(newFeedbackData.dataRetorno) || "",
-                    anexos: newFeedbackData.anexos || []
+                  if (editingFeedbackIndex !== null && selectedColab.pdiData?.feedbacks) {
+                    const updatedFeedbacks = [...selectedColab.pdiData.feedbacks]
+                    const currentId = updatedFeedbacks[editingFeedbackIndex]?.id || `fb-${Date.now()}`
+                    updatedFeedbacks[editingFeedbackIndex] = {
+                      id: currentId,
+                      data: formatDateBR(newFeedbackData.data) || newFeedbackData.data || new Date().toLocaleDateString("pt-BR"),
+                      responsavel: newFeedbackData.responsavel || "",
+                      contexto: newFeedbackData.contexto || "",
+                      percepcaoFuncionario: newFeedbackData.percepcaoFuncionario || "",
+                      pontosPositivos: newFeedbackData.pontosPositivos || "",
+                      pontosMelhoria: newFeedbackData.pontosMelhoria || "",
+                      combinados: newFeedbackData.combinados || "",
+                      dataRetorno: formatDateBR(newFeedbackData.dataRetorno) || newFeedbackData.dataRetorno || "",
+                      anexos: newFeedbackData.anexos || []
+                    }
+                    handleUpdatePDIData({
+                      ...selectedColab.pdiData,
+                      feedbacks: updatedFeedbacks
+                    })
+                    setShowAddFeedbackModal(false)
+                    setEditingFeedbackIndex(null)
+                    toast.success("Feedback atualizado com sucesso!")
+                  } else {
+                    const created: PDIFeedback = {
+                      id: `fb-${Date.now()}`,
+                      data: formatDateBR(newFeedbackData.data) || new Date().toLocaleDateString("pt-BR"),
+                      responsavel: newFeedbackData.responsavel || "",
+                      contexto: newFeedbackData.contexto || "",
+                      percepcaoFuncionario: newFeedbackData.percepcaoFuncionario || "",
+                      pontosPositivos: newFeedbackData.pontosPositivos || "",
+                      pontosMelhoria: newFeedbackData.pontosMelhoria || "",
+                      combinados: newFeedbackData.combinados || "",
+                      dataRetorno: formatDateBR(newFeedbackData.dataRetorno) || "",
+                      anexos: newFeedbackData.anexos || []
+                    }
+                    handleUpdatePDIData({
+                      ...selectedColab.pdiData!,
+                      feedbacks: [created, ...selectedColab.pdiData!.feedbacks]
+                    })
+                    setShowAddFeedbackModal(false)
+                    toast.success("Feedback registrado com sucesso!")
                   }
-                  handleUpdatePDIData({
-                    ...selectedColab.pdiData!,
-                    feedbacks: [created, ...selectedColab.pdiData!.feedbacks]
-                  })
-                  setShowAddFeedbackModal(false)
-                  toast.success("Feedback registrado com sucesso!")
                 }}
                 className="bg-slate-900 hover:bg-[#00D492] hover:text-slate-950 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-sm"
               >
-                Salvar Feedback
+                {editingFeedbackIndex !== null ? "Salvar Alterações" : "Salvar Feedback"}
               </button>
             </div>
           </div>
@@ -3484,8 +3639,17 @@ Registrado no SharkConsig CRM - Módulo PDI`
           <div className="bg-white rounded-2xl max-w-3xl w-full p-6 border border-slate-200 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-[#00D492]" />
-                <span>Adicionar Comportamento a Desenvolver</span>
+                {editingComportamentoIndex !== null ? (
+                  <>
+                    <Pencil className="w-4 h-4 text-[#00D492]" />
+                    <span>Editar Comportamento a Desenvolver</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-4 h-4 text-[#00D492]" />
+                    <span>Adicionar Comportamento a Desenvolver</span>
+                  </>
+                )}
               </h3>
               <button
                 onClick={() => setShowAddComportamentoModal(false)}
@@ -3580,25 +3744,46 @@ Registrado no SharkConsig CRM - Módulo PDI`
                     toast.error("Informe o comportamento a ser trabalhado.")
                     return
                   }
-                  const created: PDIComportamento = {
-                    id: `comp-${Date.now()}`,
-                    comportamento: newCompData.comportamento || "",
-                    situacao: newCompData.situacao || "",
-                    impacto: newCompData.impacto || "",
-                    comportamentoEsperado: newCompData.comportamentoEsperado || "",
-                    prioridade: newCompData.prioridade as any || "Média",
-                    status: newCompData.status as any || "Não iniciado"
+                  if (editingComportamentoIndex !== null && selectedColab.pdiData?.comportamentos) {
+                    const updatedComps = [...selectedColab.pdiData.comportamentos]
+                    const currentId = updatedComps[editingComportamentoIndex]?.id || `comp-${Date.now()}`
+                    updatedComps[editingComportamentoIndex] = {
+                      id: currentId,
+                      comportamento: newCompData.comportamento || "",
+                      situacao: newCompData.situacao || "",
+                      impacto: newCompData.impacto || "",
+                      comportamentoEsperado: newCompData.comportamentoEsperado || "",
+                      prioridade: (newCompData.prioridade as any) || "Média",
+                      status: (newCompData.status as any) || "Não iniciado"
+                    }
+                    handleUpdatePDIData({
+                      ...selectedColab.pdiData,
+                      comportamentos: updatedComps
+                    })
+                    setShowAddComportamentoModal(false)
+                    setEditingComportamentoIndex(null)
+                    toast.success("Comportamento atualizado!")
+                  } else {
+                    const created: PDIComportamento = {
+                      id: `comp-${Date.now()}`,
+                      comportamento: newCompData.comportamento || "",
+                      situacao: newCompData.situacao || "",
+                      impacto: newCompData.impacto || "",
+                      comportamentoEsperado: newCompData.comportamentoEsperado || "",
+                      prioridade: newCompData.prioridade as any || "Média",
+                      status: newCompData.status as any || "Não iniciado"
+                    }
+                    handleUpdatePDIData({
+                      ...selectedColab.pdiData!,
+                      comportamentos: [...selectedColab.pdiData!.comportamentos, created]
+                    })
+                    setShowAddComportamentoModal(false)
+                    toast.success("Comportamento adicionado!")
                   }
-                  handleUpdatePDIData({
-                    ...selectedColab.pdiData!,
-                    comportamentos: [...selectedColab.pdiData!.comportamentos, created]
-                  })
-                  setShowAddComportamentoModal(false)
-                  toast.success("Comportamento adicionado!")
                 }}
                 className="bg-slate-900 hover:bg-[#00D492] hover:text-slate-950 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer shadow-sm"
               >
-                Salvar Comportamento
+                {editingComportamentoIndex !== null ? "Salvar Alterações" : "Salvar Comportamento"}
               </button>
             </div>
           </div>
