@@ -1906,7 +1906,18 @@ export default function TicketsPage() {
   }
 
   const toggleTicketExpansion = (ticketId: string) => {
-    setExpandedTicketId(expandedTicketId === ticketId ? null : ticketId)
+    setExpandedTicketId(prev => {
+      const next = prev === ticketId ? null : ticketId
+      if (next === null) {
+        setLiveMarginsMap(prevMap => {
+          if (!prevMap[ticketId]) return prevMap
+          const copy = { ...prevMap }
+          delete copy[ticketId]
+          return copy
+        })
+      }
+      return next
+    })
   }
 
   const handleBulkStatusChange = async () => {
@@ -2803,13 +2814,13 @@ export default function TicketsPage() {
                               {(() => {
                                 const liveData = liveMarginsMap[ticket.id.toString()];
                                 const opData = getValoresOperacaoEProducao(ticket);
-                                const valorOpStr = liveData !== undefined
+                                const valorOpStr = (liveData && liveData.totalOperacao > 0)
                                   ? "R$ " + liveData.totalOperacao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                                   : opData.valorOperacao;
-                                const labelStr = liveData !== undefined
+                                const labelStr = (liveData && liveData.totalOperacao > 0)
                                   ? (liveData.selectedLabels.length === 1 ? liveData.selectedLabels[0] : (liveData.selectedLabels.length > 1 ? `Margens (${liveData.selectedLabels.length})` : "Sem seleção"))
                                   : opData.label;
-                                const colorStr = liveData !== undefined
+                                const colorStr = (liveData && liveData.totalOperacao > 0)
                                   ? (liveData.selectedLabels.length > 1 ? "text-indigo-600 font-extrabold" : opData.color)
                                   : opData.color;
 
@@ -2833,7 +2844,7 @@ export default function TicketsPage() {
                               {(() => {
                                 const liveData = liveMarginsMap[ticket.id.toString()];
                                 const opData = getValoresOperacaoEProducao(ticket);
-                                const valorProdStr = liveData !== undefined
+                                const valorProdStr = (liveData && liveData.totalProducao > 0)
                                   ? "R$ " + liveData.totalProducao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                                   : opData.valorProducao;
 
@@ -3005,11 +3016,19 @@ export default function TicketsPage() {
                                   }}
                                   onMarginsLiveChange={(totals) => {
                                     setLiveMarginsMap(prev => {
+                                      const opData = getValoresOperacaoEProducao(ticket);
+                                      const effectiveProducao = totals.totalProducao > 0 
+                                        ? totals.totalProducao 
+                                        : (totals.totalOperacao > 0 && opData.numProducao > 0 ? opData.numProducao : totals.totalProducao);
+                                      const effectiveOperacao = totals.totalOperacao > 0
+                                        ? totals.totalOperacao
+                                        : opData.numOperacao;
+
                                       const cur = prev[ticket.id.toString()];
                                       if (
                                         cur &&
-                                        cur.totalOperacao === totals.totalOperacao &&
-                                        cur.totalProducao === totals.totalProducao &&
+                                        cur.totalOperacao === effectiveOperacao &&
+                                        cur.totalProducao === effectiveProducao &&
                                         cur.selectedLabels.length === totals.selectedLabels.length &&
                                         cur.selectedLabels.every((l, i) => l === totals.selectedLabels[i])
                                       ) {
@@ -3017,7 +3036,11 @@ export default function TicketsPage() {
                                       }
                                       return {
                                         ...prev,
-                                        [ticket.id.toString()]: totals
+                                        [ticket.id.toString()]: {
+                                          ...totals,
+                                          totalOperacao: effectiveOperacao,
+                                          totalProducao: effectiveProducao
+                                        }
                                       };
                                     });
                                   }}
@@ -3025,7 +3048,14 @@ export default function TicketsPage() {
                                 <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
                                   <Button 
                                     variant="outline"
-                                    onClick={() => setExpandedTicketId(null)}
+                                    onClick={() => {
+                                      setExpandedTicketId(null);
+                                      setLiveMarginsMap(prevMap => {
+                                        const copy = { ...prevMap };
+                                        delete copy[ticket.id.toString()];
+                                        return copy;
+                                      });
+                                    }}
                                     className="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-primary transition-colors"
                                   >
                                     Fechar e Voltar para a Lista

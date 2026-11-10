@@ -37,7 +37,7 @@ import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import ReactMarkdown from "react-markdown"
 import { Input } from "@/components/ui/input"
-import { CoeficienteTabelaSelector, calculateValorProducao } from "@/components/chamados/coeficiente-tabela-selector"
+import { CoeficienteTabelaSelector, calculateValorProducao, resolvePercentualProducaoSync } from "@/components/chamados/coeficiente-tabela-selector"
 
 interface Attachment {
   name: string
@@ -241,6 +241,25 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved, onMar
       margem: opMargem,
       liquida5: opLiquida,
       beneficio5: opBeneficio
+    });
+
+    const convVal = ticket.convenio || meta?.convenio || "";
+    const pMargem = meta?.percentual_producao_margem
+      ? Number(meta.percentual_producao_margem)
+      : resolvePercentualProducaoSync(convVal, coefMargem || "0.028", meta?.tabela_margem || "");
+
+    const pLiquida = meta?.percentual_producao_liquida5
+      ? Number(meta.percentual_producao_liquida5)
+      : resolvePercentualProducaoSync(convVal, coefLiquida || "0.053", meta?.tabela_liquida5 || "");
+
+    const pBeneficio = meta?.percentual_producao_beneficio5
+      ? Number(meta.percentual_producao_beneficio5)
+      : resolvePercentualProducaoSync(convVal, coefBeneficio || "0.053", meta?.tabela_beneficio5 || "");
+
+    setTicketProdPercents({
+      margem: pMargem || 0,
+      liquida5: pLiquida || 0,
+      beneficio5: pBeneficio || 0
     });
 
     let detectedType: 'margem' | 'liquida5' | 'beneficio5' | null = null;
