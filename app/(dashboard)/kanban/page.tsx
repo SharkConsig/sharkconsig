@@ -1517,7 +1517,7 @@ export default function KanbanPage() {
   const [isExportingExcel, setIsExportingExcel] = useState(false)
 
   // Verificação de ambiente (Desenvolvimento no AI Studio vs Produção)
-  const [isDevEnv, setIsDevEnv] = useState<boolean>(true)
+  const [isDevEnv, setIsDevEnv] = useState<boolean>(() => checkIsDevEnvironment())
   const [hasCheckedEnv, setHasCheckedEnv] = useState<boolean>(false)
 
   useEffect(() => {
@@ -1528,6 +1528,16 @@ export default function KanbanPage() {
   // Determinar se o usuário atual é gestor ou operador de execução
   const userRole = (perfil?.role || "").trim()
   const userFuncao = (perfil?.funcao || "").trim().toLowerCase()
+
+  // Usuário estritamente 'Desenvolvedor' (em produção, NUNCA inclui Administrador, Supervisor ou Operacional)
+  const isStrictDesenvolvedor = Boolean(
+    (userRole === "Desenvolvedor" || perfil?.role === "Desenvolvedor" || userFuncao === "desenvolvedor") &&
+    userRole !== "Administrador" &&
+    userRole !== "Admin" &&
+    userFuncao !== "administrador" &&
+    userRole !== "Supervisor" &&
+    userRole !== "Operacional"
+  )
 
   // Permissão de exportação para Excel: Operacional, Supervisor, Monitoramento, Administrador, Desenvolvedor
   const canExportExcel = Boolean(
@@ -7097,12 +7107,7 @@ export default function KanbanPage() {
                 type="button"
                 onClick={() => {
                   const isCurrentDev = hasCheckedEnv ? isDevEnv : checkIsDevEnvironment()
-                  const isDevUser = Boolean(
-                    isDeveloper ||
-                    userRole === "Desenvolvedor" ||
-                    userFuncao === "desenvolvedor"
-                  )
-                  if (isCurrentDev || isDevUser) {
+                  if (isCurrentDev || isStrictDesenvolvedor) {
                     setShowIntelligenceDrawer(true)
                   } else {
                     setShowIntelligenceEmDesenvolvimentoModal(true)
@@ -10521,7 +10526,7 @@ export default function KanbanPage() {
       })()}
 
       {/* Drawer / Painel Executivo de Inteligência do Pipeline */}
-      {canAccessPipelineIntelligence && (
+      {canAccessPipelineIntelligence && (isDevEnv || isStrictDesenvolvedor) && (
         <PipelineIntelligenceDrawer
           isOpen={showIntelligenceDrawer}
           onClose={() => setShowIntelligenceDrawer(false)}
