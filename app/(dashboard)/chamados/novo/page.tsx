@@ -1126,7 +1126,7 @@ export function NewTicketForm({
               } catch {}
             }
           } else if (fichasRelacionadas && fichasRelacionadas.length > 0) {
-            // Para outras origens de cliente: atualiza as fichas existentes para EM NEGOCIAÇÃO
+            // Para outras origens de cliente: o cartão deve permanecer na coluna 'Em interação ou retomada' (EM RETOMADA)
             for (const ficha of fichasRelacionadas) {
               const prevMeta = (ficha.metadata && typeof ficha.metadata === 'object') ? ficha.metadata : {};
               const valProdMargemStr = formatCurrencyValue(calculateValorProducao(valOpMargemStr, tabelaProdPercents.margem));
@@ -1135,7 +1135,7 @@ export function NewTicketForm({
 
               const updatedMeta = {
                 ...prevMeta,
-                kanban_stage: "EM NEGOCIAÇÃO",
+                kanban_stage: "EM RETOMADA",
                 proxima_acao: "Trabalhar proposta do chamado",
                 margem: margemStr || prevMeta.margem,
                 liquida5: liquida5Str || prevMeta.liquida5,
@@ -1161,7 +1161,7 @@ export function NewTicketForm({
               };
 
               const updatePayload: any = {
-                etapa: "EM NEGOCIAÇÃO",
+                etapa: "EM RETOMADA",
                 motivo_perda: null,
                 metadata: updatedMeta,
                 updated_at: new Date().toISOString()
