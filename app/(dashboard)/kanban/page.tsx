@@ -64,7 +64,7 @@ import {
   ProximaAcaoConfig, 
   calcularVencimentoComSla 
 } from "@/lib/kanban-proximas-acoes"
-import { hasProposalDigitacao, syncKanbanForClosedProposal, isDigitacaoAposDataCorte } from "@/lib/sync-kanban-propostas"
+import { hasProposalDigitacao, syncKanbanForClosedProposal, isDigitacaoAposDataCorte, areOperatorsEquivalent, isProposalCancelled } from "@/lib/sync-kanban-propostas"
 import { loadTabelasConfigCache, resolvePercentualProducaoSync } from "@/components/chamados/coeficiente-tabela-selector"
 import ExcelJS from "exceljs"
 import { saveAs } from "file-saver"
@@ -1252,11 +1252,23 @@ function matchesProposalUser(p: any, t: TicketItem): boolean {
   const matchId = propUserIds.some(pId => cardUserIds.includes(pId))
   if (matchId) return true
 
-  // 2. Verificação por Nome do operador
-  const matchName = propUserNames.some(pName => 
-    cardUserNames.some(cName => cName === pName || cName.includes(pName) || pName.includes(cName))
-  )
-  if (matchName) return true
+  // 2. Verificação por Equivalência Robusta (nomes e sobrenomes, sem distinção de acentos)
+  for (const pName of propUserNames) {
+    for (const cName of cardUserNames) {
+      if (areOperatorsEquivalent(null, pName, null, cName)) {
+        return true
+      }
+    }
+  }
+
+  // 3. Verificação mista ID/Nome
+  for (const pId of propUserIds) {
+    for (const cId of cardUserIds) {
+      if (areOperatorsEquivalent(pId, null, cId, null)) {
+        return true
+      }
+    }
+  }
 
   return false
 }
@@ -1268,19 +1280,39 @@ function inferKanbanStage(
 ): KanbanStage {
   const prop = propInfo || ticket.proposta_info
   const pStatus = (prop?.status || "").toUpperCase().trim()
-  const hasDigitacao = Boolean(
-    (prop?.ade && prop.ade.trim() && prop.ade.trim() !== "-") && 
-    (prop?.data_digitacao && prop.data_digitacao.trim() && prop.data_digitacao.trim() !== "-") &&
-    isDigitacaoAposDataCorte(prop.data_digitacao)
+  const isPagoOuConcluido = pStatus.includes("PAGO") || pStatus.includes("CONCLU") || pStatus.includes("LIQUIDA")
+  const isCanceladoProp = isProposalCancelled(pStatus)
+  const isCanceladoTicket = (
+    ticket.status === "PERDIDO" ||
+    (ticket as any).etapa === "PERDIDO" ||
+    meta.kanban_stage === "PERDIDO" ||
+    isProposalCancelled(ticket.status) ||
+    isProposalCancelled((ticket as any).etapa) ||
+    isProposalCancelled(meta.kanban_stage) ||
+    (Boolean(ticket.motivo_perda) && (ticket.motivo_perda.toLowerCase().includes("cancelad") || ticket.motivo_perda.toLowerCase().includes("banco")))
   )
 
-  // 1. Proposta digitada no banco deste operador que foi cancelada no banco vai automaticamente para PERDIDO
-  if (hasDigitacao && (pStatus === "CANCELADO" || pStatus === "CANCELADOS" || pStatus.includes("CANCELAD"))) {
+  // 1. Proposta cancelada no banco vai OBRIGATORIAMENTE para PERDIDO
+  if (isCanceladoProp || (isCanceladoTicket && !isPagoOuConcluido)) {
     return "PERDIDO"
   }
 
-  // 2. Proposta digitada no banco deste operador (com ADE e DATA DE DIGITAÇÃO) entra na coluna FECHADO
-  if (hasDigitacao) {
+  // 2. Proposta digitada no banco deste operador (com ADE ou status PAGO/CONCLUÍDO) entra e permanece na coluna FECHADO
+  const hasAde = Boolean(
+    (prop?.ade && prop.ade.trim() && prop.ade.trim() !== "-") ||
+    (meta.ade && meta.ade.trim() && meta.ade.trim() !== "-")
+  )
+  const hasDigitacao = Boolean(
+    (hasAde || isPagoOuConcluido) &&
+    (
+      isPagoOuConcluido ||
+      !prop?.data_digitacao ||
+      prop.data_digitacao === "-" ||
+      isDigitacaoAposDataCorte(prop.data_digitacao)
+    )
+  )
+
+  if (!isCanceladoProp && (hasDigitacao || isPagoOuConcluido || ((hasAde || ticket.status === "FECHADO" || (ticket as any).etapa === "FECHADO" || meta.kanban_stage === "FECHADO") && !isCanceladoTicket))) {
     return "FECHADO"
   }
 
@@ -1333,11 +1365,12 @@ function getCardTopBadge(
   const pStatus = (prop?.status || "").toUpperCase().trim()
 
   const isPropostaCancelada = Boolean(
-    pStatus === "CANCELADO" || 
-    pStatus === "CANCELADOS" || 
-    pStatus.includes("CANCELAD") ||
-    ticket.status === "CANCELADO" ||
-    (ticket as any).motivo_perda?.toLowerCase().includes("cancelad")
+    isProposalCancelled(pStatus) ||
+    isProposalCancelled(ticket.status) ||
+    isProposalCancelled((ticket as any).etapa) ||
+    isProposalCancelled(meta.kanban_stage) ||
+    (ticket as any).motivo_perda?.toLowerCase().includes("cancelad") ||
+    (ticket as any).motivo_perda?.toLowerCase().includes("banco")
   )
 
   const isCadenciaEsgotada = Boolean(
@@ -2933,7 +2966,15 @@ export default function KanbanPage() {
       }
 
       // Identificar operadores em atendimento simultâneo para os CPFs presentes no pipeline
-      const cpfs = Array.from(new Set(formatted.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)))
+      const baseCpfs = Array.from(new Set(formatted.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)))
+      const allCpfVariants = new Set<string>()
+      baseCpfs.forEach(c => {
+        allCpfVariants.add(c)
+        allCpfVariants.add(c.padStart(11, "0"))
+        allCpfVariants.add(c.replace(/^0+/, ""))
+      })
+      const cpfs = Array.from(allCpfVariants).filter(Boolean)
+
       if (cpfs.length > 0) {
         try {
           const cpfChunks = chunkArray(cpfs, 100)
@@ -2989,10 +3030,19 @@ export default function KanbanPage() {
 
             // Atualiza os tickets com o status e informações da proposta bancária
             setTickets(prev => prev.map(t => {
-              const cCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+              const rawCardCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+              const cCpfPadded = rawCardCpf.padStart(11, "0")
+              const cCpfUnpadded = rawCardCpf.replace(/^0+/, "")
+
               const matchingProp = propostasExistentes.find((p: any) => {
-                const pCpf = (p.cliente_cpf || "").replace(/\D/g, "")
-                const sameCpf = cCpf && pCpf && cCpf === pCpf
+                const rawPropCpf = (p.cliente_cpf || "").replace(/\D/g, "")
+                const pCpfPadded = rawPropCpf.padStart(11, "0")
+                const pCpfUnpadded = rawPropCpf.replace(/^0+/, "")
+                const sameCpf = rawCardCpf && rawPropCpf && (
+                  rawCardCpf === rawPropCpf ||
+                  cCpfPadded === pCpfPadded ||
+                  (cCpfUnpadded && cCpfUnpadded === pCpfUnpadded)
+                )
                 const sameLead = p.id_lead && String(p.id_lead).trim() === String(t.id).trim()
                 if (!sameCpf && !sameLead) return false
                 if (!hasProposalDigitacao(p)) return false
@@ -3002,8 +3052,14 @@ export default function KanbanPage() {
 
               // Proposta digitada no banco que foi fechada por OUTRO operador para este mesmo cliente
               const closedOtherProp = !matchingProp ? propostasExistentes.find((p: any) => {
-                const pCpf = (p.cliente_cpf || "").replace(/\D/g, "")
-                const sameCpf = cCpf && pCpf && cCpf === pCpf
+                const rawPropCpf = (p.cliente_cpf || "").replace(/\D/g, "")
+                const pCpfPadded = rawPropCpf.padStart(11, "0")
+                const pCpfUnpadded = rawPropCpf.replace(/^0+/, "")
+                const sameCpf = rawCardCpf && rawPropCpf && (
+                  rawCardCpf === rawPropCpf ||
+                  cCpfPadded === pCpfPadded ||
+                  (cCpfUnpadded && cCpfUnpadded === pCpfUnpadded)
+                )
                 const sameLead = p.id_lead && String(p.id_lead).trim() === String(t.id).trim()
                 if (!sameCpf && !sameLead) return false
                 if (matchesProposalUser(p, t)) return false
@@ -3019,12 +3075,26 @@ export default function KanbanPage() {
                 mapPropsByTicketId[t.id] = info
                 const meta = parseMetadata(t.descricao)
                 const inferred = inferKanbanStage(t, meta, info)
+                const isCancelled = isProposalCancelled(info.status)
                 return {
                   ...t,
                   status: inferred,
+                  motivo_perda: isCancelled ? (t.motivo_perda || "Proposta cancelada pelo banco") : t.motivo_perda,
                   proposta_info: info
                 }
               } else if (closedOtherProp) {
+                const isOtherCancelled = isProposalCancelled(closedOtherProp.status)
+                if (isOtherCancelled) {
+                  // Se a proposta do outro operador foi cancelada, não derruba este atendimento
+                  const meta = parseMetadata(t.descricao)
+                  const inferred = inferKanbanStage(t, meta, undefined)
+                  return {
+                    ...t,
+                    status: inferred,
+                    proposta_info: undefined
+                  }
+                }
+
                 const meta = parseMetadata(t.descricao)
                 const closingName = closedOtherProp.nome_corretor || closedOtherProp.corretor || closedOtherProp.estagiario_colaborador_nome || "outro operador"
                 const closingAde = closedOtherProp.ade ? String(closedOtherProp.ade).trim() : ""
@@ -3056,6 +3126,40 @@ export default function KanbanPage() {
                 }
               } else {
                 const meta = parseMetadata(t.descricao)
+                const isCancelledTicket = (
+                  t.status === "PERDIDO" ||
+                  (t as any).etapa === "PERDIDO" ||
+                  meta.kanban_stage === "PERDIDO" ||
+                  isProposalCancelled(t.status) ||
+                  isProposalCancelled((t as any).etapa) ||
+                  isProposalCancelled(meta.kanban_stage) ||
+                  (Boolean(t.motivo_perda) && (t.motivo_perda.toLowerCase().includes("cancelad") || t.motivo_perda.toLowerCase().includes("banco")))
+                )
+
+                if (isCancelledTicket) {
+                  return {
+                    ...t,
+                    status: "PERDIDO" as KanbanStage,
+                    motivo_perda: t.motivo_perda || "Proposta cancelada pelo banco"
+                  }
+                }
+
+                const isAlreadyClosed = !isCancelledTicket && (
+                  t.status === "FECHADO" || 
+                  (t as any).etapa === "FECHADO" || 
+                  meta.kanban_stage === "FECHADO" ||
+                  (Boolean(meta.ade) && meta.ade !== "-") ||
+                  (Boolean(t.proposta_info?.ade) && t.proposta_info?.ade !== "-")
+                )
+
+                if (isAlreadyClosed) {
+                  return {
+                    ...t,
+                    status: "FECHADO" as KanbanStage,
+                    proposta_info: t.proposta_info || (meta.ade ? { ade: meta.ade, status: "FECHADO" } : undefined)
+                  }
+                }
+
                 const inferred = inferKanbanStage(t, meta, undefined)
                 return {
                   ...t,
