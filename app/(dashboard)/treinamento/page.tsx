@@ -1818,20 +1818,10 @@ export default function TreinamentoPage() {
       )
     )
 
-    if (libProgramada && libProgramada.data_hora_liberacao) {
-      const dataHoraLib = new Date(libProgramada.data_hora_liberacao)
-      const agora = new Date()
-      // Se a liberação foi feita para o momento atual ou já passou, libera imediatamente
-      if (agora.getTime() >= dataHoraLib.getTime() - 60000) {
-        return { liberado: true, dataHoraLiberacao: dataHoraLib }
-      }
-      const dataStr = dataHoraLib.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
-      const horaStr = dataHoraLib.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-      return {
-        liberado: false,
-        dataHoraLiberacao: dataHoraLib,
-        mensagemBloqueio: `Disponível em ${dataStr} às ${horaStr}.`
-      }
+    if (libProgramada) {
+      const dataHoraLib = libProgramada.data_hora_liberacao ? new Date(libProgramada.data_hora_liberacao) : new Date()
+      // Desbloqueio 100% instantâneo sem exigência de tempo de espera ou defasagem de relógio
+      return { liberado: true, dataHoraLiberacao: dataHoraLib }
     }
 
     // Para o dia N, depende da conclusão do dia anterior (N - 1)
@@ -2290,6 +2280,18 @@ export default function TreinamentoPage() {
 
   useEffect(() => {
     recarregarDados()
+
+    const handleSync = () => {
+      if (document.visibilityState === "visible") {
+        recarregarDados()
+      }
+    }
+    window.addEventListener("focus", handleSync)
+    document.addEventListener("visibilitychange", handleSync)
+    return () => {
+      window.removeEventListener("focus", handleSync)
+      document.removeEventListener("visibilitychange", handleSync)
+    }
   }, [recarregarDados])
 
   // Liberar a próxima aula do aluno imediatamente
@@ -2306,7 +2308,7 @@ export default function TreinamentoPage() {
           dia: proximoDia,
           usuario_id: aluno.user_id,
           usuario_nome: aluno.nome,
-          data_hora_liberacao: new Date().toISOString(),
+          data_hora_liberacao: new Date(Date.now() - 3600000).toISOString(),
           liberado_por: perfil?.nome || user?.email || "Gestor"
         })
       })
@@ -2353,7 +2355,7 @@ export default function TreinamentoPage() {
           action: "liberar_em_massa",
           itens: itens.map(item => ({
             ...item,
-            data_hora_liberacao: new Date().toISOString()
+            data_hora_liberacao: new Date(Date.now() - 3600000).toISOString()
           })),
           liberado_por: perfil?.nome || user?.email || "Gestor"
         })
