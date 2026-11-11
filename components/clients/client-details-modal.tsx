@@ -1717,12 +1717,16 @@ export function ClientDetailsModal({
 
   const maskPhone = (phone: string) => {
     if (!phone) return "NÃO INFORMADO"
-    if (showSensitiveData) {
+    const isOrigemDisparo = clienteOrigem === "DISPARO" || (client as any)?.origem === "DISPARO"
+    if (showSensitiveData || (isEmAbordagem && isOrigemDisparo)) {
       const cleaned = phone.replace(/\D/g, "")
       if (cleaned.length === 11) {
         return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3")
       }
-      return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
+      if (cleaned.length === 10) {
+        return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
+      }
+      return phone
     }
     const cleaned = phone.replace(/\D/g, "")
     if (cleaned.length >= 8) {
@@ -1855,12 +1859,18 @@ export function ClientDetailsModal({
       margemRccDisp = Number(anyReg.md_cartao_beneficio ?? anyReg.cartao_beneficio ?? anyReg.margem_beneficio ?? anyReg.margem_cartao_beneficio ?? anyReg.margem_rcc ?? anyReg.beneficio_liquida_5 ?? 0) || 0;
     }
 
+    if ((clienteOrigem === "DISPARO" || selectedOrigemValue === "DISPARO") && (!selectedPhones || selectedPhones.length === 0)) {
+      toast.error("É obrigatório marcar pelo menos 1 telefone contatado do cliente para abrir o chamado.")
+      return
+    }
+
     const initialData = {
       nome: client.nome || "NOME NÃO INFORMADO",
       cpf: formattedCpf,
       tel1: (client.telefone_1 || "").replace(/\D/g, ""),
       tel2: (client.telefone_2 || "").replace(/\D/g, ""),
       tel3: (client.telefone_3 || "").replace(/\D/g, ""),
+      telefones_selecionados: selectedPhones,
       origem: selectedOrigemValue,
       telefone_empresa: selectedEmpresaPhone || "",
       margem: formatCurrency(margemEmpDisp),
@@ -2251,7 +2261,7 @@ export function ClientDetailsModal({
                       )}
 
                       {/* Card ambar de orientação para marcação dos telefones (exclusivo para o Kanban / Informações sobre o Lead) */}
-                      {isKanbanLeadModal && !hidePhoneSelectionBanner && clienteOrigem !== "DISPARO" && (
+                      {isKanbanLeadModal && !hidePhoneSelectionBanner && (
                         <div className="col-span-full -mb-4 bg-amber-50/90 border border-amber-200/90 rounded-lg p-3 flex items-center gap-2.5 text-amber-900 shadow-xs">
                           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                           <p className="text-xs font-semibold text-amber-900 leading-none">
@@ -3011,7 +3021,13 @@ export function ClientDetailsModal({
                   {clienteOrigem === "DISPARO" ? (
                     <Button
                       type="button"
-                      onClick={() => handleAbrirChamado(activeReg)}
+                      onClick={() => {
+                        if (!selectedPhones || selectedPhones.length === 0) {
+                          toast.error("É obrigatório marcar pelo menos 1 telefone contatado do cliente para abrir o chamado.")
+                          return
+                        }
+                        handleAbrirChamado(activeReg)
+                      }}
                       className="w-full sm:w-auto h-11 px-8 text-[11px] font-bold uppercase tracking-widest bg-[#171717] hover:bg-black text-white shadow-md transition-all rounded-xl flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <MessageSquare className="w-4 h-4" />

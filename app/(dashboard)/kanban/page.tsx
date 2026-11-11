@@ -6269,20 +6269,23 @@ export default function KanbanPage() {
               ? ticket.telefones_selecionados
               : (Array.isArray(metaDesc.telefones_selecionados) && metaDesc.telefones_selecionados.length > 0)
                 ? metaDesc.telefones_selecionados
-                : []
+                : (Array.isArray(metaDesc.telefones_contatados) && metaDesc.telefones_contatados.length > 0)
+                  ? metaDesc.telefones_contatados
+                  : []
 
-            if (selected.length === 0) {
-              return null
-            }
-
-            const filtered = allPhones.filter(phone => {
-              const cleanPhone = phone.replace(/\D/g, "")
-              return selected.some(sp => {
-                const cleanSp = sp.replace(/\D/g, "")
-                return cleanSp === cleanPhone || (cleanPhone.length >= 8 && cleanSp.slice(-8) === cleanPhone.slice(-8))
+            let cardPhones: string[] = []
+            if (selected.length > 0) {
+              const filtered = allPhones.filter(phone => {
+                const cleanPhone = phone.replace(/\D/g, "")
+                return selected.some(sp => {
+                  const cleanSp = sp.replace(/\D/g, "")
+                  return cleanSp === cleanPhone || (cleanPhone.length >= 8 && cleanSp.slice(-8) === cleanPhone.slice(-8))
+                })
               })
-            })
-            const cardPhones = filtered.length > 0 ? filtered : selected
+              cardPhones = filtered.length > 0 ? filtered : selected
+            } else {
+              cardPhones = allPhones.length > 0 ? allPhones : (ticket.cliente_telefone ? [ticket.cliente_telefone] : [])
+            }
 
             if (cardPhones.length === 0) {
               return null

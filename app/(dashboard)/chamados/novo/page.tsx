@@ -765,7 +765,7 @@ export function NewTicketForm({
       setValidationError("POR FAVOR, INFORME O CPF DO CLIENTE");
       return;
     }
-    if (!formData.tel1 && formData.origem !== "DISPARO") {
+    if (!formData.tel1) {
       setValidationError("POR FAVOR, INFORME O TELEFONE DO CLIENTE");
       return;
     }
@@ -1065,7 +1065,12 @@ export function NewTicketForm({
                 cliente_telefone_2: formData.tel2 || undefined,
                 cliente_telefone_3: formData.tel3 || undefined,
                 telefones: [formData.tel1, formData.tel2, formData.tel3].filter(Boolean),
-                telefones_contatados: [formData.tel1, formData.tel2, formData.tel3].filter(Boolean),
+                telefones_contatados: ((modalInitialData as any)?.telefones_selecionados && (modalInitialData as any).telefones_selecionados.length > 0)
+                  ? (modalInitialData as any).telefones_selecionados
+                  : [formData.tel1, formData.tel2, formData.tel3].filter(Boolean),
+                telefones_selecionados: ((modalInitialData as any)?.telefones_selecionados && (modalInitialData as any).telefones_selecionados.length > 0)
+                  ? (modalInitialData as any).telefones_selecionados
+                  : [formData.tel1, formData.tel2, formData.tel3].filter(Boolean),
                 conflito_titularidade: outrosOperadoresNomes.length > 0,
                 concorrencia_outros_operadores: outrosOperadoresNomes,
                 historico_kanban: [{
@@ -1080,6 +1085,9 @@ export function NewTicketForm({
                 cliente_nome: formData.nome || "Cliente sem Nome",
                 cliente_cpf: cleanCpfDigits.padStart(11, "0"),
                 cliente_telefone: primaryPhone,
+                telefones_contatados: ((modalInitialData as any)?.telefones_selecionados && (modalInitialData as any).telefones_selecionados.length > 0)
+                  ? (modalInitialData as any).telefones_selecionados
+                  : [formData.tel1, formData.tel2, formData.tel3].filter(Boolean),
                 operador_id: validOperadorId,
                 operador_nome: operadorNome,
                 etapa: "EM RETOMADA",
@@ -1446,7 +1454,7 @@ export function NewTicketForm({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                      Telefone 1 {formData.origem !== "DISPARO" && <span className="text-red-500">*</span>}
+                      Telefone 1 <span className="text-red-500">*</span>
                     </label>
                     <Input 
                       value={formData.tel1}

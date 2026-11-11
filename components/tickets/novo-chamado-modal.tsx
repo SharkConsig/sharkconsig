@@ -20,6 +20,7 @@ export interface NovoChamadoModalProps {
     origem?: string;
     from_kanban?: string;
     telefone_empresa?: string;
+    telefones_selecionados?: string[];
   };
   onSuccess?: () => void;
 }
