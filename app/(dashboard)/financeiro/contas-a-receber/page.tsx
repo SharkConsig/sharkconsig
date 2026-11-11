@@ -750,15 +750,10 @@ export default function ContasAReceberPage() {
         const newObs = buildProposalNotesAndMetadata(notes, newMetadata)
 
         updatePayload = {
-          status: "CANCELADO",
           observacoes: newObs,
           updated_at: new Date().toISOString()
         }
       } else {
-        const targetStatus = proposal.status === "CANCELADO"
-          ? "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA"
-          : proposal.status
-
         const newMetadata: FinanceMetadata = {
           ...metadata,
           received: isNowReceived,
@@ -768,7 +763,7 @@ export default function ContasAReceberPage() {
         const newObs = buildProposalNotesAndMetadata(notes, newMetadata)
 
         updatePayload = {
-          status: targetStatus,
+          status: proposal.status,
           observacoes: newObs,
           updated_at: new Date().toISOString()
         }
@@ -1782,11 +1777,11 @@ export default function ContasAReceberPage() {
       setIsLoading(true)
     }
     try {
-      // Query proposals in 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA', 'PAGAMENTO DEVOLVIDO' and 'CANCELADO'
+      // Query proposals in 'PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA', 'PÓS-VENDA REALIZADA' and 'PAGAMENTO DEVOLVIDO'
       const { data, error } = await supabase
         .from("propostas")
         .select("*")
-        .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA", "PAGAMENTO DEVOLVIDO", "CANCELADO"])
+        .in("status", ["PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA", "PÓS-VENDA REALIZADA", "PAGAMENTO DEVOLVIDO"])
         .order("updated_at", { ascending: false })
 
       if (error) {
@@ -1917,12 +1912,13 @@ export default function ContasAReceberPage() {
       const finalReceivedDates: Record<string, string> = {}
       const finalPjPaidIds: Record<string, boolean> = {}
 
-      const formattedData = data
+      const formattedData = (data || [])
         .filter((p: Proposal) => {
-          if (p.status === "CANCELADO") {
-            const { metadata } = parseProposalNotesAndMetadata(p.observacoes)
-            const isEstornado = metadata.paymentStatus === "ESTORNADO" || localPaymentStatuses[p.id_lead] === "ESTORNADO"
-            return isEstornado
+          if (!p.status) return false
+          const s = p.status.trim().toUpperCase()
+          // Propostas canceladas não devem contabilizar e nem constar no Contas a Receber
+          if (s === "CANCELADO" || s.includes("CANCELAD")) {
+            return false
           }
           return true
         })
@@ -2112,13 +2108,17 @@ export default function ContasAReceberPage() {
         console.warn("Erro ao preencher log de alteração:", histErr)
       }
 
-      setProposals(prev => prev.map(p => p.id_lead === statusTargetProposal.id_lead ? {
-        ...p,
-        status: selectedNewStatus,
-        ade: statusAde,
-        obs_operacional: statusObsOperacional,
-        updated_at: isoDate
-      } : p))
+      if (selectedNewStatus === "CANCELADO") {
+        setProposals(prev => prev.filter(p => p.id_lead !== statusTargetProposal.id_lead))
+      } else {
+        setProposals(prev => prev.map(p => p.id_lead === statusTargetProposal.id_lead ? {
+          ...p,
+          status: selectedNewStatus,
+          ade: statusAde,
+          obs_operacional: statusObsOperacional,
+          updated_at: isoDate
+        } : p))
+      }
 
       toast.success("Status atualizado com sucesso!", { id: loadingToast })
       setIsStatusModalOpen(false)
@@ -2193,8 +2193,13 @@ export default function ContasAReceberPage() {
     )
   ).sort((a, b) => a.localeCompare(b, "pt-BR"))
 
-  // Filtering Logic - Base filters
   const baseFilteredProposals = proposals.filter((proposal) => {
+    if (!proposal.status) return false
+    const s = proposal.status.trim().toUpperCase()
+    if (s === "CANCELADO" || s.includes("CANCELAD")) {
+      return false
+    }
+
     const cleanSearch = searchTerm.toLowerCase().replace(/\D/g, "")
     const cleanCpf = (proposal.cliente_cpf || "").replace(/\D/g, "")
 

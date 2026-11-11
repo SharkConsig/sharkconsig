@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState, useMemo, useEffect } from "react"
 import { 
   X, 
   Sparkles, 
@@ -55,6 +55,34 @@ export function PipelineIntelligenceDrawer({
   getValorOperacaoDeAbertura,
   onSelectTicket
 }: PipelineIntelligenceDrawerProps) {
+  // Controle de animação suave de abertura e fechamento
+  const [shouldRender, setShouldRender] = useState(isOpen)
+  const [isClosing, setIsClosing] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRender(true)
+      setIsClosing(false)
+    } else if (shouldRender && !isClosing) {
+      setIsClosing(true)
+      const timer = setTimeout(() => {
+        setShouldRender(false)
+        setIsClosing(false)
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen, shouldRender, isClosing])
+
+  const handleClose = () => {
+    if (isClosing) return
+    setIsClosing(true)
+    setTimeout(() => {
+      onClose()
+      setShouldRender(false)
+      setIsClosing(false)
+    }, 300)
+  }
+
   // Filtros
   const [period, setPeriod] = useState<PeriodFilter>("30d")
   const [selectedConvenio, setSelectedConvenio] = useState<string>("all")
@@ -554,13 +582,24 @@ export function PipelineIntelligenceDrawer({
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(val)
   }
 
-  // Se não estiver aberto, não renderiza
-  if (!isOpen) return null
+  // Se não estiver aberto nem em animação, não renderiza
+  if (!shouldRender && !isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/60 backdrop-blur-xs flex justify-end animate-in fade-in duration-200">
+    <div 
+      className={cn(
+        "fixed inset-0 z-50 overflow-hidden bg-slate-950/60 backdrop-blur-xs flex justify-end duration-300 transition-opacity",
+        isClosing ? "opacity-0" : "opacity-100 animate-in fade-in duration-200"
+      )}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) handleClose()
+      }}
+    >
       <div 
-        className="w-full max-w-5xl bg-white h-full shadow-2xl flex flex-col border-l border-slate-200 animate-in slide-in-from-right duration-300"
+        className={cn(
+          "w-full max-w-5xl bg-white h-full shadow-2xl flex flex-col border-l border-slate-200 duration-300 transition-transform ease-out",
+          isClosing ? "translate-x-full" : "translate-x-0 animate-in slide-in-from-right duration-300"
+        )}
         role="dialog"
         aria-modal="true"
       >
@@ -590,7 +629,7 @@ export function PipelineIntelligenceDrawer({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
               title="Fechar painel"
             >
@@ -669,11 +708,11 @@ export function PipelineIntelligenceDrawer({
 
         {/* CARDS RESUMO EXECUTIVO (KPIs) */}
         <div className="px-6 py-3.5 grid grid-cols-2 md:grid-cols-4 gap-3 bg-white border-b border-slate-200 shrink-0">
-          {/* Card 1: Speed-to-Lead Médio */}
-          <div className="bg-sky-50/70 border border-sky-200/80 rounded-xl p-3 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-sky-800">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Speed-to-Lead Médio</span>
-              <Zap className="w-4 h-4 text-sky-600" />
+          {/* Card 1: TEMPO MÉDIO DE ATENDIMENTO */}
+          <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl p-3 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center gap-2 text-sky-900">
+              <Zap className="w-4 h-4 text-sky-600 shrink-0" strokeWidth={2.6} />
+              <span className="text-[11px] font-black uppercase tracking-wider">TEMPO MÉDIO DE ATENDIMENTO</span>
             </div>
             <div className="mt-1">
               <div className="text-xl font-black text-sky-950">
@@ -687,51 +726,51 @@ export function PipelineIntelligenceDrawer({
                   "N/A"
                 )}
               </div>
-              <span className="text-[10px] text-sky-700 font-medium">Abordagem ➔ Negociação</span>
+              <span className="text-[11px] text-sky-900 font-bold">Abordagem ➔ Negociação</span>
             </div>
           </div>
 
-          {/* Card 2: Capital Represado Total */}
-          <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-emerald-800">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Capital no Pipeline</span>
-              <DollarSign className="w-4 h-4 text-emerald-600" />
+          {/* Card 2: Capital no Pipeline */}
+          <div className="bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-100/90 border-2 border-emerald-400 rounded-xl p-3 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center gap-2 text-emerald-900">
+              <DollarSign className="w-4 h-4 text-emerald-600 shrink-0" strokeWidth={2.6} />
+              <span className="text-[11px] font-black uppercase tracking-wider">Capital no Pipeline</span>
             </div>
             <div className="mt-1">
               <div className="text-xl font-black text-emerald-950">
                 {fmtCurrency(stageAgingData.grandTotalCapital)}
               </div>
-              <span className="text-[10px] text-emerald-700 font-medium">
+              <span className="text-[11px] text-emerald-900 font-bold">
                 Prod. Estimada: {fmtCurrency(stageAgingData.grandTotalProducao)}
               </span>
             </div>
           </div>
 
-          {/* Card 3: Represados > 48 horas */}
-          <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-3 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-amber-800">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Gargalos (&gt; 48h)</span>
-              <Clock className="w-4 h-4 text-amber-600" />
+          {/* Card 3: Gargalos (> 48h) */}
+          <div className="bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100/90 border-2 border-amber-400 rounded-xl p-3 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center gap-2 text-amber-900">
+              <Clock className="w-4 h-4 text-amber-600 shrink-0" strokeWidth={2.6} />
+              <span className="text-[11px] font-black uppercase tracking-wider">Gargalos (&gt; 48h)</span>
             </div>
             <div className="mt-1">
               <div className="text-xl font-black text-amber-950">
                 {stageAgingData.grandTotalStuck48hCount} leads
               </div>
-              <span className="text-[10px] text-amber-700 font-medium">Sem avanço no estágio</span>
+              <span className="text-[11px] text-amber-900 font-bold">Sem avanço na cadência</span>
             </div>
           </div>
 
-          {/* Card 4: Radar de Risco Alto */}
-          <div className="bg-rose-50/70 border border-rose-200/80 rounded-xl p-3 flex flex-col justify-between">
-            <div className="flex items-center justify-between text-rose-800">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Risco de Queima</span>
-              <Flame className="w-4 h-4 text-rose-600" />
+          {/* Card 4: Risco de Queima */}
+          <div className="bg-gradient-to-br from-rose-100 via-rose-50 to-red-100/90 border-2 border-rose-400 rounded-xl p-3 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center gap-2 text-rose-900">
+              <Flame className="w-4 h-4 text-rose-600 shrink-0" strokeWidth={2.6} />
+              <span className="text-[11px] font-black uppercase tracking-wider">Risco de Queima</span>
             </div>
             <div className="mt-1">
               <div className="text-xl font-black text-rose-950">
                 {riskLeadsData.length} leads
               </div>
-              <span className="text-[10px] text-rose-700 font-medium">&gt; R$ 25k parados &gt; 24h</span>
+              <span className="text-[11px] text-rose-900 font-bold">&gt; R$ 25k parados &gt; 24h</span>
             </div>
           </div>
         </div>
@@ -1231,7 +1270,7 @@ export function PipelineIntelligenceDrawer({
                               type="button"
                               onClick={() => {
                                 onSelectTicket(t)
-                                onClose()
+                                handleClose()
                               }}
                               className="px-3 py-1 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                             >
@@ -1249,16 +1288,12 @@ export function PipelineIntelligenceDrawer({
           )}
         </div>
 
-        {/* RODAPÉ INFORMATIVO */}
-        <div className="px-6 py-3 border-t border-slate-200 bg-white flex items-center justify-between text-xs text-slate-500 shrink-0">
-          <div className="flex items-center gap-1.5">
-            <ShieldAlert className="w-4 h-4 text-indigo-600" />
-            <span>Módulo de Gestão Avançada disponível exclusivamente para Administrador, Supervisor e Operacional.</span>
-          </div>
+        {/* RODAPÉ */}
+        <div className="px-6 py-3 border-t border-slate-200 bg-white flex items-center justify-start text-xs shrink-0">
           <button
             type="button"
-            onClick={onClose}
-            className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold transition-colors cursor-pointer"
+            onClick={handleClose}
+            className="px-6 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-bold transition-colors cursor-pointer shadow-xs text-xs"
           >
             Fechar
           </button>
