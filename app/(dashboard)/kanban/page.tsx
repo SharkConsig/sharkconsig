@@ -332,12 +332,27 @@ const formatValorBrl = (val: any): string => {
 
 const parseValorToNumber = (valStr: any): number => {
   if (valStr === null || valStr === undefined) return 0;
-  if (typeof valStr === "number") return isNaN(valStr) ? 0 : valStr;
+  if (typeof valStr === "number") return isNaN(valStr) ? 0 : Math.round(valStr * 100) / 100;
   const str = String(valStr).trim();
   if (!str) return 0;
-  const clean = str.replace("R$", "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-  const num = parseFloat(clean);
-  return isNaN(num) ? 0 : num;
+  let cleaned = str.replace(/[^0-9.,-]/g, "").trim();
+  if (!cleaned) return 0;
+
+  if (cleaned.includes(",")) {
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  } else {
+    const parts = cleaned.split(".");
+    if (parts.length > 2) {
+      cleaned = parts.join("");
+    } else if (parts.length === 2) {
+      if (parts[1].length === 3 && parts[0].length >= 1) {
+        cleaned = parts.join("");
+      }
+    }
+  }
+
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : Math.round(num * 100) / 100;
 };
 
 const parseCleanFloat = (val: string | number | null | undefined): number | null => {
@@ -441,7 +456,12 @@ const getValoresOperacaoEProducao = (ticket: any) => {
 
   // Se houver valores sincronizados diretamente do chamado vinculado
   if (ticket.chamado_valor_operacao || ticket.chamado_valor_producao) {
-    const hasOp = ticket.chamado_valor_operacao && ticket.chamado_valor_operacao !== "R$ 0,00";
+    let opNum = ticket.chamado_num_operacao ?? parseValorToNumber(ticket.chamado_valor_operacao);
+    if (opNum === 0 && ticket.valor_operacao) {
+      opNum = parseValorToNumber(ticket.valor_operacao);
+    }
+    const hasOp = opNum > 0 || (ticket.chamado_valor_operacao && ticket.chamado_valor_operacao !== "R$ 0,00");
+
     let hasProd = ticket.chamado_valor_producao && ticket.chamado_valor_producao !== "R$ 0,00";
     let prodVal = hasProd 
       ? (ticket.chamado_num_producao ?? parseValorToNumber(ticket.chamado_valor_producao))
@@ -449,7 +469,6 @@ const getValoresOperacaoEProducao = (ticket: any) => {
 
     // Se a produção veio zerada no ticket, recupera via metadados/descrição
     if (prodVal === 0) {
-      const opNum = ticket.chamado_num_operacao ?? parseValorToNumber(ticket.chamado_valor_operacao);
       const extracted = extractConsolidatedProducao(meta, desc, opNum, [], conv);
       if (extracted > 0) {
         prodVal = extracted;
@@ -458,11 +477,21 @@ const getValoresOperacaoEProducao = (ticket: any) => {
     }
 
     if (hasOp || hasProd) {
+      let opStr = ticket.chamado_valor_operacao;
+      if (opNum > 0 && (!opStr || opStr === "R$ 0,00" || !opStr.startsWith("R$"))) {
+        opStr = "R$ " + opNum.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      } else if (!opStr) {
+        opStr = "R$ 0,00";
+      }
+
+      const finalOpNum = Math.round(opNum * 100) / 100;
+      const finalProdNum = Math.round(prodVal * 100) / 100;
+
       return {
-        valorOperacao: ticket.chamado_valor_operacao || "R$ 0,00",
-        numOperacao: ticket.chamado_num_operacao ?? parseValorToNumber(ticket.chamado_valor_operacao),
-        valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        numProducao: prodVal,
+        valorOperacao: opStr,
+        numOperacao: finalOpNum,
+        valorProducao: "R$ " + finalProdNum.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        numProducao: finalProdNum,
         label: ticket.chamado_label || "Valor Operação",
         color: ticket.chamado_color || "text-slate-900"
       };
@@ -605,11 +634,17 @@ const getValoresOperacaoEProducao = (ticket: any) => {
   // 3. Checar campos de meta
   if (meta) {
     if ((meta.margem && meta.margem !== "" && meta.margem !== "R$ 0,00") || (meta.valor_operacao_margem && meta.valor_operacao_margem !== "R$ 0,00")) {
-      const opVal = parseValorToNumber(meta.valor_operacao_margem);
+      let opVal = parseValorToNumber(meta.valor_operacao_margem);
+      if (!opVal) {
+        const mVal = parseValorToNumber(meta.margem || ticket.margem);
+        const cVal = parseCleanFloat(meta.coeficiente_margem) || 0.028;
+        if (mVal && cVal) opVal = Math.round((mVal / cVal) * 100) / 100;
+      }
       let prodVal = parseValorToNumber(meta.valor_producao_margem);
       if (!prodVal) prodVal = extractConsolidatedProducao(meta, desc, opVal, ['margem'], conv);
+      prodVal = Math.round(prodVal * 100) / 100;
       return {
-        valorOperacao: meta.valor_operacao_margem || "R$ 0,00",
+        valorOperacao: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         numOperacao: opVal,
         valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         numProducao: prodVal,
@@ -618,11 +653,17 @@ const getValoresOperacaoEProducao = (ticket: any) => {
       };
     }
     if ((meta.liquida5 && meta.liquida5 !== "" && meta.liquida5 !== "R$ 0,00") || (meta.valor_operacao_liquida5 && meta.valor_operacao_liquida5 !== "R$ 0,00")) {
-      const opVal = parseValorToNumber(meta.valor_operacao_liquida5);
+      let opVal = parseValorToNumber(meta.valor_operacao_liquida5);
+      if (!opVal) {
+        const mVal = parseValorToNumber(meta.liquida5 || ticket.margem_liquida_5);
+        const cVal = parseCleanFloat(meta.coeficiente_liquida5) || 0.053;
+        if (mVal && cVal) opVal = Math.round((mVal / cVal) * 100) / 100;
+      }
       let prodVal = parseValorToNumber(meta.valor_producao_liquida5);
       if (!prodVal) prodVal = extractConsolidatedProducao(meta, desc, opVal, ['liquida5'], conv);
+      prodVal = Math.round(prodVal * 100) / 100;
       return {
-        valorOperacao: meta.valor_operacao_liquida5 || "R$ 0,00",
+        valorOperacao: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         numOperacao: opVal,
         valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         numProducao: prodVal,
@@ -631,11 +672,17 @@ const getValoresOperacaoEProducao = (ticket: any) => {
       };
     }
     if ((meta.beneficio5 && meta.beneficio5 !== "" && meta.beneficio5 !== "R$ 0,00") || (meta.valor_operacao_beneficio5 && meta.valor_operacao_beneficio5 !== "R$ 0,00")) {
-      const opVal = parseValorToNumber(meta.valor_operacao_beneficio5);
+      let opVal = parseValorToNumber(meta.valor_operacao_beneficio5);
+      if (!opVal) {
+        const mVal = parseValorToNumber(meta.beneficio5 || ticket.margem_beneficio_5);
+        const cVal = parseCleanFloat(meta.coeficiente_beneficio5) || 0.053;
+        if (mVal && cVal) opVal = Math.round((mVal / cVal) * 100) / 100;
+      }
       let prodVal = parseValorToNumber(meta.valor_producao_beneficio5);
       if (!prodVal) prodVal = extractConsolidatedProducao(meta, desc, opVal, ['beneficio5'], conv);
+      prodVal = Math.round(prodVal * 100) / 100;
       return {
-        valorOperacao: meta.valor_operacao_beneficio5 || "R$ 0,00",
+        valorOperacao: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         numOperacao: opVal,
         valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         numProducao: prodVal,
@@ -645,8 +692,52 @@ const getValoresOperacaoEProducao = (ticket: any) => {
     }
   }
 
-  // 4. Default 0 ou fallback consolidado
-  const defaultProd = extractConsolidatedProducao(meta, desc, 0, []);
+  // 4. Margens salvas diretamente no objeto ticket
+  if (ticket.margem && Number(ticket.margem) > 0) {
+    const mVal = parseValorToNumber(ticket.margem);
+    const opVal = Math.round((mVal / 0.028) * 100) / 100;
+    let prodVal = extractConsolidatedProducao(meta, desc, opVal, ['margem'], conv);
+    prodVal = Math.round(prodVal * 100) / 100;
+    return {
+      valorOperacao: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numOperacao: opVal,
+      valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numProducao: prodVal,
+      label: isSantoAndre ? "M. Líq Empréstimo" : "Margem 35%",
+      color: "text-amber-600"
+    };
+  }
+  if (ticket.margem_liquida_5 && Number(ticket.margem_liquida_5) > 0) {
+    const mVal = parseValorToNumber(ticket.margem_liquida_5);
+    const opVal = Math.round((mVal / 0.053) * 100) / 100;
+    let prodVal = extractConsolidatedProducao(meta, desc, opVal, ['liquida5'], conv);
+    prodVal = Math.round(prodVal * 100) / 100;
+    return {
+      valorOperacao: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numOperacao: opVal,
+      valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numProducao: prodVal,
+      label: isSantoAndre ? "M. Líquida Cartão" : "Líquida 5%",
+      color: "text-emerald-600"
+    };
+  }
+  if (ticket.margem_beneficio_5 && Number(ticket.margem_beneficio_5) > 0) {
+    const mVal = parseValorToNumber(ticket.margem_beneficio_5);
+    const opVal = Math.round((mVal / 0.053) * 100) / 100;
+    let prodVal = extractConsolidatedProducao(meta, desc, opVal, ['beneficio5'], conv);
+    prodVal = Math.round(prodVal * 100) / 100;
+    return {
+      valorOperacao: "R$ " + opVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numOperacao: opVal,
+      valorProducao: "R$ " + prodVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      numProducao: prodVal,
+      label: isSantoAndre ? "Margem Benefício" : "Benefício 5%",
+      color: "text-blue-600"
+    };
+  }
+
+  // 5. Default 0 ou fallback consolidado
+  const defaultProd = Math.round(extractConsolidatedProducao(meta, desc, 0, []) * 100) / 100;
   return {
     valorOperacao: "R$ 0,00",
     numOperacao: 0,
@@ -2632,6 +2723,7 @@ export default function KanbanPage() {
           .from("kanban_fichas")
           .select("*")
           .order("updated_at", { ascending: false })
+          .order("id", { ascending: false })
           .range(from, from + PAGE_SIZE - 1)
 
         if (!isGestor && user) {
@@ -2669,8 +2761,19 @@ export default function KanbanPage() {
         }
       }
 
+      // Deduplicar fichas por ID para garantir integridade caso haja deslocamento entre blocos de paginação
+      const seenFichaIds = new Set<string>()
+      const uniqueFichas: any[] = []
+      for (const f of allFichas) {
+        const sId = String(f.id)
+        if (!seenFichaIds.has(sId)) {
+          seenFichaIds.add(sId)
+          uniqueFichas.push(f)
+        }
+      }
+
       // Normalizar registros vindos da tabela kanban_fichas para o formato TicketItem
-      const formatted: TicketItem[] = allFichas.map((f: any) => {
+      const formatted: TicketItem[] = uniqueFichas.map((f: any) => {
         const meta: TicketMetadata = (f.metadata && typeof f.metadata === "object") ? f.metadata : {}
         const isDrawer = (f.etapa === "PERDIDO" || !f.etapa) && (
           Boolean(meta.tabulacao_whatsapp) || 
@@ -2801,32 +2904,66 @@ export default function KanbanPage() {
         ticketsFinal = ticketsFinal.filter(t => !isThiagoTicket(t))
       }
 
-      setTickets(ticketsFinal)
-
-      // Sincronização e enriquecimento de dados a partir dos Chamados abertos para os cartões
+      // Sincronização e enriquecimento atômico de dados em paralelo (Chamados, Concorrência e Propostas)
+      let ticketsEnriched = [...ticketsFinal]
       const cpfsDosCartoes = Array.from(new Set(
         formatted.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)
       ))
 
-      if (cpfsDosCartoes.length > 0) {
-        const cpfChunks = chunkArray(cpfsDosCartoes, 100)
-        Promise.all(
-          cpfChunks.map(chunk =>
-            supabase
-              .from("chamados")
-              .select("id, cliente_cpf, user_id, user_nome, margem, margem_liquida_5, margem_beneficio_5, valor_operacao, descricao, convenio, created_at, status")
-              .in("cliente_cpf", chunk)
-              .order("created_at", { ascending: false })
-          )
-        ).then(responses => {
+      const baseCpfs = Array.from(new Set(formatted.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)))
+      const allCpfVariants = new Set<string>()
+      baseCpfs.forEach(c => {
+        allCpfVariants.add(c)
+        allCpfVariants.add(c.padStart(11, "0"))
+        allCpfVariants.add(c.replace(/^0+/, ""))
+      })
+      const cpfs = Array.from(allCpfVariants).filter(Boolean)
+
+      let mapPropsByTicketId: Record<string, { ade?: string; data_digitacao?: string; status?: string }> = {}
+      let mapConcorrencia: Record<string, string[]> = {}
+
+      if (cpfsDosCartoes.length > 0 || cpfs.length > 0) {
+        try {
+          const cpfChunksChamados = chunkArray(cpfsDosCartoes, 100)
+          const cpfChunksAll = chunkArray(cpfs, 100)
+
+          const [chamadosResponses, concorrenciaResponses, propostasResponses] = await Promise.all([
+            Promise.all(
+              cpfChunksChamados.map(chunk =>
+                supabase
+                  .from("chamados")
+                  .select("id, cliente_cpf, user_id, user_nome, margem, margem_liquida_5, margem_beneficio_5, valor_operacao, descricao, convenio, created_at, status")
+                  .in("cliente_cpf", chunk)
+                  .order("created_at", { ascending: false })
+              )
+            ),
+            Promise.all(
+              cpfChunksAll.map(chunk =>
+                supabase
+                  .from("kanban_fichas")
+                  .select("cliente_cpf, operador_nome, etapa")
+                  .in("cliente_cpf", chunk)
+                  .neq("etapa", "PERDIDO")
+              )
+            ),
+            Promise.all(
+              cpfChunksAll.map(chunk =>
+                supabase
+                  .from("propostas")
+                  .select("id, id_lead, cliente_cpf, ade, data_digitacao, status, corretor_id, corretor, estagiario_colaborador_id, estagiario_colaborador_nome")
+                  .in("cliente_cpf", chunk)
+                  .order("updated_at", { ascending: false })
+              )
+            )
+          ])
+
+          // 1. Processar Chamados Existentes
           const chamadosExistentes: any[] = []
-          responses.forEach(r => {
+          chamadosResponses.forEach(r => {
             if (r.data) chamadosExistentes.push(...r.data)
           })
 
           if (chamadosExistentes.length > 0) {
-            // Mapeia chamados por [CPF + user_id], [CPF + user_nome] e [CPF]
-            // Para garantir que nenhum chamado com produção seja ofuscado por um chamado sem produção, armazenamos listas de chamados por chave
             const mapaPorId = new Map<string, any[]>()
             const mapaPorNome = new Map<string, any[]>()
             const mapaPorCpf = new Map<string, any[]>()
@@ -2842,10 +2979,8 @@ export default function KanbanPage() {
               if (!rawCpf) return
               const paddedCpf = rawCpf.padStart(11, "0")
               const unpaddedCpf = rawCpf.replace(/^0+/, "")
-
               const uId = ch.user_id ? String(ch.user_id).trim() : ""
               const uNome = (ch.user_nome || "").trim().toLowerCase()
-
               const cpfVariants = Array.from(new Set([rawCpf, paddedCpf, unpaddedCpf].filter(Boolean)))
               cpfVariants.forEach(c => {
                 if (uId) addChamadoCandidate(mapaPorId, `${c}_${uId}`, ch)
@@ -2854,182 +2989,128 @@ export default function KanbanPage() {
               })
             })
 
-            setTickets(prev => {
-              let alterou = false
-              const atualizados = prev.map(t => {
-                const rawCpf = (t.cliente_cpf || "").replace(/\D/g, "")
-                if (!rawCpf) return t
-                const paddedCpf = rawCpf.padStart(11, "0")
-                const unpaddedCpf = rawCpf.replace(/^0+/, "")
-                const cpfVariants = Array.from(new Set([rawCpf, paddedCpf, unpaddedCpf].filter(Boolean)))
+            ticketsEnriched = ticketsEnriched.map(t => {
+              const rawCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+              if (!rawCpf) return t
+              const paddedCpf = rawCpf.padStart(11, "0")
+              const unpaddedCpf = rawCpf.replace(/^0+/, "")
+              const cpfVariants = Array.from(new Set([rawCpf, paddedCpf, unpaddedCpf].filter(Boolean)))
+              const tUserId = t.user_id ? String(t.user_id).trim() : ""
+              const tUserNome = (t.user_nome || "").trim().toLowerCase()
 
-                const tUserId = t.user_id ? String(t.user_id).trim() : ""
-                const tUserNome = (t.user_nome || "").trim().toLowerCase()
-
-                // Coletar todos os chamados candidatos para o CPF
-                let candidateList: any[] = []
-                for (const c of cpfVariants) {
-                  if (tUserId && mapaPorId.has(`${c}_${tUserId}`)) {
-                    candidateList.push(...mapaPorId.get(`${c}_${tUserId}`)!)
-                  }
-                  if (tUserNome && mapaPorNome.has(`${c}_${tUserNome}`)) {
-                    candidateList.push(...mapaPorNome.get(`${c}_${tUserNome}`)!)
-                  }
-                  if (mapaPorCpf.has(c)) {
-                    candidateList.push(...mapaPorCpf.get(c)!)
-                  }
+              let candidateList: any[] = []
+              for (const c of cpfVariants) {
+                if (tUserId && mapaPorId.has(`${c}_${tUserId}`)) {
+                  candidateList.push(...mapaPorId.get(`${c}_${tUserId}`)!)
                 }
-                const uniqueCandidates = Array.from(new Set(candidateList))
-
-                // Prioriza o chamado que possui tanto operação quanto produção > 0, ou pelo menos produção > 0
-                let ch: any = null
-                if (uniqueCandidates.length > 0) {
-                  ch = uniqueCandidates.find(c => {
-                    const v = getValoresOperacaoEProducao(c)
-                    return v.numProducao > 0 && v.numOperacao > 0
-                  }) || uniqueCandidates.find(c => {
-                    const v = getValoresOperacaoEProducao(c)
-                    return v.numProducao > 0
-                  }) || uniqueCandidates.find(c => {
-                    const v = getValoresOperacaoEProducao(c)
-                    return v.numOperacao > 0 || c.valor_operacao
-                  }) || uniqueCandidates[0]
+                if (tUserNome && mapaPorNome.has(`${c}_${tUserNome}`)) {
+                  candidateList.push(...mapaPorNome.get(`${c}_${tUserNome}`)!)
                 }
+                if (mapaPorCpf.has(c)) {
+                  candidateList.push(...mapaPorCpf.get(c)!)
+                }
+              }
+              const uniqueCandidates = Array.from(new Set(candidateList))
+              let ch: any = null
+              if (uniqueCandidates.length > 0) {
+                ch = uniqueCandidates.find(c => {
+                  const v = getValoresOperacaoEProducao(c)
+                  return v.numProducao > 0 && v.numOperacao > 0
+                }) || uniqueCandidates.find(c => {
+                  const v = getValoresOperacaoEProducao(c)
+                  return v.numProducao > 0
+                }) || uniqueCandidates.find(c => {
+                  const v = getValoresOperacaoEProducao(c)
+                  return v.numOperacao > 0 || c.valor_operacao
+                }) || uniqueCandidates[0]
+              }
 
-                if (ch) {
-                  let chValores = getValoresOperacaoEProducao(ch)
-                  const chMeta = parseMetadata(ch.descricao)
+              if (ch) {
+                let chValores = getValoresOperacaoEProducao(ch)
+                const chMeta = parseMetadata(ch.descricao)
 
-                  // Garantia contra valor de produção zerado
-                  if (chValores.numProducao === 0) {
-                    const chConv = ch.convenio || chMeta.convenio || t.convenio || "";
-                    const recoveredProd = extractConsolidatedProducao(chMeta, ch.descricao, chValores.numOperacao, [], chConv);
-                    if (recoveredProd > 0) {
-                      chValores = {
-                        ...chValores,
-                        numProducao: recoveredProd,
-                        valorProducao: "R$ " + recoveredProd.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                      }
-                    }
-                  }
-
-                  const hasChOp = chValores.numOperacao > 0 || (chValores.valorOperacao && chValores.valorOperacao !== "R$ 0,00")
-                  const hasChProd = chValores.numProducao > 0 || (chValores.valorProducao && chValores.valorProducao !== "R$ 0,00")
-
-                  if (hasChOp || hasChProd || ch.valor_operacao) {
-                    alterou = true
-                    const currentMeta = parseMetadata(t.descricao)
-                    const mergedMeta: TicketMetadata = {
-                      ...currentMeta,
-                      ...(chMeta.valor_operacao_margem ? { valor_operacao_margem: chMeta.valor_operacao_margem } : {}),
-                      ...(chMeta.valor_operacao_liquida5 ? { valor_operacao_liquida5: chMeta.valor_operacao_liquida5 } : {}),
-                      ...(chMeta.valor_operacao_beneficio5 ? { valor_operacao_beneficio5: chMeta.valor_operacao_beneficio5 } : {}),
-                      ...(chMeta.valor_producao_margem ? { valor_producao_margem: chMeta.valor_producao_margem } : {}),
-                      ...(chMeta.valor_producao_liquida5 ? { valor_producao_liquida5: chMeta.valor_producao_liquida5 } : {}),
-                      ...(chMeta.valor_producao_beneficio5 ? { valor_producao_beneficio5: chMeta.valor_producao_beneficio5 } : {}),
-                      ...(chMeta.valor_producao ? { valor_producao: chMeta.valor_producao } : {}),
-                      ...(chMeta.selected_operation_type ? { selected_operation_type: chMeta.selected_operation_type } : {}),
-                      ...(chMeta.selected_operation_types ? { selected_operation_types: chMeta.selected_operation_types } : {}),
-                      ...(chMeta.tabela_margem ? { tabela_margem: chMeta.tabela_margem } : {}),
-                      ...(chMeta.tabela_liquida5 ? { tabela_liquida5: chMeta.tabela_liquida5 } : {}),
-                      ...(chMeta.tabela_beneficio5 ? { tabela_beneficio5: chMeta.tabela_beneficio5 } : {}),
-                      ...(chMeta.coeficiente_margem ? { coeficiente_margem: chMeta.coeficiente_margem } : {}),
-                      ...(chMeta.coeficiente_liquida5 ? { coeficiente_liquida5: chMeta.coeficiente_liquida5 } : {}),
-                      ...(chMeta.coeficiente_beneficio5 ? { coeficiente_beneficio5: chMeta.coeficiente_beneficio5 } : {}),
-                      ...(chMeta.produto_modalidade ? { produto_modalidade: chMeta.produto_modalidade } : {}),
-                      chamado_id: ch.id
-                    }
-
-                    return {
-                      ...t,
-                      chamado_valor_operacao: chValores.valorOperacao,
-                      chamado_valor_producao: chValores.valorProducao,
-                      chamado_num_operacao: chValores.numOperacao,
-                      chamado_num_producao: chValores.numProducao,
-                      chamado_label: chValores.label,
-                      chamado_color: chValores.color,
-                      chamado_id: ch.id,
-                      valor_operacao: chValores.numOperacao > 0 ? chValores.numOperacao : (ch.valor_operacao ? Number(ch.valor_operacao) : t.valor_operacao),
-                      margem: (t.margem && t.margem > 0) ? t.margem : (ch.margem || undefined),
-                      margem_liquida_5: (t.margem_liquida_5 && t.margem_liquida_5 > 0) ? t.margem_liquida_5 : (ch.margem_liquida_5 || undefined),
-                      margem_beneficio_5: (t.margem_beneficio_5 && t.margem_beneficio_5 > 0) ? t.margem_beneficio_5 : (ch.margem_beneficio_5 || undefined),
-                      descricao: stringifyWithMetadata(t.descricao || "", mergedMeta)
+                if (chValores.numProducao === 0) {
+                  const chConv = ch.convenio || chMeta.convenio || t.convenio || "";
+                  const recoveredProd = extractConsolidatedProducao(chMeta, ch.descricao, chValores.numOperacao, [], chConv);
+                  if (recoveredProd > 0) {
+                    chValores = {
+                      ...chValores,
+                      numProducao: recoveredProd,
+                      valorProducao: "R$ " + recoveredProd.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                     }
                   }
                 }
-                return t
-              })
-              return alterou ? atualizados : prev
+
+                const hasChOp = chValores.numOperacao > 0 || (chValores.valorOperacao && chValores.valorOperacao !== "R$ 0,00")
+                const hasChProd = chValores.numProducao > 0 || (chValores.valorProducao && chValores.valorProducao !== "R$ 0,00")
+
+                if (hasChOp || hasChProd || ch.valor_operacao) {
+                  const currentMeta = parseMetadata(t.descricao)
+                  const mergedMeta: TicketMetadata = {
+                    ...currentMeta,
+                    ...(chMeta.valor_operacao_margem ? { valor_operacao_margem: chMeta.valor_operacao_margem } : {}),
+                    ...(chMeta.valor_operacao_liquida5 ? { valor_operacao_liquida5: chMeta.valor_operacao_liquida5 } : {}),
+                    ...(chMeta.valor_operacao_beneficio5 ? { valor_operacao_beneficio5: chMeta.valor_operacao_beneficio5 } : {}),
+                    ...(chMeta.valor_producao_margem ? { valor_producao_margem: chMeta.valor_producao_margem } : {}),
+                    ...(chMeta.valor_producao_liquida5 ? { valor_producao_liquida5: chMeta.valor_producao_liquida5 } : {}),
+                    ...(chMeta.valor_producao_beneficio5 ? { valor_producao_beneficio5: chMeta.valor_producao_beneficio5 } : {}),
+                    ...(chMeta.valor_producao ? { valor_producao: chMeta.valor_producao } : {}),
+                    ...(chMeta.selected_operation_type ? { selected_operation_type: chMeta.selected_operation_type } : {}),
+                    ...(chMeta.selected_operation_types ? { selected_operation_types: chMeta.selected_operation_types } : {}),
+                    ...(chMeta.tabela_margem ? { tabela_margem: chMeta.tabela_margem } : {}),
+                    ...(chMeta.tabela_liquida5 ? { tabela_liquida5: chMeta.tabela_liquida5 } : {}),
+                    ...(chMeta.tabela_beneficio5 ? { tabela_beneficio5: chMeta.tabela_beneficio5 } : {}),
+                    ...(chMeta.coeficiente_margem ? { coeficiente_margem: chMeta.coeficiente_margem } : {}),
+                    ...(chMeta.coeficiente_liquida5 ? { coeficiente_liquida5: chMeta.coeficiente_liquida5 } : {}),
+                    ...(chMeta.coeficiente_beneficio5 ? { coeficiente_beneficio5: chMeta.coeficiente_beneficio5 } : {}),
+                    ...(chMeta.produto_modalidade ? { produto_modalidade: chMeta.produto_modalidade } : {}),
+                    chamado_id: ch.id
+                  }
+
+                  return {
+                    ...t,
+                    chamado_valor_operacao: chValores.valorOperacao,
+                    chamado_valor_producao: chValores.valorProducao,
+                    chamado_num_operacao: chValores.numOperacao,
+                    chamado_num_producao: chValores.numProducao,
+                    chamado_label: chValores.label,
+                    chamado_color: chValores.color,
+                    chamado_id: ch.id,
+                    valor_operacao: chValores.numOperacao > 0 ? chValores.numOperacao : (ch.valor_operacao ? Number(ch.valor_operacao) : t.valor_operacao),
+                    margem: (t.margem && t.margem > 0) ? t.margem : (ch.margem || undefined),
+                    margem_liquida_5: (t.margem_liquida_5 && t.margem_liquida_5 > 0) ? t.margem_liquida_5 : (ch.margem_liquida_5 || undefined),
+                    margem_beneficio_5: (t.margem_beneficio_5 && t.margem_beneficio_5 > 0) ? t.margem_beneficio_5 : (ch.margem_beneficio_5 || undefined),
+                    descricao: stringifyWithMetadata(t.descricao || "", mergedMeta)
+                  }
+                }
+              }
+              return t
             })
           }
-        }).catch(err => console.warn("Aviso ao buscar chamados para cartões do Kanban:", err))
-      }
 
-      // Identificar operadores em atendimento simultâneo para os CPFs presentes no pipeline
-      const baseCpfs = Array.from(new Set(formatted.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)))
-      const allCpfVariants = new Set<string>()
-      baseCpfs.forEach(c => {
-        allCpfVariants.add(c)
-        allCpfVariants.add(c.padStart(11, "0"))
-        allCpfVariants.add(c.replace(/^0+/, ""))
-      })
-      const cpfs = Array.from(allCpfVariants).filter(Boolean)
-
-      if (cpfs.length > 0) {
-        try {
-          const cpfChunks = chunkArray(cpfs, 100)
-          const concorrenciaResponses = await Promise.all(
-            cpfChunks.map(chunk =>
-              supabase
-                .from("kanban_fichas")
-                .select("cliente_cpf, operador_nome, etapa")
-                .in("cliente_cpf", chunk)
-                .neq("etapa", "PERDIDO")
-            )
-          )
-
-          const map: Record<string, string[]> = {}
+          // 2. Processar Concorrência de Operadores
           concorrenciaResponses.forEach(r => {
             if (r.data) {
               r.data.forEach(f => {
                 const cCpf = (f.cliente_cpf || "").replace(/\D/g, "")
                 if (!cCpf) return
-                if (!map[cCpf]) map[cCpf] = []
+                if (!mapConcorrencia[cCpf]) mapConcorrencia[cCpf] = []
                 const nome = (f.operador_nome || "").trim()
-                if (nome && !map[cCpf].includes(nome)) {
-                  map[cCpf].push(nome)
+                if (nome && !mapConcorrencia[cCpf].includes(nome)) {
+                  mapConcorrencia[cCpf].push(nome)
                 }
               })
             }
           })
-          setConcorrenciaPorCpf(map)
-        } catch (err) {
-          console.error("Erro ao verificar operadores em concorrência:", err)
-        }
 
-        // Buscar propostas digitadas no banco vinculadas aos CPFs (validação por ADE e DATA DE DIGITAÇÃO isolada por operador)
-        try {
-          const cpfChunks = chunkArray(cpfs, 100)
-          const propostasResponses = await Promise.all(
-            cpfChunks.map(chunk =>
-              supabase
-                .from("propostas")
-                .select("id, id_lead, cliente_cpf, ade, data_digitacao, status, corretor_id, corretor, estagiario_colaborador_id, estagiario_colaborador_nome")
-                .in("cliente_cpf", chunk)
-                .order("updated_at", { ascending: false })
-            )
-          )
-
+          // 3. Processar Propostas Bancárias
           const propostasExistentes: any[] = []
           propostasResponses.forEach(r => {
             if (r.data) propostasExistentes.push(...r.data)
           })
 
           if (propostasExistentes.length > 0) {
-            const mapPropsByTicketId: Record<string, { ade?: string; data_digitacao?: string; status?: string }> = {}
-
-            // Atualiza os tickets com o status e informações da proposta bancária
-            setTickets(prev => prev.map(t => {
+            ticketsEnriched = ticketsEnriched.map(t => {
               const rawCardCpf = (t.cliente_cpf || "").replace(/\D/g, "")
               const cCpfPadded = rawCardCpf.padStart(11, "0")
               const cCpfUnpadded = rawCardCpf.replace(/^0+/, "")
@@ -3046,11 +3127,9 @@ export default function KanbanPage() {
                 const sameLead = p.id_lead && String(p.id_lead).trim() === String(t.id).trim()
                 if (!sameCpf && !sameLead) return false
                 if (!hasProposalDigitacao(p)) return false
-
                 return matchesProposalUser(p, t)
               })
 
-              // Proposta digitada no banco que foi fechada por OUTRO operador para este mesmo cliente
               const closedOtherProp = !matchingProp ? propostasExistentes.find((p: any) => {
                 const rawPropCpf = (p.cliente_cpf || "").replace(/\D/g, "")
                 const pCpfPadded = rawPropCpf.padStart(11, "0")
@@ -3085,7 +3164,6 @@ export default function KanbanPage() {
               } else if (closedOtherProp) {
                 const isOtherCancelled = isProposalCancelled(closedOtherProp.status)
                 if (isOtherCancelled) {
-                  // Se a proposta do outro operador foi cancelada, não derruba este atendimento
                   const meta = parseMetadata(t.descricao)
                   const inferred = inferKanbanStage(t, meta, undefined)
                   return {
@@ -3167,18 +3245,21 @@ export default function KanbanPage() {
                   proposta_info: undefined
                 }
               }
-            }))
-            setPropostasPorCpf(mapPropsByTicketId)
+            })
 
             // Sincroniza fichas fechadas no banco de dados para garantir persistência em kanban_fichas
             propostasExistentes.filter(hasProposalDigitacao).forEach(p => {
               syncKanbanForClosedProposal(p)
             })
           }
-        } catch (propErr) {
-          console.warn("Aviso ao carregar propostas para o Kanban:", propErr)
+        } catch (fetchErr) {
+          console.warn("Aviso ao carregar dados complementares dos cartões:", fetchErr)
         }
       }
+
+      setConcorrenciaPorCpf(mapConcorrencia)
+      setPropostasPorCpf(mapPropsByTicketId)
+      setTickets(ticketsEnriched)
     } catch (err) {
       console.error("Erro ao carregar fichas para o Kanban:", err)
       if (!silent) {
@@ -6471,18 +6552,24 @@ export default function KanbanPage() {
         const aVal = parseValorToNumber(aData.valor) || Number(a.valor_operacao || a.margem || 0)
         const bData = getValorOperacaoDeAbertura(b)
         const bVal = parseValorToNumber(bData.valor) || Number(b.valor_operacao || b.margem || 0)
-        return bVal - aVal
+        if (bVal !== aVal) return bVal - aVal
+        return (b.id || "").localeCompare(a.id || "")
       }
       if (listSortBy === "nome") {
         const aNome = (a.cliente_nome || "").toLowerCase()
         const bNome = (b.cliente_nome || "").toLowerCase()
-        return aNome.localeCompare(bNome)
+        const comp = aNome.localeCompare(bNome)
+        if (comp !== 0) return comp
+        return (b.id || "").localeCompare(a.id || "")
       }
       const aMeta = parseMetadata(a.descricao)
       const bMeta = parseMetadata(b.descricao)
-      const aTime = aMeta.vencimento_acao ? new Date(aMeta.vencimento_acao).getTime() : Infinity
-      const bTime = bMeta.vencimento_acao ? new Date(bMeta.vencimento_acao).getTime() : Infinity
-      return aTime - bTime
+      const aTime = aMeta.vencimento_acao ? new Date(aMeta.vencimento_acao).getTime() : 0
+      const bTime = bMeta.vencimento_acao ? new Date(bMeta.vencimento_acao).getTime() : 0
+      const safeATime = isNaN(aTime) ? 0 : aTime
+      const safeBTime = isNaN(bTime) ? 0 : bTime
+      if (safeATime !== safeBTime) return safeATime - safeBTime
+      return (b.id || "").localeCompare(a.id || "")
     })
   }, [listSortBy])
 
@@ -6603,10 +6690,12 @@ export default function KanbanPage() {
         let totalColValor = 0
         let totalColProducao = 0
         colTickets.forEach(t => {
-          const v = getValoresOperacaoEProducao(t)
-          totalColValor += v.numOperacao
-          totalColProducao += v.numProducao
+          const opData = getValorOperacaoDeAbertura(t)
+          totalColValor += parseValorToNumber(opData.valor)
+          totalColProducao += parseValorToNumber(opData.valorProducao)
         })
+        totalColValor = Math.round(totalColValor * 100) / 100
+        totalColProducao = Math.round(totalColProducao * 100) / 100
         return {
           id: col.id,
           title: col.title ? col.title.charAt(0).toUpperCase() + col.title.slice(1).toLowerCase() : col.title,
@@ -6645,10 +6734,12 @@ export default function KanbanPage() {
       let secVal = 0
       let secProd = 0
       secTickets.forEach(t => {
-        const v = getValoresOperacaoEProducao(t)
-        secVal += v.numOperacao
-        secProd += v.numProducao
+        const opData = getValorOperacaoDeAbertura(t)
+        secVal += parseValorToNumber(opData.valor)
+        secProd += parseValorToNumber(opData.valorProducao)
       })
+      secVal = Math.round(secVal * 100) / 100
+      secProd = Math.round(secProd * 100) / 100
 
       // Nos totais não deve ser contabilizado os cartões de atendimento que estiverem nas colunas 'Fechado' e 'Perdido'
       const isExcludedFromTotals = sec.id === "FECHADO" || sec.id === "PERDIDO"
@@ -7725,40 +7816,48 @@ export default function KanbanPage() {
           let valorAgoraAll = 0
           let prodAgoraAll = 0
           ticketsAgoraAll.forEach(t => {
-            const v = getValoresOperacaoEProducao(t)
-            valorAgoraAll += v.numOperacao
-            prodAgoraAll += v.numProducao
+            const opData = getValorOperacaoDeAbertura(t)
+            valorAgoraAll += parseValorToNumber(opData.valor)
+            prodAgoraAll += parseValorToNumber(opData.valorProducao)
           })
+          valorAgoraAll = Math.round(valorAgoraAll * 100) / 100
+          prodAgoraAll = Math.round(prodAgoraAll * 100) / 100
 
           const filteredVencidasAll = filaCategorias.vencidas.filter(item => filterTicketsBySearch([item.ticket]).length > 0)
           let valorVencidasAll = 0
           let prodVencidasAll = 0
           filteredVencidasAll.forEach(i => {
-            const v = getValoresOperacaoEProducao(i.ticket)
-            valorVencidasAll += v.numOperacao
-            prodVencidasAll += v.numProducao
+            const opData = getValorOperacaoDeAbertura(i.ticket)
+            valorVencidasAll += parseValorToNumber(opData.valor)
+            prodVencidasAll += parseValorToNumber(opData.valorProducao)
           })
+          valorVencidasAll = Math.round(valorVencidasAll * 100) / 100
+          prodVencidasAll = Math.round(prodVencidasAll * 100) / 100
 
           const ticketsFuturasAll = filterTicketsBySearch(filaCategorias.futuras)
           let valorFuturasAll = 0
           let prodFuturasAll = 0
           ticketsFuturasAll.forEach(t => {
-            const v = getValoresOperacaoEProducao(t)
-            valorFuturasAll += v.numOperacao
-            prodFuturasAll += v.numProducao
+            const opData = getValorOperacaoDeAbertura(t)
+            valorFuturasAll += parseValorToNumber(opData.valor)
+            prodFuturasAll += parseValorToNumber(opData.valorProducao)
           })
+          valorFuturasAll = Math.round(valorFuturasAll * 100) / 100
+          prodFuturasAll = Math.round(prodFuturasAll * 100) / 100
 
           const ticketsAcaoAll = filterTicketsBySearch(filaCategorias.acaoEspecial)
           let valorAcaoAll = 0
           let prodAcaoAll = 0
           ticketsAcaoAll.forEach(t => {
-            const v = getValoresOperacaoEProducao(t)
-            valorAcaoAll += v.numOperacao
-            prodAcaoAll += v.numProducao
+            const opData = getValorOperacaoDeAbertura(t)
+            valorAcaoAll += parseValorToNumber(opData.valor)
+            prodAcaoAll += parseValorToNumber(opData.valorProducao)
           })
+          valorAcaoAll = Math.round(valorAcaoAll * 100) / 100
+          prodAcaoAll = Math.round(prodAcaoAll * 100) / 100
 
-          const totalFilaValor = valorAgoraAll + valorVencidasAll + valorFuturasAll + valorAcaoAll
-          const totalFilaProducao = prodAgoraAll + prodVencidasAll + prodFuturasAll + prodAcaoAll
+          const totalFilaValor = Math.round((valorAgoraAll + valorVencidasAll + valorFuturasAll + valorAcaoAll) * 100) / 100
+          const totalFilaProducao = Math.round((prodAgoraAll + prodVencidasAll + prodFuturasAll + prodAcaoAll) * 100) / 100
 
           return (
             <div className="flex-1 flex flex-col md:flex-row gap-3.5 sm:gap-4 h-full min-h-0 overflow-x-auto overflow-y-hidden">
@@ -8019,10 +8118,10 @@ export default function KanbanPage() {
             kanbanAllColumnsTotalLeads += rawCol.length
             kanbanAllColumnsTotalValor += rawCol.reduce((acc, t) => {
               const opData = getValorOperacaoDeAbertura(t)
-              const opNum = parseValorToNumber(opData.valor)
-              return acc + (opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0))
+              return acc + parseValorToNumber(opData.valor)
             }, 0)
           })
+          kanbanAllColumnsTotalValor = Math.round(kanbanAllColumnsTotalValor * 100) / 100
 
           return (
             <div className="flex-1 overflow-x-auto pb-1 min-h-0 h-full">
@@ -8036,10 +8135,12 @@ export default function KanbanPage() {
                     let totalColValor = 0
                     let totalColProducao = 0
                     colTickets.forEach(t => {
-                      const v = getValoresOperacaoEProducao(t)
-                      totalColValor += v.numOperacao
-                      totalColProducao += v.numProducao
+                      const opData = getValorOperacaoDeAbertura(t)
+                      totalColValor += parseValorToNumber(opData.valor)
+                      totalColProducao += parseValorToNumber(opData.valorProducao)
                     })
+                    totalColValor = Math.round(totalColValor * 100) / 100
+                    totalColProducao = Math.round(totalColProducao * 100) / 100
 
                     const basePipelineValor = totalsMode === "cpfs" ? totalUniqueValor : totalListValor
                     const basePipelineProducao = totalsMode === "cpfs" ? totalUniqueProducao : totalListProducao
