@@ -6047,19 +6047,17 @@ export default function KanbanPage() {
         }
       }
 
-      // Tolerância de 15 minutos na coluna 'Agora' antes de mover para 'Vencidas'
-      const TOLERANCIA_AGORA_MS = 15 * 60 * 1000
+      // Regra de antecedência: o cartão entra na coluna 'Agora' 15 minutos antes do vencimento.
+      // Quando o prazo expira (now >= vencimentoDate), o cartão vai para a coluna 'Vencidas'.
+      const ANTECEDENCIA_AGORA_MS = 15 * 60 * 1000
 
-      const isFuturo = vencimentoDate !== null && vencimentoDate.getTime() > now.getTime()
-      const isVencidoAposTolerancia = vencimentoDate !== null && (now.getTime() - vencimentoDate.getTime()) >= TOLERANCIA_AGORA_MS
-      const isAtrasadoSemData = vencimentoDate === null && Boolean(meta.alerta_atrasado) && (
-        ticket.updated_at ? (now.getTime() - new Date(ticket.updated_at).getTime()) >= TOLERANCIA_AGORA_MS : true
-      )
-      const isAtrasado = !isFuturo && (isVencidoAposTolerancia || isAtrasadoSemData)
+      const isVencido = (vencimentoDate !== null && vencimentoDate.getTime() <= now.getTime()) ||
+                        (vencimentoDate === null && Boolean(meta.alerta_atrasado))
+      const isFuturo = vencimentoDate !== null && (vencimentoDate.getTime() - now.getTime()) > ANTECEDENCIA_AGORA_MS
 
       if (isAcaoEspecial) {
         acaoEspecial.push(ticket)
-      } else if (isAtrasado) {
+      } else if (isVencido) {
         let atrasoTexto = "Prazo expirado"
         if (vencimentoDate) {
           atrasoTexto = `${formatDistanceToNow(vencimentoDate, { locale: ptBR })} de atraso`
@@ -6070,6 +6068,7 @@ export default function KanbanPage() {
       } else if (isFuturo) {
         futuras.push(ticket)
       } else {
+        // Faltam 15 minutos ou menos para o vencimento (ou sem data definida e não atrasado)
         agora.push(ticket)
       }
     })
