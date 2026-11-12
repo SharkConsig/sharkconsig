@@ -6122,6 +6122,7 @@ export default function KanbanPage() {
 
     // Próxima Ação e Vencimento
     const etapaCard = inferKanbanStage(ticket, meta)
+    const isFechadoOuPerdido = etapaCard === "FECHADO" || etapaCard === "PERDIDO" || ticket.status === "FECHADO" || ticket.status === "PERDIDO" || (ticket as any).etapa === "FECHADO" || (ticket as any).etapa === "PERDIDO" || meta.kanban_stage === "FECHADO" || meta.kanban_stage === "PERDIDO"
     const acaoFallbackConfig = proximasAcoesConfig.find(a => a.ativo && (
       a.etapa_kanban === etapaCard || 
       a.etapa_kanban === ticket.status ||
@@ -6147,10 +6148,6 @@ export default function KanbanPage() {
       : "Hoje às 14:30"
     const vencDateParsed = rawVencimento ? new Date(rawVencimento) : null
     const isFuturoCard = vencDateParsed !== null && !isNaN(vencDateParsed.getTime()) && vencDateParsed.getTime() > Date.now()
-    const isCardAtrasado = !isFuturoCard && (
-      (vencDateParsed !== null && (Date.now() - vencDateParsed.getTime()) >= 15 * 60 * 1000) ||
-      (vencDateParsed === null && Boolean(meta.alerta_atrasado))
-    )
 
     const acaoDestinatario = meta.acao_especial_destinatario || (() => {
       const obsLista = Array.isArray(meta.observacoes_historico) ? meta.observacoes_historico : []
@@ -6281,11 +6278,6 @@ export default function KanbanPage() {
         {/* 1. Cabeçalho Visual: Tags de Alerta e Cronômetro/Prazo */}
         <div className="flex items-start justify-between gap-1.5 text-[11px]">
           <div className="flex flex-wrap gap-1">
-            {isCardAtrasado && !atrasoCustomTexto && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-rose-100 text-rose-800 border border-rose-200 animate-pulse text-[12px]">
-                🔴 ATRASADO
-              </span>
-            )}
             {/* ETIQUETA VISUAL NO CARTÃO DO PIPELINE: ATENDIDO POR 1 OU MAIS USUÁRIOS */}
             {(() => {
               const cleanCpf = (ticket.cliente_cpf || "").replace(/\D/g, "")
@@ -6631,19 +6623,21 @@ export default function KanbanPage() {
           )
         })()}
 
-        {/* 4. Bloco da Próxima Ação */}
-        <div className="bg-amber-100/90 border border-amber-300 rounded-md p-2 text-[12px] space-y-0.5 shadow-2xs">
-          <div className="font-extrabold text-amber-950 flex items-center gap-1">
-            <span>📌 PRÓXIMA AÇÃO:</span>
+        {/* 4. Bloco da Próxima Ação (não exibido nas colunas Fechado e Perdido) */}
+        {!isFechadoOuPerdido && (
+          <div className="bg-amber-100/90 border border-amber-300 rounded-md p-2 text-[12px] space-y-0.5 shadow-2xs">
+            <div className="font-extrabold text-amber-950 flex items-center gap-1">
+              <span>📌 PRÓXIMA AÇÃO:</span>
+            </div>
+            <p className="text-[12px] text-amber-900 font-semibold line-clamp-2">
+              {proximaAcaoTexto}
+            </p>
+            <div className="text-[12px] text-amber-800 flex items-center gap-1 pt-0.5 font-semibold">
+              <Clock className="w-3.5 h-3.5 text-amber-700" />
+              <span>Vencimento: {vencimentoLabel}</span>
+            </div>
           </div>
-          <p className="text-[12px] text-amber-900 font-semibold line-clamp-2">
-            {proximaAcaoTexto}
-          </p>
-          <div className="text-[12px] text-amber-800 flex items-center gap-1 pt-0.5 font-semibold">
-            <Clock className="w-3.5 h-3.5 text-amber-700" />
-            <span>Vencimento: {vencimentoLabel}</span>
-          </div>
-        </div>
+        )}
 
         {/* 5. Barra de Ações Rápidas */}
         <div 
@@ -7174,18 +7168,19 @@ export default function KanbanPage() {
           <div className="text-[10px] uppercase font-bold text-slate-400">
             Próxima Ação & Prazo
           </div>
-          <p className="text-xs text-slate-800 font-semibold truncate mt-0.5" title={proximaAcaoTexto}>
-            {proximaAcaoTexto}
-          </p>
-          <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500">
-            <Clock className="w-3 h-3 text-slate-400 shrink-0" />
-            <span>{vencimentoLabel ? `Vencimento: ${vencimentoLabel}` : "Sem agendamento definido"}</span>
-            {isCardAtrasado && (
-              <span className="px-1.5 py-0.2 rounded-full font-bold bg-rose-100 text-rose-700 border border-rose-300">
-                Atrasado
-              </span>
-            )}
-          </div>
+          {etapaRow === "FECHADO" || etapaRow === "PERDIDO" || ticket.status === "FECHADO" || ticket.status === "PERDIDO" ? (
+            <p className="text-xs text-slate-400 italic mt-0.5">Sem próxima ação</p>
+          ) : (
+            <>
+              <p className="text-xs text-slate-800 font-semibold truncate mt-0.5" title={proximaAcaoTexto}>
+                {proximaAcaoTexto}
+              </p>
+              <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500">
+                <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                <span>{vencimentoLabel ? `Vencimento: ${vencimentoLabel}` : "Sem agendamento definido"}</span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Coluna 4: Responsável & Etapa */}
