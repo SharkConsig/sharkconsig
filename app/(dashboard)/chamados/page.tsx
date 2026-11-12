@@ -133,6 +133,18 @@ const NAO_APROVADOS_LABELS = [
   "GOV PR - NOVO NÃO ARPROVADO"
 ]
 
+const isNaoAprovadoStatus = (statusName?: string | null, statusGrupo?: string | null): boolean => {
+  if (statusGrupo && statusGrupo.toUpperCase().includes("NÃO APROVADO")) return true
+  if (!statusName) return false
+  const s = statusName.trim().toUpperCase()
+  const sNorm = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  if (sNorm.includes("NAO APROVADO") || sNorm.includes("NAO ARPROVADO") || sNorm.includes("IMPOSSIBILITADO")) return true
+  return NAO_APROVADOS_LABELS.some(item => {
+    const itemNorm = item.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    return s === item || sNorm === itemNorm
+  })
+}
+
 const NEGOCIACAO_LABELS = [
   "PROPOSTA ENVIADA",
   "CLIENTE SEM INTERAÇÃO",
@@ -1942,6 +1954,64 @@ export default function TicketsPage() {
         .in("id", selectedTicketIds)
 
       if (error) throw error
+
+      // 1.1 Se alterado para substatus de "NÃO APROVADOS", mover cartões correspondentes no Kanban para "PERDIDO"
+      if (isNaoAprovadoStatus(selectedStatusObj.nome, (selectedStatusObj as any).grupo)) {
+        try {
+          const nowIso = new Date().toISOString()
+          const cpfsToUpdate = selectedTicketIds.map(id => {
+            const t = tickets.find(ticket => ticket.id.toString() === id)
+            return t?.cliente_cpf ? String(t.cliente_cpf).replace(/\D/g, "") : null
+          }).filter(Boolean) as string[]
+
+          if (cpfsToUpdate.length > 0) {
+            const paddedCpfs = cpfsToUpdate.map(c => c.padStart(11, "0"))
+            const searchTerms = Array.from(new Set([...cpfsToUpdate, ...paddedCpfs]))
+              .map(c => `cliente_cpf.eq.${c}`)
+              .join(",")
+
+            const { data: fichas } = await supabase
+              .from('kanban_fichas')
+              .select('id, etapa, metadata, historico_movimentacoes')
+              .or(searchTerms)
+
+            if (fichas && fichas.length > 0) {
+              for (const ficha of fichas) {
+                const prevMeta = (ficha.metadata && typeof ficha.metadata === 'object') ? { ...ficha.metadata } : {}
+                delete (prevMeta as any).tabulacao_whatsapp
+
+                const rawMov = ficha.historico_movimentacoes
+                const historicoMov: any[] = Array.isArray(rawMov)
+                  ? [...rawMov]
+                  : (typeof rawMov === 'string' ? (() => { try { const p = JSON.parse(rawMov); return Array.isArray(p) ? p : [] } catch { return [] } })() : (Array.isArray(prevMeta.historico_kanban) ? [...prevMeta.historico_kanban] : []))
+
+                historicoMov.push({
+                  data: nowIso,
+                  etapa_anterior: ficha.etapa || "EM RETOMADA",
+                  etapa_nova: "PERDIDO",
+                  autor: perfil?.nome || "Sistema",
+                  motivo: `Alteração em massa para status "${selectedStatusObj.nome}" (Não Aprovado)`
+                })
+
+                await supabase.from('kanban_fichas').update({
+                  etapa: "PERDIDO",
+                  motivo_perda: selectedStatusObj.nome,
+                  historico_movimentacoes: historicoMov,
+                  metadata: {
+                    ...prevMeta,
+                    kanban_stage: "PERDIDO",
+                    motivo_perda: selectedStatusObj.nome,
+                    historico_kanban: historicoMov
+                  },
+                  updated_at: nowIso
+                }).eq('id', ficha.id)
+              }
+            }
+          }
+        } catch (syncErr) {
+          console.error("Erro ao sincronizar cartões no Kanban em massa:", syncErr)
+        }
+      }
 
       // 2. Registrar mudanca de status em mensagens_chamado para auditoria
       const messagesToInsert = selectedTicketIds.map(id => {

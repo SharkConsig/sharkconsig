@@ -126,6 +126,33 @@ const updateDescriptionWithMetadata = (desc: string, metadata: Record<string, un
   return cleaned + metadataBlock;
 };
 
+const NAO_APROVADOS_SUBSTATUS = [
+  "CLIENTE IMPOSSIBILITADO",
+  "GOV SP - NÃO APROVADO",
+  "ATIVOS - ZERADO",
+  "SIAPE - ACOMPANHAR VIRADA",
+  "MARGEM 40%",
+  "CLT - ZERADO",
+  "CLT - NEGATIVO",
+  "ATIVOS - NEGATIVO",
+  "COMPRA DE DIVIDA CARTÃO - NÃO APROVADO",
+  "PREF SAO PAULO - NÃO APROVADO",
+  "GOV PR - NOVO NÃO ARPROVADO",
+  "GOV PR - NOVO NÃO APROVADO"
+]
+
+const isNaoAprovadoStatus = (statusName?: string | null, statusGrupo?: string | null): boolean => {
+  if (statusGrupo && statusGrupo.toUpperCase().includes("NÃO APROVADO")) return true
+  if (!statusName) return false
+  const s = statusName.trim().toUpperCase()
+  const sNorm = s.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  if (sNorm.includes("NAO APROVADO") || sNorm.includes("NAO ARPROVADO") || sNorm.includes("IMPOSSIBILITADO")) return true
+  return NAO_APROVADOS_SUBSTATUS.some(item => {
+    const itemNorm = item.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    return s === item || sNorm === itemNorm
+  })
+}
+
 export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved, onMarginsLiveChange }: TicketAtendimentoProps) {
   const router = useRouter()
   const { perfil, user, isEstagio } = useAuth()
@@ -951,11 +978,25 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved, onMar
         updated_at: nowIso
       }
       let statusChangeData = null
+      let newStatusObj: any = null
       if (selectedStatusId && selectedStatusId !== ticket.status_id) {
         const newStatus = availableStatuses.find(s => s.id === selectedStatusId)
         if (newStatus) {
+          newStatusObj = newStatus
           chamadoUpdatePayload.status_id = selectedStatusId
           chamadoUpdatePayload.status = newStatus.nome // Manter compatibilidade com a coluna de texto
+
+          // Se o novo status pertencer a "NÃO APROVADOS", atualiza metadados do chamado para PERDIDO
+          if (isNaoAprovadoStatus(newStatus.nome, (newStatus as any).grupo)) {
+            const currentDesc = ticket.descricao || ticket.description || ticket.content || ""
+            const existingMeta = parseDescriptionMetadata(currentDesc) || {}
+            const updatedMeta = {
+              ...existingMeta,
+              kanban_stage: "PERDIDO",
+              motivo_perda: newStatus.nome
+            }
+            chamadoUpdatePayload.descricao = updateDescriptionWithMetadata(currentDesc, updatedMeta)
+          }
 
           statusChangeData = {
             from: currentStatusName,
@@ -974,6 +1015,70 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved, onMar
 
       if (!updateError) {
         ticket.updated_at = nowIso
+
+        // Se o status alterado for um substatus de "NÃO APROVADOS", move automaticamente o respectivo cartão no Kanban para "Perdido"
+        if (newStatusObj && isNaoAprovadoStatus(newStatusObj.nome, newStatusObj.grupo)) {
+          const rawCpf = ticket.cpf || (ticket as any).cliente_cpf || ""
+          const cleanCpfDigits = String(rawCpf).replace(/\D/g, "")
+          if (cleanCpfDigits) {
+            try {
+              const paddedCpf = cleanCpfDigits.padStart(11, "0")
+              const formattedCpf = paddedCpf.length === 11 
+                ? `${paddedCpf.slice(0, 3)}.${paddedCpf.slice(3, 6)}.${paddedCpf.slice(6, 9)}-${paddedCpf.slice(9)}` 
+                : ""
+
+              const searchTerms = Array.from(new Set([cleanCpfDigits, paddedCpf, formattedCpf].filter(Boolean)))
+                .map(c => `cliente_cpf.eq.${c}`)
+                .join(",")
+
+              const { data: fichas } = await supabase
+                .from('kanban_fichas')
+                .select('id, etapa, metadata, historico_movimentacoes')
+                .or(searchTerms)
+
+              if (fichas && fichas.length > 0) {
+                for (const ficha of fichas) {
+                  const prevMeta = (ficha.metadata && typeof ficha.metadata === 'object') ? ficha.metadata : {}
+                  const rawMov = ficha.historico_movimentacoes
+                  const historicoMov: any[] = Array.isArray(rawMov)
+                    ? [...rawMov]
+                    : (typeof rawMov === 'string' ? (() => { try { const p = JSON.parse(rawMov); return Array.isArray(p) ? p : [] } catch { return [] } })() : (Array.isArray(prevMeta.historico_kanban) ? [...prevMeta.historico_kanban] : []))
+
+                  historicoMov.push({
+                    data: nowIso,
+                    etapa_anterior: ficha.etapa || "EM RETOMADA",
+                    etapa_nova: "PERDIDO",
+                    autor: perfil?.nome || "Sistema",
+                    motivo: `Chamado #${ticket.id} alterado para status "${newStatusObj.nome}" (Não Aprovado)`
+                  })
+
+                  const metaParaSalvar = {
+                    ...prevMeta,
+                    kanban_stage: "PERDIDO",
+                    motivo_perda: newStatusObj.nome,
+                    chamado_id: ticket.id,
+                    status_chamado: newStatusObj.nome,
+                    historico_kanban: historicoMov
+                  }
+                  delete (metaParaSalvar as any).tabulacao_whatsapp
+
+                  await supabase
+                    .from('kanban_fichas')
+                    .update({
+                      etapa: "PERDIDO",
+                      motivo_perda: newStatusObj.nome,
+                      historico_movimentacoes: historicoMov,
+                      metadata: metaParaSalvar,
+                      updated_at: nowIso
+                    })
+                    .eq('id', ficha.id)
+                }
+              }
+            } catch (errKanban) {
+              console.error("Erro ao sincronizar cartão no Kanban para Perdido:", errKanban)
+            }
+          }
+        }
       }
 
       let finalReply = reply

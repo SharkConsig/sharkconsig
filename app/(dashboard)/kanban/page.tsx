@@ -2776,9 +2776,9 @@ export default function KanbanPage() {
       const formatted: TicketItem[] = uniqueFichas.map((f: any) => {
         const meta: TicketMetadata = (f.metadata && typeof f.metadata === "object") ? f.metadata : {}
         const isDrawer = (f.etapa === "PERDIDO" || !f.etapa) && (
-          Boolean(meta.tabulacao_whatsapp) || 
           f.motivo_perda === "Não Existe Whatsapp" || 
-          f.motivo_perda === "Whatsapp Divergente"
+          f.motivo_perda === "Whatsapp Divergente" ||
+          (Boolean(meta.tabulacao_whatsapp) && (!f.motivo_perda || f.motivo_perda === "Não Existe Whatsapp" || f.motivo_perda === "Whatsapp Divergente"))
         )
         const drawerStatus = (meta.tabulacao_whatsapp === "WHATSAPP_DIVERGENTE" || f.motivo_perda === "Whatsapp Divergente")
           ? "WHATSAPP DIVERGENTE"
@@ -3396,11 +3396,13 @@ export default function KanbanPage() {
       const meta = parseMetadata(t.descricao)
 
       // Se estiver arquivado em uma das gavetas (pela etapa ou metadados), não exibe nas colunas normais do Kanban
+      const isWhatsappDrawerLoss = (t as any).motivo_perda === "Não Existe Whatsapp" || (t as any).motivo_perda === "Whatsapp Divergente"
       if (
         t.status === "NÃO EXISTE WHATSAPP" ||
         t.status === "NAO_EXISTE_WHATSAPP" ||
         t.status === "WHATSAPP DIVERGENTE" ||
-        (Boolean(meta.tabulacao_whatsapp) && t.status !== "EM RETOMADA")
+        isWhatsappDrawerLoss ||
+        (Boolean(meta.tabulacao_whatsapp) && isWhatsappDrawerLoss)
       ) {
         return false
       }

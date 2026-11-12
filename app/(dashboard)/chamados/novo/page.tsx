@@ -58,6 +58,8 @@ export function NewTicketForm({
   const searchParams = useSearchParams()
   const { user, perfil } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [selectedStatuses, setSelectedStatuses] = useState<{ [key: string]: boolean }>({})
+  const [isTabulating, setIsTabulating] = useState(false)
   const [description, setDescription] = useState<string>("")
 
   const getParam = useCallback((key: string) => {
@@ -1205,6 +1207,170 @@ export function NewTicketForm({
     }
   };
 
+  const handleTabulacaoWhatsapp = async (tabulacao: "NÃO EXISTE WHATSAPP" | "WHATSAPP DIVERGENTE") => {
+    const rawCpf = formData.cpf || getParam("cpf") || "";
+    const cleanCpfDigits = rawCpf.replace(/\D/g, "");
+    if (!cleanCpfDigits) {
+      toast.error("CPF do cliente não informado.");
+      setSelectedStatuses({});
+      return;
+    }
+
+    setIsTabulating(true);
+    const drawerLabel = tabulacao === "NÃO EXISTE WHATSAPP" ? "Não Existe Whatsapp" : "Whatsapp Divergente";
+    const loadingToast = toast.loading(`Encaminhando lead para "${drawerLabel}"...`);
+    try {
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+      const validOperadorId = isUuid(user?.id) ? user.id : null;
+      const operadorNome = perfil?.nome || user?.email || "Corretor";
+      const drawerType = tabulacao === "NÃO EXISTE WHATSAPP" ? "NAO_EXISTE_WHATSAPP" : "WHATSAPP_DIVERGENTE";
+
+      const phones = [formData.tel1, formData.tel2, formData.tel3].filter(
+        (p): p is string => Boolean(p && p !== '0' && p !== 'NÃO INFORMADO')
+      );
+      const primaryPhone = phones[0] || formData.tel1 || formData.tel2 || formData.tel3 || "NÃO INFORMADO";
+      const paddedCpf = cleanCpfDigits.padStart(11, "0");
+
+      // Buscar se o OPERADOR ATUAL já possui uma ficha para este cliente
+      let existing: any = null;
+      if (validOperadorId) {
+        const { data: porId } = await supabase
+          .from("kanban_fichas")
+          .select("id, metadata, origem, telefone_empresa")
+          .or(`cliente_cpf.eq.${cleanCpfDigits},cliente_cpf.eq.${paddedCpf}`)
+          .eq("operador_id", validOperadorId)
+          .maybeSingle();
+        existing = porId;
+      }
+      if (!existing && perfil?.nome) {
+        const { data: porNome } = await supabase
+          .from("kanban_fichas")
+          .select("id, metadata, origem, telefone_empresa")
+          .or(`cliente_cpf.eq.${cleanCpfDigits},cliente_cpf.eq.${paddedCpf}`)
+          .ilike("operador_nome", perfil.nome)
+          .maybeSingle();
+        existing = porNome;
+      }
+
+      if (existing) {
+        const updatedMeta = {
+          ...(existing.metadata || {}),
+          tabulacao_whatsapp: drawerType,
+          telefones: phones,
+          tabulado_por: operadorNome,
+          user_id: validOperadorId || user?.id,
+          user_nome: operadorNome
+        };
+        delete (updatedMeta as any).telefones_selecionados;
+        delete (updatedMeta as any).origem;
+        delete (updatedMeta as any).telefone_empresa;
+
+        const updateDrawerPayload: Record<string, any> = {
+          etapa: "PERDIDO",
+          motivo_perda: drawerLabel,
+          tabulacao: tabulacao,
+          origem: formData.origem || (existing as any).origem || null,
+          telefones_contatados: phones,
+          telefone_empresa: selectedEmpresaPhone || (existing as any).telefone_empresa || null,
+          operador_id: validOperadorId,
+          operador_nome: operadorNome,
+          metadata: updatedMeta,
+          updated_at: new Date().toISOString()
+        };
+
+        let { error: updateErr } = await supabase
+          .from("kanban_fichas")
+          .update(updateDrawerPayload)
+          .eq("id", existing.id);
+
+        if (updateErr && (updateErr.message?.includes("does not exist") || updateErr.code === "PGRST204")) {
+          const fallback = await supabase
+            .from("kanban_fichas")
+            .update({
+              etapa: "PERDIDO",
+              motivo_perda: drawerLabel,
+              operador_id: validOperadorId,
+              operador_nome: operadorNome,
+              metadata: updatedMeta,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", existing.id);
+          updateErr = fallback.error;
+        }
+
+        if (updateErr) {
+          console.error("Erro ao atualizar gaveta em kanban_fichas:", updateErr);
+          toast.dismiss(loadingToast);
+          toast.error("Erro ao atualizar gaveta.");
+          return;
+        }
+      } else {
+        const meta: any = {
+          kanban_stage: drawerLabel === "Não Existe Whatsapp" ? "NÃO EXISTE WHATSAPP" : "WHATSAPP DIVERGENTE",
+          tabulacao_whatsapp: drawerType,
+          telefones: phones,
+          tabulado_por: operadorNome,
+          user_id: validOperadorId || user?.id,
+          user_nome: operadorNome
+        };
+
+        const insertDrawerPayload: Record<string, any> = {
+          cliente_nome: formData.nome || "Cliente sem Nome",
+          cliente_cpf: paddedCpf,
+          cliente_telefone: primaryPhone,
+          operador_id: validOperadorId,
+          operador_nome: operadorNome,
+          etapa: "PERDIDO",
+          motivo_perda: drawerLabel,
+          tabulacao: tabulacao,
+          origem: formData.origem || null,
+          telefones_contatados: phones,
+          telefone_empresa: selectedEmpresaPhone || null,
+          metadata: meta,
+          observacoes: `Lead arquivado na gaveta "${drawerLabel}"`
+        };
+
+        let { error: insertErr } = await supabase.from("kanban_fichas").insert(insertDrawerPayload);
+
+        if (insertErr && (insertErr.message?.includes("does not exist") || insertErr.code === "PGRST204")) {
+          const fallback = await supabase.from("kanban_fichas").insert({
+            cliente_nome: formData.nome || "Cliente sem Nome",
+            cliente_cpf: paddedCpf,
+            cliente_telefone: primaryPhone,
+            operador_id: validOperadorId,
+            operador_nome: operadorNome,
+            etapa: "PERDIDO",
+            motivo_perda: drawerLabel,
+            metadata: meta,
+            observacoes: `Lead arquivado na gaveta "${drawerLabel}"`
+          });
+          insertErr = fallback.error;
+        }
+
+        if (insertErr) {
+          console.error("Erro ao inserir gaveta em kanban_fichas:", insertErr);
+          toast.dismiss(loadingToast);
+          toast.error("Erro ao encaminhar lead para a gaveta.");
+          return;
+        }
+      }
+
+      toast.dismiss(loadingToast);
+      toast.success(`Lead encaminhado para a gaveta "${drawerLabel}".`);
+      if (onCloseModal) {
+        onCloseModal();
+      } else {
+        router.push("/chamados");
+      }
+    } catch (err: any) {
+      console.error("Erro ao processar gaveta:", err);
+      toast.dismiss(loadingToast);
+      toast.error("Erro ao encaminhar para a gaveta.");
+    } finally {
+      setIsTabulating(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
       {isModal ? (
@@ -1851,10 +2017,10 @@ export function NewTicketForm({
                 ))}
               </div>
               
-              <div className="flex items-center gap-4">
+              <div className="flex flex-wrap items-center gap-4 sm:gap-6">
                 <Button 
                   onClick={handleSubmit}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isTabulating}
                   className="bg-primary hover:bg-primary/90 text-white px-8 h-10 text-xs font-bold rounded-lg shadow-lg shadow-primary/20 flex items-center gap-2 cursor-pointer"
                 >
                   {isSubmitting && <Loader2 className="w-3 h-3 animate-spin" />}
@@ -1865,11 +2031,47 @@ export function NewTicketForm({
                     type="button"
                     variant="outline"
                     onClick={onCloseModal}
+                    disabled={isSubmitting || isTabulating}
                     className="h-10 px-6 text-xs font-bold rounded-lg cursor-pointer"
                   >
                     CANCELAR
                   </Button>
                 )}
+
+                <div className="flex items-center gap-6 ml-1">
+                  {(["NÃO EXISTE WHATSAPP", "WHATSAPP DIVERGENTE"] as const).map((status) => {
+                    const isChecked = !!selectedStatuses[status];
+                    return (
+                      <label
+                        key={status}
+                        className="flex items-center gap-2 cursor-pointer select-none group py-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={isSubmitting || isTabulating}
+                          onChange={async (e) => {
+                            const checked = e.target.checked;
+                            if (checked) {
+                              setSelectedStatuses({ [status]: true });
+                              await handleTabulacaoWhatsapp(status);
+                            } else {
+                              setSelectedStatuses(prev => ({
+                                ...prev,
+                                [status]: false
+                              }));
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-0 cursor-pointer accent-[#171717]"
+                        />
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#1e50bc] hover:text-blue-800 transition-colors">
+                          {status}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
                 {validationError && (
                   <span className="text-red-500 text-[10px] font-bold uppercase tracking-widest animate-in fade-in slide-in-from-left-2 duration-300">
                     {validationError}
