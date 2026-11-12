@@ -1482,12 +1482,17 @@ function matchesProposalUser(p: any, t: TicketItem): boolean {
 function inferKanbanStage(
   ticket: TicketItem, 
   meta: TicketMetadata,
-  propInfo?: { ade?: string; data_digitacao?: string; status?: string }
+  propInfo?: { ade?: string; data_digitacao?: string; status?: string; created_at?: string }
 ): KanbanStage {
   const prop = propInfo || ticket.proposta_info
   const pStatus = (prop?.status || "").toUpperCase().trim()
   const isPagoOuConcluido = pStatus.includes("PAGO") || pStatus.includes("CONCLU") || pStatus.includes("LIQUIDA")
-  const isCanceladoProp = isProposalCancelled(pStatus)
+
+  // Regra idêntica aos chamados: valida se a proposta pertence ao período ativo do Kanban (a partir de 30/10/2026)
+  const propDate = prop?.data_digitacao || (prop as any)?.created_at
+  const isPropValidaData = propDate ? isDigitacaoAposDataCorte(propDate) : true
+
+  const isCanceladoProp = isProposalCancelled(pStatus) && isPropValidaData
   const isCanceladoTicket = (
     ticket.status === "PERDIDO" ||
     (ticket as any).etapa === "PERDIDO" ||
@@ -1498,8 +1503,8 @@ function inferKanbanStage(
     (Boolean(ticket.motivo_perda) && (ticket.motivo_perda.toLowerCase().includes("cancelad") || ticket.motivo_perda.toLowerCase().includes("banco")))
   )
 
-  // 1. Proposta cancelada no banco vai OBRIGATORIAMENTE para PERDIDO
-  if (isCanceladoProp || (isCanceladoTicket && !isPagoOuConcluido)) {
+  // 1. Proposta cancelada no banco vai OBRIGATORIAMENTE para PERDIDO apenas se for do período ativo do Kanban
+  if (isCanceladoProp || (isCanceladoTicket && !isPagoOuConcluido && isPropValidaData)) {
     return "PERDIDO"
   }
 
@@ -1510,6 +1515,7 @@ function inferKanbanStage(
   )
   const hasDigitacao = Boolean(
     (hasAde || isPagoOuConcluido) &&
+    isPropValidaData &&
     (
       isPagoOuConcluido ||
       !prop?.data_digitacao ||
@@ -2620,6 +2626,7 @@ export default function KanbanPage() {
           .from('propostas')
           .select('*')
           .in('cliente_cpf', cpfs)
+          .gte('created_at', '2026-10-30T00:00:00')
           .order('created_at', { ascending: false })
 
         if (!fetchErr && isMounted && data) {
@@ -3065,7 +3072,7 @@ export default function KanbanPage() {
               cpfChunksAll.map(chunk =>
                 supabase
                   .from("propostas")
-                  .select("id, id_lead, cliente_cpf, ade, data_digitacao, status, corretor_id, corretor, estagiario_colaborador_id, estagiario_colaborador_nome")
+                  .select("id, id_lead, cliente_cpf, ade, data_digitacao, status, corretor_id, corretor, estagiario_colaborador_id, estagiario_colaborador_nome, created_at")
                   .in("cliente_cpf", chunk)
                   .order("updated_at", { ascending: false })
               )
@@ -3264,7 +3271,8 @@ export default function KanbanPage() {
                 const info = {
                   ade: matchingProp.ade ? String(matchingProp.ade).trim() : undefined,
                   data_digitacao: matchingProp.data_digitacao ? String(matchingProp.data_digitacao).trim() : undefined,
-                  status: matchingProp.status ? String(matchingProp.status).trim() : undefined
+                  status: matchingProp.status ? String(matchingProp.status).trim() : undefined,
+                  created_at: matchingProp.created_at ? String(matchingProp.created_at).trim() : undefined
                 }
                 mapPropsByTicketId[t.id] = info
                 const meta = parseMetadata(t.descricao)

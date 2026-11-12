@@ -110,16 +110,20 @@ export const hasProposalDigitacao = (proposal: any): boolean => {
   if (!proposal) return false
   const ade = String(proposal.ade || "").trim()
   const dataDigitacao = String(proposal.data_digitacao || "").trim()
+  const createdAt = String(proposal.created_at || "").trim()
   const statusUpper = String(proposal.status || "").toUpperCase().trim()
+
+  // Regra idêntica à dos chamados: desconsiderar registros anteriores ao início do Kanban (30/10/2026)
+  const dateToCheck = (dataDigitacao && dataDigitacao !== "-") ? dataDigitacao : createdAt
+  if (!dateToCheck || !isDigitacaoAposDataCorte(dateToCheck)) {
+    return false
+  }
 
   const isPagoOuConcluido = statusUpper.includes("PAGO") || statusUpper.includes("CONCLU") || statusUpper.includes("FINALIZAD")
   const isCancelado = isProposalCancelled(statusUpper)
   const hasAde = Boolean(ade && ade !== "-" && ade !== "null" && ade !== "undefined")
-  const hasData = Boolean(dataDigitacao && dataDigitacao !== "-" && isDigitacaoAposDataCorte(dataDigitacao))
 
-  if (hasAde && (hasData || isPagoOuConcluido || isCancelado)) return true
-  if (hasAde && ade.length >= 3) return true
-  if (isCancelado && hasAde) return true
+  if (hasAde && (isPagoOuConcluido || isCancelado || ade.length >= 3)) return true
   if (isPagoOuConcluido) return true
 
   return false
@@ -135,7 +139,14 @@ export const syncKanbanForClosedProposal = async (info: ProposalSyncInfo): Promi
 
     const ade = String(info.ade || "").trim()
     const dataDigitacao = String(info.data_digitacao || "").trim()
+    const createdAt = String((info as any).created_at || "").trim()
     if (!ade || ade === "-") return
+
+    // Regra idêntica à dos chamados: desconsiderar registros anteriores ao início do Kanban (30/10/2026)
+    const dateToCheck = (dataDigitacao && dataDigitacao !== "-") ? dataDigitacao : createdAt
+    if (!dateToCheck || !isDigitacaoAposDataCorte(dateToCheck)) {
+      return
+    }
 
     const statusUpper = String(info.status || "").toUpperCase().trim()
     const isCancelled = isProposalCancelled(statusUpper)
