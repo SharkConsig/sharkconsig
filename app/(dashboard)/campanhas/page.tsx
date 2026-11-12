@@ -601,10 +601,10 @@ export default function CampaignsPage() {
 
       if (convenioKey && TABLE_MAP[convenioKey]) {
         targetTable = TABLE_MAP[convenioKey];
-      } else if (campaignName.includes('GOVERNO SP')) {
-        targetTable = 'base_consulta_governo_sp';
-      } else if (campaignName.includes('PREFEITURA SP')) {
+      } else if (campaignName.includes('PREFEITURA SP') || campaignName.includes('PREFEITURA') || campaignName.includes('PREF') || campaignName.includes('PMSP')) {
         targetTable = 'base_consulta_prefeitura_sp';
+      } else if (campaignName.includes('GOVERNO SP') || campaignName.includes('GOV SP') || campaignName.includes('SPPREV')) {
+        targetTable = 'base_consulta_governo_sp';
       } else if (campaignName.includes('GOVERNO MG') || campaignName.includes('MINAS GERAIS') || campaignName.includes('GOVERNO DE MINAS')) {
         targetTable = 'base_consulta_governo_mg';
       } else if (campaignName.includes('GOVERNO PI')) {
@@ -759,9 +759,9 @@ export default function CampaignsPage() {
 
         const tablesList = [
           { name: 'base_consulta_siape', prodTable: 'clientes', convenio: 'siape', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, numero_matricula, orgao, situacao_funcional, salario, instituidor_nome, regime_juridico, uf, saldo_70, margem_35, bruta_5, utilizada_5, liquida_5, beneficio_bruta_5, beneficio_utilizada_5, beneficio_liquida_5, banco, prazo, tipo" },
+          { name: 'base_consulta_prefeitura_sp', prodTable: 'prefeitura_sp_clientes', convenio: 'prefeitura_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5" },
           { name: 'base_consulta_governo_ba', prodTable: 'governo_ba_clientes', convenio: 'governo_ba', columns: "cpf, nome, telefone, matricula, margem_emprestimo_total, margem_emprestimo_disponivel, orgao, secretaria, situacao, tipo_servidor" },
           { name: 'base_consulta_governo_sp', prodTable: 'governo_sp_clientes', convenio: 'governo_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5" },
-          { name: 'base_consulta_prefeitura_sp', prodTable: 'prefeitura_sp_clientes', convenio: 'prefeitura_sp', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, identificacao, orgao, situacao_funcional, regime_juridico, uf, margem_35, beneficio_bruta_5, beneficio_liquida_5" },
           { name: 'base_consulta_governo_pi', prodTable: 'governo_pi_clientes', convenio: 'governo_pi', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, matricula, vinculo, orgao, margem_disponivel_emprestimo, margem_cartao_consignado, margem_cartao_beneficio" },
           { name: 'base_consulta_governo_ma', prodTable: 'governo_ma_clientes', convenio: 'governo_ma', columns: "cpf, nome, data_nascimento, telefone_1, numero_matricula, orgao, situacao_funcional, margem_35, bruta_5, liquida_5, beneficio_bruta_5, beneficio_liquida_5, uf" },
           { name: 'base_consulta_governo_rr', prodTable: 'governo_rr_clientes', convenio: 'governo_rr', columns: "cpf, nome, data_nascimento, telefone_1, telefone_2, telefone_3, margem_emprestimo, margem_cartao" },
@@ -848,6 +848,8 @@ export default function CampaignsPage() {
               if (data && data.length > 0) {
                 (data as Record<string, unknown>[]).forEach((row) => {
                   const rowNormCpf = String(row.cpf || "").replace(/\D/g, "").padStart(11, '0');
+                  const hasPhone = Boolean(row.telefone_1 || row.telefone_2 || row.telefone_3 || (row as any).telefone || (row as any).celular);
+
                   if (row && row.cpf && !foundNormCpfSet.has(rowNormCpf)) {
                     foundNormCpfSet.add(rowNormCpf);
                     detectedConvenios.set(rowNormCpf, convenio);
@@ -861,6 +863,26 @@ export default function CampaignsPage() {
                         .eq('campanha_id', campaign.id)
                         .eq('cliente_cpf', row.cpf as string)
                         .then(() => {});
+                    }
+                  } else if (row && row.cpf && foundNormCpfSet.has(rowNormCpf)) {
+                    // Enriquecimento inteligente: mescla telefones e data de nascimento se a nova linha contiver contatos
+                    const existingRow = tempBcrData.find(r => String(r.cpf || "").replace(/\D/g, "").padStart(11, '0') === rowNormCpf);
+                    if (existingRow) {
+                      const existingHasPhone = Boolean(existingRow.telefone_1 || existingRow.telefone_2 || existingRow.telefone_3);
+                      if (!existingHasPhone && hasPhone) {
+                        if (row.telefone_1) existingRow.telefone_1 = row.telefone_1;
+                        if (row.telefone_2) existingRow.telefone_2 = row.telefone_2;
+                        if (row.telefone_3) existingRow.telefone_3 = row.telefone_3;
+                        if (!existingRow.data_nascimento && row.data_nascimento) existingRow.data_nascimento = row.data_nascimento;
+                        if (convenio && (!detectedConvenios.get(rowNormCpf) || detectedConvenios.get(rowNormCpf) === 'governo_sp')) {
+                          detectedConvenios.set(rowNormCpf, convenio);
+                        }
+                      } else {
+                        if (!existingRow.telefone_1 && row.telefone_1) existingRow.telefone_1 = row.telefone_1;
+                        if (!existingRow.telefone_2 && row.telefone_2) existingRow.telefone_2 = row.telefone_2;
+                        if (!existingRow.telefone_3 && row.telefone_3) existingRow.telefone_3 = row.telefone_3;
+                        if (!existingRow.data_nascimento && row.data_nascimento) existingRow.data_nascimento = row.data_nascimento;
+                      }
                     }
                   }
                 });
@@ -883,14 +905,14 @@ export default function CampaignsPage() {
 
           const prodChunks = chunkArray(stillExpanded, 150);
           for (const pChunk of prodChunks) {
-            // Prioriza a tabela de produção do convênio da campanha
+            // Prioriza tabelas acessíveis de produção
             const prodTablesToTry = [
               targetTableObj.prodTable,
+              'clientes',
               'governo_ba_clientes',
               'governo_mg_clientes',
               'governo_sp_clientes',
-              'prefeitura_sp_clientes',
-              'clientes'
+              'prefeitura_sp_clientes'
             ];
             const uniqueProdTables = Array.from(new Set(prodTablesToTry.filter(Boolean)));
 
@@ -910,6 +932,45 @@ export default function CampaignsPage() {
                 } catch (e) {
                   // Fallback silencioso
                 }
+              })
+            );
+          }
+        }
+
+        // 4. Enriquecimento de segurança de telefones para registros que estejam sem nenhum telefone
+        const cpfsSemTelefone = tempBcrData
+          .filter(r => !r.telefone_1 && !r.telefone_2 && !r.telefone_3)
+          .map(r => String(r.cpf || "").replace(/\D/g, "").padStart(11, '0'));
+
+        if (cpfsSemTelefone.length > 0) {
+          const enrichExpanded = Array.from(new Set(cpfsSemTelefone.flatMap((cpf: string) => {
+            const clean = cpf.replace(/\D/g, "");
+            if (!clean) return [cpf];
+            const padded = clean.padStart(11, '0');
+            const unpadded = clean.replace(/^0+/, '');
+            return [clean, padded, unpadded];
+          })));
+
+          const enrichChunks = chunkArray(enrichExpanded, 150);
+          const phoneTables = ['base_consulta_prefeitura_sp', 'base_consulta_siape', 'clientes'];
+          for (const eChunk of enrichChunks) {
+            await Promise.all(
+              phoneTables.map(async (pTable) => {
+                try {
+                  const { data: pData } = await supabase.from(pTable).select('cpf, telefone_1, telefone_2, telefone_3, data_nascimento').in('cpf', eChunk);
+                  if (pData && pData.length > 0) {
+                    pData.forEach((pRow: any) => {
+                      const pNorm = String(pRow.cpf || "").replace(/\D/g, "").padStart(11, '0');
+                      const matchRow = tempBcrData.find(r => String(r.cpf || "").replace(/\D/g, "").padStart(11, '0') === pNorm);
+                      if (matchRow) {
+                        if (!matchRow.telefone_1 && pRow.telefone_1) matchRow.telefone_1 = pRow.telefone_1;
+                        if (!matchRow.telefone_2 && pRow.telefone_2) matchRow.telefone_2 = pRow.telefone_2;
+                        if (!matchRow.telefone_3 && pRow.telefone_3) matchRow.telefone_3 = pRow.telefone_3;
+                        if (!matchRow.data_nascimento && pRow.data_nascimento) matchRow.data_nascimento = pRow.data_nascimento;
+                      }
+                    });
+                  }
+                } catch {}
               })
             );
           }
@@ -1179,7 +1240,8 @@ export default function CampaignsPage() {
               row.beneficio_liquida_5 || 0
             ];
           } else if (isMultiConvenio) {
-            const conv = memberConvenioMap.get(row.cpf) || "siape";
+            const rowNormCpf = String(row.cpf || "").replace(/\D/g, "").padStart(11, '0');
+            const conv = memberConvenioMap.get(rowNormCpf) || memberConvenioMap.get(row.cpf) || detectedConvenios.get(rowNormCpf) || targetTableObj.convenio || "siape";
             if (conv === "siape") {
               csvFields = [
                 row.cpf, row.nome, row.data_nascimento || "",

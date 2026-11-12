@@ -140,8 +140,8 @@ async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: s
 
   const TABLES = [
     'base_consulta_siape',
-    'base_consulta_governo_sp',
     'base_consulta_prefeitura_sp',
+    'base_consulta_governo_sp',
     'base_consulta_governo_pi',
     'base_consulta_governo_ma',
     'base_consulta_governo_rr',
@@ -172,6 +172,13 @@ async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: s
       if (!foundCpfs.has(normCpf)) {
         foundCpfs.add(normCpf);
         results.push(item);
+      } else {
+        const existing = results.find(r => r.cpf.replace(/\D/g, "").padStart(11, '0') === normCpf);
+        if (existing) {
+          if (!existing.telefone_1 && item.telefone_1) existing.telefone_1 = item.telefone_1;
+          if (!existing.telefone_2 && item.telefone_2) existing.telefone_2 = item.telefone_2;
+          if (!existing.telefone_3 && item.telefone_3) existing.telefone_3 = item.telefone_3;
+        }
       }
     }
   }

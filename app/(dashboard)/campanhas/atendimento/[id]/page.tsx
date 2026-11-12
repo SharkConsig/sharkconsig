@@ -866,40 +866,44 @@ export default function CampanhaAtendimentoPage() {
         }
 
         // Enriquecimento automático de Telefones e Data de Nascimento:
-        // Se faltar telefone principal ou data de nascimento, consulta governo_sp_clientes e base geral
+        // Se faltar telefone principal ou data de nascimento, consulta base_consulta_prefeitura_sp, clientes e base_consulta_siape
         const cleanCpfDigits = (client.cpf || "").replace(/\D/g, "")
         const paddedCpfStr = cleanCpfDigits.padStart(11, '0')
         if ((!client.telefone_1 || !client.data_nascimento) && cleanCpfDigits) {
           try {
-            const { data: govClient } = await supabase
-              .from('governo_sp_clientes')
-              .select('*')
+            // 1. Tentar na base_consulta_prefeitura_sp (servidores municipais com alta completude de telefone)
+            const { data: prefClient } = await supabase
+              .from('base_consulta_prefeitura_sp')
+              .select('nome, data_nascimento, telefone_1, telefone_2, telefone_3')
               .or(`cpf.eq.${paddedCpfStr},cpf.eq.${cleanCpfDigits}`)
+              .limit(1)
               .maybeSingle()
 
-            if (govClient) {
-              if (!client.data_nascimento) {
-                client.data_nascimento = govClient.data_nascimento || govClient.data_de_nascimento || govClient.dt_nascimento || govClient.nascimento || null
+            if (prefClient) {
+              if (!client.data_nascimento && prefClient.data_nascimento) {
+                client.data_nascimento = prefClient.data_nascimento
               }
-              if (!client.telefone_1) {
-                client.telefone_1 = govClient.telefone_1 || govClient.telefone || govClient.celular || null
+              if (!client.telefone_1 && prefClient.telefone_1) {
+                client.telefone_1 = prefClient.telefone_1
               }
-              if (!client.telefone_2) {
-                client.telefone_2 = govClient.telefone_2 || govClient.telefone_recado || govClient.celular_2 || null
+              if (!client.telefone_2 && prefClient.telefone_2) {
+                client.telefone_2 = prefClient.telefone_2
               }
-              if (!client.telefone_3) {
-                client.telefone_3 = govClient.telefone_3 || govClient.celular_3 || null
+              if (!client.telefone_3 && prefClient.telefone_3) {
+                client.telefone_3 = prefClient.telefone_3
               }
-              if (!client.nome || client.nome === 'NÃO INFORMADO') {
-                client.nome = govClient.nome || client.nome
+              if ((!client.nome || client.nome === 'NÃO INFORMADO') && prefClient.nome) {
+                client.nome = prefClient.nome
               }
             }
 
+            // 2. Se ainda faltar telefone, tentar em clientes (base de produção)
             if (!client.telefone_1 || !client.data_nascimento) {
               const { data: genClient } = await supabase
                 .from('clientes')
                 .select('*')
                 .or(`cpf.eq.${paddedCpfStr},cpf.eq.${cleanCpfDigits}`)
+                .limit(1)
                 .maybeSingle()
 
               if (genClient) {
@@ -914,6 +918,31 @@ export default function CampanhaAtendimentoPage() {
                 }
                 if (!client.telefone_3) {
                   client.telefone_3 = genClient.telefone_3 || genClient.celular_3 || null
+                }
+              }
+            }
+
+            // 3. Se ainda faltar telefone, tentar em base_consulta_siape
+            if (!client.telefone_1 || !client.data_nascimento) {
+              const { data: siapeClient } = await supabase
+                .from('base_consulta_siape')
+                .select('nome, data_nascimento, telefone_1, telefone_2, telefone_3')
+                .or(`cpf.eq.${paddedCpfStr},cpf.eq.${cleanCpfDigits}`)
+                .limit(1)
+                .maybeSingle()
+
+              if (siapeClient) {
+                if (!client.data_nascimento && siapeClient.data_nascimento) {
+                  client.data_nascimento = siapeClient.data_nascimento
+                }
+                if (!client.telefone_1 && siapeClient.telefone_1) {
+                  client.telefone_1 = siapeClient.telefone_1
+                }
+                if (!client.telefone_2 && siapeClient.telefone_2) {
+                  client.telefone_2 = siapeClient.telefone_2
+                }
+                if (!client.telefone_3 && siapeClient.telefone_3) {
+                  client.telefone_3 = siapeClient.telefone_3
                 }
               }
             }
