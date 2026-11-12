@@ -1578,6 +1578,7 @@ export default function DashboardPage() {
           const func = (u.funcao || "").trim().toLowerCase();
           const role = (u.role || "").trim().toLowerCase();
           if (func === 'desenvolvedor' || func === 'developer') return false;
+          if (regime === 'clt' || regime.includes('clt')) return false;
           return regime === 'pj' || func === 'pj' || role === 'pj' || func.includes('corretor pj') || role.includes('corretor pj');
         }
 
@@ -1586,7 +1587,8 @@ export default function DashboardPage() {
           const func = (u.funcao || "").trim().toLowerCase();
           const regime = (u.regime_contratacao || "").trim().toLowerCase();
           if (func === 'desenvolvedor' || func === 'developer') return false;
-          return func === 'estágio' || func === 'estagio' || func === 'processo seletivo' || func === 'processo seletivo' || regime === 'estágio' || regime === 'estagio';
+          if (regime === 'clt' || regime.includes('clt')) return false;
+          return func === 'estágio' || func === 'estagio' || func === 'processo seletivo' || regime === 'estágio' || regime === 'estagio';
         }
 
         // Form rankings for supervisor, group interns and PJs together, CLT and Supervisors individually

@@ -186,6 +186,7 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
           .filter((u) => {
             const func = (u.funcao || u.role || "").trim().toLowerCase()
             const regime = (u.regime_contratacao || "").trim().toLowerCase()
+            if (regime === "clt" || regime.includes("clt")) return false
             return func === "estágio" || func === "estagio" || func === "processo seletivo" || regime === "estágio" || regime === "estagio"
           })
           .map((u) => u.id)
