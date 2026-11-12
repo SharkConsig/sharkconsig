@@ -1295,6 +1295,121 @@ function isUserObservation(text?: string | null): boolean {
   return true
 }
 
+function getLatestObservation(ticket: TicketItem, meta: TicketMetadata): { texto: string; data?: string; formattedDate?: string; periodoText?: string } | null {
+  const cleanObservacaoFicha = (ticket.descricao || "")
+    .replace(/<!-- TICKET_METADATA: ([\s\S]*?) -->/g, "")
+    .trim()
+
+  const itensBrutos: Array<{ texto: string; data?: string }> = []
+
+  // 1. Do histórico de observações salvas na própria ficha (coluna metadata de kanban_fichas)
+  if (Array.isArray(meta.observacoes_historico)) {
+    meta.observacoes_historico.forEach((item: any) => {
+      if (item && isUserObservation(item.texto)) {
+        const partes = String(item.texto).trim().split(/\n\s*\n/)
+        partes.forEach(p => {
+          const trimmed = p.trim()
+          if (trimmed && isUserObservation(trimmed)) {
+            itensBrutos.push({
+              texto: trimmed,
+              data: item.data
+            })
+          }
+        })
+      }
+    })
+  }
+
+  // 2. Da coluna observações direta da tabela kanban_fichas
+  if (isUserObservation(cleanObservacaoFicha)) {
+    const blocos = cleanObservacaoFicha.split(/\n\s*\n/)
+    blocos.forEach(b => {
+      const trimmed = b.trim()
+      if (isUserObservation(trimmed)) {
+        itensBrutos.push({
+          texto: trimmed,
+          data: meta.observacao_data || ticket.updated_at || ticket.created_at
+        })
+      }
+    })
+  }
+
+  // 3. Do agendamento salvo na ficha
+  if (meta.agendamento_obs && isUserObservation(meta.agendamento_obs)) {
+    const dataAg = meta.agendamento_data || meta.vencimento_acao
+    let textoAg = meta.agendamento_obs.trim()
+    if (dataAg) {
+      try {
+        const dFormat = format(new Date(dataAg), "dd/MM 'às' HH:mm")
+        textoAg = `📅 Retorno agendado para ${dFormat} - ${meta.agendamento_obs.trim()}`
+      } catch {}
+    }
+    itensBrutos.push({
+      texto: textoAg,
+      data: dataAg || meta.observacao_data || ticket.updated_at
+    })
+  }
+
+  // 4. Do histórico de movimentações (motivo registrado ao mover de etapa)
+  const movs = Array.isArray(ticket.historico_movimentacoes)
+    ? ticket.historico_movimentacoes
+    : (Array.isArray(meta.historico_kanban) ? meta.historico_kanban : [])
+  movs.forEach((m: any) => {
+    if (m?.motivo && isUserObservation(m.motivo)) {
+      const trimmed = String(m.motivo).trim()
+      if (trimmed) {
+        itensBrutos.push({
+          texto: trimmed,
+          data: m.data
+        })
+      }
+    }
+  })
+
+  // Deduplicação estrita por texto normalizado
+  const seen = new Set<string>()
+  const lista: Array<{ texto: string; data?: string }> = []
+
+  itensBrutos.forEach(item => {
+    const key = item.texto.trim().toLowerCase().replace(/\s+/g, " ")
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    lista.push(item)
+  })
+
+  if (lista.length === 0) return null
+
+  // Ordenar para follow-up cronológico (mais recentes primeiro)
+  lista.sort((a, b) => {
+    const tA = a.data ? new Date(a.data).getTime() : 0
+    const tB = b.data ? new Date(b.data).getTime() : 0
+    return tB - tA
+  })
+
+  const latest = lista[0]
+  let formattedDate = ""
+  let periodoText = ""
+  if (latest.data) {
+    try {
+      const dataObj = new Date(latest.data)
+      formattedDate = format(dataObj, "dd/MM/yyyy HH:mm")
+      periodoText = formatDistanceToNow(dataObj, { addSuffix: false, locale: ptBR })
+        .replace(/^cerca de\s*/i, "")
+        .replace(/^aproximadamente\s*/i, "")
+    } catch {
+      formattedDate = ""
+      periodoText = ""
+    }
+  }
+
+  return {
+    texto: formatObservacaoTexto(latest.texto),
+    data: latest.data,
+    formattedDate,
+    periodoText
+  }
+}
+
 // Verifica se a proposta bancária pertence especificamente ao mesmo usuário/operador do cartão do atendimento
 function matchesProposalUser(p: any, t: TicketItem): boolean {
   if (!p || !t) return false
@@ -5932,8 +6047,15 @@ export default function KanbanPage() {
         }
       }
 
+      // Tolerância de 15 minutos na coluna 'Agora' antes de mover para 'Vencidas'
+      const TOLERANCIA_AGORA_MS = 15 * 60 * 1000
+
       const isFuturo = vencimentoDate !== null && vencimentoDate.getTime() > now.getTime()
-      const isAtrasado = !isFuturo && (Boolean(meta.alerta_atrasado) || (vencimentoDate !== null && vencimentoDate.getTime() < now.getTime()))
+      const isVencidoAposTolerancia = vencimentoDate !== null && (now.getTime() - vencimentoDate.getTime()) >= TOLERANCIA_AGORA_MS
+      const isAtrasadoSemData = vencimentoDate === null && Boolean(meta.alerta_atrasado) && (
+        ticket.updated_at ? (now.getTime() - new Date(ticket.updated_at).getTime()) >= TOLERANCIA_AGORA_MS : true
+      )
+      const isAtrasado = !isFuturo && (isVencidoAposTolerancia || isAtrasadoSemData)
 
       if (isAcaoEspecial) {
         acaoEspecial.push(ticket)
@@ -6025,7 +6147,10 @@ export default function KanbanPage() {
       : "Hoje às 14:30"
     const vencDateParsed = rawVencimento ? new Date(rawVencimento) : null
     const isFuturoCard = vencDateParsed !== null && !isNaN(vencDateParsed.getTime()) && vencDateParsed.getTime() > Date.now()
-    const isCardAtrasado = !isFuturoCard && Boolean(meta.alerta_atrasado)
+    const isCardAtrasado = !isFuturoCard && (
+      (vencDateParsed !== null && (Date.now() - vencDateParsed.getTime()) >= 15 * 60 * 1000) ||
+      (vencDateParsed === null && Boolean(meta.alerta_atrasado))
+    )
 
     const acaoDestinatario = meta.acao_especial_destinatario || (() => {
       const obsLista = Array.isArray(meta.observacoes_historico) ? meta.observacoes_historico : []
@@ -6156,7 +6281,7 @@ export default function KanbanPage() {
         {/* 1. Cabeçalho Visual: Tags de Alerta e Cronômetro/Prazo */}
         <div className="flex items-start justify-between gap-1.5 text-[11px]">
           <div className="flex flex-wrap gap-1">
-            {isCardAtrasado && (
+            {isCardAtrasado && !atrasoCustomTexto && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-bold bg-rose-100 text-rose-800 border border-rose-200 animate-pulse text-[12px]">
                 🔴 ATRASADO
               </span>
@@ -6417,6 +6542,33 @@ export default function KanbanPage() {
               </div>
             )
           })()}
+
+          {/* ÚLTIMA OBSERVAÇÃO (logo abaixo do Convênio e acima da Origem do Cliente) */}
+          {(() => {
+            const ultimaObs = getLatestObservation(ticket, meta)
+            if (!ultimaObs) return null
+
+            return (
+              <div className="bg-sky-100/85 rounded-md p-2 border border-sky-200/90 text-[11px] leading-snug space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-800 uppercase tracking-wider block mb-0.5">
+                  Última observação:
+                </span>
+                <p 
+                  className="line-clamp-2 text-[11.5px] italic text-slate-800" 
+                  title={`${ultimaObs.formattedDate ? `${ultimaObs.formattedDate}${ultimaObs.periodoText ? ` (${ultimaObs.periodoText})` : ""} - ` : ""}${ultimaObs.texto}`}
+                >
+                  {ultimaObs.formattedDate && (
+                    <span className="italic text-slate-800 mr-1 font-normal">
+                      {ultimaObs.formattedDate} {ultimaObs.periodoText ? `(${ultimaObs.periodoText})` : ""} -
+                    </span>
+                  )}
+                  <span className="italic text-slate-800 font-medium">
+                    {ultimaObs.texto}
+                  </span>
+                </p>
+              </div>
+            )
+          })()}
         </div>
 
         {/* 3. Informações Comerciais e de Titularidade */}
@@ -6470,7 +6622,7 @@ export default function KanbanPage() {
                 </div>
               )}
               <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-                <span className="text-slate-500">Número Utilizado:</span>
+                <span className="text-slate-500">Número da Acerto:</span>
                 <span className="font-semibold text-slate-700 truncate max-w-[130px]" title={empresaPhoneFormatted}>
                   {empresaPhoneFormatted}
                 </span>
@@ -7028,7 +7180,7 @@ export default function KanbanPage() {
           <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-500">
             <Clock className="w-3 h-3 text-slate-400 shrink-0" />
             <span>{vencimentoLabel ? `Vencimento: ${vencimentoLabel}` : "Sem agendamento definido"}</span>
-            {meta.alerta_atrasado && (
+            {isCardAtrasado && (
               <span className="px-1.5 py-0.2 rounded-full font-bold bg-rose-100 text-rose-700 border border-rose-300">
                 Atrasado
               </span>
@@ -8126,8 +8278,8 @@ export default function KanbanPage() {
           kanbanAllColumnsTotalValor = Math.round(kanbanAllColumnsTotalValor * 100) / 100
 
           return (
-            <div className="flex-1 overflow-x-auto pb-1 min-h-0 h-full">
-              <div className="flex items-stretch gap-3.5 sm:gap-4 w-full min-w-max h-full">
+            <div className="flex-1 overflow-x-auto pb-1 min-h-0 h-full custom-scrollbar">
+              <div className="flex items-stretch gap-3.5 sm:gap-4 min-w-full w-max h-full">
                 {KANBAN_COLUMNS
                   .filter(col => isStageSelected(col.id))
                   .map(col => {
@@ -8180,7 +8332,7 @@ export default function KanbanPage() {
                           setDraggedTicket(null)
                         }}
                         className={cn(
-                          "flex-1 min-w-[260px] rounded-xl flex flex-col h-full min-h-0 shadow-xs transition-colors border",
+                          "w-[290px] sm:w-[310px] shrink-0 rounded-xl flex flex-col h-full min-h-0 shadow-xs transition-colors border",
                           col.bgColumn,
                           col.borderColumn,
                           dragOverColumnId === col.id && "ring-2 ring-indigo-500 brightness-95"

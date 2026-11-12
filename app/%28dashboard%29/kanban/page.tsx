@@ -5192,7 +5192,7 @@ export default function KanbanPage() {
                 </div>
               )}
               <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-                <span className="text-slate-500">Número Utilizado:</span>
+                <span className="text-slate-500">Número da Acerto:</span>
                 <span className="font-semibold text-slate-700 truncate max-w-[130px]" title={empresaPhoneFormatted}>
                   {empresaPhoneFormatted}
                 </span>
