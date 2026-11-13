@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo, useCallback } from "react"
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Header } from "@/components/layout/header"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -88,6 +88,21 @@ export default function HistoricoPagamentosPJPage() {
   const [recordToDelete, setRecordToDelete] = useState<HistoricoPJRecord | null>(null)
   const [isDeleting, setIsDeleting] = useState<boolean>(false)
 
+  // Local draft values for numeric inputs & refs to prevent race-condition reloads while typing
+  const [draftValues, setDraftValues] = useState<Record<string, string>>({})
+  const recordsRef = useRef<HistoricoPJRecord[]>([])
+  const isSelfDispatchRef = useRef<boolean>(false)
+  const saveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  useEffect(() => {
+    recordsRef.current = records
+  }, [records])
+
+  const getRowKey = useCallback((r: Pick<HistoricoPJRecord, "id" | "id_lead">) => {
+    const idStr = String(r.id || "").trim()
+    return idStr ? `id:${idStr}` : `lead:${r.id_lead}`
+  }, [])
+
   // Format monetary value
   const formatCurrency = (val: number | undefined | null) => {
     const num = Number(val || 0)
@@ -97,10 +112,25 @@ export default function HistoricoPagamentosPJPage() {
     }).format(num)
   }
 
-  // Helper safe float
+  // Helper safe float (supports BR format e.g. "1.363,11" and dot decimal e.g. "1363.11")
   const safeFloat = (val: any) => {
     if (val === undefined || val === null || val === "") return 0
-    const parsed = typeof val === "string" ? parseFloat(val.replace(",", ".")) : Number(val)
+    if (typeof val === "number") return isNaN(val) ? 0 : val
+    const clean = String(val).replace(/[R$\s]/g, "").trim()
+    if (!clean) return 0
+    const lastComma = clean.lastIndexOf(",")
+    const lastDot = clean.lastIndexOf(".")
+    let normalized = clean
+    if (lastComma !== -1 && lastDot !== -1) {
+      normalized = lastComma > lastDot
+        ? clean.replace(/\./g, "").replace(",", ".")
+        : clean.replace(/,/g, "")
+    } else if (lastComma !== -1) {
+      normalized = clean.replace(",", ".")
+    } else if (lastDot !== -1 && (clean.match(/\./g) || []).length > 1) {
+      normalized = clean.replace(/\./g, "")
+    }
+    const parsed = parseFloat(normalized)
     return isNaN(parsed) ? 0 : parsed
   }
 
@@ -115,6 +145,7 @@ export default function HistoricoPagamentosPJPage() {
         .from("historico_pagamentos_pj")
         .select("*")
         .order("data_pagamento", { ascending: false })
+        .order("id", { ascending: false })
 
       let dbRecords: HistoricoPJRecord[] = []
       let dbMirroredMap: Record<string, boolean> = {}
@@ -152,8 +183,12 @@ export default function HistoricoPagamentosPJPage() {
         } catch (e) {}
       }
 
-      // Sort by Date descending
-      dbRecords.sort((a, b) => (b.data_pagamento || "").localeCompare(a.data_pagamento || ""))
+      // Sort by Date descending with deterministic ID tie-breaker
+      dbRecords.sort((a, b) => {
+        const dateCmp = (b.data_pagamento || "").localeCompare(a.data_pagamento || "")
+        if (dateCmp !== 0) return dateCmp
+        return String(b.id || "").localeCompare(String(a.id || ""), undefined, { numeric: true })
+      })
 
       setRecords(dbRecords)
     } catch (err) {
@@ -168,6 +203,7 @@ export default function HistoricoPagamentosPJPage() {
     loadData(true)
 
     const handleUpdate = () => {
+      if (isSelfDispatchRef.current) return
       loadData(false)
     }
     const handleMirrored = () => {
@@ -179,6 +215,8 @@ export default function HistoricoPagamentosPJPage() {
       window.addEventListener("storage", handleUpdate)
     }
     return () => {
+      Object.values(saveTimersRef.current).forEach(t => clearTimeout(t))
+      saveTimersRef.current = {}
       if (typeof window !== "undefined") {
         window.removeEventListener("historico_pj_updated", handleUpdate)
         window.removeEventListener("historico_pj_espelhado", handleMirrored)
@@ -198,41 +236,36 @@ export default function HistoricoPagamentosPJPage() {
     return Array.from(set).sort()
   }, [records])
 
-  // Save changes to localStorage & Supabase
-  const saveRecordsToStorage = async (updated: HistoricoPJRecord[], singleItemToSync?: HistoricoPJRecord) => {
-    setRecords(updated)
-    if (typeof window !== "undefined") {
-      localStorage.setItem("historico_pagamentos_pj_records", JSON.stringify(updated))
+  const dispatchPjUpdatedSafely = () => {
+    if (typeof window === "undefined") return
+    isSelfDispatchRef.current = true
+    try {
       window.dispatchEvent(new Event("historico_pj_updated"))
+    } finally {
+      isSelfDispatchRef.current = false
     }
+  }
 
-    if (singleItemToSync) {
-      try {
+  // Persist a single edited record to Supabase by unique primary ID (fallback to id_lead)
+  const syncSingleRecordToSupabase = async (singleItemToSync: HistoricoPJRecord) => {
+    try {
+      const numericId = parseInt(String(singleItemToSync.id || "").replace(/\D/g, ""), 10)
+      let targetDbId: number | string | null = !isNaN(numericId) && numericId > 0 ? numericId : null
+
+      if (!targetDbId && singleItemToSync.id_lead) {
         const { data: existing } = await supabase
           .from("historico_pagamentos_pj")
           .select("id")
           .eq("id_lead", singleItemToSync.id_lead)
+          .limit(1)
           .maybeSingle()
+        if (existing?.id) targetDbId = existing.id
+      }
 
-        if (existing?.id) {
-          await supabase
-            .from("historico_pagamentos_pj")
-            .update({
-              data_pagamento: singleItemToSync.data_pagamento,
-              nome: singleItemToSync.nome,
-              valor_operacao: singleItemToSync.valor_operacao,
-              aliquota_comissao: singleItemToSync.aliquota_comissao,
-              comissao_bruta: singleItemToSync.comissao_bruta,
-              proventos: singleItemToSync.proventos,
-              descontos: singleItemToSync.descontos,
-              comissao_liquida: singleItemToSync.comissao_liquida,
-              updated_at: new Date().toISOString()
-            })
-            .eq("id", existing.id)
-        } else {
-          const numericId = parseInt(String(singleItemToSync.id).replace(/\D/g, ""), 10)
-          const payload: any = {
-            id_lead: singleItemToSync.id_lead,
+      if (targetDbId !== null) {
+        await supabase
+          .from("historico_pagamentos_pj")
+          .update({
             data_pagamento: singleItemToSync.data_pagamento,
             nome: singleItemToSync.nome,
             valor_operacao: singleItemToSync.valor_operacao,
@@ -242,32 +275,61 @@ export default function HistoricoPagamentosPJPage() {
             descontos: singleItemToSync.descontos,
             comissao_liquida: singleItemToSync.comissao_liquida,
             updated_at: new Date().toISOString()
-          }
-          if (!isNaN(numericId) && numericId > 0) {
-            payload.id = numericId
-          }
-          const { error: insErr } = await supabase.from("historico_pagamentos_pj").insert(payload)
-          if (insErr) {
-            delete payload.id
-            await supabase.from("historico_pagamentos_pj").insert(payload)
-          }
+          })
+          .eq("id", targetDbId)
+      } else {
+        const payload: any = {
+          id_lead: singleItemToSync.id_lead,
+          data_pagamento: singleItemToSync.data_pagamento,
+          nome: singleItemToSync.nome,
+          valor_operacao: singleItemToSync.valor_operacao,
+          aliquota_comissao: singleItemToSync.aliquota_comissao,
+          comissao_bruta: singleItemToSync.comissao_bruta,
+          proventos: singleItemToSync.proventos,
+          descontos: singleItemToSync.descontos,
+          comissao_liquida: singleItemToSync.comissao_liquida,
+          updated_at: new Date().toISOString()
         }
-      } catch (dbErr) {
-        console.error("Erro ao atualizar historico_pagamentos_pj no banco:", dbErr)
+        const { error: insErr } = await supabase.from("historico_pagamentos_pj").insert(payload)
+        if (insErr) {
+          console.error("Erro ao inserir historico_pagamentos_pj:", insErr)
+        }
       }
+
+      dispatchPjUpdatedSafely()
+    } catch (dbErr) {
+      console.error("Erro ao atualizar historico_pagamentos_pj no banco:", dbErr)
     }
   }
 
-  // Handle cell edit
+  // Save changes to localStorage & Supabase
+  const saveRecordsToStorage = async (updated: HistoricoPJRecord[], singleItemToSync?: HistoricoPJRecord) => {
+    recordsRef.current = updated
+    setRecords(updated)
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("historico_pagamentos_pj_records", JSON.stringify(updated))
+      } catch (e) {}
+    }
+
+    if (singleItemToSync) {
+      await syncSingleRecordToSupabase(singleItemToSync)
+    } else {
+      dispatchPjUpdatedSafely()
+    }
+  }
+
+  // Handle cell edit by unique rowKey
   const handleCellChange = (
-    idLead: string, 
-    field: keyof HistoricoPJRecord, 
-    value: string | number
+    rowKey: string,
+    field: keyof HistoricoPJRecord,
+    value: string | number,
+    debounceSave = false
   ) => {
     let editedItem: HistoricoPJRecord | undefined
 
-    const updated = records.map(r => {
-      if (r.id_lead === idLead) {
+    const updated = recordsRef.current.map(r => {
+      if (getRowKey(r) === rowKey) {
         const item = { ...r }
 
         if (field === "data_pagamento") {
@@ -275,12 +337,12 @@ export default function HistoricoPagamentosPJPage() {
         } else if (field === "aliquota_comissao") {
           const numPct = safeFloat(value)
           item.aliquota_comissao = numPct
-          item.comissao_bruta = (item.valor_operacao * numPct) / 100
-          item.comissao_liquida = item.comissao_bruta + item.proventos - item.descontos
+          item.comissao_bruta = Math.round(((item.valor_operacao * numPct) / 100) * 100) / 100
+          item.comissao_liquida = Math.round((item.comissao_bruta + item.proventos - item.descontos) * 100) / 100
         } else if (field === "comissao_bruta") {
-          const numBruta = safeFloat(value)
+          const numBruta = Math.round(safeFloat(value) * 100) / 100
           item.comissao_bruta = numBruta
-          item.comissao_liquida = numBruta + item.proventos - item.descontos
+          item.comissao_liquida = Math.round((numBruta + item.proventos - item.descontos) * 100) / 100
         } else if (field === "proventos") {
           const numProv = safeFloat(value)
           item.proventos = numProv
@@ -297,7 +359,63 @@ export default function HistoricoPagamentosPJPage() {
       return r
     })
 
-    saveRecordsToStorage(updated, editedItem)
+    recordsRef.current = updated
+    setRecords(updated)
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("historico_pagamentos_pj_records", JSON.stringify(updated))
+      } catch (e) {}
+    }
+
+    if (!editedItem) return
+
+    if (saveTimersRef.current[rowKey]) {
+      clearTimeout(saveTimersRef.current[rowKey])
+      delete saveTimersRef.current[rowKey]
+    }
+
+    if (debounceSave) {
+      const itemSnapshot = editedItem
+      saveTimersRef.current[rowKey] = setTimeout(() => {
+        delete saveTimersRef.current[rowKey]
+        syncSingleRecordToSupabase(itemSnapshot)
+      }, 450)
+    } else {
+      syncSingleRecordToSupabase(editedItem)
+    }
+  }
+
+  const handleNumericInputChange = (
+    rowKey: string,
+    field: "aliquota_comissao" | "comissao_bruta" | "proventos" | "descontos",
+    rawValue: string
+  ) => {
+    // Allow digits, optional leading minus (not for aliquota), and one decimal separator (. or ,)
+    const sanitized = rawValue.replace(/[^\d.,-]/g, "")
+    setDraftValues(prev => ({ ...prev, [`${rowKey}:${field}`]: sanitized }))
+    handleCellChange(rowKey, field, sanitized, true)
+  }
+
+  const handleNumericInputBlur = (
+    rowKey: string,
+    field: "aliquota_comissao" | "comissao_bruta" | "proventos" | "descontos"
+  ) => {
+    setDraftValues(prev => {
+      const draftKey = `${rowKey}:${field}`
+      if (!(draftKey in prev)) return prev
+      const next = { ...prev }
+      delete next[draftKey]
+      return next
+    })
+
+    if (saveTimersRef.current[rowKey]) {
+      clearTimeout(saveTimersRef.current[rowKey])
+      delete saveTimersRef.current[rowKey]
+      const latestItem = recordsRef.current.find(r => getRowKey(r) === rowKey)
+      if (latestItem) {
+        syncSingleRecordToSupabase(latestItem)
+      }
+    }
   }
 
   // Confirm and delete a record from history & revert proposal status to 'PAGAR PJ'
@@ -1141,11 +1259,12 @@ export default function HistoricoPagamentosPJPage() {
                     </td>
                   </tr>
                 ) : (
-                  paginatedRecords.map((item, idx) => {
+                  paginatedRecords.map((item) => {
+                    const rowKey = getRowKey(item)
                     const isSelected = selectedIds.has(item.id_lead)
                     return (
                       <tr 
-                        key={item.id_lead || idx}
+                        key={rowKey}
                         className={cn(
                           "transition-all hover:bg-slate-50/80 border-b border-slate-100/60",
                           isSelected ? "bg-amber-50/60" : "bg-white"
@@ -1188,7 +1307,7 @@ export default function HistoricoPagamentosPJPage() {
                             type="date"
                             value={item.data_pagamento || ""}
                             disabled={isCorretorUser}
-                            onChange={(e) => handleCellChange(item.id_lead, "data_pagamento", e.target.value)}
+                            onChange={(e) => handleCellChange(rowKey, "data_pagamento", e.target.value)}
                             className={cn(
                               "h-8 px-2 rounded-lg bg-transparent font-bold text-slate-700 text-xs focus:ring-1 focus:ring-[#1C2643] focus:bg-white focus:outline-none transition-colors",
                               isCorretorUser && "pointer-events-none"
@@ -1222,11 +1341,12 @@ export default function HistoricoPagamentosPJPage() {
                         <td className="py-2.5 px-4 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1">
                             <input
-                              type="number"
-                              step="0.01"
-                              value={item.aliquota_comissao ?? ""}
+                              type="text"
+                              inputMode="decimal"
+                              value={draftValues[`${rowKey}:aliquota_comissao`] ?? String(item.aliquota_comissao ?? "")}
                               disabled={isCorretorUser}
-                              onChange={(e) => handleCellChange(item.id_lead, "aliquota_comissao", e.target.value)}
+                              onChange={(e) => handleNumericInputChange(rowKey, "aliquota_comissao", e.target.value)}
+                              onBlur={() => handleNumericInputBlur(rowKey, "aliquota_comissao")}
                               className={cn(
                                 "h-8 w-16 px-1.5 text-right rounded-lg bg-transparent font-bold text-slate-700 text-xs focus:ring-1 focus:ring-[#1C2643] focus:bg-white focus:outline-none transition-colors",
                                 isCorretorUser && "pointer-events-none"
@@ -1239,11 +1359,19 @@ export default function HistoricoPagamentosPJPage() {
                         {/* COMISSÃO BRUTA (Editable) */}
                         <td className="py-2.5 px-4 text-right whitespace-nowrap">
                           <input
-                            type="number"
-                            step="0.01"
-                            value={item.comissao_bruta ?? ""}
+                            type="text"
+                            inputMode="decimal"
+                            value={draftValues[`${rowKey}:comissao_bruta`] ?? formatCurrency(item.comissao_bruta)}
                             disabled={isCorretorUser}
-                            onChange={(e) => handleCellChange(item.id_lead, "comissao_bruta", e.target.value)}
+                            onFocus={() => {
+                              const draftKey = `${rowKey}:comissao_bruta`
+                              setDraftValues(prev => ({
+                                ...prev,
+                                [draftKey]: Number(item.comissao_bruta || 0).toFixed(2).replace(".", ",")
+                              }))
+                            }}
+                            onChange={(e) => handleNumericInputChange(rowKey, "comissao_bruta", e.target.value)}
+                            onBlur={() => handleNumericInputBlur(rowKey, "comissao_bruta")}
                             className={cn(
                               "h-8 w-28 px-2 text-right rounded-lg bg-transparent font-bold text-emerald-700 text-xs focus:ring-1 focus:ring-emerald-500 focus:bg-white focus:outline-none transition-colors",
                               isCorretorUser && "pointer-events-none"
@@ -1254,11 +1382,12 @@ export default function HistoricoPagamentosPJPage() {
                         {/* PROVENTOS (Editable) */}
                         <td className="py-2.5 px-4 text-right whitespace-nowrap">
                           <input
-                            type="number"
-                            step="0.01"
-                            value={item.proventos ?? ""}
+                            type="text"
+                            inputMode="decimal"
+                            value={draftValues[`${rowKey}:proventos`] ?? String(item.proventos ?? "")}
                             disabled={isCorretorUser}
-                            onChange={(e) => handleCellChange(item.id_lead, "proventos", e.target.value)}
+                            onChange={(e) => handleNumericInputChange(rowKey, "proventos", e.target.value)}
+                            onBlur={() => handleNumericInputBlur(rowKey, "proventos")}
                             className={cn(
                               "h-8 w-24 px-2 text-right rounded-lg bg-transparent font-bold text-emerald-700 text-xs focus:ring-1 focus:ring-emerald-400 focus:bg-white focus:outline-none transition-colors",
                               isCorretorUser && "pointer-events-none"
@@ -1269,11 +1398,12 @@ export default function HistoricoPagamentosPJPage() {
                         {/* DESCONTOS (Editable) */}
                         <td className="py-2.5 px-4 text-right whitespace-nowrap">
                           <input
-                            type="number"
-                            step="0.01"
-                            value={item.descontos ?? ""}
+                            type="text"
+                            inputMode="decimal"
+                            value={draftValues[`${rowKey}:descontos`] ?? String(item.descontos ?? "")}
                             disabled={isCorretorUser}
-                            onChange={(e) => handleCellChange(item.id_lead, "descontos", e.target.value)}
+                            onChange={(e) => handleNumericInputChange(rowKey, "descontos", e.target.value)}
+                            onBlur={() => handleNumericInputBlur(rowKey, "descontos")}
                             className={cn(
                               "h-8 w-24 px-2 text-right rounded-lg bg-transparent font-bold text-rose-700 text-xs focus:ring-1 focus:ring-rose-400 focus:bg-white focus:outline-none transition-colors",
                               isCorretorUser && "pointer-events-none"

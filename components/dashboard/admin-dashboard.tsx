@@ -618,7 +618,9 @@ export function AdminDashboard({
         .filter((p: any) => {
           if (p.status === "CANCELADO") {
             const { metadata } = parseProposalNotesAndMetadata(p.observacoes)
-            const isEstornado = metadata.paymentStatus === "ESTORNADO" || localPaymentStatuses[p.id_lead] === "ESTORNADO"
+            const isEstornado = metadata.paymentStatus !== undefined
+              ? metadata.paymentStatus === "ESTORNADO"
+              : localPaymentStatuses[p.id_lead] === "ESTORNADO"
             return isEstornado
           }
           return true
@@ -635,7 +637,7 @@ export function AdminDashboard({
           if (effectiveStatus === "RECEBIDO") {
             if (metadata.receivedDate) {
               effectiveDate = metadata.receivedDate
-            } else if (localReceivedDates[p.id_lead]) {
+            } else if (!effectiveDate && localReceivedDates[p.id_lead]) {
               effectiveDate = localReceivedDates[p.id_lead]
             }
           }
@@ -1971,9 +1973,6 @@ export function AdminDashboard({
     const idLead = proposal.id_lead
 
     if (isCorretorPJ) {
-      if (idLead && customPjCommissionPercents[idLead] !== undefined && customPjCommissionPercents[idLead] !== null) {
-        return customPjCommissionPercents[idLead]
-      }
       if (proposal.percentual_comissao_pj !== undefined && proposal.percentual_comissao_pj !== null && !isNaN(Number(proposal.percentual_comissao_pj))) {
         return Number(proposal.percentual_comissao_pj)
       }
@@ -1990,9 +1989,6 @@ export function AdminDashboard({
         }
       }
     } else {
-      if (idLead && customCommissionPercents[idLead] !== undefined && customCommissionPercents[idLead] !== null) {
-        return customCommissionPercents[idLead]
-      }
       if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && Number(proposal.comissao_banco_porcentagem) > 0) {
         return Number(proposal.comissao_banco_porcentagem)
       }
@@ -2000,10 +1996,16 @@ export function AdminDashboard({
 
     if (!proposal.coeficiente_prazo || dbProdutosConfigs.length === 0) {
       if (isCorretorPJ) {
+        if (idLead && customPjCommissionPercents[idLead] !== undefined && customPjCommissionPercents[idLead] !== null) {
+          return customPjCommissionPercents[idLead]
+        }
         return 0
       }
       if (proposal.comissao_banco_porcentagem !== undefined && proposal.comissao_banco_porcentagem !== null && Number(proposal.comissao_banco_porcentagem) > 0) {
         return Number(proposal.comissao_banco_porcentagem)
+      }
+      if (idLead && customCommissionPercents[idLead] !== undefined && customCommissionPercents[idLead] !== null) {
+        return customCommissionPercents[idLead]
       }
       return commissionRate
     }
@@ -2215,7 +2217,14 @@ export function AdminDashboard({
     }
 
     if (isCorretorPJ) {
+      if (idLead && customPjCommissionPercents[idLead] !== undefined && customPjCommissionPercents[idLead] !== null) {
+        return customPjCommissionPercents[idLead]
+      }
       return 0
+    }
+
+    if (idLead && customCommissionPercents[idLead] !== undefined && customCommissionPercents[idLead] !== null) {
+      return customCommissionPercents[idLead]
     }
 
     return commissionRate
@@ -2303,11 +2312,11 @@ export function AdminDashboard({
   const totalRevenue = React.useMemo(() => {
     return filteredFinancialProposals.reduce((sum, p) => {
       const valOp = getProposalProductionVal(p)
-      const comPercent = customCommissionPercents[p.id_lead] !== undefined ? customCommissionPercents[p.id_lead] : getCommissionPercentage(p)
+      const comPercent = getCommissionPercentage(p)
       const comPercentVal = comPercent !== undefined && comPercent !== null && !isNaN(Number(comPercent)) ? Number(comPercent) : 0
       return sum + (valOp * comPercentVal) / 100
     }, 0)
-  }, [filteredFinancialProposals, customCommissionPercents, getCommissionPercentage, getProposalProductionVal])
+  }, [filteredFinancialProposals, getCommissionPercentage, getProposalProductionVal])
 
   // Previous equivalent period dates based on financial filter dates
   const prevPeriodDates = React.useMemo(() => {
