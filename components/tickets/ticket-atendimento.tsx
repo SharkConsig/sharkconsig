@@ -100,6 +100,9 @@ interface TicketAtendimentoProps {
   onMarginsLiveChange?: (totals: { totalOperacao: number; totalProducao: number; selectedLabels: string[] }) => void
 }
 
+let cachedStatusesList: Status[] | null = null;
+let cachedStatusesPromise: Promise<Status[] | null> | null = null;
+
 // Helper to extract metadata from description
 const parseDescriptionMetadata = (desc: string) => {
   try {
@@ -672,14 +675,26 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved, onMar
     }
   }, [isLoading, restoreScroll])
 
-  // Save scroll position whenever it changes
+  const scrollSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
+    }
+  }, [])
+
+  // Save scroll position whenever it changes (debounced to prevent scroll/click jank)
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     if (typeof window !== "undefined") {
-      const target = e.currentTarget
-      // We only save if we're not currently restoring (to avoid saving 0 if it resets briefly)
-      if (target.scrollTop > 0 || !localStorage.getItem(`ticket_scroll_${ticket.id}`)) {
-        localStorage.setItem(`ticket_scroll_${ticket.id}`, target.scrollTop.toString())
-      }
+      const scrollTop = e.currentTarget.scrollTop
+      if (scrollSaveTimerRef.current) clearTimeout(scrollSaveTimerRef.current)
+      scrollSaveTimerRef.current = setTimeout(() => {
+        try {
+          if (scrollTop > 0 || !localStorage.getItem(`ticket_scroll_${ticket.id}`)) {
+            localStorage.setItem(`ticket_scroll_${ticket.id}`, scrollTop.toString())
+          }
+        } catch {}
+      }, 150)
     }
   }
 
@@ -805,24 +820,41 @@ export function TicketAtendimento({ ticket, onMessageSent, onMarginsSaved, onMar
 
   const fetchStatuses = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('status_chamados')
-        .select('*')
-        .order('nome', { ascending: true })
-      
-      if (!error && data) {
+      let data = cachedStatusesList
+      if (!data) {
+        if (!cachedStatusesPromise) {
+          cachedStatusesPromise = (async () => {
+            const { data: rows, error } = await supabase
+              .from('status_chamados')
+              .select('*')
+              .order('nome', { ascending: true })
+            if (error || !rows) {
+              cachedStatusesPromise = null
+              return null
+            }
+            cachedStatusesList = rows
+            return rows
+          })()
+        }
+        data = await cachedStatusesPromise
+      }
+
+      if (data) {
         setAvailableStatuses(data)
-        
+
         // Se não tivermos o status_id inicial, vamos tentar encontrar pelo nome
-        if (!selectedStatusId && ticket.status_nome) {
-          const matched = data.find(s => s.nome.toUpperCase() === ticket.status_nome?.toUpperCase())
-          if (matched) setSelectedStatusId(matched.id)
+        if (ticket.status_nome) {
+          const targetUpper = ticket.status_nome.toUpperCase()
+          const matched = data.find(s => s.nome.toUpperCase() === targetUpper)
+          if (matched) {
+            setSelectedStatusId(prev => prev || matched.id)
+          }
         }
       }
     } catch (err) {
       console.error("Erro ao buscar status:", err)
     }
-  }, [ticket.status_nome, selectedStatusId])
+  }, [ticket.status_nome])
 
   useEffect(() => {
     fetchStatuses()

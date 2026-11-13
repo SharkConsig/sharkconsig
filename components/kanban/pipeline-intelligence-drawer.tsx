@@ -89,38 +89,101 @@ export function PipelineIntelligenceDrawer({
   const [selectedOperator, setSelectedOperator] = useState<string>("all")
   const [activeTab, setActiveTab] = useState<ActiveTab>("speed")
   const [searchRiskQuery, setSearchRiskQuery] = useState("")
+  const [riskTierFilter, setRiskTierFilter] = useState<"all" | "high" | "mid" | "low">("all")
 
-  // Lista única de convênios presentes nos dados
-  const conveniosList = useMemo(() => {
-    const set = new Set<string>()
-    tickets.forEach(t => {
-      const c = (t.convenio || "").trim()
-      if (c) set.add(c)
+  // Apenas fichas que estão efetivamente no Kanban (excluindo gavetas ocultas de WhatsApp)
+  const kanbanTickets = useMemo(() => {
+    return tickets.filter(t => {
+      const s = String(t.status || "").trim().toUpperCase()
+      const motivo = String(t.motivo_perda || "").trim().toUpperCase()
+      if (
+        s === "NÃO EXISTE WHATSAPP" ||
+        s === "NAO_EXISTE_WHATSAPP" ||
+        s === "WHATSAPP DIVERGENTE" ||
+        motivo === "NÃO EXISTE WHATSAPP" ||
+        motivo === "WHATSAPP DIVERGENTE"
+      ) {
+        return false
+      }
+      return true
     })
-    return Array.from(set).sort()
   }, [tickets])
 
-  // Lista unificada de operadores (usersList + cltCollaborators)
-  const operatorsList = useMemo(() => {
-    const map = new Map<string, { id: string; nome: string; equipe?: string }>()
-    usersList.forEach(u => {
-      if (u.id) map.set(u.id, { id: u.id, nome: u.nome || "Sem Nome", equipe: u.equipe })
-    })
-    cltCollaborators.forEach(c => {
-      if (c.id && !map.has(c.id)) {
-        map.set(c.id, { id: c.id, nome: c.nome || "Sem Nome", equipe: c.equipe })
+  // Lista única de convênios que já possuem lead em atendimento no Kanban
+  const conveniosList = useMemo(() => {
+    const set = new Set<string>()
+    kanbanTickets.forEach(t => {
+      const c = String(t.convenio || "").trim()
+      if (c && c !== "-" && c.toLowerCase() !== "não informado" && c.toLowerCase() !== "nao informado") {
+        set.add(c)
       }
     })
-    return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome))
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"))
+  }, [kanbanTickets])
+
+  // Lista unificada de operadores (para resolução de nomes nas análises)
+  const operatorsList = useMemo(() => {
+    const map = new Map<string, { id: string; nome: string; equipe?: string; regime_contratacao?: string; funcao?: string; role?: string }>()
+    usersList.forEach(u => {
+      if (u.id) {
+        map.set(String(u.id), {
+          id: String(u.id),
+          nome: u.nome || "Sem Nome",
+          equipe: u.equipe,
+          regime_contratacao: u.regime_contratacao,
+          funcao: u.funcao,
+          role: u.role
+        })
+      }
+    })
+    cltCollaborators.forEach(c => {
+      if (c.id && !map.has(String(c.id))) {
+        map.set(String(c.id), {
+          id: String(c.id),
+          nome: c.nome || "Sem Nome",
+          equipe: c.equipe,
+          regime_contratacao: c.regime_contratacao,
+          funcao: c.funcao,
+          role: c.role
+        })
+      }
+    })
+    return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
   }, [usersList, cltCollaborators])
+
+  // Lista para o seletor de equipe: somente usuários CLT e Estágio com atendimento no Kanban
+  const teamOperatorsList = useMemo(() => {
+    const kanbanUserIds = new Set<string>()
+    kanbanTickets.forEach(t => {
+      const uid = String(t.user_id || "").trim().toLowerCase()
+      if (uid) kanbanUserIds.add(uid)
+    })
+
+    return operatorsList
+      .filter(u => {
+        const regime = String(u.regime_contratacao || "").trim().toUpperCase()
+        const roleStr = String(u.funcao || u.role || "").trim().toUpperCase()
+        const isCltOrEstagio =
+          regime === "CLT" ||
+          regime === "ESTÁGIO" ||
+          regime === "ESTAGIO" ||
+          (!regime && (roleStr === "ESTÁGIO" || roleStr === "ESTAGIO"))
+        if (!isCltOrEstagio) return false
+        return kanbanUserIds.has(u.id.trim().toLowerCase())
+      })
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+  }, [operatorsList, kanbanTickets])
 
   // Filtragem inicial dos tickets por período, convênio e operador
   const filteredTickets = useMemo(() => {
     const now = new Date().getTime()
 
-    return tickets.filter(t => {
+    return kanbanTickets.filter(t => {
       // Filtro de Operador
-      if (selectedOperator !== "all" && t.user_id !== selectedOperator) {
+      if (
+        selectedOperator !== "all" &&
+        String(t.user_id || "").trim().toLowerCase() !== selectedOperator.trim().toLowerCase()
+      ) {
         return false
       }
 
@@ -151,17 +214,17 @@ export function PipelineIntelligenceDrawer({
 
       return true
     })
-  }, [tickets, period, selectedConvenio, selectedOperator])
+  }, [kanbanTickets, period, selectedConvenio, selectedOperator])
 
-  // 1. CÁLCULO DE SPEED-TO-LEAD: Abordagem -> Negociação
-  // Definição acordada: "Quantos minutos o corretor leva entre fazer o primeiro contato (etapa 'EM ABORDAGEM') e mover para a etapa 'Em negociação'."
+  // 1. CÁLCULO DE TEMPO MÉDIO: Em negociação -> Gerada a ADE
+  // Regra: Tempo em minutos entre o momento em que o lead entrou na etapa 'Em negociação' até a geração da ADE (entrada em 'Fechado' com proposta digitada).
   const speedToLeadData = useMemo(() => {
     interface OperatorSpeed {
       userId: string
       userName: string
-      totalAbordagens: number
       totalNegociacoes: number
-      avgMinutesToNegotiation: number
+      totalPropostasDigitadas: number
+      avgMinutesToAde: number
       minMinutes: number
       maxMinutes: number
       sampleCount: number
@@ -170,8 +233,8 @@ export function PipelineIntelligenceDrawer({
     const opMap = new Map<string, {
       userId: string
       userName: string
-      totalAbordagens: number
       totalNegociacoes: number
+      totalPropostasDigitadas: number
       durationsMinutes: number[]
     }>()
 
@@ -179,6 +242,16 @@ export function PipelineIntelligenceDrawer({
     const getName = (userId: string, fallbackName?: string) => {
       const found = operatorsList.find(o => o.id === userId)
       return found?.nome || fallbackName || "Não Atribuído"
+    }
+
+    const parseTimestampMs = (dateStr?: string | null, requireTime = false): number | null => {
+      if (!dateStr) return null
+      const s = String(dateStr).trim()
+      if (!s || s === "-") return null
+      const hasTime = s.includes("T") || /\d{2}:\d{2}/.test(s)
+      if (requireTime && !hasTime) return null
+      const ms = new Date(s).getTime()
+      return isNaN(ms) ? null : ms
     }
 
     filteredTickets.forEach(t => {
@@ -189,60 +262,102 @@ export function PipelineIntelligenceDrawer({
         opMap.set(uId, {
           userId: uId,
           userName: uName,
-          totalAbordagens: 0,
           totalNegociacoes: 0,
+          totalPropostasDigitadas: 0,
           durationsMinutes: []
         })
       }
 
       const op = opMap.get(uId)!
       const statusUpper = (t.status || "").toUpperCase()
-
-      // Verificar se passou por abordagem ou está nela
       const movs = Array.isArray(t.historico_movimentacoes) ? t.historico_movimentacoes : []
-      const hasAbordagem = statusUpper.includes("ABORDAGEM") || movs.some(m => (m.etapa_anterior || "").toUpperCase().includes("ABORDAGEM") || (m.etapa_nova || "").toUpperCase().includes("ABORDAGEM"))
-      const hasNegociacao = statusUpper.includes("NEGOCIA") || statusUpper.includes("PROPOSTA") || statusUpper.includes("CONCLU") || movs.some(m => (m.etapa_nova || "").toUpperCase().includes("NEGOCIA"))
 
-      if (hasAbordagem) {
-        op.totalAbordagens++
-      }
+      const hasNegociacao =
+        statusUpper.includes("NEGOCIA") ||
+        movs.some(
+          (m: any) =>
+            (m.etapa_anterior || "").toUpperCase().includes("NEGOCIA") ||
+            (m.etapa_nova || "").toUpperCase().includes("NEGOCIA")
+        )
+
+      const propAde = t.proposta_info?.ade ? String(t.proposta_info.ade).trim() : ""
+      const hasValidAde = Boolean(propAde && propAde !== "-" && propAde !== "null" && propAde !== "undefined")
+      const isFechadoStatus = statusUpper === "FECHADO" || statusUpper.includes("FECHAD")
+      const isPerdidoStatus = statusUpper.includes("PERDID")
+      const movToFechado = movs.some((m: any) => (m.etapa_nova || "").toUpperCase().includes("FECHAD"))
+      const isPropostaDigitada = isFechadoStatus || (hasValidAde && !isPerdidoStatus) || (movToFechado && !isPerdidoStatus)
 
       if (hasNegociacao) {
         op.totalNegociacoes++
       }
 
-      // Procurar tempo exato no histórico: entrada em 'EM ABORDAGEM' até entrada em 'EM NEGOCIAÇÃO'
-      let abordagemTime: number | null = null
+      if (isPropostaDigitada) {
+        op.totalPropostasDigitadas++
+      }
+
+      // Procurar tempo exato: entrada em 'Em negociação' até geração da ADE / entrada em 'Fechado'
       let negociacaoTime: number | null = null
+      let movToFechadoTime: number | null = null
 
       if (movs.length > 0) {
-        // Ordenar cronologicamente
         const sorted = [...movs].sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime())
         for (const m of sorted) {
           const toStage = (m.etapa_nova || "").toUpperCase()
           const fromStage = (m.etapa_anterior || "").toUpperCase()
-          const mTime = new Date(m.data).getTime()
+          const mTime = parseTimestampMs(m.data)
+          if (!mTime) continue
 
-          if (!abordagemTime && (toStage.includes("ABORDAGEM") || fromStage.includes("ABORDAGEM"))) {
-            abordagemTime = mTime
+          if (!negociacaoTime) {
+            if (toStage.includes("NEGOCIA")) {
+              negociacaoTime = mTime
+            } else if (fromStage.includes("NEGOCIA")) {
+              negociacaoTime = parseTimestampMs(t.created_at) ?? mTime
+            }
           }
-          if (abordagemTime && !negociacaoTime && toStage.includes("NEGOCIA")) {
-            negociacaoTime = mTime
-            break
+
+          if (negociacaoTime && !movToFechadoTime && toStage.includes("FECHAD") && mTime >= negociacaoTime) {
+            movToFechadoTime = mTime
           }
         }
       }
 
-      // Se não encontrou no histórico detalhado, mas o ticket foi criado em abordagem e hoje está em negociação:
-      if (!abordagemTime && hasAbordagem) {
-        abordagemTime = new Date(t.created_at).getTime()
-      }
-      if (abordagemTime && !negociacaoTime && hasNegociacao) {
-        negociacaoTime = new Date(t.updated_at).getTime()
+      if (!negociacaoTime && statusUpper.includes("NEGOCIA")) {
+        negociacaoTime = parseTimestampMs(t.created_at)
       }
 
-      if (abordagemTime && negociacaoTime && negociacaoTime >= abordagemTime) {
-        const diffMin = Math.round((negociacaoTime - abordagemTime) / (1000 * 60))
+      let adeTime: number | null = null
+      if (isPropostaDigitada && negociacaoTime) {
+        const propInfo = t.proposta_info
+        // 1. Prioriza data_digitacao com horário completo da proposta gerada
+        const digitacaoExact = parseTimestampMs(propInfo?.data_digitacao, true)
+        if (digitacaoExact && digitacaoExact >= negociacaoTime) {
+          adeTime = digitacaoExact
+        }
+
+        // 2. Fallback para created_at da proposta se possuir horário e for >= entrada em negociação
+        if (!adeTime) {
+          const propCreated = parseTimestampMs(propInfo?.created_at, true)
+          if (propCreated && propCreated >= negociacaoTime) {
+            adeTime = propCreated
+          }
+        }
+
+        // 3. Fallback para movimentação explícita para FECHADO após entrada em negociação
+        if (!adeTime && movToFechadoTime && movToFechadoTime >= negociacaoTime) {
+          adeTime = movToFechadoTime
+        }
+
+        // 4. Fallback para updated_at do cartão quando já está em FECHADO sem horário detalhado em data_digitacao
+        if (!adeTime && isFechadoStatus) {
+          const updatedMs = parseTimestampMs(t.updated_at, true)
+          if (updatedMs && updatedMs >= negociacaoTime) {
+            adeTime = updatedMs
+          }
+        }
+      }
+
+      if (negociacaoTime && adeTime && adeTime >= negociacaoTime) {
+        const diffMin = Math.round((adeTime - negociacaoTime) / (1000 * 60))
         // Sanity filter: descartar anomalias > 30 dias (43200 min) para média executiva
         if (diffMin >= 0 && diffMin <= 43200) {
           op.durationsMinutes.push(diffMin)
@@ -255,7 +370,7 @@ export function PipelineIntelligenceDrawer({
     let totalGeneralSamples = 0
 
     opMap.forEach(op => {
-      if (op.totalAbordagens === 0 && op.totalNegociacoes === 0 && op.durationsMinutes.length === 0) return
+      if (op.totalNegociacoes === 0 && op.totalPropostasDigitadas === 0 && op.durationsMinutes.length === 0) return
 
       const count = op.durationsMinutes.length
       const avg = count > 0 ? Math.round(op.durationsMinutes.reduce((a, b) => a + b, 0) / count) : 0
@@ -270,9 +385,9 @@ export function PipelineIntelligenceDrawer({
       result.push({
         userId: op.userId,
         userName: op.userName,
-        totalAbordagens: op.totalAbordagens,
         totalNegociacoes: op.totalNegociacoes,
-        avgMinutesToNegotiation: avg,
+        totalPropostasDigitadas: op.totalPropostasDigitadas,
+        avgMinutesToAde: avg,
         minMinutes: min,
         maxMinutes: max,
         sampleCount: count
@@ -281,10 +396,12 @@ export function PipelineIntelligenceDrawer({
 
     // Ordenar do menor tempo médio (mais rápido) para o mais demorado
     result.sort((a, b) => {
-      if (a.sampleCount === 0 && b.sampleCount === 0) return b.totalAbordagens - a.totalAbordagens
+      if (a.sampleCount === 0 && b.sampleCount === 0) {
+        return b.totalPropostasDigitadas - a.totalPropostasDigitadas || b.totalNegociacoes - a.totalNegociacoes
+      }
       if (a.sampleCount === 0) return 1
       if (b.sampleCount === 0) return -1
-      return a.avgMinutesToNegotiation - b.avgMinutesToNegotiation
+      return a.avgMinutesToAde - b.avgMinutesToAde
     })
 
     const generalAvgMinutes = totalGeneralSamples > 0 ? Math.round(totalGeneralMinutes / totalGeneralSamples) : 0
@@ -296,13 +413,13 @@ export function PipelineIntelligenceDrawer({
     }
   }, [filteredTickets, operatorsList])
 
-  // 2. CÁLCULO DE STAGE AGING (PERMANÊNCIA POR ETAPA) & CAPITAL IMOBILIZADO
+  // 2. CÁLCULO DE CAPITAL IMOBILIZADO POR ETAPA
   const stageAgingData = useMemo(() => {
     const STAGES = [
-      { key: "EM ABORDAGEM", label: "Em Abordagem", color: "sky" },
       { key: "EM RETOMADA", label: "Em Retomada / Interação", color: "amber" },
       { key: "EM NEGOCIAÇÃO", label: "Em Negociação", color: "indigo" },
-      { key: "EM REATIVAÇÃO", label: "Em Reativação", color: "purple" }
+      { key: "EM REATIVAÇÃO", label: "Em Reativação", color: "purple" },
+      { key: "SEM INTERESSE", label: "Sem Interesse", color: "slate" }
     ]
 
     const now = Date.now()
@@ -319,11 +436,11 @@ export function PipelineIntelligenceDrawer({
         if (stageDef.key === "EM NEGOCIAÇÃO") {
           return s.includes("NEGOCIA")
         }
-        if (stageDef.key === "EM ABORDAGEM") {
-          return s.includes("ABORDAGEM")
-        }
         if (stageDef.key === "EM REATIVAÇÃO") {
           return s.includes("REATIVA")
+        }
+        if (stageDef.key === "SEM INTERESSE") {
+          return s.includes("SEM INTERESSE")
         }
         return s === stageDef.key
       })
@@ -541,41 +658,81 @@ export function PipelineIntelligenceDrawer({
   }, [filteredTickets, operatorsList])
 
   // 4. RADAR DE RISCO DE QUEIMA DE LEADS
-  // Leads com valor de operação elevado (>= R$ 25.000) e parados sem avanço há mais de 24 horas
+  // Todos os atendimentos das etapas ativas parados sem avanço há mais de 24 horas
   const riskLeadsData = useMemo(() => {
     const now = Date.now()
 
-    const atRisk = filteredTickets
+    return filteredTickets
+      .filter(t => {
+        const s = (t.status || "").toUpperCase()
+        if (s.includes("FECHAD") || s.includes("PERDID")) return false
+        return (
+          s.includes("RETOMADA") ||
+          s.includes("INTERAÇÃO") ||
+          s.includes("INTERACAO") ||
+          s.includes("NEGOCIA") ||
+          s.includes("REATIVA") ||
+          s.includes("SEM INTERESSE")
+        )
+      })
       .map(t => {
         const opData = getValorOperacaoDeAbertura(t)
         const opVal = opData.num || 0
         const prodVal = opData.numProducao || 0
         const dateMs = new Date(t.updated_at || t.created_at || now).getTime()
-        const hoursInactive = Math.max(0, Math.round((now - dateMs) / (1000 * 60 * 60)))
+        const exactHoursInactive = Math.max(0, (now - dateMs) / (1000 * 60 * 60))
+        const hoursInactive = Math.floor(exactHoursInactive)
 
         return {
           ticket: t,
           valorOperacao: opVal,
           valorProducao: prodVal,
           hoursInactive,
-          isHighRisk: opVal >= 25000 && hoursInactive >= 24,
-          isModerateRisk: (opVal >= 15000 && hoursInactive >= 36) || hoursInactive >= 72
+          exactHoursInactive,
+          isHighRisk: opVal >= 25000 && exactHoursInactive > 24
         }
       })
-      .filter(item => item.isHighRisk || item.isModerateRisk)
+      .filter(item => item.exactHoursInactive > 24)
       .sort((a, b) => b.valorOperacao - a.valorOperacao || b.hoursInactive - a.hoursInactive)
+  }, [filteredTickets, getValorOperacaoDeAbertura])
 
-    if (!searchRiskQuery.trim()) return atRisk
+  const searchFilteredRiskLeads = useMemo(() => {
+    if (!searchRiskQuery.trim()) return riskLeadsData
 
     const q = searchRiskQuery.toLowerCase().trim()
-    return atRisk.filter(item => {
+    return riskLeadsData.filter(item => {
       const cName = (item.ticket.cliente_nome || "").toLowerCase()
       const cCpf = (item.ticket.cliente_cpf || "").toLowerCase()
       const uName = (item.ticket.user_nome || "").toLowerCase()
       const conv = (item.ticket.convenio || "").toLowerCase()
       return cName.includes(q) || cCpf.includes(q) || uName.includes(q) || conv.includes(q)
     })
-  }, [filteredTickets, getValorOperacaoDeAbertura, searchRiskQuery])
+  }, [riskLeadsData, searchRiskQuery])
+
+  const riskTierCounts = useMemo(() => {
+    let high = 0
+    let mid = 0
+    let low = 0
+    searchFilteredRiskLeads.forEach(item => {
+      if (item.valorOperacao >= 30000) high++
+      else if (item.valorOperacao >= 10000) mid++
+      else low++
+    })
+    return { high, mid, low }
+  }, [searchFilteredRiskLeads])
+
+  const filteredRiskLeads = useMemo(() => {
+    if (riskTierFilter === "high") {
+      return searchFilteredRiskLeads.filter(item => item.valorOperacao >= 30000)
+    }
+    if (riskTierFilter === "mid") {
+      return searchFilteredRiskLeads.filter(item => item.valorOperacao >= 10000 && item.valorOperacao < 30000)
+    }
+    if (riskTierFilter === "low") {
+      return searchFilteredRiskLeads.filter(item => item.valorOperacao < 10000)
+    }
+    return searchFilteredRiskLeads
+  }, [searchFilteredRiskLeads, riskTierFilter])
 
   // Formatação de Moeda
   const fmtCurrency = (val: number) => {
@@ -664,7 +821,7 @@ export function PipelineIntelligenceDrawer({
                     type="button"
                     onClick={() => setPeriod(p)}
                     className={cn(
-                      "px-2 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                      "px-2 py-1 rounded-md text-xs font-bold transition-all cursor-pointer",
                       isSelected 
                         ? "bg-indigo-600 text-white shadow-xs" 
                         : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
@@ -694,8 +851,8 @@ export function PipelineIntelligenceDrawer({
               onChange={(e) => setSelectedOperator(e.target.value)}
               className="bg-white border border-slate-300 text-slate-700 font-medium rounded-lg px-2.5 py-1 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-hidden shadow-2xs max-w-[200px] truncate"
             >
-              <option value="all">Toda a Equipe ({operatorsList.length})</option>
-              {operatorsList.map(o => (
+              <option value="all">Toda a Equipe ({teamOperatorsList.length})</option>
+              {teamOperatorsList.map(o => (
                 <option key={o.id} value={o.id}>{o.nome}</option>
               ))}
             </select>
@@ -708,11 +865,11 @@ export function PipelineIntelligenceDrawer({
 
         {/* CARDS RESUMO EXECUTIVO (KPIs) */}
         <div className="px-6 py-3.5 grid grid-cols-2 md:grid-cols-4 gap-3 bg-white border-b border-slate-200 shrink-0">
-          {/* Card 1: TEMPO MÉDIO DE ATENDIMENTO */}
+          {/* Card 1: TEMPO MÉDIO */}
           <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl p-3 flex flex-col justify-between shadow-xs">
             <div className="flex items-center gap-2 text-sky-900">
               <Zap className="w-4 h-4 text-sky-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[11px] font-black uppercase tracking-wider">TEMPO MÉDIO DE ATENDIMENTO</span>
+              <span className="text-[11px] font-black uppercase tracking-wider">TEMPO MÉDIO</span>
             </div>
             <div className="mt-1">
               <div className="text-xl font-black text-sky-950">
@@ -726,7 +883,7 @@ export function PipelineIntelligenceDrawer({
                   "N/A"
                 )}
               </div>
-              <span className="text-[11px] text-sky-900 font-bold">Abordagem ➔ Negociação</span>
+              <span className="text-[11px] text-sky-900 font-bold">Em negociação ➔ Gerada a ADE</span>
             </div>
           </div>
 
@@ -770,7 +927,7 @@ export function PipelineIntelligenceDrawer({
               <div className="text-xl font-black text-rose-950">
                 {riskLeadsData.length} leads
               </div>
-              <span className="text-[11px] text-rose-900 font-bold">&gt; R$ 25k parados &gt; 24h</span>
+              <span className="text-[11px] text-rose-900 font-bold">&gt; Parados há mais de 24h</span>
             </div>
           </div>
         </div>
@@ -788,7 +945,7 @@ export function PipelineIntelligenceDrawer({
             )}
           >
             <Zap className="w-4 h-4" />
-            <span>1. Speed-to-Lead (Abordagem ➔ Negociação)</span>
+            <span>1. Tempo Médio (Em negociação ➔ Gerada a ADE)</span>
           </button>
 
           <button
@@ -802,7 +959,7 @@ export function PipelineIntelligenceDrawer({
             )}
           >
             <Clock className="w-4 h-4" />
-            <span>2. Permanência por Etapa & Capital Imobilizado</span>
+            <span>2. Capital Imobilizado por Etapa</span>
           </button>
 
           <button
@@ -842,7 +999,7 @@ export function PipelineIntelligenceDrawer({
         {/* ÁREA DE CONTEÚDO PRINCIPAL (COM SCROLL) */}
         <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
           {/* ============================================================== */}
-          {/* ABA 1: SPEED-TO-LEAD (ABORDAGEM -> NEGOCIAÇÃO)                 */}
+          {/* ABA 1: TEMPO MÉDIO (EM NEGOCIAÇÃO -> GERADA A ADE)              */}
           {/* ============================================================== */}
           {activeTab === "speed" && (
             <div className="space-y-4">
@@ -851,10 +1008,10 @@ export function PipelineIntelligenceDrawer({
                 <Zap className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-xs font-bold text-sky-950">
-                    Definição de Speed-to-Lead Comercial SharkConsig
+                    Definição de Tempo Médio Comercial
                   </h4>
                   <p className="text-xs text-sky-800 mt-0.5 leading-relaxed">
-                    Mede quantos minutos o corretor leva entre fazer o primeiro contato (etapa <strong>&apos;EM ABORDAGEM&apos;</strong>) e mover para a etapa <strong>&apos;Em negociação&apos;</strong>. Operações de crédito consignado convertem até 3,8x mais quando o lead avança nas primeiras horas de contato ativo.
+                    Mede quantos minutos o corretor leva entre a negociação com o lead e digitação da proposta no banco (gerar a ADE).
                   </p>
                 </div>
               </div>
@@ -876,8 +1033,8 @@ export function PipelineIntelligenceDrawer({
                     <thead className="bg-slate-100 text-slate-600 uppercase text-[10px] font-bold border-b border-slate-200">
                       <tr>
                         <th className="px-4 py-2.5">Posição & Operador</th>
-                        <th className="px-4 py-2.5 text-center">Leads Abordados</th>
-                        <th className="px-4 py-2.5 text-center">Convertidos em Negociação</th>
+                        <th className="px-4 py-2.5 text-center">Em Negociação</th>
+                        <th className="px-4 py-2.5 text-center">Proposta Digitada</th>
                         <th className="px-4 py-2.5 text-center">Taxa de Avanço</th>
                         <th className="px-4 py-2.5 text-center">Tempo Médio</th>
                         <th className="px-4 py-2.5 text-right">Classificação</th>
@@ -892,20 +1049,22 @@ export function PipelineIntelligenceDrawer({
                         </tr>
                       ) : (
                         speedToLeadData.ranking.map((op, idx) => {
-                          const convRate = op.totalAbordagens > 0 ? Math.round((op.totalNegociacoes / op.totalAbordagens) * 100) : 0
+                          const convRate = op.totalNegociacoes > 0
+                            ? Math.min(100, Math.round((op.totalPropostasDigitadas / op.totalNegociacoes) * 100))
+                            : 0
                           
                           // Badge de classificação
                           let badgeBg = "bg-slate-100 text-slate-700"
                           let badgeText = "Sem Amostra"
 
                           if (op.sampleCount > 0) {
-                            if (op.avgMinutesToNegotiation <= 30) {
+                            if (op.avgMinutesToAde <= 30) {
                               badgeBg = "bg-emerald-100 text-emerald-800 border-emerald-200"
                               badgeText = "⚡ Ultra Rápido (<30m)"
-                            } else if (op.avgMinutesToNegotiation <= 120) {
+                            } else if (op.avgMinutesToAde <= 120) {
                               badgeBg = "bg-sky-100 text-sky-800 border-sky-200"
                               badgeText = "🟢 Ágil (30m - 2h)"
-                            } else if (op.avgMinutesToNegotiation <= 480) {
+                            } else if (op.avgMinutesToAde <= 480) {
                               badgeBg = "bg-amber-100 text-amber-800 border-amber-200"
                               badgeText = "🟡 Moderado (2h - 8h)"
                             } else {
@@ -932,10 +1091,10 @@ export function PipelineIntelligenceDrawer({
                                 </div>
                               </td>
                               <td className="px-4 py-3 text-center font-medium text-slate-700">
-                                {op.totalAbordagens}
+                                {op.totalNegociacoes}
                               </td>
                               <td className="px-4 py-3 text-center font-medium text-slate-700">
-                                {op.totalNegociacoes}
+                                {op.totalPropostasDigitadas}
                               </td>
                               <td className="px-4 py-3 text-center">
                                 <span className={cn(
@@ -948,9 +1107,9 @@ export function PipelineIntelligenceDrawer({
                               <td className="px-4 py-3 text-center">
                                 {op.sampleCount > 0 ? (
                                   <span className="font-black text-slate-900">
-                                    {op.avgMinutesToNegotiation < 60 
-                                      ? `${op.avgMinutesToNegotiation} min` 
-                                      : `${(op.avgMinutesToNegotiation / 60).toFixed(1)} h`}
+                                    {op.avgMinutesToAde < 60 
+                                      ? `${op.avgMinutesToAde} min` 
+                                      : `${(op.avgMinutesToAde / 60).toFixed(1)} h`}
                                   </span>
                                 ) : (
                                   <span className="text-slate-400 italic">Sem transição direta</span>
@@ -973,7 +1132,7 @@ export function PipelineIntelligenceDrawer({
           )}
 
           {/* ============================================================== */}
-          {/* ABA 2: PERMANÊNCIA POR ETAPA & CAPITAL IMOBILIZADO             */}
+          {/* ABA 2: CAPITAL IMOBILIZADO POR ETAPA                           */}
           {/* ============================================================== */}
           {activeTab === "aging" && (
             <div className="space-y-4">
@@ -983,7 +1142,7 @@ export function PipelineIntelligenceDrawer({
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-slate-900">{st.label}</span>
-                        <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-bold">
+                        <span className="text-[11px] bg-transparent text-slate-600 font-bold">
                           {st.count} leads
                         </span>
                       </div>
@@ -1000,21 +1159,22 @@ export function PipelineIntelligenceDrawer({
                         <div className="text-base font-black text-emerald-700">
                           {fmtCurrency(st.totalOperacao)}
                         </div>
-                        <div className="text-[10px] text-slate-400">
-                          Produção est.: {fmtCurrency(st.totalProducao)}
+                        <div className="text-[11px] text-slate-500 font-medium mt-2">Produção Estimada:</div>
+                        <div className="text-base font-black text-sky-400">
+                          {fmtCurrency(st.totalProducao)}
                         </div>
                       </div>
                     </div>
 
                     {/* Quebra por ticket */}
                     <div className="mt-3 pt-2 border-t border-slate-100 space-y-1 text-[11px]">
-                      <div className="flex items-center justify-between text-slate-600">
+                      <div className="flex items-center justify-between text-orange-700">
                         <span>Alto (&gt;30k):</span>
-                        <span className="font-bold text-slate-800">{st.ticketsByTier.high.count} ({fmtCurrency(st.ticketsByTier.high.val)})</span>
+                        <span className="font-bold text-orange-700">{st.ticketsByTier.high.count} ({fmtCurrency(st.ticketsByTier.high.val)})</span>
                       </div>
-                      <div className="flex items-center justify-between text-slate-600">
+                      <div className="flex items-center justify-between text-orange-500">
                         <span>Médio (10k-30k):</span>
-                        <span className="font-bold text-slate-800">{st.ticketsByTier.mid.count} ({fmtCurrency(st.ticketsByTier.mid.val)})</span>
+                        <span className="font-bold text-orange-500">{st.ticketsByTier.mid.count} ({fmtCurrency(st.ticketsByTier.mid.val)})</span>
                       </div>
                       <div className="flex items-center justify-between text-slate-600">
                         <span>Baixo (&lt;10k):</span>
@@ -1033,7 +1193,7 @@ export function PipelineIntelligenceDrawer({
                   </div>
                   <div>
                     <h4 className="text-xs font-bold text-amber-950">
-                      Gargalo de Lead Dwell Time (&gt; 48 Horas sem Avanço)
+                      Gargalo de Lead parado a mais de 48 Horas sem Avanço
                     </h4>
                     <p className="text-xs text-amber-800 mt-0.5">
                       Existe um total de <strong>{stageAgingData.grandTotalStuck48hCount} leads</strong> parados há mais de 48 horas nas colunas ativas. Isso representa capital comercial dormente sem retorno de contato.
@@ -1177,32 +1337,68 @@ export function PipelineIntelligenceDrawer({
           {/* ============================================================== */}
           {activeTab === "risk" && (
             <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    value={searchRiskQuery}
-                    onChange={(e) => setSearchRiskQuery(e.target.value)}
-                    placeholder="Filtrar por cliente, CPF ou corretor..."
-                    className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
-                  />
-                </div>
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 flex-1">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={searchRiskQuery}
+                      onChange={(e) => setSearchRiskQuery(e.target.value)}
+                      placeholder="Filtrar por cliente, CPF ou corretor..."
+                      className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
+                    />
+                  </div>
 
-                <div className="text-xs text-rose-800 font-bold bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-                  <Flame className="w-4 h-4 text-rose-600" />
-                  <span>{riskLeadsData.length} leads prioritários exigindo intervenção imediata</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setRiskTierFilter(prev => prev === "high" ? "all" : "high")}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                        riskTierFilter === "high"
+                          ? "bg-orange-700 text-white border-orange-700 shadow-xs"
+                          : "bg-white text-orange-700 border-orange-200 hover:bg-orange-50"
+                      )}
+                    >
+                      Alto &gt;30k ({riskTierCounts.high} {riskTierCounts.high === 1 ? "lead" : "leads"})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRiskTierFilter(prev => prev === "mid" ? "all" : "mid")}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                        riskTierFilter === "mid"
+                          ? "bg-orange-500 text-white border-orange-500 shadow-xs"
+                          : "bg-white text-orange-500 border-orange-200 hover:bg-orange-50"
+                      )}
+                    >
+                      Médio 10k-30k ({riskTierCounts.mid} {riskTierCounts.mid === 1 ? "lead" : "leads"})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRiskTierFilter(prev => prev === "low" ? "all" : "low")}
+                      className={cn(
+                        "px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                        riskTierFilter === "low"
+                          ? "bg-slate-700 text-white border-slate-700 shadow-xs"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                      )}
+                    >
+                      Baixo &lt;10k ({riskTierCounts.low} {riskTierCounts.low === 1 ? "lead" : "leads"})
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {riskLeadsData.length === 0 ? (
+                {filteredRiskLeads.length === 0 ? (
                   <div className="col-span-2 bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 text-xs">
                     <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                    Parabéns! Nenhum lead de alto ticket está inativo acima do limite de tolerância comercial.
+                    Parabéns! Nenhum lead está inativo acima do limite de tolerância comercial para os filtros selecionados.
                   </div>
                 ) : (
-                  riskLeadsData.map(item => {
+                  filteredRiskLeads.map(item => {
                     const t = item.ticket
                     return (
                       <div 

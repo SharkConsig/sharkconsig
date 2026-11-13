@@ -412,11 +412,36 @@ export function ClientDetailsModal({
   const [error, setError] = useState<string | null>(null)
   const [selectedStatuses, setSelectedStatuses] = useState<Record<string, boolean>>({})
   const [selectedPhones, setSelectedPhones] = useState<string[]>([])
+  const [confirmedDisparoPhones, setConfirmedDisparoPhones] = useState<string[]>([])
+  const [pendingConfirmPhone, setPendingConfirmPhone] = useState<string | null>(null)
 
-  const handleToggleSelectedPhone = async (phone: string | null, checked: boolean) => {
+  const isDisparoPhoneConfirmed = (p?: string | null) => {
+    if (!p) return false
+    const clean = p.replace(/\D/g, "")
+    return confirmedDisparoPhones.some(cp => {
+      const cleanCp = cp.replace(/\D/g, "")
+      return cleanCp === clean || (clean.length >= 8 && cleanCp.slice(-8) === clean.slice(-8))
+    })
+  }
+
+  const handleToggleSelectedPhone = async (phone: string | null, checked: boolean, skipDisparoConfirm = false) => {
     if (!phone) return
     const cleanPhone = phone.replace(/\D/g, "")
     if (!cleanPhone) return
+
+    if (isEmAbordagem && clienteOrigem === "DISPARO" && checked && !skipDisparoConfirm) {
+      setPendingConfirmPhone(phone)
+      return
+    }
+
+    if (!checked) {
+      setConfirmedDisparoPhones(prev =>
+        prev.filter(p => {
+          const c = p.replace(/\D/g, "")
+          return c !== cleanPhone && (cleanPhone.length < 8 || c.slice(-8) !== cleanPhone.slice(-8))
+        })
+      )
+    }
 
     const newSelected = checked
       ? Array.from(new Set([...selectedPhones, cleanPhone]))
@@ -518,6 +543,8 @@ export function ClientDetailsModal({
     setActiveRegIndex(0)
     setSelectedStatuses({})
     setSelectedPhones([])
+    setConfirmedDisparoPhones([])
+    setPendingConfirmPhone(null)
     setClienteOrigem("")
     setSelectedEmpresaPhone("")
 
@@ -1648,6 +1675,8 @@ export function ClientDetailsModal({
           }
         } else {
           setSelectedPhones([])
+          setConfirmedDisparoPhones([])
+          setPendingConfirmPhone(null)
           setClienteOrigem("")
           setSelectedEmpresaPhone("")
         }
@@ -1675,6 +1704,8 @@ export function ClientDetailsModal({
       setActiveRegIndex(0)
       setIsContractsCardExpanded(false)
       setSelectedPhones([])
+      setConfirmedDisparoPhones([])
+      setPendingConfirmPhone(null)
       setClienteOrigem("")
       setSelectedEmpresaPhone("")
       setSearchEmpresaPhone("")
@@ -1859,9 +1890,26 @@ export function ClientDetailsModal({
       margemRccDisp = Number(anyReg.md_cartao_beneficio ?? anyReg.cartao_beneficio ?? anyReg.margem_beneficio ?? anyReg.margem_cartao_beneficio ?? anyReg.margem_rcc ?? anyReg.beneficio_liquida_5 ?? 0) || 0;
     }
 
-    if ((clienteOrigem === "DISPARO" || selectedOrigemValue === "DISPARO") && (!selectedPhones || selectedPhones.length === 0)) {
-      toast.error("É obrigatório marcar pelo menos 1 telefone contatado do cliente para abrir o chamado.")
-      return
+    if (clienteOrigem === "DISPARO" || selectedOrigemValue === "DISPARO") {
+      if (!selectedPhones || selectedPhones.length === 0) {
+        toast.error("É obrigatório marcar o telefone que está em contato com o lead para abrir o chamado.")
+        return
+      }
+      if (isEmAbordagem) {
+        const hasConfirmedPhone = selectedPhones.some(sp => isDisparoPhoneConfirmed(sp))
+        if (!hasConfirmedPhone) {
+          const phoneToConfirm =
+            [client.telefone_1, client.telefone_2, client.telefone_3].find(p => p && isPhoneSelected(p)) ||
+            selectedPhones[0]
+          if (phoneToConfirm) setPendingConfirmPhone(phoneToConfirm)
+          toast.error("Confirme se o telefone selecionado é mesmo o telefone em contato com o cliente.")
+          return
+        }
+        if (!selectedEmpresaPhone || !selectedEmpresaPhone.trim()) {
+          toast.error("É obrigatório selecionar o 'TELEFONE DA EMPRESA UTILIZADO' para abrir o chamado.")
+          return
+        }
+      }
     }
 
     const initialData = {
@@ -2245,6 +2293,15 @@ export function ClientDetailsModal({
                                   onClick={() => {
                                     setClienteOrigem(origemOption)
                                     setIsOrigemOpen(false)
+                                    if (origemOption === "DISPARO") {
+                                      setConfirmedDisparoPhones([])
+                                      if (selectedPhones.length > 0) {
+                                        const firstPhone =
+                                          [client?.telefone_1, client?.telefone_2, client?.telefone_3].find(p => p && isPhoneSelected(p)) ||
+                                          selectedPhones[0]
+                                        if (firstPhone) setPendingConfirmPhone(firstPhone)
+                                      }
+                                    }
                                   }}
                                   className={cn(
                                     "w-full text-left px-2.5 py-1.5 text-[12px] rounded-md transition-colors flex items-center justify-between cursor-pointer",
@@ -2350,7 +2407,7 @@ export function ClientDetailsModal({
                       </div>
 
                       {/* Card de orientação: Selecione o telefone da Acerto Fácil que você usou (exclusivo para EM ABORDAGEM) */}
-                      {isEmAbordagem && clienteOrigem !== "DISPARO" && (
+                      {isEmAbordagem && (
                         <div className="col-span-full -mb-4 bg-amber-50/90 border border-amber-200/90 rounded-lg p-3 flex items-center gap-2.5 text-amber-900 shadow-xs">
                           <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                           <p className="text-xs font-semibold text-amber-900 leading-none">
@@ -2364,12 +2421,18 @@ export function ClientDetailsModal({
                         <div ref={empresaPhoneRef} className="col-span-full max-w-sm space-y-1.5 -mb-2">
                           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                             Telefone da Empresa Utilizado
+                            {clienteOrigem === "DISPARO" && (
+                              <span className="text-rose-500 ml-1">*</span>
+                            )}
                           </p>
 
                           {/* Caixa seletora igual à de Origem do Cliente */}
                           <div
                             onClick={() => setIsEmpresaPhoneOpen(prev => !prev)}
-                            className="w-full h-[36px] px-3 rounded-lg border border-slate-200 bg-[#E8E8E8] text-[12px] font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer flex items-center justify-between shadow-2xs select-none"
+                            className={cn(
+                              "w-full h-[36px] px-3 rounded-lg border bg-[#E8E8E8] text-[12px] font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer flex items-center justify-between shadow-2xs select-none",
+                              clienteOrigem === "DISPARO" && !selectedEmpresaPhone ? "border-amber-400" : "border-slate-200"
+                            )}
                           >
                             <span className={selectedEmpresaPhone ? "text-slate-800 font-semibold" : "text-slate-500 font-normal"}>
                               {selectedEmpresaPhone || "Selecione"}
@@ -3023,7 +3086,19 @@ export function ClientDetailsModal({
                       type="button"
                       onClick={() => {
                         if (!selectedPhones || selectedPhones.length === 0) {
-                          toast.error("É obrigatório marcar pelo menos 1 telefone contatado do cliente para abrir o chamado.")
+                          toast.error("É obrigatório marcar o telefone que está em contato com o lead para abrir o chamado.")
+                          return
+                        }
+                        if (isEmAbordagem && !selectedPhones.some(sp => isDisparoPhoneConfirmed(sp))) {
+                          const phoneToConfirm =
+                            [client?.telefone_1, client?.telefone_2, client?.telefone_3].find(p => p && isPhoneSelected(p)) ||
+                            selectedPhones[0]
+                          if (phoneToConfirm) setPendingConfirmPhone(phoneToConfirm)
+                          toast.error("Confirme se o telefone selecionado é mesmo o telefone em contato com o cliente.")
+                          return
+                        }
+                        if (isEmAbordagem && (!selectedEmpresaPhone || !selectedEmpresaPhone.trim())) {
+                          toast.error("É obrigatório selecionar o 'TELEFONE DA EMPRESA UTILIZADO' para abrir o chamado.")
                           return
                         }
                         handleAbrirChamado(activeReg)
@@ -3217,6 +3292,70 @@ export function ClientDetailsModal({
             initialData={propostaModalData}
             onSuccess={() => setInternalHasProposta(true)}
           />
+        )}
+        {/* Confirmação de telefone em contato na etapa EM ABORDAGEM + DISPARO */}
+        {pendingConfirmPhone && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-[260] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+          >
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150">
+              <div className="px-6 py-4 border-b border-amber-100 bg-amber-50/70 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-slate-900 uppercase tracking-wide">
+                    Confirmar Telefone do Cliente
+                  </h4>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-3">
+                <p className="text-sm font-semibold text-slate-700 leading-relaxed">
+                  O telefone <span className="font-black text-slate-900">{maskPhone(pendingConfirmPhone)}</span> selecionado é mesmo o telefone que você está falando com o cliente?
+                </p>
+              </div>
+
+              <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={async () => {
+                    const target = pendingConfirmPhone
+                    setPendingConfirmPhone(null)
+                    if (target && isPhoneSelected(target)) {
+                      await handleToggleSelectedPhone(target, false, true)
+                    }
+                  }}
+                  className="h-10 px-5 text-[11px] font-bold uppercase tracking-wider rounded-xl border-slate-200 text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  Não, alterar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={async () => {
+                    const target = pendingConfirmPhone
+                    setPendingConfirmPhone(null)
+                    if (target) {
+                      const clean = target.replace(/\D/g, "")
+                      if (clean) {
+                        setConfirmedDisparoPhones(prev => Array.from(new Set([...prev, clean])))
+                      }
+                      if (!isPhoneSelected(target)) {
+                        await handleToggleSelectedPhone(target, true, true)
+                      } else {
+                        toast.success("Telefone confirmado como contato com o cliente!")
+                      }
+                    }
+                  }}
+                  className="h-10 px-6 text-[11px] font-bold uppercase tracking-wider rounded-xl bg-[#171717] hover:bg-black text-white cursor-pointer"
+                >
+                  Sim, confirmar
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
       </DialogContent>
     </Dialog>

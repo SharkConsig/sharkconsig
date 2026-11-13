@@ -152,16 +152,23 @@ const NEGOCIACAO_LABELS = [
   "CLIENTE SEM INTERESSE"
 ]
 
+const metadataCache = new Map<string, any>();
+
 const parseDescriptionMetadata = (desc: string) => {
+  if (!desc) return null;
+  if (metadataCache.has(desc)) return metadataCache.get(desc);
+  let parsed: any = null;
   try {
-    const match = desc?.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/);
+    const match = desc.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/);
     if (match && match[1]) {
-      return JSON.parse(match[1]);
+      parsed = JSON.parse(match[1]);
     }
   } catch (e) {
     console.error("Error parsing metadata in list:", e);
   }
-  return null;
+  if (metadataCache.size > 15000) metadataCache.clear();
+  metadataCache.set(desc, parsed);
+  return parsed;
 };
 
 function formatTempoParadoAmigavel(startDateISO?: string): string {
@@ -632,7 +639,8 @@ export default function TicketsPage() {
   const [isClientModalOpen, setIsClientModalOpen] = useState(false)
   const [selectedClientCpf, setSelectedClientCpf] = useState("")
   const [liveMarginsMap, setLiveMarginsMap] = useState<Record<string, { totalOperacao: number; totalProducao: number; selectedLabels: string[] }>>({})
-  const [, setTabelasConfigVersion] = useState(0)
+  const [kanbanPhonesMap, setKanbanPhonesMap] = useState<Record<string, string>>({})
+  const [tabelasConfigVersion, setTabelasConfigVersion] = useState(0)
 
   useEffect(() => {
     loadTabelasConfigCache().then(() => {
@@ -813,14 +821,19 @@ export default function TicketsPage() {
     return null
   })
 
-  // Persist window scroll
+  // Persist window scroll (debounced & passive to prevent scroll/click jank)
   useEffect(() => {
+    let scrollTimer: ReturnType<typeof setTimeout> | null = null
     const handleWindowScroll = () => {
-      if (typeof window !== "undefined") {
-        localStorage.setItem('chamados_window_scroll', window.scrollY.toString())
-      }
+      if (typeof window === "undefined") return
+      if (scrollTimer) clearTimeout(scrollTimer)
+      scrollTimer = setTimeout(() => {
+        try {
+          localStorage.setItem('chamados_window_scroll', window.scrollY.toString())
+        } catch {}
+      }, 250)
     }
-    window.addEventListener('scroll', handleWindowScroll)
+    window.addEventListener('scroll', handleWindowScroll, { passive: true })
 
     // Restore scroll after a small delay to ensure content is rendered
     const savedScroll = localStorage.getItem('chamados_window_scroll')
@@ -830,7 +843,10 @@ export default function TicketsPage() {
       }, 100)
     }
 
-    return () => window.removeEventListener('scroll', handleWindowScroll)
+    return () => {
+      if (scrollTimer) clearTimeout(scrollTimer)
+      window.removeEventListener('scroll', handleWindowScroll)
+    }
   }, [])
 
   // Persist expanded ticket ID
@@ -1308,16 +1324,13 @@ export default function TicketsPage() {
   const extractTelefoneEmpresa = useCallback((ticket: Ticket): string => {
     let raw = ticket.telefone_empresa || ""
     if (!raw) {
-      const desc = ticket.descricao || ticket.content || ""
-      const match = desc.match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/)
-      if (match && match[1]) {
-        try {
-          const meta = JSON.parse(match[1])
-          if (meta && meta.telefone_empresa) raw = meta.telefone_empresa
-        } catch {
-          // ignore
-        }
-      }
+      const meta = parseDescriptionMetadata(ticket.descricao || ticket.content || "")
+      if (meta && meta.telefone_empresa) raw = meta.telefone_empresa
+    }
+    if (!raw && ticket.cliente_cpf) {
+      const clean = ticket.cliente_cpf.replace(/\D/g, "")
+      const padded = clean.padStart(11, '0')
+      raw = kanbanPhonesMap[clean] || kanbanPhonesMap[padded] || ""
     }
     if (!raw) return ""
 
@@ -1341,7 +1354,7 @@ export default function TicketsPage() {
       return digits.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3")
     }
     return raw
-  }, [])
+  }, [kanbanPhonesMap])
 
   // Base tickets filtered by search and advanced filters
   const isGestaoOrSupervisor = useMemo(() => {
@@ -1666,17 +1679,19 @@ export default function TicketsPage() {
     })
   }, [baseFilteredTickets, selectedStatus, selectedSecondaryStatus])
 
-  // Summing values per status label
-  const statusValues = useMemo(() => {
+  // Summing values per status label (single pass)
+  const { statusValues, totalAllOperacaoValor } = useMemo(() => {
     const res: Record<string, number> = {}
+    let totalAll = 0
     baseFilteredTickets.forEach(t => {
       const s = (t.status_chamados?.nome || t.status || "").trim().toUpperCase()
-      const opData = getValorOperacaoDeAbertura(t)
-      const opVal = parseValorToNumber(opData.valor)
+      const opData = getValoresOperacaoEProducao(t)
+      const opVal = opData.numOperacao || 0
       res[s] = (res[s] || 0) + opVal
+      totalAll += opVal
     })
-    return res;
-  }, [baseFilteredTickets])
+    return { statusValues: res, totalAllOperacaoValor: totalAll }
+  }, [baseFilteredTickets, tabelasConfigVersion])
 
   const statusCards = useMemo(() => {
     const list = statusCardsList.map(c => ({ ...c }))
@@ -1726,15 +1741,12 @@ export default function TicketsPage() {
         }, 0)
       } else if (card.label === "TODOS") {
         count = baseFilteredTickets.length
-        totalValor = baseFilteredTickets.reduce((acc, t) => {
-          const opData = getValorOperacaoDeAbertura(t)
-          return acc + parseValorToNumber(opData.valor)
-        }, 0)
+        totalValor = totalAllOperacaoValor
       }
 
       return { ...card, count, totalValor }
     })
-  }, [counts, statusValues, baseFilteredTickets, isUserAdmin])
+  }, [counts, statusValues, totalAllOperacaoValor, baseFilteredTickets.length])
 
   const handleParentClick = (status: string) => {
     setCurrentPage(1)
@@ -1785,16 +1797,17 @@ export default function TicketsPage() {
   }, [searchTerm, startDate, endDate, filterCorretores, filterStatusList, filterOrigens, filterCliente, filterConvenios, filterEquipes, filterMargemMin, filterMargemMax, filterEncaminhados, filterEstagiarioForwarded, filterCorretorForwarded])
 
   const sortedFilteredTickets = useMemo(() => {
-    return [...filteredTickets].sort((a, b) => {
-      const getTimestamp = (t: Ticket) => {
-        const u = t.updated_at ? new Date(t.updated_at).getTime() : 0
-        const c = t.created_at ? new Date(t.created_at).getTime() : 0
-        return Math.max(isNaN(u) ? 0 : u, isNaN(c) ? 0 : c)
+    const withTs = filteredTickets.map(t => {
+      const u = t.updated_at ? Date.parse(t.updated_at) : 0
+      const c = t.created_at ? Date.parse(t.created_at) : 0
+      return {
+        ticket: t,
+        ts: Math.max(isNaN(u) ? 0 : u, isNaN(c) ? 0 : c),
+        idNum: Number(t.id || 0)
       }
-      const timeDiff = getTimestamp(b) - getTimestamp(a)
-      if (timeDiff !== 0) return timeDiff
-      return Number(b.id || 0) - Number(a.id || 0)
     })
+    withTs.sort((a, b) => (b.ts - a.ts) || (b.idNum - a.idNum))
+    return withTs.map(item => item.ticket)
   }, [filteredTickets])
 
   const totalPages = Math.ceil(sortedFilteredTickets.length / itemsPerPage)
@@ -1890,19 +1903,15 @@ export default function TicketsPage() {
             }
 
             if (Object.keys(fichasMap).length > 0) {
-              setTickets(prev => {
+              setKanbanPhonesMap(prev => {
                 let changed = false
-                const next = prev.map(t => {
-                  if (t.telefone_empresa) return t
-                  const clean = (t.cliente_cpf || "").replace(/\D/g, "")
-                  const padded = clean.padStart(11, '0')
-                  const foundPhone = fichasMap[clean] || fichasMap[padded]
-                  if (foundPhone && foundPhone !== t.telefone_empresa) {
+                const next = { ...prev }
+                for (const [k, v] of Object.entries(fichasMap)) {
+                  if (v && next[k] !== v) {
+                    next[k] = v
                     changed = true
-                    return { ...t, telefone_empresa: foundPhone }
                   }
-                  return t
-                })
+                }
                 return changed ? next : prev
               })
             }
@@ -2707,7 +2716,25 @@ export default function TicketsPage() {
                       </td>
                     </tr>
                   ) : displayedTickets.length > 0 ? (
-                    displayedTickets.map((ticket, index) => (
+                    displayedTickets.map((ticket, index) => {
+                      const rowOpData = getValoresOperacaoEProducao(ticket)
+                      const liveData = liveMarginsMap[ticket.id.toString()]
+                      const rowMeta = parseDescriptionMetadata(ticket.descricao || "")
+                      const rowTelefoneEmpresa = !isCorretorPJ ? extractTelefoneEmpresa(ticket) : ""
+                      const rowValorOpStr = (liveData && liveData.totalOperacao > 0)
+                        ? "R$ " + liveData.totalOperacao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        : rowOpData.valorOperacao
+                      const rowLabelStr = (liveData && liveData.totalOperacao > 0)
+                        ? (liveData.selectedLabels.length === 1 ? liveData.selectedLabels[0] : (liveData.selectedLabels.length > 1 ? `Margens (${liveData.selectedLabels.length})` : "Sem seleção"))
+                        : rowOpData.label
+                      const rowColorStr = (liveData && liveData.totalOperacao > 0)
+                        ? (liveData.selectedLabels.length > 1 ? "text-indigo-600 font-extrabold" : rowOpData.color)
+                        : rowOpData.color
+                      const rowValorProdStr = (liveData && liveData.totalProducao > 0)
+                        ? "R$ " + liveData.totalProducao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        : rowOpData.valorProducao
+
+                      return (
                       <React.Fragment key={ticket.id}>
                         <tr 
                           className={cn(
@@ -2756,9 +2783,9 @@ export default function TicketsPage() {
                           )}
                           {!isCorretorPJ && (
                             <td className="px-4 py-4 text-[12px] font-bold text-slate-700 whitespace-nowrap">
-                              {extractTelefoneEmpresa(ticket) ? (
+                              {rowTelefoneEmpresa ? (
                                 <span className="inline-flex items-center gap-1 font-mono text-[11px] text-slate-800 bg-slate-200/60 px-2 py-0.5 rounded-md border border-slate-300/60">
-                                  {extractTelefoneEmpresa(ticket)}
+                                  {rowTelefoneEmpresa}
                                 </span>
                               ) : (
                                 <span className="text-slate-300 font-normal">---</span>
@@ -2780,7 +2807,6 @@ export default function TicketsPage() {
                                   const labelText = isUserAdmin ? '🚨 ATENÇÃO ADMINISTRADOR!' : '🚨 ATENÇÃO SUPERVISOR!'
                                   const currentStatus = ticket.status_chamados?.nome || ticket.status || ''
 
-                                  const meta = parseDescriptionMetadata(ticket.descricao || "")
                                   const userInMap = ticket.user_id ? usersMap[ticket.user_id] : null
 
                                   let isEstagiario = false
@@ -2789,15 +2815,15 @@ export default function TicketsPage() {
                                   } else if (ticket.user_id === user?.id && perfil) {
                                     const r = (perfil.role || (perfil as any).funcao || '').toLowerCase()
                                     isEstagiario = r.includes('estágio') || r.includes('estagio') || r.includes('estagiario') || r.includes('processo seletivo')
-                                  } else if (meta?.estagiario_id && meta.estagiario_id === ticket.user_id) {
+                                  } else if (rowMeta?.estagiario_id && rowMeta.estagiario_id === ticket.user_id) {
                                     isEstagiario = true
-                                  } else if (meta?.estagiario_nome && meta.estagiario_nome === ticket.user_nome) {
+                                  } else if (rowMeta?.estagiario_nome && rowMeta.estagiario_nome === ticket.user_nome) {
                                     isEstagiario = true
                                   }
 
                                   const collaboratorName = ticket.user_nome || userInMap?.nome || "---"
                                   const cargoText = isEstagiario ? "Estagiário" : "Corretor"
-                                  const tempoParadoStr = formatTempoParadoAmigavel(ticket.timestamp_ultima_mudanca_status || ticket.created_at)
+                                  const tempoParadoStr = formatTempoParadoAmigavel((ticket as any).timestamp_ultima_mudanca_status || ticket.created_at)
                                   const tooltipText = `Chamado parado há ${tempoParadoStr} no status ${currentStatus} aguardando a ação do ${cargoText} ${collaboratorName}.`
 
                                   return (
@@ -2830,17 +2856,11 @@ export default function TicketsPage() {
                                   )
                                 }
                               })()}
-                              {(() => {
-                                const meta = parseDescriptionMetadata(ticket.descricao || "")
-                                if (meta?.enviado_para_corretor === true && ticket.user_id !== user?.id) {
-                                  return (
-                                    <Badge variant="outline" className="text-[9px] bg-indigo-50 text-indigo-700 border-indigo-200 font-bold px-1.5 py-0.5 rounded mt-1">
-                                      Estagiário: {meta.estagiario_nome || "Não informado"}
-                                    </Badge>
-                                  )
-                                }
-                                return null
-                              })()}
+                              {rowMeta?.enviado_para_corretor === true && ticket.user_id !== user?.id && (
+                                <Badge variant="outline" className="text-[9px] bg-indigo-50 text-indigo-700 border-indigo-200 font-bold px-1.5 py-0.5 rounded mt-1">
+                                  Estagiário: {rowMeta.estagiario_nome || "Não informado"}
+                                </Badge>
+                              )}
                               {ticketApoioStates[ticket.id] && ticketApoioStates[ticket.id] !== 'none' && (
                                 <>
                                   {ticketApoioStates[ticket.id] === 'pediu' && (
@@ -2881,54 +2901,28 @@ export default function TicketsPage() {
                           {/* Coluna: Valor Operação */}
                           <td className="px-4 py-4 text-[11.5px] font-bold text-slate-700 text-right">
                             <div className="flex flex-col items-end">
-                              {(() => {
-                                const liveData = liveMarginsMap[ticket.id.toString()];
-                                const opData = getValoresOperacaoEProducao(ticket);
-                                const valorOpStr = (liveData && liveData.totalOperacao > 0)
-                                  ? "R$ " + liveData.totalOperacao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                                  : opData.valorOperacao;
-                                const labelStr = (liveData && liveData.totalOperacao > 0)
-                                  ? (liveData.selectedLabels.length === 1 ? liveData.selectedLabels[0] : (liveData.selectedLabels.length > 1 ? `Margens (${liveData.selectedLabels.length})` : "Sem seleção"))
-                                  : opData.label;
-                                const colorStr = (liveData && liveData.totalOperacao > 0)
-                                  ? (liveData.selectedLabels.length > 1 ? "text-indigo-600 font-extrabold" : opData.color)
-                                  : opData.color;
-
-                                return (
-                                  <span className="flex flex-col items-end">
-                                    <span className="text-[11.5px] leading-tight font-black text-slate-900">
-                                      {valorOpStr}
-                                    </span>
-                                    <span className={cn("text-[8px] uppercase font-black tracking-tighter mt-0.5", colorStr)}>
-                                      {labelStr}
-                                    </span>
-                                  </span>
-                                );
-                              })()}
+                              <span className="flex flex-col items-end">
+                                <span className="text-[11.5px] leading-tight font-black text-slate-900">
+                                  {rowValorOpStr}
+                                </span>
+                                <span className={cn("text-[8px] uppercase font-black tracking-tighter mt-0.5", rowColorStr)}>
+                                  {rowLabelStr}
+                                </span>
+                              </span>
                             </div>
                           </td>
 
                           {/* Coluna: Valor Produção */}
                           <td className="px-4 py-4 text-[11.5px] font-bold text-right">
                             <div className="flex flex-col items-end">
-                              {(() => {
-                                const liveData = liveMarginsMap[ticket.id.toString()];
-                                const opData = getValoresOperacaoEProducao(ticket);
-                                const valorProdStr = (liveData && liveData.totalProducao > 0)
-                                  ? "R$ " + liveData.totalProducao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                                  : opData.valorProducao;
-
-                                return (
-                                  <span className="flex flex-col items-end">
-                                    <span className="text-[11.5px] leading-tight font-black text-emerald-700">
-                                      {valorProdStr}
-                                    </span>
-                                    <span className="text-[8px] uppercase font-black tracking-tighter text-emerald-600/80 mt-0.5">
-                                      Produção
-                                    </span>
-                                  </span>
-                                );
-                              })()}
+                              <span className="flex flex-col items-end">
+                                <span className="text-[11.5px] leading-tight font-black text-emerald-700">
+                                  {rowValorProdStr}
+                                </span>
+                                <span className="text-[8px] uppercase font-black tracking-tighter text-emerald-600/80 mt-0.5">
+                                  Produção
+                                </span>
+                              </span>
                             </div>
                           </td>
                           <td className="px-4 py-4 text-[10px] font-bold text-slate-400 leading-tight max-w-[120px] truncate" title={ticket.equipe}>
@@ -3136,7 +3130,8 @@ export default function TicketsPage() {
                           </tr>
                         )}
                       </React.Fragment>
-                    ))
+                      )
+                    })
                   ) : (
                     <tr>
                       <td colSpan={(isOperational || isAdmin || isSupervisor || isDeveloper ? 12 : 11) + (canChangeStatusBulk ? 1 : 0) + (!isCorretorPJ ? 1 : 0)} className="px-4 py-12 text-center text-slate-400 text-[12px] font-medium uppercase tracking-widest">
