@@ -31,7 +31,7 @@ import CalculadoraPage from "@/app/(dashboard)/calculadora/page";
 
 const parseCleanFloat = (val: string | number | null | undefined): number | null => {
   if (val === null || val === undefined) return null;
-  if (typeof val === "number") return val;
+  if (typeof val === "number") return isNaN(val) ? null : val;
   const str = String(val).trim();
   if (!str) return null;
   
@@ -58,6 +58,17 @@ const parseCleanFloat = (val: string | number | null | undefined): number | null
   
   const parsed = parseFloat(cleaned);
   return isNaN(parsed) ? null : parsed;
+};
+
+const sanitizeDecimalInput = (val: string): string => {
+  return val.replace(/[^0-9.,-]/g, "");
+};
+
+const formatDecimalBR = (num: number, decimals = 2): string => {
+  return num.toLocaleString("pt-BR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
 };
 
 interface Contract {
@@ -187,7 +198,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   const [telefoneConsultor, setTelefoneConsultor] = useState("");
   
   const [valorLiberado, setValorLiberado] = useState("");
-  const [porcentagemReducao, setPorcentagemReducao] = useState("13.78");
+  const [porcentagemReducao, setPorcentagemReducao] = useState("13,78");
 
   // Margin states
   const [margemPrincipalVal, setMargemPrincipalVal] = useState("");
@@ -444,13 +455,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
         setOrgaoCliente(String(initialOrgao).toUpperCase());
 
         const initialMargins = getClientMargins();
-        if (initialMargins.principal > 0) setMargemPrincipalVal(String(initialMargins.principal));
+        if (initialMargins.principal > 0) setMargemPrincipalVal(formatDecimalBR(initialMargins.principal));
         else setMargemPrincipalVal("");
 
-        if (initialMargins.cartaoConsignado > 0) setMargemCartaoConsignadoVal(String(initialMargins.cartaoConsignado));
+        if (initialMargins.cartaoConsignado > 0) setMargemCartaoConsignadoVal(formatDecimalBR(initialMargins.cartaoConsignado));
         else setMargemCartaoConsignadoVal("");
 
-        if (initialMargins.cartaoBeneficio > 0) setMargemCartaoBeneficioVal(String(initialMargins.cartaoBeneficio));
+        if (initialMargins.cartaoBeneficio > 0) setMargemCartaoBeneficioVal(formatDecimalBR(initialMargins.cartaoBeneficio));
         else setMargemCartaoBeneficioVal("");
       }
 
@@ -475,16 +486,18 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           const mapped = existingLoans.map((loan, idx) => {
             const bankName = getContractTypeInfo(loan.tipo).bank || loan.banco || "";
             const pVal = loan.parcela || 0;
-            const rVal = parseFloat(porcentagemReducao) || 13.78;
+            const rVal = parseCleanFloat(porcentagemReducao) ?? 13.78;
             const calculatedNovaParcela = pVal * (1 - rVal / 100);
+            const rawTaxa = (loan as any).taxa;
+            const parsedTaxa = rawTaxa !== undefined && rawTaxa !== null ? parseCleanFloat(rawTaxa) : null;
             return {
               id: loan.id || `loan-${idx}-${Math.random()}`,
               bancoAtual: bankName,
-              parcelaAtual: pVal ? pVal.toString() : "",
+              parcelaAtual: pVal ? formatDecimalBR(pVal) : "",
               prazoAtual: loan.prazo ? loan.prazo.toString() : "",
-              taxaAtual: loan.taxa ? loan.taxa.toString() : "1.5",
+              taxaAtual: parsedTaxa !== null ? formatDecimalBR(parsedTaxa) : "1,5",
               bancoDestino: bankName || "",
-              novaParcela: calculatedNovaParcela ? calculatedNovaParcela.toFixed(2) : "",
+              novaParcela: calculatedNovaParcela ? formatDecimalBR(calculatedNovaParcela) : "",
               novoPrazo: loan.prazo ? loan.prazo.toString() : "",
               novaTaxa: ""
             };
@@ -518,7 +531,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
             bancoAtual: "",
             parcelaAtual: "",
             prazoAtual: "",
-            taxaAtual: "1.5",
+            taxaAtual: "1,5",
             bancoDestino: "",
             novaParcela: "",
             novoPrazo: "",
@@ -558,15 +571,15 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
   // Recalculate new installment values when reduction percentage changes
   useEffect(() => {
-    const rVal = parseFloat(porcentagemReducao);
-    if (!isNaN(rVal)) {
+    const rVal = parseCleanFloat(porcentagemReducao);
+    if (rVal !== null) {
       setContratos(prev => 
         prev.map(c => {
-          const pVal = parseFloat(c.parcelaAtual);
-          if (!isNaN(pVal)) {
+          const pVal = parseCleanFloat(c.parcelaAtual);
+          if (pVal !== null) {
             return {
               ...c,
-              novaParcela: (pVal * (1 - rVal / 100)).toFixed(2)
+              novaParcela: formatDecimalBR(pVal * (1 - rVal / 100))
             };
           }
           return c;
@@ -579,21 +592,22 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   useEffect(() => {
     if (!isManualQuitacaoTotalAPagar) {
       const parsedPrazo = parseInt(quitacaoPrazoRestante) || 96;
-      const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
+      const pAtual = parseCleanFloat(quitacaoParcelaAtual) || 0;
       const calculatedTotal = pAtual * parsedPrazo;
-      setQuitacaoTotalAPagar(calculatedTotal > 0 ? calculatedTotal.toFixed(2) : "");
+      setQuitacaoTotalAPagar(calculatedTotal > 0 ? formatDecimalBR(calculatedTotal) : "");
     }
   }, [quitacaoParcelaAtual, quitacaoPrazoRestante, isManualQuitacaoTotalAPagar]);
 
   useEffect(() => {
     if (!isManualQuitacaoEconomiaTotal) {
       const parsedPrazo = parseInt(quitacaoPrazoRestante) || 96;
-      const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
+      const pAtual = parseCleanFloat(quitacaoParcelaAtual) || 0;
       const calculatedTotal = pAtual * parsedPrazo;
-      const totalAPagar = quitacaoTotalAPagar ? parseFloat(quitacaoTotalAPagar) : calculatedTotal;
-      const pNova = parseFloat(quitacaoNovaParcela) || 0;
+      const parsedTotalAPagar = parseCleanFloat(quitacaoTotalAPagar);
+      const totalAPagar = parsedTotalAPagar !== null ? parsedTotalAPagar : calculatedTotal;
+      const pNova = parseCleanFloat(quitacaoNovaParcela) || 0;
       const calculatedEconomia = totalAPagar - (pNova * parsedPrazo);
-      setQuitacaoEconomiaTotal(calculatedEconomia !== 0 ? calculatedEconomia.toFixed(2) : "");
+      setQuitacaoEconomiaTotal(calculatedEconomia !== 0 ? formatDecimalBR(calculatedEconomia) : "");
     }
   }, [quitacaoTotalAPagar, quitacaoParcelaAtual, quitacaoPrazoRestante, quitacaoNovaParcela, isManualQuitacaoEconomiaTotal]);
 
@@ -643,10 +657,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       
       // If updating parcela, calculate novaParcela automatically using the current reduction rate
       if (field === "parcelaAtual") {
-        const pVal = parseFloat(value);
-        const rVal = parseFloat(porcentagemReducao);
-        if (!isNaN(pVal) && !isNaN(rVal)) {
-          copy[index].novaParcela = (pVal * (1 - rVal / 100)).toFixed(2);
+        const pVal = parseCleanFloat(value);
+        const rVal = parseCleanFloat(porcentagemReducao);
+        if (pVal !== null && rVal !== null) {
+          copy[index].novaParcela = formatDecimalBR(pVal * (1 - rVal / 100));
         } else {
           copy[index].novaParcela = "";
         }
@@ -674,7 +688,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
         bancoAtual: "",
         parcelaAtual: "",
         prazoAtual: "",
-        taxaAtual: "1.5",
+        taxaAtual: "1,5",
         bancoDestino: "",
         novaParcela: "",
         novoPrazo: "",
@@ -693,17 +707,19 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
   const handleSelectLoan = (loan: Contract) => {
     const bankName = getContractTypeInfo(loan.tipo).bank || loan.banco || "";
     const pVal = loan.parcela || 0;
-    const rVal = parseFloat(porcentagemReducao) || 13.78;
+    const rVal = parseCleanFloat(porcentagemReducao) ?? 13.78;
     const calculatedNovaParcela = pVal * (1 - rVal / 100);
+    const rawTaxa = (loan as any).taxa;
+    const parsedTaxa = rawTaxa !== undefined && rawTaxa !== null ? parseCleanFloat(rawTaxa) : null;
     
     const newContract: SimContract = {
       id: loan.id || `loan-${Math.random()}`,
       bancoAtual: bankName,
-      parcelaAtual: pVal ? pVal.toString() : "",
+      parcelaAtual: pVal ? formatDecimalBR(pVal) : "",
       prazoAtual: loan.prazo ? loan.prazo.toString() : "",
-      taxaAtual: loan.taxa ? loan.taxa.toString() : "1.5",
+      taxaAtual: parsedTaxa !== null ? formatDecimalBR(parsedTaxa) : "1,5",
       bancoDestino: bankName || "",
-      novaParcela: calculatedNovaParcela ? calculatedNovaParcela.toFixed(2) : "",
+      novaParcela: calculatedNovaParcela ? formatDecimalBR(calculatedNovaParcela) : "",
       novoPrazo: loan.prazo ? loan.prazo.toString() : "",
       novaTaxa: ""
     };
@@ -785,8 +801,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           !contratos.some(sim => sim.id === loan.id || sim.bancoAtual === loan.banco)
         );
 
-        const currentTotal = contratos.reduce((acc, c) => acc + (parseFloat(c.parcelaAtual) || 0), 0);
-        const newTotal = contratos.reduce((acc, c) => acc + (parseFloat(c.novaParcela) || 0), 0);
+        const currentTotal = contratos.reduce((acc, c) => acc + (parseCleanFloat(c.parcelaAtual) || 0), 0);
+        const newTotal = contratos.reduce((acc, c) => acc + (parseCleanFloat(c.novaParcela) || 0), 0);
 
         let saveErr;
 
@@ -813,10 +829,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
               valor_liberado: parseCleanFloat(valorLiberado) || 0,
               nome_card_esquerdo: tituloCardEsquerdo,
               prazo_real_esquerdo: parseInt(prazoEfetivoRotativo) || 0,
-              taxa_real_esquerdo: parseFloat(taxaEfetivaRotativo.replace(",", ".")) || 0,
+              taxa_real_esquerdo: parseCleanFloat(taxaEfetivaRotativo) || 0,
               margem_esquerda: parseCleanFloat(margemPrincipalVal) || 0,
               prazo_real_direito: parseInt(prazoEfetivoNovo) || 0,
-              taxa_real_direito: parseFloat(taxaEfetivaNovo.replace(",", ".")) || 0,
+              taxa_real_direito: parseCleanFloat(taxaEfetivaNovo) || 0,
               meses_a_menos: parseInt(mesesAMenos) || 0,
               validade_proposta: isNaN(parseInt(validadeDias)) ? 0 : parseInt(validadeDias),
               documentos_necessarios: docsNecessarios,
@@ -905,24 +921,24 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
   // Formatting helpers
   const formatBRL = (val: string | number) => {
-    const num = typeof val === "string" ? parseFloat(val) : val;
+    const num = typeof val === "string" ? (parseCleanFloat(val) ?? NaN) : val;
     if (isNaN(num)) return "R$ 0,00";
     return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   };
 
-  const totalParcelaAtual = contratos.reduce((acc, c) => acc + (parseFloat(c.parcelaAtual) || 0), 0);
-  const totalNovaParcela = contratos.reduce((acc, c) => acc + (parseFloat(c.novaParcela) || 0), 0);
+  const totalParcelaAtual = contratos.reduce((acc, c) => acc + (parseCleanFloat(c.parcelaAtual) || 0), 0);
+  const totalNovaParcela = contratos.reduce((acc, c) => acc + (parseCleanFloat(c.novaParcela) || 0), 0);
   const economiaMensal = Math.max(0, totalParcelaAtual - totalNovaParcela);
   const totalContratoEconomia = contratos.reduce((acc, c) => {
-    const pAtual = parseFloat(c.parcelaAtual) || 0;
-    const pNova = parseFloat(c.novaParcela) || 0;
+    const pAtual = parseCleanFloat(c.parcelaAtual) || 0;
+    const pNova = parseCleanFloat(c.novaParcela) || 0;
     const prazo = parseInt(c.novoPrazo) || parseInt(c.prazoAtual) || 0;
     return acc + ((pAtual - pNova) * prazo);
   }, 0);
 
   // Helper to render the complete proposal template flyer with exact matching structure and values
   const renderProposalTemplateContent = (isZoom: boolean) => {
-    const valorNovo = parseFloat(valorLiberado) || 0;
+    const valorNovo = parseCleanFloat(valorLiberado) || 0;
     const valorRotativo = valorNovo * 0.70;
 
     const getOrgaoLabelAndValue = () => {
@@ -968,12 +984,12 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       return `${validadeDias} ${parsedDays === 1 ? "dia útil" : "dias úteis"} a partir de hoje`;
     })();
 
-    const totalParcelaAtual = contratos.reduce((acc, c) => acc + (parseFloat(c.parcelaAtual) || 0), 0);
-    const totalNovaParcela = contratos.reduce((acc, c) => acc + (parseFloat(c.novaParcela) || 0), 0);
+    const totalParcelaAtual = contratos.reduce((acc, c) => acc + (parseCleanFloat(c.parcelaAtual) || 0), 0);
+    const totalNovaParcela = contratos.reduce((acc, c) => acc + (parseCleanFloat(c.novaParcela) || 0), 0);
     const economiaMensal = Math.max(0, totalParcelaAtual - totalNovaParcela);
-    const sumOfMargins = (parseFloat(margemPrincipalVal) || clientPrincipalMargem || 0) + 
-                         (parseFloat(margemCartaoConsignadoVal) || clientCartaoConsignadoMargem || 0) + 
-                         (parseFloat(margemCartaoBeneficioVal) || clientCartaoBeneficioMargem || 0);
+    const sumOfMargins = (parseCleanFloat(margemPrincipalVal) || clientPrincipalMargem || 0) + 
+                         (parseCleanFloat(margemCartaoConsignadoVal) || clientCartaoConsignadoMargem || 0) + 
+                         (parseCleanFloat(margemCartaoBeneficioVal) || clientCartaoBeneficioMargem || 0);
     const valorTotalPosEstrategia = totalNovaParcela + sumOfMargins;
 
     const uniqueDestBanks = Array.from(new Set(contratos.map(c => c.bancoDestino).filter(Boolean)));
@@ -982,9 +998,9 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       ? `Através do ${uniqueDestBanks.join(" e ")}`
       : "";
 
-    const hasMargemPrincipal = margemPrincipalVal !== "" ? parseFloat(margemPrincipalVal) > 0 : clientPrincipalMargem > 0;
-    const hasMargemCC = margemCartaoConsignadoVal !== "" ? parseFloat(margemCartaoConsignadoVal) > 0 : clientCartaoConsignadoMargem > 0;
-    const hasMargemCB = margemCartaoBeneficioVal !== "" ? parseFloat(margemCartaoBeneficioVal) > 0 : clientCartaoBeneficioMargem > 0;
+    const hasMargemPrincipal = margemPrincipalVal !== "" ? (parseCleanFloat(margemPrincipalVal) || 0) > 0 : clientPrincipalMargem > 0;
+    const hasMargemCC = margemCartaoConsignadoVal !== "" ? (parseCleanFloat(margemCartaoConsignadoVal) || 0) > 0 : clientCartaoConsignadoMargem > 0;
+    const hasMargemCB = margemCartaoBeneficioVal !== "" ? (parseCleanFloat(margemCartaoBeneficioVal) || 0) > 0 : clientCartaoBeneficioMargem > 0;
 
     const numPages = contratos.length >= 4 ? (1 + (contratos.length - 3) * 0.15) : 1;
 
@@ -1142,7 +1158,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                           <td className="p-2.5 font-semibold text-slate-700">{formatBRL(c.parcelaAtual)}</td>
                           <td className="p-2.5 font-bold text-[#162546]">{c.prazoAtual ? `${c.prazoAtual}X` : "-"}</td>
                           {showTaxa && (
-                            <td className="p-2.5 font-semibold text-slate-600">{c.taxaAtual ? `${parseFloat(c.taxaAtual).toFixed(2)}%` : "-"}</td>
+                            <td className="p-2.5 font-semibold text-slate-600">{c.taxaAtual ? `${(parseCleanFloat(c.taxaAtual) ?? 0).toFixed(2).replace(".", ",")}%` : "-"}</td>
                           )}
                         </tr>
                       ))}
@@ -1218,7 +1234,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                           <td className={`p-2.5 ${!showBancoDestino ? 'pl-5' : ''} font-bold text-slate-800`}>{formatBRL(c.novaParcela)}</td>
                           <td className="p-2.5 font-bold text-[#162546]">{c.novoPrazo || c.prazoAtual ? `${c.novoPrazo || c.prazoAtual}X` : "-"}</td>
                           {showNovaTaxa && (
-                            <td className="p-2.5 font-semibold text-slate-600">{c.novaTaxa ? `${parseFloat(c.novaTaxa).toFixed(2)}%` : "-"}</td>
+                            <td className="p-2.5 font-semibold text-slate-600">{c.novaTaxa ? `${(parseCleanFloat(c.novaTaxa) ?? 0).toFixed(2).replace(".", ",")}%` : "-"}</td>
                           )}
                         </tr>
                       ))}
@@ -1516,9 +1532,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                             Total a Pagar: <span className="font-black text-[#c44a4a] block sm:inline">
                               {(() => {
                                 const parsedPrazo = parseInt(quitacaoPrazoRestante) || 96;
-                                const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
+                                const pAtual = parseCleanFloat(quitacaoParcelaAtual) || 0;
                                 const defaultCalculated = pAtual * parsedPrazo;
-                                const finalTotal = quitacaoTotalAPagar ? parseFloat(quitacaoTotalAPagar) : defaultCalculated;
+                                const parsedTotalAPagar = parseCleanFloat(quitacaoTotalAPagar);
+                                const finalTotal = parsedTotalAPagar !== null ? parsedTotalAPagar : defaultCalculated;
                                 return formatBRL(finalTotal);
                               })()}
                             </span>
@@ -1568,17 +1585,19 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
 
                 {/* Bottom Indicators Row for Quitação */}
                 {(() => {
-                  const quitacaoPAtual = parseFloat(quitacaoParcelaAtual) || 0;
-                  const quitacaoPNova = parseFloat(quitacaoNovaParcela) || 0;
+                  const quitacaoPAtual = parseCleanFloat(quitacaoParcelaAtual) || 0;
+                  const quitacaoPNova = parseCleanFloat(quitacaoNovaParcela) || 0;
                   const quitacaoReducaoMensal = Math.max(0, quitacaoPAtual - quitacaoPNova);
                   const quitacaoPrazo = parseInt(quitacaoPrazoRestante) || 96;
                   
                   const calculatedTotalAPagar = quitacaoPAtual * quitacaoPrazo;
-                  const actualTotalAPagar = quitacaoTotalAPagar ? parseFloat(quitacaoTotalAPagar) : calculatedTotalAPagar;
+                  const parsedTotalAPagar = parseCleanFloat(quitacaoTotalAPagar);
+                  const actualTotalAPagar = parsedTotalAPagar !== null ? parsedTotalAPagar : calculatedTotalAPagar;
                   
                   const calculatedEconomia = actualTotalAPagar - (quitacaoPNova * quitacaoPrazo);
-                  const displayEconomiaTotal = quitacaoEconomiaTotal ? parseFloat(quitacaoEconomiaTotal) : calculatedEconomia;
-                  const quitacaoTrocoVal = parseFloat(quitacaoValorLiberado) || 0;
+                  const parsedEconomiaTotal = parseCleanFloat(quitacaoEconomiaTotal);
+                  const displayEconomiaTotal = parsedEconomiaTotal !== null ? parsedEconomiaTotal : calculatedEconomia;
+                  const quitacaoTrocoVal = parseCleanFloat(quitacaoValorLiberado) || 0;
                   const showEconomia = !ocultarQuitacaoEconomiaTotal;
                   const showTroco = !ocultarQuitacaoTroco;
                   const colsCount = 1 + (showEconomia ? 1 : 0) + (showTroco ? 1 : 0);
@@ -1735,7 +1754,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                           <td className={`${tableCellPadding} font-semibold text-slate-700`}>{formatBRL(c.parcelaAtual)}</td>
                           <td className={`${tableCellPadding} font-bold text-[#162546]`}>{c.prazoAtual ? `${c.prazoAtual}X` : "-"}</td>
                           {showTaxa && (
-                            <td className={`${tableCellPadding} font-semibold text-slate-600`}>{c.taxaAtual ? `${parseFloat(c.taxaAtual).toFixed(2)}%` : "-"}</td>
+                            <td className={`${tableCellPadding} font-semibold text-slate-600`}>{c.taxaAtual ? `${(parseCleanFloat(c.taxaAtual) ?? 0).toFixed(2).replace(".", ",")}%` : "-"}</td>
                           )}
                         </tr>
                       ))}
@@ -1777,7 +1796,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                           <td className={`${tableCellPadding} ${!showBancoDestino ? 'pl-5' : ''} font-bold text-slate-800`}>{formatBRL(c.novaParcela)}</td>
                           <td className={`${tableCellPadding} font-bold text-[#162546]`}>{c.novoPrazo || c.prazoAtual ? `${c.novoPrazo || c.prazoAtual}X` : "-"}</td>
                           {showNovaTaxa && (
-                            <td className={`${tableCellPadding} font-semibold text-slate-600`}>{c.novaTaxa ? `${parseFloat(c.novaTaxa).toFixed(2)}%` : "-"}</td>
+                            <td className={`${tableCellPadding} font-semibold text-slate-600`}>{c.novaTaxa ? `${(parseCleanFloat(c.novaTaxa) ?? 0).toFixed(2).replace(".", ",")}%` : "-"}</td>
                           )}
                         </tr>
                       ))}
@@ -2162,8 +2181,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                             {/* MARGEM PRINCIPAL */}
                             {(() => {
                               const isPrincipalActive = margemPrincipalVal !== "";
-                              const principalValNum = parseFloat(margemPrincipalVal);
-                              const isPrincipalPositive = !isNaN(principalValNum) ? principalValNum > 0 : clientPrincipalMargem > 0;
+                              const principalValNum = parseCleanFloat(margemPrincipalVal);
+                              const isPrincipalPositive = principalValNum !== null ? principalValNum > 0 : clientPrincipalMargem > 0;
                               return (
                                 <div className="space-y-1">
                                   <div className="h-8 flex items-end pb-1">
@@ -2176,10 +2195,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                         : "text-slate-400"
                                     }`}>R$</span>
                                     <input 
-                                      type="number" 
-                                      step="0.01"
+                                      type="text"
+                                      inputMode="decimal"
                                       value={margemPrincipalVal}
-                                      onChange={(e) => setMargemPrincipalVal(e.target.value)}
+                                      onChange={(e) => setMargemPrincipalVal(sanitizeDecimalInput(e.target.value))}
                                       className={`w-full border rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold focus:outline-none transition-all duration-200 text-right ${
                                         isPrincipalActive
                                           ? isPrincipalPositive
@@ -2197,8 +2216,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                             {/* MARGEM CARTÃO CONSIGNADO */}
                             {(() => {
                               const isCartaoConsignadoActive = margemCartaoConsignadoVal !== "";
-                              const cartaoConsignadoValNum = parseFloat(margemCartaoConsignadoVal);
-                              const isCartaoConsignadoPositive = !isNaN(cartaoConsignadoValNum) ? cartaoConsignadoValNum > 0 : clientCartaoConsignadoMargem > 0;
+                              const cartaoConsignadoValNum = parseCleanFloat(margemCartaoConsignadoVal);
+                              const isCartaoConsignadoPositive = cartaoConsignadoValNum !== null ? cartaoConsignadoValNum > 0 : clientCartaoConsignadoMargem > 0;
                               return (
                                 <div className="space-y-1">
                                   <div className="h-8 flex items-end pb-1">
@@ -2211,10 +2230,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                         : "text-slate-400"
                                     }`}>R$</span>
                                     <input 
-                                      type="number" 
-                                      step="0.01"
+                                      type="text"
+                                      inputMode="decimal"
                                       value={margemCartaoConsignadoVal}
-                                      onChange={(e) => setMargemCartaoConsignadoVal(e.target.value)}
+                                      onChange={(e) => setMargemCartaoConsignadoVal(sanitizeDecimalInput(e.target.value))}
                                       className={`w-full border rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold focus:outline-none transition-all duration-200 text-right ${
                                         isCartaoConsignadoActive
                                           ? isCartaoConsignadoPositive
@@ -2232,8 +2251,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                             {/* MARGEM CARTÃO BENEFÍCIO */}
                             {(() => {
                               const isCartaoBeneficioActive = margemCartaoBeneficioVal !== "";
-                              const cartaoBeneficioValNum = parseFloat(margemCartaoBeneficioVal);
-                              const isCartaoBeneficioPositive = !isNaN(cartaoBeneficioValNum) ? cartaoBeneficioValNum > 0 : clientCartaoBeneficioMargem > 0;
+                              const cartaoBeneficioValNum = parseCleanFloat(margemCartaoBeneficioVal);
+                              const isCartaoBeneficioPositive = cartaoBeneficioValNum !== null ? cartaoBeneficioValNum > 0 : clientCartaoBeneficioMargem > 0;
                               return (
                                 <div className="space-y-1">
                                   <div className="h-8 flex items-end pb-1">
@@ -2246,10 +2265,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                         : "text-slate-400"
                                     }`}>R$</span>
                                     <input 
-                                      type="number" 
-                                      step="0.01"
+                                      type="text"
+                                      inputMode="decimal"
                                       value={margemCartaoBeneficioVal}
-                                      onChange={(e) => setMargemCartaoBeneficioVal(e.target.value)}
+                                      onChange={(e) => setMargemCartaoBeneficioVal(sanitizeDecimalInput(e.target.value))}
                                       className={`w-full border rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold focus:outline-none transition-all duration-200 text-right ${
                                         isCartaoBeneficioActive
                                           ? isCartaoBeneficioPositive
@@ -2274,10 +2293,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               <div className="relative">
                                 <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
                                 <input 
-                                  type="number" 
-                                  step="0.01"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={valorLiberado}
-                                  onChange={(e) => setValorLiberado(e.target.value)}
+                                  onChange={(e) => setValorLiberado(sanitizeDecimalInput(e.target.value))}
                                   className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                   placeholder="0,00"
                                 />
@@ -2292,10 +2311,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               </div>
                               <div className="relative">
                                 <input 
-                                  type="number" 
-                                  step="0.01"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={porcentagemReducao}
-                                  onChange={(e) => setPorcentagemReducao(e.target.value)}
+                                  onChange={(e) => setPorcentagemReducao(sanitizeDecimalInput(e.target.value))}
                                   className={`w-full border rounded-xl px-3.5 py-2 text-[12px] font-bold focus:outline-none shadow-sm pr-7 text-right ${
                                     isSupervisor 
                                       ? "bg-white border-slate-200 text-slate-800 focus:border-blue-500" 
@@ -2364,10 +2383,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                     <div className="relative">
                                       <span className="absolute left-3.5 top-2 text-[11px] font-bold text-slate-400">R$</span>
                                       <input 
-                                        type="number" 
-                                        step="0.01"
+                                        type="text"
+                                        inputMode="decimal"
                                         value={contrato.parcelaAtual}
-                                        onChange={(e) => updateContrato(index, "parcelaAtual", e.target.value)}
+                                        onChange={(e) => updateContrato(index, "parcelaAtual", sanitizeDecimalInput(e.target.value))}
                                         className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                         placeholder="0,00"
                                       />
@@ -2388,10 +2407,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                       <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Taxa Atual % (Opcional)</label>
                                       <div className="relative">
                                         <input 
-                                          type="number" 
-                                          step="0.01"
+                                          type="text"
+                                          inputMode="decimal"
                                           value={contrato.taxaAtual}
-                                          onChange={(e) => updateContrato(index, "taxaAtual", e.target.value)}
+                                          onChange={(e) => updateContrato(index, "taxaAtual", sanitizeDecimalInput(e.target.value))}
                                           className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm pr-7 text-right"
                                           placeholder="0,00"
                                         />
@@ -2476,10 +2495,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                     <div className="relative">
                                       <span className="absolute left-3.5 top-2 text-[11px] font-bold text-slate-400">R$</span>
                                       <input 
-                                        type="number" 
-                                        step="0.01"
+                                        type="text"
+                                        inputMode="decimal"
                                         value={contrato.novaParcela}
-                                        onChange={(e) => updateContrato(index, "novaParcela", e.target.value)}
+                                        onChange={(e) => updateContrato(index, "novaParcela", sanitizeDecimalInput(e.target.value))}
                                         className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                         placeholder="0,00"
                                       />
@@ -2500,10 +2519,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                       <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Nova Taxa % (Opcional)</label>
                                       <div className="relative">
                                         <input 
-                                          type="number" 
-                                          step="0.01"
+                                          type="text"
+                                          inputMode="decimal"
                                           value={contrato.novaTaxa || ""}
-                                          onChange={(e) => updateContrato(index, "novaTaxa", e.target.value)}
+                                          onChange={(e) => updateContrato(index, "novaTaxa", sanitizeDecimalInput(e.target.value))}
                                           className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm pr-7 text-right"
                                           placeholder="0,00"
                                         />
@@ -2560,10 +2579,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               <div className="relative">
                                 <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
                                 <input 
-                                  type="number"
-                                  step="0.01"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={quitacaoSaldoQuitacao}
-                                  onChange={(e) => setQuitacaoSaldoQuitacao(e.target.value)}
+                                  onChange={(e) => setQuitacaoSaldoQuitacao(sanitizeDecimalInput(e.target.value))}
                                   className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                   placeholder="0,00"
                                 />
@@ -2576,12 +2595,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               <div className="relative">
                                 <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
                                 <input 
-                                  type="number"
-                                  step="0.01"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={quitacaoParcelaAtual}
                                   onChange={(e) => {
-                                    setQuitacaoParcelaAtual(e.target.value);
-                                    setQuitacaoMargemVolta(e.target.value);
+                                    const val = sanitizeDecimalInput(e.target.value);
+                                    setQuitacaoParcelaAtual(val);
+                                    setQuitacaoMargemVolta(val);
                                   }}
                                   className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                   placeholder="0,00"
@@ -2628,8 +2648,9 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               </div>
                               <input 
                                 type="text"
+                                inputMode="decimal"
                                 value={quitacaoTaxaAtual}
-                                onChange={(e) => setQuitacaoTaxaAtual(e.target.value)}
+                                onChange={(e) => setQuitacaoTaxaAtual(sanitizeDecimalInput(e.target.value))}
                                 className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
                                 placeholder="Ex: 1,80"
                               />
@@ -2652,11 +2673,11 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               <div className="relative">
                                 <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
                                 <input 
-                                  type="number"
-                                  step="0.01"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={quitacaoTotalAPagar}
                                   onChange={(e) => {
-                                    const val = e.target.value;
+                                    const val = sanitizeDecimalInput(e.target.value);
                                     setQuitacaoTotalAPagar(val);
                                     if (val === "") {
                                       setIsManualQuitacaoTotalAPagar(false);
@@ -2667,9 +2688,9 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                   className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                   placeholder={(() => {
                                     const parsedPrazo = parseInt(quitacaoPrazoRestante) || 96;
-                                    const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
+                                    const pAtual = parseCleanFloat(quitacaoParcelaAtual) || 0;
                                     const calc = pAtual * parsedPrazo;
-                                    return calc > 0 ? calc.toFixed(2) : "0,00";
+                                    return calc > 0 ? formatDecimalBR(calc) : "0,00";
                                   })()}
                                 />
                               </div>
@@ -2691,10 +2712,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               <div className="relative">
                                 <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
                                 <input 
-                                  type="number"
-                                  step="0.01"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={quitacaoNovaParcela}
-                                  onChange={(e) => setQuitacaoNovaParcela(e.target.value)}
+                                  onChange={(e) => setQuitacaoNovaParcela(sanitizeDecimalInput(e.target.value))}
                                   className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                   placeholder="0,00"
                                 />
@@ -2708,8 +2729,8 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                 <span className="text-[11px] font-bold text-emerald-700">R$</span>
                                 <span className="text-[12px] font-extrabold text-emerald-800">
                                   {(() => {
-                                    const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
-                                    const pNova = parseFloat(quitacaoNovaParcela) || 0;
+                                    const pAtual = parseCleanFloat(quitacaoParcelaAtual) || 0;
+                                    const pNova = parseCleanFloat(quitacaoNovaParcela) || 0;
                                     const red = Math.max(0, pAtual - pNova);
                                     return red.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                                   })()}
@@ -2723,10 +2744,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               <div className="relative">
                                 <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
                                 <input 
-                                  type="number"
-                                  step="0.01"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={quitacaoMargemVolta}
-                                  onChange={(e) => setQuitacaoMargemVolta(e.target.value)}
+                                  onChange={(e) => setQuitacaoMargemVolta(sanitizeDecimalInput(e.target.value))}
                                   className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                   placeholder="0,00"
                                 />
@@ -2750,10 +2771,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               <div className="relative">
                                 <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
                                 <input 
-                                  type="number"
-                                  step="0.01"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={quitacaoValorLiberado}
-                                  onChange={(e) => setQuitacaoValorLiberado(e.target.value)}
+                                  onChange={(e) => setQuitacaoValorLiberado(sanitizeDecimalInput(e.target.value))}
                                   className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                   placeholder="0,00"
                                 />
@@ -2776,8 +2797,9 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               </div>
                               <input 
                                 type="text"
+                                inputMode="decimal"
                                 value={quitacaoNovaTaxa}
-                                onChange={(e) => setQuitacaoNovaTaxa(e.target.value)}
+                                onChange={(e) => setQuitacaoNovaTaxa(sanitizeDecimalInput(e.target.value))}
                                 className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm"
                                 placeholder="Ex: 1,35"
                               />
@@ -2800,11 +2822,11 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               <div className="relative">
                                 <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
                                 <input 
-                                  type="number"
-                                  step="0.01"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={quitacaoEconomiaTotal}
                                   onChange={(e) => {
-                                    const val = e.target.value;
+                                    const val = sanitizeDecimalInput(e.target.value);
                                     setQuitacaoEconomiaTotal(val);
                                     if (val === "") {
                                       setIsManualQuitacaoEconomiaTotal(false);
@@ -2815,12 +2837,13 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                   className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                   placeholder={(() => {
                                     const parsedPrazo = parseInt(quitacaoPrazoRestante) || 96;
-                                    const pAtual = parseFloat(quitacaoParcelaAtual) || 0;
+                                    const pAtual = parseCleanFloat(quitacaoParcelaAtual) || 0;
                                     const calculatedTotal = pAtual * parsedPrazo;
-                                    const totalAPagarVal = quitacaoTotalAPagar ? parseFloat(quitacaoTotalAPagar) : calculatedTotal;
-                                    const pNova = parseFloat(quitacaoNovaParcela) || 0;
+                                    const parsedTotalAPagar = parseCleanFloat(quitacaoTotalAPagar);
+                                    const totalAPagarVal = parsedTotalAPagar !== null ? parsedTotalAPagar : calculatedTotal;
+                                    const pNova = parseCleanFloat(quitacaoNovaParcela) || 0;
                                     const calc = totalAPagarVal - (pNova * parsedPrazo);
-                                    return calc !== 0 ? calc.toFixed(2) : "0,00";
+                                    return calc !== 0 ? formatDecimalBR(calc) : "0,00";
                                   })()}
                                 />
                               </div>
@@ -2924,10 +2947,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                               <div className="relative">
                                 <span className="absolute left-3.5 top-2.5 text-[11px] font-bold text-slate-400">R$</span>
                                 <input 
-                                  type="number" 
-                                  step="0.01"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={valorLiberado}
-                                  onChange={(e) => setValorLiberado(e.target.value)}
+                                  onChange={(e) => setValorLiberado(sanitizeDecimalInput(e.target.value))}
                                   className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                   placeholder="0,00"
                                 />
@@ -3007,10 +3030,11 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                   <div className="space-y-1">
                                     <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Taxa Real % a.m.</label>
                                     <input 
-                                      type="text" 
+                                      type="text"
+                                      inputMode="decimal"
                                       value={taxaEfetivaRotativo}
                                       onChange={(e) => {
-                                        setTaxaEfetivaRotativo(e.target.value);
+                                        setTaxaEfetivaRotativo(sanitizeDecimalInput(e.target.value));
                                         setIsManualTaxaEfetivaRotativo(true);
                                       }}
                                       className={`w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[12px] font-bold focus:outline-none focus:border-blue-500 shadow-sm ${
@@ -3045,10 +3069,10 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                   <div className="relative">
                                     <span className="absolute left-3.5 top-1.5 text-[11px] font-bold text-slate-400">R$</span>
                                     <input 
-                                      type="number" 
-                                      step="0.01"
+                                      type="text"
+                                      inputMode="decimal"
                                       value={margemPrincipalVal}
-                                      onChange={(e) => setMargemPrincipalVal(e.target.value)}
+                                      onChange={(e) => setMargemPrincipalVal(sanitizeDecimalInput(e.target.value))}
                                       className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3.5 py-1.5 text-[12px] font-bold text-slate-800 focus:outline-none focus:border-blue-500 shadow-sm text-right"
                                       placeholder="0,00"
                                     />
@@ -3077,10 +3101,11 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
                                   <div className="space-y-1">
                                     <label className="text-[9px] font-bold text-[#162546] uppercase tracking-widest">Taxa Real % a.m.</label>
                                     <input 
-                                      type="text" 
+                                      type="text"
+                                      inputMode="decimal"
                                       value={taxaEfetivaNovo}
                                       onChange={(e) => {
-                                        setTaxaEfetivaNovo(e.target.value);
+                                        setTaxaEfetivaNovo(sanitizeDecimalInput(e.target.value));
                                         setIsManualTaxaEfetivaNovo(true);
                                       }}
                                       className={`w-full bg-white border border-yellow-200 rounded-xl px-3 py-1.5 text-[12px] font-bold focus:outline-none focus:border-yellow-500 shadow-sm ${
