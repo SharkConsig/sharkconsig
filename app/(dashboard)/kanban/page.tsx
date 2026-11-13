@@ -1529,6 +1529,7 @@ function inferKanbanStage(
   }
 
   // 3. Cadência esgotada (RTs e REs) entra na coluna PERDIDO
+  // (exceto quando o corretor movimentar o cartão manualmente para outra etapa ativa, preservando o histórico)
   const isCadenciaEsgotada = Boolean(
     meta.regua_etapa === "ENCERRADO" ||
     meta.proxima_acao?.toLowerCase().includes("esgotad") ||
@@ -1536,7 +1537,13 @@ function inferKanbanStage(
     (ticket.descricao || "").toLowerCase().includes("cadência de retomada esgotada") ||
     (ticket.descricao || "").toLowerCase().includes("cadencia de retomada esgotada")
   )
-  if (isCadenciaEsgotada) {
+  const etapaExplicita = meta.kanban_stage || ((ticket as any).etapa as KanbanStage | undefined) || ticket.status
+  const hasMovedOutOfPerdido = Boolean(
+    etapaExplicita &&
+    etapaExplicita !== "PERDIDO" &&
+    ["EM ABORDAGEM", "EM RETOMADA", "ENTRADA DO SITE", "EM NEGOCIAÇÃO", "EM REATIVAÇÃO", "SEM INTERESSE", "FECHADO"].includes(etapaExplicita)
+  )
+  if (isCadenciaEsgotada && !hasMovedOutOfPerdido) {
     return "PERDIDO"
   }
 
