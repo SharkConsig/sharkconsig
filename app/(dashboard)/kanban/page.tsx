@@ -1819,6 +1819,16 @@ export default function KanbanPage() {
     ["administrador", "supervisor", "operacional", "desenvolvedor"].includes(userFuncao)
   )
 
+  // Porcentagens nos cabeçalhos das colunas/etapas: visível somente para Administrador, Operacional, Supervisor e Desenvolvedor
+  const canSeeColumnPercentages = Boolean(
+    isAdmin ||
+    isOperational ||
+    isSupervisor ||
+    isDeveloper ||
+    ["administrador", "operacional", "supervisor", "desenvolvedor"].includes(userRole.toLowerCase()) ||
+    ["administrador", "operacional", "supervisor", "desenvolvedor"].includes(userFuncao)
+  )
+
   const isGestor = Boolean(
     isAdmin || 
     userRole === "Administrador" || 
@@ -8055,8 +8065,8 @@ export default function KanbanPage() {
                               Valor Operação:
                             </span>
                             <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                              {valorAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
-                              <span>({pctAgoraValor})</span>
+                              {valorAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {canSeeColumnPercentages && <span> ({pctAgoraValor})</span>}
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-1">
@@ -8064,8 +8074,8 @@ export default function KanbanPage() {
                               Valor Produção:
                             </span>
                             <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
-                              {prodAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
-                              <span>({pctAgoraProd})</span>
+                              {prodAgora.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {canSeeColumnPercentages && <span> ({pctAgoraProd})</span>}
                             </span>
                           </div>
                         </div>
@@ -8116,8 +8126,8 @@ export default function KanbanPage() {
                               Valor Operação:
                             </span>
                             <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                              {valorVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
-                              <span>({pctVencidasValor})</span>
+                              {valorVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {canSeeColumnPercentages && <span> ({pctVencidasValor})</span>}
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-1">
@@ -8125,8 +8135,8 @@ export default function KanbanPage() {
                               Valor Produção:
                             </span>
                             <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
-                              {prodVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
-                              <span>({pctVencidasProd})</span>
+                              {prodVencidas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {canSeeColumnPercentages && <span> ({pctVencidasProd})</span>}
                             </span>
                           </div>
                         </div>
@@ -8177,8 +8187,8 @@ export default function KanbanPage() {
                               Valor Operação:
                             </span>
                             <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                              {valorFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
-                              <span>({pctFuturasValor})</span>
+                              {valorFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {canSeeColumnPercentages && <span> ({pctFuturasValor})</span>}
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-1">
@@ -8186,8 +8196,8 @@ export default function KanbanPage() {
                               Valor Produção:
                             </span>
                             <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
-                              {prodFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
-                              <span>({pctFuturasProd})</span>
+                              {prodFuturas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {canSeeColumnPercentages && <span> ({pctFuturasProd})</span>}
                             </span>
                           </div>
                         </div>
@@ -8238,8 +8248,8 @@ export default function KanbanPage() {
                               Valor Operação:
                             </span>
                             <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                              {valorAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
-                              <span>({pctAcaoValor})</span>
+                              {valorAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {canSeeColumnPercentages && <span> ({pctAcaoValor})</span>}
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-1">
@@ -8247,8 +8257,8 @@ export default function KanbanPage() {
                               Valor Produção:
                             </span>
                             <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
-                              {prodAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
-                              <span>({pctAcaoProd})</span>
+                              {prodAcao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                              {canSeeColumnPercentages && <span> ({pctAcaoProd})</span>}
                             </span>
                           </div>
                         </div>
@@ -8369,8 +8379,8 @@ export default function KanbanPage() {
                             Valor Operação:
                           </span>
                           <span className="font-extrabold text-slate-950 whitespace-nowrap text-right">
-                            {totalColValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
-                            <span>({pctColValor})</span>
+                            {totalColValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            {canSeeColumnPercentages && <span> ({pctColValor})</span>}
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-1">
@@ -8378,8 +8388,8 @@ export default function KanbanPage() {
                             Valor Produção:
                           </span>
                           <span className="font-extrabold text-emerald-700 whitespace-nowrap text-right">
-                            {totalColProducao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}{" "}
-                            <span>({pctColProducao})</span>
+                            {totalColProducao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                            {canSeeColumnPercentages && <span> ({pctColProducao})</span>}
                           </span>
                         </div>
                       </div>

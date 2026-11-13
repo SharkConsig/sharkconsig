@@ -22,7 +22,9 @@ import {
   Search,
   ExternalLink,
   ShieldAlert,
-  Zap
+  Zap,
+  Copy,
+  Check
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -90,6 +92,31 @@ export function PipelineIntelligenceDrawer({
   const [activeTab, setActiveTab] = useState<ActiveTab>("speed")
   const [searchRiskQuery, setSearchRiskQuery] = useState("")
   const [riskTierFilter, setRiskTierFilter] = useState<"all" | "high" | "mid" | "low">("all")
+  const [riskStageFilter, setRiskStageFilter] = useState<string>("all")
+  const [copiedFieldKey, setCopiedFieldKey] = useState<string | null>(null)
+
+  const handleCopyField = (key: string, rawValue?: string) => {
+    const text = String(rawValue || "").trim()
+    if (!text || text === "---") return
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {})
+    } else if (typeof document !== "undefined") {
+      const textarea = document.createElement("textarea")
+      textarea.value = text
+      textarea.style.position = "fixed"
+      textarea.style.opacity = "0"
+      document.body.appendChild(textarea)
+      textarea.select()
+      try {
+        document.execCommand("copy")
+      } catch {}
+      document.body.removeChild(textarea)
+    }
+    setCopiedFieldKey(key)
+    setTimeout(() => {
+      setCopiedFieldKey(prev => (prev === key ? null : prev))
+    }, 1500)
+  }
 
   // Apenas fichas que estão efetivamente no Kanban (excluindo gavetas ocultas de WhatsApp)
   const kanbanTickets = useMemo(() => {
@@ -696,18 +723,71 @@ export function PipelineIntelligenceDrawer({
       .sort((a, b) => b.valorOperacao - a.valorOperacao || b.hoursInactive - a.hoursInactive)
   }, [filteredTickets, getValorOperacaoDeAbertura])
 
+  const getRiskStageKey = (status?: string) => {
+    const s = String(status || "").trim().toUpperCase()
+    if (s.includes("RETOMADA") || s.includes("INTERAÇÃO") || s.includes("INTERACAO")) return "EM RETOMADA"
+    if (s.includes("NEGOCIA")) return "EM NEGOCIAÇÃO"
+    if (s.includes("REATIVA")) return "EM REATIVAÇÃO"
+    if (s.includes("SEM INTERESSE")) return "SEM INTERESSE"
+    return s
+  }
+
+  const riskStageOptions = useMemo(() => {
+    const STAGE_DEFS = [
+      { value: "EM RETOMADA", label: "Em Retomada / Interação" },
+      { value: "EM NEGOCIAÇÃO", label: "Em Negociação" },
+      { value: "EM REATIVAÇÃO", label: "Em Reativação" },
+      { value: "SEM INTERESSE", label: "Sem Interesse" }
+    ]
+
+    const presentCounts = new Map<string, number>()
+    riskLeadsData.forEach(item => {
+      const key = getRiskStageKey(item.ticket.status)
+      if (key) {
+        presentCounts.set(key, (presentCounts.get(key) || 0) + 1)
+      }
+    })
+
+    const ordered = STAGE_DEFS
+      .filter(def => (presentCounts.get(def.value) || 0) > 0)
+      .map(def => ({
+        value: def.value,
+        label: def.label,
+        count: presentCounts.get(def.value) || 0
+      }))
+
+    presentCounts.forEach((count, key) => {
+      if (!STAGE_DEFS.some(def => def.value === key)) {
+        ordered.push({ value: key, label: key, count })
+      }
+    })
+
+    return ordered
+  }, [riskLeadsData])
+
+  const effectiveRiskStageFilter =
+    riskStageFilter !== "all" && !riskStageOptions.some(opt => opt.value === riskStageFilter)
+      ? "all"
+      : riskStageFilter
+
   const searchFilteredRiskLeads = useMemo(() => {
-    if (!searchRiskQuery.trim()) return riskLeadsData
+    let list = riskLeadsData
+
+    if (effectiveRiskStageFilter !== "all") {
+      list = list.filter(item => getRiskStageKey(item.ticket.status) === effectiveRiskStageFilter)
+    }
+
+    if (!searchRiskQuery.trim()) return list
 
     const q = searchRiskQuery.toLowerCase().trim()
-    return riskLeadsData.filter(item => {
+    return list.filter(item => {
       const cName = (item.ticket.cliente_nome || "").toLowerCase()
       const cCpf = (item.ticket.cliente_cpf || "").toLowerCase()
       const uName = (item.ticket.user_nome || "").toLowerCase()
       const conv = (item.ticket.convenio || "").toLowerCase()
       return cName.includes(q) || cCpf.includes(q) || uName.includes(q) || conv.includes(q)
     })
-  }, [riskLeadsData, searchRiskQuery])
+  }, [riskLeadsData, effectiveRiskStageFilter, searchRiskQuery])
 
   const riskTierCounts = useMemo(() => {
     let high = 0
@@ -1339,17 +1419,6 @@ export function PipelineIntelligenceDrawer({
             <div className="space-y-4">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2 flex-1">
-                  <div className="relative w-full sm:w-64">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                    <input
-                      type="text"
-                      value={searchRiskQuery}
-                      onChange={(e) => setSearchRiskQuery(e.target.value)}
-                      placeholder="Filtrar por cliente, CPF ou corretor..."
-                      className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
-                    />
-                  </div>
-
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
@@ -1388,6 +1457,30 @@ export function PipelineIntelligenceDrawer({
                       Baixo &lt;10k ({riskTierCounts.low} {riskTierCounts.low === 1 ? "lead" : "leads"})
                     </button>
                   </div>
+
+                  <div className="relative w-full sm:w-60">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={searchRiskQuery}
+                      onChange={(e) => setSearchRiskQuery(e.target.value)}
+                      placeholder="Filtrar por cliente, CPF ou corretor..."
+                      className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
+                    />
+                  </div>
+
+                  <select
+                    value={effectiveRiskStageFilter}
+                    onChange={(e) => setRiskStageFilter(e.target.value)}
+                    className="w-full sm:w-auto bg-white border border-slate-200 text-slate-700 font-medium rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
+                  >
+                    <option value="all">Todas as Etapas ({riskStageOptions.length})</option>
+                    {riskStageOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label} ({opt.count})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -1412,8 +1505,42 @@ export function PipelineIntelligenceDrawer({
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <div className="font-bold text-slate-900 text-sm">{t.cliente_nome || "Cliente sem Nome"}</div>
-                              <div className="text-xs text-slate-500 mt-0.5">
-                                CPF: {t.cliente_cpf || "---"} • Tel: {t.cliente_telefone || "---"}
+                              <div className="text-xs text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                {t.cliente_cpf ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyField(`cpf-${t.id}`, t.cliente_cpf)}
+                                    title="Clique para copiar o CPF"
+                                    className="inline-flex items-center gap-1 hover:text-indigo-600 transition-colors cursor-pointer"
+                                  >
+                                    <span>CPF: {t.cliente_cpf}</span>
+                                    {copiedFieldKey === `cpf-${t.id}` ? (
+                                      <Check className="w-3 h-3 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="w-3 h-3 text-slate-400" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span>CPF: ---</span>
+                                )}
+                                <span>•</span>
+                                {t.cliente_telefone ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyField(`tel-${t.id}`, t.cliente_telefone)}
+                                    title="Clique para copiar o Telefone"
+                                    className="inline-flex items-center gap-1 hover:text-indigo-600 transition-colors cursor-pointer"
+                                  >
+                                    <span>Tel: {t.cliente_telefone}</span>
+                                    {copiedFieldKey === `tel-${t.id}` ? (
+                                      <Check className="w-3 h-3 text-emerald-600" />
+                                    ) : (
+                                      <Copy className="w-3 h-3 text-slate-400" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span>Tel: ---</span>
+                                )}
                               </div>
                             </div>
                             <span className={cn(
@@ -1427,8 +1554,12 @@ export function PipelineIntelligenceDrawer({
                           <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-slate-100 text-xs">
                             <div>
                               <span className="text-slate-400 block text-[10px]">Valor da Operação:</span>
-                              <span className="font-black text-emerald-700 text-sm">
+                              <span className="font-black text-emerald-700 text-sm block">
                                 {fmtCurrency(item.valorOperacao)}
+                              </span>
+                              <span className="text-slate-400 block text-[10px] mt-1.5">Produção Estimada:</span>
+                              <span className="font-black text-sky-400 text-sm block">
+                                {fmtCurrency(item.valorProducao)}
                               </span>
                             </div>
                             <div>
@@ -1442,7 +1573,7 @@ export function PipelineIntelligenceDrawer({
                           <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
                             <div>
                               <span className="text-slate-400 block text-[10px]">Corretor Responsável:</span>
-                              <span className="font-medium text-slate-800 truncate block">
+                              <span className="text-[13px] font-semibold text-slate-800 truncate block">
                                 {t.user_nome || "Não Atribuído"}
                               </span>
                             </div>
@@ -1458,7 +1589,7 @@ export function PipelineIntelligenceDrawer({
 
                         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                           <span className="text-[11px] text-slate-500 font-medium">
-                            Etapa Atual: <strong>{t.status}</strong>
+                            Etapa Atual: <strong className="text-slate-900">{t.status}</strong>
                           </span>
 
                           {onSelectTicket && (
