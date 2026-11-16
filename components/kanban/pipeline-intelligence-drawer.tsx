@@ -77,17 +77,8 @@ export function PipelineIntelligenceDrawer({
   const convenioDropdownRef = useRef<HTMLDivElement>(null)
   const operatorDropdownRef = useRef<HTMLDivElement>(null)
   const stageDropdownRef = useRef<HTMLDivElement>(null)
-  const affinityHeaderScrollRef = useRef<HTMLDivElement>(null)
   const affinityBodyScrollRef = useRef<HTMLDivElement>(null)
   const [copiedFieldKey, setCopiedFieldKey] = useState<string | null>(null)
-
-  const syncAffinityScroll = (source: "header" | "body") => {
-    const from = source === "header" ? affinityHeaderScrollRef.current : affinityBodyScrollRef.current
-    const to = source === "header" ? affinityBodyScrollRef.current : affinityHeaderScrollRef.current
-    if (from && to && Math.abs(to.scrollLeft - from.scrollLeft) > 1) {
-      to.scrollLeft = from.scrollLeft
-    }
-  }
 
   useEffect(() => {
     if (!openDropdown) return
@@ -1648,14 +1639,19 @@ export function PipelineIntelligenceDrawer({
         </div>
 
         {/* ÁREA DE CONTEÚDO PRINCIPAL (COM SCROLL) */}
-        <div className="flex-1 overflow-y-auto p-6 lg:p-7 bg-slate-50/50">
+        <div className={cn(
+          "flex-1 min-h-0 bg-slate-50/50",
+          activeTab === "risk"
+            ? "overflow-hidden flex flex-col"
+            : cn("overflow-y-auto p-6 lg:p-7", (activeTab === "affinity" || activeTab === "speed") && "flex flex-col")
+        )}>
           {/* ============================================================== */}
           {/* ABA 1: TEMPO MÉDIO (EM NEGOCIAÇÃO -> GERADA A ADE)              */}
           {/* ============================================================== */}
           {activeTab === "speed" && (
-            <div className="space-y-5">
+            <div className="flex-1 min-h-0 flex flex-col gap-4">
               {/* Box de Instrução Exata */}
-              <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 flex items-start gap-3">
+              <div className="bg-sky-50 border border-sky-200 rounded-xl p-3.5 flex items-start gap-3 shrink-0">
                 <Zap className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-xs font-bold text-sky-950">
@@ -1668,8 +1664,8 @@ export function PipelineIntelligenceDrawer({
               </div>
 
               {/* Tabela de Ranking por Corretor */}
-              <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
+              <div className="flex-1 min-h-[380px] flex flex-col bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/95 flex items-center justify-between shrink-0">
                   <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <Users className="w-4 h-4 text-indigo-600" />
                     Ranking de Velocidade Comercial por Corretor / Estagiário
@@ -1679,19 +1675,19 @@ export function PipelineIntelligenceDrawer({
                   </span>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100 text-slate-600 uppercase text-[10px] font-bold border-b border-slate-200">
+                <div className="flex-1 min-h-0 overflow-auto">
+                  <table className="w-full border-separate border-spacing-0 text-left text-xs">
+                    <thead className="sticky top-0 z-10 bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
                       <tr>
-                        <th className="px-4 py-2.5">Posição & Operador</th>
-                        <th className="px-4 py-2.5 text-center">Em Negociação</th>
-                        <th className="px-4 py-2.5 text-center">Proposta Digitada</th>
-                        <th className="px-4 py-2.5 text-center">Taxa de Avanço</th>
-                        <th className="px-4 py-2.5 text-center">Tempo Médio</th>
-                        <th className="px-4 py-2.5 text-right">Classificação</th>
+                        <th className="px-4 py-2.5 bg-slate-100 border-b border-r border-slate-200">Posição &amp; Operador</th>
+                        <th className="px-4 py-2.5 text-center bg-slate-100 border-b border-r border-slate-200">Em Negociação</th>
+                        <th className="px-4 py-2.5 text-center bg-slate-100 border-b border-r border-slate-200">Proposta Digitada</th>
+                        <th className="px-4 py-2.5 text-center bg-slate-100 border-b border-r border-slate-200">Taxa de Avanço</th>
+                        <th className="px-4 py-2.5 text-center bg-slate-100 border-b border-r border-slate-200">Tempo Médio</th>
+                        <th className="px-4 py-2.5 text-right bg-slate-100 border-b border-slate-200">Classificação</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody>
                       {speedToLeadData.ranking.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
@@ -1726,28 +1722,30 @@ export function PipelineIntelligenceDrawer({
 
                           return (
                             <tr key={op.userId} className="hover:bg-slate-50/80 transition-colors">
-                              <td className="px-4 py-3 flex items-center gap-2.5">
-                                <span className={cn(
-                                  "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
-                                  idx === 0 ? "bg-amber-100 text-amber-800 font-black" :
-                                  idx === 1 ? "bg-slate-200 text-slate-700 font-bold" :
-                                  idx === 2 ? "bg-amber-700/20 text-amber-900 font-bold" :
-                                  "bg-slate-100 text-slate-500"
-                                )}>
-                                  {idx + 1}º
-                                </span>
-                                <div>
-                                  <div className="font-bold text-slate-900">{op.userName}</div>
-                                  <div className="text-[10px] text-slate-400">ID: {op.userId.slice(0, 8)}</div>
+                              <td className="px-4 py-3 border-b border-r border-slate-200">
+                                <div className="flex items-center gap-2.5">
+                                  <span className={cn(
+                                    "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
+                                    idx === 0 ? "bg-amber-100 text-amber-800 font-black" :
+                                    idx === 1 ? "bg-slate-200 text-slate-700 font-bold" :
+                                    idx === 2 ? "bg-amber-700/20 text-amber-900 font-bold" :
+                                    "bg-slate-100 text-slate-500"
+                                  )}>
+                                    {idx + 1}º
+                                  </span>
+                                  <div>
+                                    <div className="font-bold text-slate-900">{op.userName}</div>
+                                    <div className="text-[10px] text-slate-400">ID: {op.userId.slice(0, 8)}</div>
+                                  </div>
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-center font-medium text-slate-700">
+                              <td className="px-4 py-3 text-center font-medium text-slate-700 border-b border-r border-slate-200">
                                 {op.totalNegociacoes}
                               </td>
-                              <td className="px-4 py-3 text-center font-medium text-slate-700">
+                              <td className="px-4 py-3 text-center font-medium text-slate-700 border-b border-r border-slate-200">
                                 {op.totalPropostasDigitadas}
                               </td>
-                              <td className="px-4 py-3 text-center">
+                              <td className="px-4 py-3 text-center border-b border-r border-slate-200">
                                 <span className={cn(
                                   "font-bold",
                                   convRate >= 50 ? "text-emerald-600" : convRate >= 25 ? "text-indigo-600" : "text-slate-500"
@@ -1755,7 +1753,7 @@ export function PipelineIntelligenceDrawer({
                                   {convRate}%
                                 </span>
                               </td>
-                              <td className="px-4 py-3 text-center">
+                              <td className="px-4 py-3 text-center border-b border-r border-slate-200">
                                 {op.sampleCount > 0 ? (
                                   <span className="font-black text-slate-900">
                                     {op.avgMinutesToAde < 60 
@@ -1766,7 +1764,7 @@ export function PipelineIntelligenceDrawer({
                                   <span className="text-slate-400 italic">Sem transição direta</span>
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-right">
+                              <td className="px-4 py-3 text-right border-b border-slate-200">
                                 <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border", badgeBg)}>
                                   {badgeText}
                                 </span>
@@ -1867,8 +1865,8 @@ export function PipelineIntelligenceDrawer({
           {/* ABA 3: MATRIZ DE AFINIDADE (CORRETOR X CONVÊNIO)               */}
           {/* ============================================================== */}
           {activeTab === "affinity" && (
-            <div className="space-y-5">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-start gap-3">
+            <div className="flex-1 min-h-0 flex flex-col gap-4">
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 flex items-start gap-3 shrink-0">
                 <Award className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-xs font-bold text-indigo-950">
@@ -1888,100 +1886,63 @@ export function PipelineIntelligenceDrawer({
 
                 const handleModeChange = (mode: "convenio" | "valor") => {
                   setAffinityMode(mode)
-                  if (affinityHeaderScrollRef.current) affinityHeaderScrollRef.current.scrollLeft = 0
-                  if (affinityBodyScrollRef.current) affinityBodyScrollRef.current.scrollLeft = 0
+                  if (affinityBodyScrollRef.current) {
+                    affinityBodyScrollRef.current.scrollLeft = 0
+                    affinityBodyScrollRef.current.scrollTop = 0
+                  }
                 }
 
                 return (
-                  <div className="bg-white border border-slate-200 rounded-xl shadow-2xs">
-                    <div className="sticky top-0 z-20 bg-white rounded-t-xl border-b border-slate-200 shadow-2xs">
-                      <div className="px-4 py-3 bg-slate-50/95 rounded-t-xl flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                            <Building2 className="w-4 h-4 text-indigo-600" />
-                            Matriz Cruzada
-                          </h3>
-                          <div className="inline-flex items-center rounded-lg bg-slate-200/70 p-0.5 border border-slate-200">
-                            <button
-                              type="button"
-                              onClick={() => handleModeChange("convenio")}
-                              className={cn(
-                                "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer",
-                                affinityMode === "convenio"
-                                  ? "bg-white text-indigo-700 shadow-2xs"
-                                  : "text-slate-600 hover:text-slate-900"
-                              )}
-                            >
-                              Por Convênio
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleModeChange("valor")}
-                              className={cn(
-                                "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer",
-                                affinityMode === "valor"
-                                  ? "bg-white text-indigo-700 shadow-2xs"
-                                  : "text-slate-600 hover:text-slate-900"
-                              )}
-                            >
-                              Por Valor Financeiro
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 text-[10px]">
-                          <span className="flex items-center gap-1 text-emerald-700 font-bold">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Ponto Forte (Alta Conv.)
-                          </span>
-                          <span className="flex items-center gap-1 text-rose-700 font-bold">
-                            <span className="w-2 h-2 rounded-full bg-rose-500"></span> Gargalo (Baixa Conv.)
-                          </span>
+                  <div className="flex-1 min-h-[380px] flex flex-col bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
+                    <div className="px-4 py-3 bg-slate-50/95 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Building2 className="w-4 h-4 text-indigo-600" />
+                          Matriz Cruzada
+                        </h3>
+                        <div className="inline-flex items-center rounded-lg bg-slate-200/70 p-0.5 border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => handleModeChange("convenio")}
+                            className={cn(
+                              "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                              affinityMode === "convenio"
+                                ? "bg-white text-indigo-700 shadow-2xs"
+                                : "text-slate-600 hover:text-slate-900"
+                            )}
+                          >
+                            Por Convênio
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleModeChange("valor")}
+                            className={cn(
+                              "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                              affinityMode === "valor"
+                                ? "bg-white text-indigo-700 shadow-2xs"
+                                : "text-slate-600 hover:text-slate-900"
+                            )}
+                          >
+                            Por Valor Financeiro
+                          </button>
                         </div>
                       </div>
-
-                      <div
-                        ref={affinityHeaderScrollRef}
-                        onScroll={() => syncAffinityScroll("header")}
-                        className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-t border-slate-200 bg-slate-100"
-                      >
-                        <table
-                          className="w-full table-fixed text-left text-xs"
-                          style={{ minWidth: tableMinWidth }}
-                        >
-                          <colgroup>
-                            <col className="w-[200px]" />
-                            {activeColumns.map(col => (
-                              <col key={col} className="w-[132px]" />
-                            ))}
-                            <col />
-                          </colgroup>
-                          <thead className="bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
-                            <tr>
-                              <th className="px-4 py-2.5 whitespace-nowrap">Corretor / Operador</th>
-                              {activeColumns.map(col => (
-                                <th
-                                  key={col}
-                                  className={cn(
-                                    "px-2.5 py-2.5 text-center leading-tight",
-                                    affinityMode === "valor" && "normal-case"
-                                  )}
-                                >
-                                  {col}
-                                </th>
-                              ))}
-                              <th className="px-4 py-2.5 text-left whitespace-nowrap">Insight Gerencial</th>
-                            </tr>
-                          </thead>
-                        </table>
+                      <div className="flex items-center gap-3 text-[10px]">
+                        <span className="flex items-center gap-1 text-emerald-700 font-bold">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Ponto Forte (Alta Conv.)
+                        </span>
+                        <span className="flex items-center gap-1 text-rose-700 font-bold">
+                          <span className="w-2 h-2 rounded-full bg-rose-500"></span> Gargalo (Baixa Conv.)
+                        </span>
                       </div>
                     </div>
 
                     <div
                       ref={affinityBodyScrollRef}
-                      onScroll={() => syncAffinityScroll("body")}
-                      className="overflow-x-auto rounded-b-xl"
+                      className="flex-1 min-h-0 overflow-auto"
                     >
                       <table
-                        className="w-full table-fixed text-left text-xs"
+                        className="w-full table-fixed border-separate border-spacing-0 text-left text-xs"
                         style={{ minWidth: tableMinWidth }}
                       >
                         <colgroup>
@@ -1991,7 +1952,28 @@ export function PipelineIntelligenceDrawer({
                           ))}
                           <col />
                         </colgroup>
-                        <tbody className="divide-y divide-slate-100">
+                        <thead className="sticky top-0 z-10 bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
+                          <tr>
+                            <th className="px-4 py-2.5 whitespace-nowrap bg-slate-100 border-b border-r border-slate-200">
+                              Corretor / Operador
+                            </th>
+                            {activeColumns.map(col => (
+                              <th
+                                key={col}
+                                className={cn(
+                                  "px-2.5 py-2.5 text-center leading-tight bg-slate-100 border-b border-r border-slate-200",
+                                  affinityMode === "valor" && "normal-case"
+                                )}
+                              >
+                                {col}
+                              </th>
+                            ))}
+                            <th className="px-4 py-2.5 text-left whitespace-nowrap bg-slate-100 border-b border-slate-200">
+                              Insight Gerencial
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
                           {affinityMatrixData.rows.length === 0 ? (
                             <tr>
                               <td colSpan={activeColumns.length + 2} className="px-4 py-8 text-center text-slate-400">
@@ -2005,7 +1987,7 @@ export function PipelineIntelligenceDrawer({
 
                               return (
                                 <tr key={row.userId} className="hover:bg-slate-50/80 transition-colors">
-                                  <td className="px-4 py-3 font-bold text-slate-900">
+                                  <td className="px-4 py-3 font-bold text-slate-900 border-b border-r border-slate-200">
                                     {row.userName}
                                     <div className="text-[10px] text-slate-400 font-normal">
                                       {row.totalTickets} leads em negociação
@@ -2015,7 +1997,7 @@ export function PipelineIntelligenceDrawer({
                                     const cell = affinityMode === "convenio" ? row.byConvenio[col] : row.byTier[col]
                                     if (!cell || cell.total === 0) {
                                       return (
-                                        <td key={col} className="px-2.5 py-3 text-center text-slate-300">
+                                        <td key={col} className="px-2.5 py-3 text-center text-slate-300 border-b border-r border-slate-200">
                                           -
                                         </td>
                                       )
@@ -2025,7 +2007,7 @@ export function PipelineIntelligenceDrawer({
                                     const isWeak = cell.strength === "fraco"
 
                                     return (
-                                      <td key={col} className="px-2.5 py-3 text-center">
+                                      <td key={col} className="px-2.5 py-3 text-center border-b border-r border-slate-200">
                                         <div className={cn(
                                           "inline-flex flex-col items-center justify-center px-2 py-1 rounded-md text-[11px] font-bold border",
                                           isStrong ? "bg-emerald-50 text-emerald-800 border-emerald-300" :
@@ -2040,7 +2022,7 @@ export function PipelineIntelligenceDrawer({
                                       </td>
                                     )
                                   })}
-                                  <td className="px-4 py-3 text-[11px]">
+                                  <td className="px-4 py-3 text-[11px] border-b border-slate-200">
                                     {bestInsight && (
                                       <div className="text-emerald-700 font-medium">
                                         ★ Especialista em {bestInsight}
@@ -2072,8 +2054,8 @@ export function PipelineIntelligenceDrawer({
           {/* ABA 4: RADAR DE RISCO DE QUEIMA                                */}
           {/* ============================================================== */}
           {activeTab === "risk" && (
-            <div className="space-y-5">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="shrink-0 relative z-20 px-6 lg:px-7 pt-5 pb-4 bg-slate-50 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
                 <div className="flex flex-wrap items-center gap-2 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
@@ -2235,7 +2217,8 @@ export function PipelineIntelligenceDrawer({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-5">
+              <div className="flex-1 min-h-0 overflow-y-auto px-6 lg:px-7 py-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-5">
                 {filteredRiskLeads.length === 0 ? (
                   <div className="col-span-full bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 text-xs">
                     <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
@@ -2367,6 +2350,7 @@ export function PipelineIntelligenceDrawer({
                     )
                   })
                 )}
+                </div>
               </div>
             </div>
           )}
