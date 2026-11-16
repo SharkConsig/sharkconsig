@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     // 1. Obter dados atuais da campanha
     const { data: campaign, error: getError } = await supabaseAdmin
       .from('campanhas')
-      .select('id, filtros, filtros_json')
+      .select('id, status, filtros, filtros_json')
       .eq('id', campanhaId)
       .single()
 
@@ -27,6 +27,26 @@ export async function POST(request: Request) {
     }
 
     const currentFiltros = (campaign?.filtros && typeof campaign.filtros === 'object') ? campaign.filtros : {}
+    const currentFiltrosJson = (campaign?.filtros_json && typeof campaign.filtros_json === 'object') ? campaign.filtros_json : {}
+    const isCampaignInactive =
+      (currentFiltros as any).ativa === false ||
+      (currentFiltrosJson as any).ativa === false ||
+      String((campaign as any)?.status || '').toLowerCase() === 'inativa'
+
+    if (isCampaignInactive && (selectedSupervisors.length > 0 || selectedBrokers.length > 0)) {
+      return NextResponse.json(
+        { error: 'Não é possível distribuir uma campanha inativa. Ative a campanha antes de distribuir.' },
+        { status: 400 }
+      )
+    }
+
+    if (selectedSupervisors.length > 0 && selectedBrokers.length === 0) {
+      return NextResponse.json(
+        { error: 'Selecione pelo menos um corretor ou estagiário para distribuir a campanha.' },
+        { status: 400 }
+      )
+    }
+
     const updatedFiltros = {
       ...currentFiltros,
       distribuicao: selectedSupervisors,

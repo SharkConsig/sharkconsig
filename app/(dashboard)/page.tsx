@@ -819,34 +819,29 @@ export default function DashboardPage() {
         )
 
         if (!campaignError && campaignData) {
-          // A campaign is only visible here if it has at least one distribution entry
-          // We use a more robust check for distribution
+          // Somente campanhas ativas e com usuários selecionados em corretores_selecionados devem ser exibidas
           let filteredCampaigns = campaignData.filter(c => {
-            const f = c.filtros
-            const distribution = f?.distribuicao || []
-            const brokers = f?.corretores_selecionados || []
-            return (Array.isArray(distribution) && distribution.length > 0) || 
-                   (Array.isArray(brokers) && brokers.length > 0)
+            const f = c.filtros || (c as any).filtros_json || {}
+            const brokers = Array.isArray(f?.corretores_selecionados) ? f.corretores_selecionados : []
+            const isCampaignActive =
+              f?.ativa !== false &&
+              (c as any).filtros_json?.ativa !== false &&
+              String((c as any).status || '').toLowerCase() !== 'inativa'
+            return isCampaignActive && brokers.length > 0
           })
           
-          if (!isAdmin && perfil) {
+          if (!isAdmin && !isDeveloper && !isOperational && perfil) {
             const userId = perfil.id
-            const supervisorId = perfil.supervisor_id
             
             filteredCampaigns = filteredCampaigns.filter(c => {
-              const f = c.filtros
-              const distribution = f?.distribuicao || []
-              const brokers = f?.corretores_selecionados || []
+              const f = c.filtros || (c as any).filtros_json || {}
+              const distribution = Array.isArray(f?.distribuicao) ? f.distribuicao : []
+              const brokers = Array.isArray(f?.corretores_selecionados) ? f.corretores_selecionados : []
               
-              const isSelectedBroker = Array.isArray(brokers) && brokers.includes(userId);
-              const isSelectedSupervisor = Array.isArray(distribution) && distribution.includes(userId);
-              const isUnderSelectedSupervisor = !!(supervisorId && Array.isArray(distribution) && distribution.includes(supervisorId));
+              const isSelectedBroker = brokers.includes(userId) || (user?.id ? brokers.includes(user.id) : false);
+              const isSelectedSupervisor = isSupervisor && (distribution.includes(userId) || (user?.id ? distribution.includes(user.id) : false));
 
-              if (Array.isArray(brokers) && brokers.length > 0) {
-                return isSelectedBroker || isSelectedSupervisor;
-              }
-              
-              return isSelectedSupervisor || isUnderSelectedSupervisor;
+              return isSelectedBroker || isSelectedSupervisor;
             })
           }
           

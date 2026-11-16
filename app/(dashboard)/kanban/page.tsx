@@ -3681,8 +3681,21 @@ export default function KanbanPage() {
 
   // Exportar atendimentos do Kanban para planilha Excel
   const handleExportExcel = async () => {
-    if (filteredTickets.length === 0) {
-      toast.error("Não há atendimentos para exportar no momento.")
+    const hasToolbarFilters =
+      selectedCollaboratorIds.length > 0 ||
+      listSearch.trim().length > 0 ||
+      (listFilterStages.length > 0 && !listFilterStages.includes("ALL"))
+
+    const ticketsToExport = hasToolbarFilters
+      ? filteredListSections.flatMap(sec => sec.displayTickets)
+      : filteredTickets
+
+    if (ticketsToExport.length === 0) {
+      toast.error(
+        hasToolbarFilters
+          ? "Não há atendimentos filtrados para exportar no momento."
+          : "Não há atendimentos para exportar no momento."
+      )
       return
     }
 
@@ -3740,7 +3753,7 @@ export default function KanbanPage() {
         return digits || String(p)
       }
 
-      filteredTickets.forEach(t => {
+      ticketsToExport.forEach(t => {
         const meta = parseMetadata(t.descricao)
         const prop = propostasPorCpf[t.id] || t.proposta_info
         let stageKey = inferKanbanStage(t, meta, prop)

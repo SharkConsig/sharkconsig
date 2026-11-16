@@ -1147,7 +1147,7 @@ export default function DistribuicaoCampanhaPage() {
 
       const { error: updateError } = await supabase
         .from('campanhas')
-        .update({ filtros: updatedFiltros })
+        .update({ filtros: updatedFiltros, filtros_json: updatedFiltros })
         .eq('id', campaign.id);
 
       if (updateError) throw updateError;
@@ -1186,30 +1186,32 @@ export default function DistribuicaoCampanhaPage() {
       
       let filteredData = data || []
       
-      // Filter for only distributed campaigns
+      // Filter for only active (for non-gestores) and explicitly distributed campaigns
       filteredData = filteredData.filter(c => {
-        const distribution = c.filtros?.distribuicao || []
-        const brokers = c.filtros?.corretores_selecionados || []
-        
-        const isDistributed = (Array.isArray(distribution) && distribution.length > 0) || 
-                             (Array.isArray(brokers) && brokers.length > 0)
-        
-        if (!isAdmin && !isDeveloper && !isOperational) {
-          if (c.filtros?.ativa === false) return false;
-          if (!isDistributed) return false;
-          
-          const isSelectedBroker = Array.isArray(brokers) && brokers.includes(currentUserId);
-          const isSelectedSupervisor = Array.isArray(distribution) && distribution.includes(currentUserId);
-          const isUnderSelectedSupervisor = !!(currentSupervisorId && Array.isArray(distribution) && distribution.includes(currentSupervisorId));
+        const filtros = c.filtros || (c as any).filtros_json || {}
+        const distribution = Array.isArray(filtros?.distribuicao) ? filtros.distribuicao : []
+        const brokers = Array.isArray(filtros?.corretores_selecionados) ? filtros.corretores_selecionados : []
+        const hasSelectedBrokers = brokers.length > 0
+        const isCampaignActive =
+          filtros?.ativa !== false &&
+          (c as any).filtros_json?.ativa !== false &&
+          String((c as any).status || '').toLowerCase() !== 'inativa'
 
-          if (Array.isArray(brokers) && brokers.length > 0) {
+        if (!isAdmin && !isDeveloper && !isOperational) {
+          if (!isCampaignActive) return false;
+          if (!hasSelectedBrokers) return false;
+
+          const isSelectedBroker = brokers.includes(currentUserId) || (currentPerfilId ? brokers.includes(currentPerfilId) : false);
+          const isSelectedSupervisor = distribution.includes(currentUserId) || (currentPerfilId ? distribution.includes(currentPerfilId) : false);
+
+          if (isSupervisor) {
             return isSelectedBroker || isSelectedSupervisor;
           }
-          
-          return isSelectedSupervisor || isUnderSelectedSupervisor;
+
+          return isSelectedBroker;
         }
-        
-        return isDistributed
+
+        return hasSelectedBrokers
       })
 
       setCampaigns(filteredData as Campaign[])

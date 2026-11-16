@@ -1525,6 +1525,18 @@ export default function CampaignsPage() {
 
   const handleSaveDistribution = async () => {
     if (!campaignToDistribute) return
+    const isInactive =
+      (campaignToDistribute.filtros as any)?.ativa === false ||
+      (campaignToDistribute as any)?.filtros_json?.ativa === false ||
+      String((campaignToDistribute as any)?.status || '').toLowerCase() === 'inativa'
+    if (isInactive) {
+      alert("Esta campanha está INATIVA. Ative a campanha antes de distribuí-la.")
+      return
+    }
+    if (selectedSupervisors.length > 0 && selectedBrokers.length === 0) {
+      alert("Selecione ao menos um corretor ou estagiário para distribuir a campanha.")
+      return
+    }
     setIsSavingDistribution(true)
     try {
       const response = await fetch('/api/campanhas/distribuir', {
@@ -2167,7 +2179,16 @@ export default function CampaignsPage() {
             </p>
 
             <div className="mt-8 space-y-3 flex-1 overflow-y-auto pr-2 custom-scrollbar min-h-0">
-              {isLoadingUsers ? (
+              {((campaignToDistribute?.filtros as any)?.ativa === false ||
+                (campaignToDistribute as any)?.filtros_json?.ativa === false ||
+                String((campaignToDistribute as any)?.status || '').toLowerCase() === 'inativa') ? (
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold text-center space-y-1">
+                  <p className="uppercase tracking-wider font-black">Campanha Inativa</p>
+                  <p className="font-medium text-[11px] text-rose-600">
+                    Somente campanhas ativas podem ser distribuídas. Ative esta campanha antes de distribuir.
+                  </p>
+                </div>
+              ) : isLoadingUsers ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-3">
                   <Loader2 className="w-6 h-6 text-primary animate-spin" />
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Buscando {distributionStep === 1 ? "equipes" : "corretores"}...</span>
@@ -2351,7 +2372,12 @@ export default function CampaignsPage() {
                   }
                   setDistributionStep(2)
                 }}
-                disabled={isLoadingUsers}
+                disabled={
+                  isLoadingUsers ||
+                  (campaignToDistribute?.filtros as any)?.ativa === false ||
+                  (campaignToDistribute as any)?.filtros_json?.ativa === false ||
+                  String((campaignToDistribute as any)?.status || '').toLowerCase() === 'inativa'
+                }
               >
                 PRÓXIMA ETAPA
                 <ChevronRight className="w-4 h-4" />
@@ -2360,7 +2386,12 @@ export default function CampaignsPage() {
               <Button 
                 className="flex-1 h-11 text-[10px] font-bold uppercase tracking-widest bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200 rounded-xl gap-2"
                 onClick={handleSaveDistribution}
-                disabled={isSavingDistribution}
+                disabled={
+                  isSavingDistribution ||
+                  (campaignToDistribute?.filtros as any)?.ativa === false ||
+                  (campaignToDistribute as any)?.filtros_json?.ativa === false ||
+                  String((campaignToDistribute as any)?.status || '').toLowerCase() === 'inativa'
+                }
               >
                 {isSavingDistribution ? <Loader2 className="w-4 h-4 animate-spin" /> : "FINALIZAR DISTRIBUIÇÃO"}
               </Button>

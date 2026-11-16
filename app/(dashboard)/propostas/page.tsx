@@ -37,7 +37,7 @@ import { ProposalDetailsAccordion } from "@/components/propostas/proposal-detail
 import { StatusPropostaModal } from "@/components/propostas/status-proposta-modal"
 import { TransferirPropostaModal } from "@/components/propostas/transferir-proposta-modal"
 import { IntervencaoOperacionalModal } from "@/components/propostas/intervencao-operacional-modal"
-import { toast } from "react-hot-toast"
+import { toast } from "sonner"
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import { syncKanbanForClosedProposal } from "@/lib/sync-kanban-propostas"
@@ -594,8 +594,8 @@ export default function ProposalsPage() {
 
       const nowIso = new Date().toISOString()
 
-      // Omit primary key 'id' and computed UI/joined fields like 'nome_corretor'
-      const { id, nome_corretor, resposta_corretor, expanded, anexos, historico, ...proposalFields } = proposal as any
+      // Omit primary key 'id' and computed UI/joined fields like 'nome_corretor' and 'is_from_kanban'
+      const { id, nome_corretor, resposta_corretor, expanded, anexos, historico, is_from_kanban, ...proposalFields } = proposal as any
 
       const cloneData = {
         ...proposalFields,

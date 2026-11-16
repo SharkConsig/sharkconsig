@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useEffect } from "react"
+import React, { useState, useMemo, useRef, useEffect } from "react"
 import { 
   X, 
   Sparkles, 
@@ -15,6 +15,7 @@ import {
   CheckCircle2, 
   AlertCircle, 
   ChevronRight, 
+  ChevronDown,
   Building2, 
   Flame, 
   BarChart3, 
@@ -27,6 +28,7 @@ import {
   Check
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { motion, AnimatePresence } from "motion/react"
 
 export interface PipelineIntelligenceDrawerProps {
   isOpen: boolean
@@ -57,43 +59,50 @@ export function PipelineIntelligenceDrawer({
   getValorOperacaoDeAbertura,
   onSelectTicket
 }: PipelineIntelligenceDrawerProps) {
-  // Controle de animação suave de abertura e fechamento
-  const [shouldRender, setShouldRender] = useState(isOpen)
-  const [isClosing, setIsClosing] = useState(false)
-
-  useEffect(() => {
-    if (isOpen) {
-      setShouldRender(true)
-      setIsClosing(false)
-    } else if (shouldRender && !isClosing) {
-      setIsClosing(true)
-      const timer = setTimeout(() => {
-        setShouldRender(false)
-        setIsClosing(false)
-      }, 300)
-      return () => clearTimeout(timer)
-    }
-  }, [isOpen, shouldRender, isClosing])
-
   const handleClose = () => {
-    if (isClosing) return
-    setIsClosing(true)
-    setTimeout(() => {
-      onClose()
-      setShouldRender(false)
-      setIsClosing(false)
-    }, 300)
+    onClose()
   }
 
   // Filtros
-  const [period, setPeriod] = useState<PeriodFilter>("30d")
-  const [selectedConvenio, setSelectedConvenio] = useState<string>("all")
-  const [selectedOperator, setSelectedOperator] = useState<string>("all")
+  const [period, setPeriod] = useState<PeriodFilter>("all")
+  const [selectedConvenios, setSelectedConvenios] = useState<string[]>([])
+  const [selectedOperators, setSelectedOperators] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState<ActiveTab>("speed")
+  const [affinityMode, setAffinityMode] = useState<"convenio" | "valor">("convenio")
   const [searchRiskQuery, setSearchRiskQuery] = useState("")
   const [riskTierFilter, setRiskTierFilter] = useState<"all" | "high" | "mid" | "low">("all")
-  const [riskStageFilter, setRiskStageFilter] = useState<string>("all")
+  const [riskStageFilters, setRiskStageFilters] = useState<string[]>([])
+  const [openDropdown, setOpenDropdown] = useState<"convenio" | "operator" | "stage" | null>(null)
+  const convenioDropdownRef = useRef<HTMLDivElement>(null)
+  const operatorDropdownRef = useRef<HTMLDivElement>(null)
+  const stageDropdownRef = useRef<HTMLDivElement>(null)
+  const affinityHeaderScrollRef = useRef<HTMLDivElement>(null)
+  const affinityBodyScrollRef = useRef<HTMLDivElement>(null)
   const [copiedFieldKey, setCopiedFieldKey] = useState<string | null>(null)
+
+  const syncAffinityScroll = (source: "header" | "body") => {
+    const from = source === "header" ? affinityHeaderScrollRef.current : affinityBodyScrollRef.current
+    const to = source === "header" ? affinityBodyScrollRef.current : affinityHeaderScrollRef.current
+    if (from && to && Math.abs(to.scrollLeft - from.scrollLeft) > 1) {
+      to.scrollLeft = from.scrollLeft
+    }
+  }
+
+  useEffect(() => {
+    if (!openDropdown) return
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (openDropdown === "convenio" && convenioDropdownRef.current && !convenioDropdownRef.current.contains(target)) {
+        setOpenDropdown(null)
+      } else if (openDropdown === "operator" && operatorDropdownRef.current && !operatorDropdownRef.current.contains(target)) {
+        setOpenDropdown(null)
+      } else if (openDropdown === "stage" && stageDropdownRef.current && !stageDropdownRef.current.contains(target)) {
+        setOpenDropdown(null)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [openDropdown])
 
   const handleCopyField = (key: string, rawValue?: string) => {
     const text = String(rawValue || "").trim()
@@ -204,20 +213,24 @@ export function PipelineIntelligenceDrawer({
   // Filtragem inicial dos tickets por período, convênio e operador
   const filteredTickets = useMemo(() => {
     const now = new Date().getTime()
+    const selectedOpSet = selectedOperators.length > 0
+      ? new Set(selectedOperators.map(id => id.trim().toLowerCase()))
+      : null
+    const selectedConvSet = selectedConvenios.length > 0
+      ? new Set(selectedConvenios.map(c => c.trim().toUpperCase()))
+      : null
 
     return kanbanTickets.filter(t => {
-      // Filtro de Operador
-      if (
-        selectedOperator !== "all" &&
-        String(t.user_id || "").trim().toLowerCase() !== selectedOperator.trim().toLowerCase()
-      ) {
-        return false
+      // Filtro de Operador (múltipla seleção)
+      if (selectedOpSet) {
+        const opId = String(t.user_id || "").trim().toLowerCase()
+        if (!selectedOpSet.has(opId)) return false
       }
 
-      // Filtro de Convênio
-      if (selectedConvenio !== "all") {
+      // Filtro de Convênio (múltipla seleção)
+      if (selectedConvSet) {
         const c = (t.convenio || "").trim().toUpperCase()
-        if (c !== selectedConvenio.toUpperCase()) return false
+        if (!selectedConvSet.has(c)) return false
       }
 
       // Filtro de Período (baseado em created_at ou updated_at)
@@ -241,7 +254,7 @@ export function PipelineIntelligenceDrawer({
 
       return true
     })
-  }, [kanbanTickets, period, selectedConvenio, selectedOperator])
+  }, [kanbanTickets, period, selectedConvenios, selectedOperators])
 
   // 1. CÁLCULO DE TEMPO MÉDIO: Em negociação -> Gerada a ADE
   // Regra: Tempo em minutos entre o momento em que o lead entrou na etapa 'Em negociação' até a geração da ADE (entrada em 'Fechado' com proposta digitada).
@@ -499,7 +512,7 @@ export function PipelineIntelligenceDrawer({
         const hoursInStage = Math.max(0, (now - tDate) / (1000 * 60 * 60))
         totalHours += hoursInStage
 
-        if (hoursInStage >= 48) {
+        if (hoursInStage > 48) {
           stuckCount48h++
           stuckCapital48h += opVal
         }
@@ -549,19 +562,23 @@ export function PipelineIntelligenceDrawer({
     }
   }, [filteredTickets, getValorOperacaoDeAbertura])
 
-  // 3. MATRIZ DE AFINIDADE: Operador x Convênio
+  // 3. MATRIZ DE AFINIDADE: Operador x Convênio / Valor Financeiro
   const affinityMatrixData = useMemo(() => {
-    // Top convênios com maior volume
+    const valueTiers = ["Alto (>30k)", "Médio (10k-30k)", "Baixo (<10k)"]
+
+    // Top convênios com maior volume + índice rápido de operadores
     const topConveniosCountMap = new Map<string, number>()
-    filteredTickets.forEach(t => {
-      const c = (t.convenio || "Outros").trim().toUpperCase()
-      topConveniosCountMap.set(c, (topConveniosCountMap.get(c) || 0) + 1)
+    const operatorNameMap = new Map<string, string>()
+    operatorsList.forEach(o => {
+      if (o.id) operatorNameMap.set(o.id, o.nome)
     })
 
-    const topConvenios = Array.from(topConveniosCountMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(entry => entry[0])
+    interface CellMetric {
+      total: number
+      converted: number
+      rate: number
+      strength: "forte" | "neutro" | "fraco"
+    }
 
     interface OperatorAffinity {
       userId: string
@@ -569,14 +586,12 @@ export function PipelineIntelligenceDrawer({
       totalTickets: number
       totalConverted: number
       overallRate: number
-      byConvenio: Record<string, {
-        total: number
-        converted: number
-        rate: number
-        strength: "forte" | "neutro" | "fraco"
-      }>
+      byConvenio: Record<string, CellMetric>
+      byTier: Record<string, CellMetric>
       bestConvenio?: string
       worstConvenio?: string
+      bestTier?: string
+      worstTier?: string
     }
 
     const opMap = new Map<string, {
@@ -585,13 +600,32 @@ export function PipelineIntelligenceDrawer({
       totalTickets: number
       totalConverted: number
       byConvenio: Record<string, { total: number; converted: number }>
+      byTier: Record<string, { total: number; converted: number }>
     }>()
 
     filteredTickets.forEach(t => {
-      const uId = t.user_id || "unassigned"
-      const foundOp = operatorsList.find(o => o.id === uId)
-      const uName = foundOp?.nome || t.user_nome || "Não Atribuído"
+      const statusUpper = (t.status || "").toUpperCase()
+      const movs = Array.isArray(t.historico_movimentacoes) ? t.historico_movimentacoes : []
+
+      // Analisar apenas atendimentos a partir da etapa 'Em negociação' (igual à aba Tempo Médio)
+      const hasNegociacao =
+        statusUpper.includes("NEGOCIA") ||
+        movs.some(
+          (m: any) =>
+            (m.etapa_anterior || "").toUpperCase().includes("NEGOCIA") ||
+            (m.etapa_nova || "").toUpperCase().includes("NEGOCIA")
+        )
+
+      if (!hasNegociacao) return
+
       const c = (t.convenio || "Outros").trim().toUpperCase()
+      topConveniosCountMap.set(c, (topConveniosCountMap.get(c) || 0) + 1)
+
+      const opVal = getValorOperacaoDeAbertura(t).num || 0
+      const tier = opVal >= 30000 ? "Alto (>30k)" : opVal >= 10000 ? "Médio (10k-30k)" : "Baixo (<10k)"
+
+      const uId = t.user_id || "unassigned"
+      const uName = operatorNameMap.get(uId) || t.user_nome || "Não Atribuído"
 
       if (!opMap.has(uId)) {
         opMap.set(uId, {
@@ -599,7 +633,8 @@ export function PipelineIntelligenceDrawer({
           userName: uName,
           totalTickets: 0,
           totalConverted: 0,
-          byConvenio: {}
+          byConvenio: {},
+          byTier: {}
         })
       }
 
@@ -611,29 +646,57 @@ export function PipelineIntelligenceDrawer({
       }
       op.byConvenio[c].total++
 
-      const statusUpper = (t.status || "").toUpperCase()
-      const isConverted = statusUpper.includes("NEGOCIA") || statusUpper.includes("PROPOSTA") || statusUpper.includes("CONCLU")
+      if (!op.byTier[tier]) {
+        op.byTier[tier] = { total: 0, converted: 0 }
+      }
+      op.byTier[tier].total++
+
+      // Conversão = proposta digitada / ADE gerada (ou entrada em Fechado), igual à aba Tempo Médio
+      const propAde = t.proposta_info?.ade ? String(t.proposta_info.ade).trim() : ""
+      const hasValidAde = Boolean(propAde && propAde !== "-" && propAde !== "null" && propAde !== "undefined")
+      const isFechadoStatus = statusUpper === "FECHADO" || statusUpper.includes("FECHAD")
+      const isPerdidoStatus = statusUpper.includes("PERDID")
+      const movToFechado = movs.some((m: any) => (m.etapa_nova || "").toUpperCase().includes("FECHAD"))
+      const isConverted = isFechadoStatus || (hasValidAde && !isPerdidoStatus) || (movToFechado && !isPerdidoStatus)
+
       if (isConverted) {
         op.totalConverted++
         op.byConvenio[c].converted++
+        op.byTier[tier].converted++
       }
     })
 
-    const matrixRows: OperatorAffinity[] = []
+    const convenioUniverse = new Set<string>()
+    const selectedConvSet = selectedConvenios.length > 0
+      ? new Set(selectedConvenios.map(c => c.trim().toUpperCase()))
+      : null
 
-    opMap.forEach(op => {
-      if (op.totalTickets < 2) return // ignorar ruído estatístico
+    conveniosList.forEach(rawConv => {
+      const normalized = rawConv.trim().toUpperCase()
+      if (!normalized) return
+      if (selectedConvSet && !selectedConvSet.has(normalized)) return
+      convenioUniverse.add(normalized)
+    })
 
-      const overallRate = Math.round((op.totalConverted / op.totalTickets) * 100)
-      const byConvenioEvaluated: OperatorAffinity["byConvenio"] = {}
+    const topConvenios = Array.from(convenioUniverse).sort((a, b) => {
+      const countDiff = (topConveniosCountMap.get(b) || 0) - (topConveniosCountMap.get(a) || 0)
+      if (countDiff !== 0) return countDiff
+      return a.localeCompare(b, "pt-BR")
+    })
 
+    const evaluateDimension = (
+      keys: string[],
+      rawMap: Record<string, { total: number; converted: number }>,
+      overallRate: number
+    ) => {
+      const evaluated: Record<string, CellMetric> = {}
       let bestRate = -1
       let bestName = ""
       let worstRate = 999
       let worstName = ""
 
-      topConvenios.forEach(conv => {
-        const data = op.byConvenio[conv] || { total: 0, converted: 0 }
+      keys.forEach(key => {
+        const data = rawMap[key] || { total: 0, converted: 0 }
         const rate = data.total > 0 ? Math.round((data.converted / data.total) * 100) : 0
         let strength: "forte" | "neutro" | "fraco" = "neutro"
 
@@ -648,15 +711,15 @@ export function PipelineIntelligenceDrawer({
         if (data.total >= 2) {
           if (rate > bestRate) {
             bestRate = rate
-            bestName = conv
+            bestName = key
           }
           if (rate < worstRate) {
             worstRate = rate
-            worstName = conv
+            worstName = key
           }
         }
 
-        byConvenioEvaluated[conv] = {
+        evaluated[key] = {
           total: data.total,
           converted: data.converted,
           rate,
@@ -664,15 +727,34 @@ export function PipelineIntelligenceDrawer({
         }
       })
 
+      return {
+        evaluated,
+        best: bestName && bestRate >= 30 ? `${bestName} (${bestRate}%)` : undefined,
+        worst: worstName && worstRate <= 20 && worstName !== bestName ? `${worstName} (${worstRate}%)` : undefined
+      }
+    }
+
+    const matrixRows: OperatorAffinity[] = []
+
+    opMap.forEach(op => {
+      if (op.totalTickets === 0) return
+
+      const overallRate = Math.round((op.totalConverted / op.totalTickets) * 100)
+      const convenioEval = evaluateDimension(topConvenios, op.byConvenio, overallRate)
+      const tierEval = evaluateDimension(valueTiers, op.byTier, overallRate)
+
       matrixRows.push({
         userId: op.userId,
         userName: op.userName,
         totalTickets: op.totalTickets,
         totalConverted: op.totalConverted,
         overallRate,
-        byConvenio: byConvenioEvaluated,
-        bestConvenio: bestName && bestRate >= 30 ? `${bestName} (${bestRate}%)` : undefined,
-        worstConvenio: worstName && worstRate <= 20 && worstName !== bestName ? `${worstName} (${worstRate}%)` : undefined
+        byConvenio: convenioEval.evaluated,
+        byTier: tierEval.evaluated,
+        bestConvenio: convenioEval.best,
+        worstConvenio: convenioEval.worst,
+        bestTier: tierEval.best,
+        worstTier: tierEval.worst
       })
     })
 
@@ -680,12 +762,13 @@ export function PipelineIntelligenceDrawer({
 
     return {
       topConvenios,
+      valueTiers,
       rows: matrixRows
     }
-  }, [filteredTickets, operatorsList])
+  }, [filteredTickets, operatorsList, conveniosList, selectedConvenios, getValorOperacaoDeAbertura])
 
   // 4. RADAR DE RISCO DE QUEIMA DE LEADS
-  // Todos os atendimentos das etapas ativas parados sem avanço há mais de 24 horas
+  // Todos os atendimentos das etapas ativas parados sem avanço há mais de 48 horas
   const riskLeadsData = useMemo(() => {
     const now = Date.now()
 
@@ -716,10 +799,10 @@ export function PipelineIntelligenceDrawer({
           valorProducao: prodVal,
           hoursInactive,
           exactHoursInactive,
-          isHighRisk: opVal >= 25000 && exactHoursInactive > 24
+          isHighRisk: opVal >= 25000 && exactHoursInactive > 48
         }
       })
-      .filter(item => item.exactHoursInactive > 24)
+      .filter(item => item.exactHoursInactive > 48)
       .sort((a, b) => b.valorOperacao - a.valorOperacao || b.hoursInactive - a.hoursInactive)
   }, [filteredTickets, getValorOperacaoDeAbertura])
 
@@ -765,16 +848,18 @@ export function PipelineIntelligenceDrawer({
     return ordered
   }, [riskLeadsData])
 
-  const effectiveRiskStageFilter =
-    riskStageFilter !== "all" && !riskStageOptions.some(opt => opt.value === riskStageFilter)
-      ? "all"
-      : riskStageFilter
+  const effectiveRiskStageFilters = useMemo(() => {
+    if (riskStageFilters.length === 0) return []
+    const valid = new Set(riskStageOptions.map(opt => opt.value))
+    return riskStageFilters.filter(s => valid.has(s))
+  }, [riskStageFilters, riskStageOptions])
 
   const searchFilteredRiskLeads = useMemo(() => {
     let list = riskLeadsData
 
-    if (effectiveRiskStageFilter !== "all") {
-      list = list.filter(item => getRiskStageKey(item.ticket.status) === effectiveRiskStageFilter)
+    if (effectiveRiskStageFilters.length > 0) {
+      const stageSet = new Set(effectiveRiskStageFilters)
+      list = list.filter(item => stageSet.has(getRiskStageKey(item.ticket.status)))
     }
 
     if (!searchRiskQuery.trim()) return list
@@ -787,7 +872,7 @@ export function PipelineIntelligenceDrawer({
       const conv = (item.ticket.convenio || "").toLowerCase()
       return cName.includes(q) || cCpf.includes(q) || uName.includes(q) || conv.includes(q)
     })
-  }, [riskLeadsData, effectiveRiskStageFilter, searchRiskQuery])
+  }, [riskLeadsData, effectiveRiskStageFilters, searchRiskQuery])
 
   const riskTierCounts = useMemo(() => {
     let high = 0
@@ -819,27 +904,30 @@ export function PipelineIntelligenceDrawer({
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(val)
   }
 
-  // Se não estiver aberto nem em animação, não renderiza
-  if (!shouldRender && !isOpen) return null
-
   return (
-    <div 
-      className={cn(
-        "fixed inset-0 z-50 overflow-hidden bg-slate-950/60 backdrop-blur-xs flex justify-end duration-300 transition-opacity",
-        isClosing ? "opacity-0" : "opacity-100 animate-in fade-in duration-200"
-      )}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose()
-      }}
-    >
-      <div 
-        className={cn(
-          "w-full max-w-5xl bg-white h-full shadow-2xl flex flex-col border-l border-slate-200 duration-300 transition-transform ease-out",
-          isClosing ? "translate-x-full" : "translate-x-0 animate-in slide-in-from-right duration-300"
-        )}
-        role="dialog"
-        aria-modal="true"
-      >
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="pipeline-intelligence-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.24, ease: "easeOut" }}
+          className="fixed inset-0 z-50 overflow-hidden bg-slate-950/60 flex justify-end will-change-[opacity]"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) handleClose()
+          }}
+        >
+          <motion.div
+            key="pipeline-intelligence-panel"
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "tween", duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+            className="w-full max-w-5xl bg-white h-full shadow-2xl flex flex-col border-l border-slate-200 will-change-transform"
+            role="dialog"
+            aria-modal="true"
+          >
         {/* CABEÇALHO EXECUTIVO */}
         <div className="px-6 py-4 border-b border-slate-200 bg-linear-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0 shadow-xs">
           <div className="flex items-center gap-3">
@@ -913,33 +1001,219 @@ export function PipelineIntelligenceDrawer({
               })}
             </div>
 
-            {/* Convênio */}
-            <select
-              value={selectedConvenio}
-              onChange={(e) => setSelectedConvenio(e.target.value)}
-              className="bg-white border border-slate-300 text-slate-700 font-medium rounded-lg px-2.5 py-1 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-hidden shadow-2xs"
-            >
-              <option value="all">Todos os Convênios ({conveniosList.length})</option>
-              {conveniosList.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+            {/* Convênio (Múltipla Seleção) */}
+            <div className="relative" ref={convenioDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setOpenDropdown(prev => prev === "convenio" ? null : "convenio")}
+                className={cn(
+                  "border rounded-lg px-2.5 py-1 text-xs font-medium flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs max-w-[220px]",
+                  selectedConvenios.length > 0
+                    ? "bg-indigo-50 border-indigo-400 text-indigo-900 font-bold"
+                    : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
+                )}
+              >
+                <span className="truncate">
+                  {selectedConvenios.length === 0
+                    ? `Todos os Convênios (${conveniosList.length})`
+                    : selectedConvenios.length === 1
+                    ? selectedConvenios[0]
+                    : `${selectedConvenios.length} Convênios`}
+                </span>
+                {selectedConvenios.length > 0 ? (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedConvenios([])
+                    }}
+                    className="w-4 h-4 rounded-full bg-indigo-200/80 hover:bg-indigo-300 text-indigo-800 flex items-center justify-center text-[10px] shrink-0"
+                    title="Limpar filtro de convênios"
+                  >
+                    ×
+                  </span>
+                ) : (
+                  <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform", openDropdown === "convenio" && "rotate-180")} />
+                )}
+              </button>
 
-            {/* Operador / Corretor */}
-            <select
-              value={selectedOperator}
-              onChange={(e) => setSelectedOperator(e.target.value)}
-              className="bg-white border border-slate-300 text-slate-700 font-medium rounded-lg px-2.5 py-1 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-hidden shadow-2xs max-w-[200px] truncate"
-            >
-              <option value="all">Toda a Equipe ({teamOperatorsList.length})</option>
-              {teamOperatorsList.map(o => (
-                <option key={o.id} value={o.id}>{o.nome}</option>
-              ))}
-            </select>
+              {openDropdown === "convenio" && (
+                <div className="absolute left-0 mt-1.5 w-64 max-w-[85vw] bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 text-slate-900 text-xs">
+                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-100 px-1">
+                    <span className="font-bold text-[10.5px] text-slate-700 uppercase tracking-wider">Convênios</span>
+                    {selectedConvenios.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedConvenios([])}
+                        className="text-[10.5px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                      >
+                        Limpar ({selectedConvenios.length})
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-60 overflow-y-auto space-y-0.5 pr-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedConvenios([])}
+                      className={cn(
+                        "w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
+                        selectedConvenios.length === 0
+                          ? "bg-indigo-50 text-indigo-900 font-bold"
+                          : "text-slate-700 hover:bg-slate-50 font-medium"
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className={cn(
+                          "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                          selectedConvenios.length === 0 ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-300 bg-white"
+                        )}>
+                          {selectedConvenios.length === 0 && <Check className="w-3 h-3 stroke-[3]" />}
+                        </span>
+                        <span>Todos os Convênios</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400">({conveniosList.length})</span>
+                    </button>
+                    <div className="my-1 border-t border-slate-100" />
+                    {conveniosList.map(c => {
+                      const isSelected = selectedConvenios.includes(c)
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            setSelectedConvenios(prev =>
+                              prev.includes(c) ? prev.filter(item => item !== c) : [...prev, c]
+                            )
+                          }}
+                          className={cn(
+                            "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
+                            isSelected
+                              ? "bg-indigo-50 text-indigo-900 font-bold"
+                              : "text-slate-700 hover:bg-slate-50 font-medium"
+                          )}
+                        >
+                          <span className={cn(
+                            "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                            isSelected ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-300 bg-white"
+                          )}>
+                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                          </span>
+                          <span className="truncate">{c}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Operador / Corretor (Múltipla Seleção) */}
+            <div className="relative" ref={operatorDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setOpenDropdown(prev => prev === "operator" ? null : "operator")}
+                className={cn(
+                  "border rounded-lg px-2.5 py-1 text-xs font-medium flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs max-w-[220px]",
+                  selectedOperators.length > 0
+                    ? "bg-indigo-50 border-indigo-400 text-indigo-900 font-bold"
+                    : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"
+                )}
+              >
+                <span className="truncate">
+                  {selectedOperators.length === 0
+                    ? `Toda a Equipe (${teamOperatorsList.length})`
+                    : selectedOperators.length === 1
+                    ? (teamOperatorsList.find(o => o.id === selectedOperators[0])?.nome || "1 Selecionado")
+                    : `${selectedOperators.length} Colaboradores`}
+                </span>
+                {selectedOperators.length > 0 ? (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedOperators([])
+                    }}
+                    className="w-4 h-4 rounded-full bg-indigo-200/80 hover:bg-indigo-300 text-indigo-800 flex items-center justify-center text-[10px] shrink-0"
+                    title="Limpar filtro de equipe"
+                  >
+                    ×
+                  </span>
+                ) : (
+                  <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform", openDropdown === "operator" && "rotate-180")} />
+                )}
+              </button>
+
+              {openDropdown === "operator" && (
+                <div className="absolute left-0 mt-1.5 w-64 max-w-[85vw] bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 text-slate-900 text-xs">
+                  <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-100 px-1">
+                    <span className="font-bold text-[10.5px] text-slate-700 uppercase tracking-wider">Equipe (CLT e Estágio)</span>
+                    {selectedOperators.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedOperators([])}
+                        className="text-[10.5px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                      >
+                        Limpar ({selectedOperators.length})
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-60 overflow-y-auto space-y-0.5 pr-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedOperators([])}
+                      className={cn(
+                        "w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
+                        selectedOperators.length === 0
+                          ? "bg-indigo-50 text-indigo-900 font-bold"
+                          : "text-slate-700 hover:bg-slate-50 font-medium"
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className={cn(
+                          "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                          selectedOperators.length === 0 ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-300 bg-white"
+                        )}>
+                          {selectedOperators.length === 0 && <Check className="w-3 h-3 stroke-[3]" />}
+                        </span>
+                        <span>Toda a Equipe</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400">({teamOperatorsList.length})</span>
+                    </button>
+                    <div className="my-1 border-t border-slate-100" />
+                    {teamOperatorsList.map(o => {
+                      const isSelected = selectedOperators.includes(o.id)
+                      return (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedOperators(prev =>
+                              prev.includes(o.id) ? prev.filter(id => id !== o.id) : [...prev, o.id]
+                            )
+                          }}
+                          className={cn(
+                            "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
+                            isSelected
+                              ? "bg-indigo-50 text-indigo-900 font-bold"
+                              : "text-slate-700 hover:bg-slate-50 font-medium"
+                          )}
+                        >
+                          <span className={cn(
+                            "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                            isSelected ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-300 bg-white"
+                          )}>
+                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                          </span>
+                          <span className="truncate">{o.nome}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="text-[11px] text-slate-500 font-medium">
-            Mostrando <span className="font-bold text-slate-900">{filteredTickets.length}</span> atendimentos analisados
+          <div className="text-xs text-slate-500 font-medium">
+            <span className="font-bold text-slate-900">{filteredTickets.length}</span> atendimentos analisados
           </div>
         </div>
 
@@ -983,11 +1257,11 @@ export function PipelineIntelligenceDrawer({
             </div>
           </div>
 
-          {/* Card 3: Gargalos (> 48h) */}
+          {/* Card 3: GARGALOS (> 48h) */}
           <div className="bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100/90 border-2 border-amber-400 rounded-xl p-3 flex flex-col justify-between shadow-xs">
             <div className="flex items-center gap-2 text-amber-900">
               <Clock className="w-4 h-4 text-amber-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[11px] font-black uppercase tracking-wider">Gargalos (&gt; 48h)</span>
+              <span className="text-[11px] font-black tracking-wider">GARGALOS (&gt; 48h)</span>
             </div>
             <div className="mt-1">
               <div className="text-xl font-black text-amber-950">
@@ -1007,7 +1281,7 @@ export function PipelineIntelligenceDrawer({
               <div className="text-xl font-black text-rose-950">
                 {riskLeadsData.length} leads
               </div>
-              <span className="text-[11px] text-rose-900 font-bold">&gt; Parados há mais de 24h</span>
+              <span className="text-[11px] text-rose-900 font-bold">Parados há mais de 48h</span>
             </div>
           </div>
         </div>
@@ -1053,7 +1327,7 @@ export function PipelineIntelligenceDrawer({
             )}
           >
             <Award className="w-4 h-4" />
-            <span>3. Matriz de Afinidade (Corretor x Convênio)</span>
+            <span>3. Matriz de Afinidade</span>
           </button>
 
           <button
@@ -1088,7 +1362,7 @@ export function PipelineIntelligenceDrawer({
                 <Zap className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-xs font-bold text-sky-950">
-                    Definição de Tempo Médio Comercial
+                    Definição de Tempo Médio
                   </h4>
                   <p className="text-xs text-sky-800 mt-0.5 leading-relaxed">
                     Mede quantos minutos o corretor leva entre a negociação com o lead e digitação da proposta no banco (gerar a ADE).
@@ -1301,114 +1575,199 @@ export function PipelineIntelligenceDrawer({
                 <Award className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-xs font-bold text-indigo-950">
-                    Otimização de Distribuição Inteligente por Afinidade de Convênio
+                    Otimização de Distribuição Inteligente por Afinidade
                   </h4>
                   <p className="text-xs text-indigo-800 mt-0.5 leading-relaxed">
-                    Identifica a aptidão de cada corretor com perfis de clientes específicos. Ao rotear leads de determinados órgãos públicos ou INSS para os operadores com maior taxa de conversão demonstrada, maximiza-se a receita da empresa sem aumentar o custo de aquisição.
+                    Identifica a aptidão de cada corretor com perfis de clientes específicos. Ao rotear leads de determinados convênios ou faixas de valores financeiros para os operadores com maior taxa de conversão demonstrada, maximiza-se a receita da empresa sem aumentar o custo de aquisição.
                   </p>
                 </div>
               </div>
 
-              <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Building2 className="w-4 h-4 text-indigo-600" />
-                    Matriz Cruzada: Corretor x Principais Convênios
-                  </h3>
-                  <div className="flex items-center gap-3 text-[10px]">
-                    <span className="flex items-center gap-1 text-emerald-700 font-bold">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Ponto Forte (Alta Conv.)
-                    </span>
-                    <span className="flex items-center gap-1 text-rose-700 font-bold">
-                      <span className="w-2 h-2 rounded-full bg-rose-500"></span> Gargalo (Baixa Conv.)
-                    </span>
-                  </div>
-                </div>
+              {(() => {
+                const activeColumns = affinityMode === "convenio"
+                  ? affinityMatrixData.topConvenios
+                  : affinityMatrixData.valueTiers
+                const tableMinWidth = `${200 + activeColumns.length * 132 + 250}px`
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-100 text-slate-600 uppercase text-[10px] font-bold border-b border-slate-200">
-                      <tr>
-                        <th className="px-4 py-2.5">Corretor / Operador</th>
-                        <th className="px-4 py-2.5 text-center">Conv. Geral</th>
-                        {affinityMatrixData.topConvenios.map(conv => (
-                          <th key={conv} className="px-3 py-2.5 text-center">
-                            {conv}
-                          </th>
-                        ))}
-                        <th className="px-4 py-2.5 text-left">Insight Gerencial</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {affinityMatrixData.rows.length === 0 ? (
-                        <tr>
-                          <td colSpan={affinityMatrixData.topConvenios.length + 3} className="px-4 py-8 text-center text-slate-400">
-                            Dados insuficientes para cruzar afinidade no período.
-                          </td>
-                        </tr>
-                      ) : (
-                        affinityMatrixData.rows.map(row => (
-                          <tr key={row.userId} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="px-4 py-3 font-bold text-slate-900">
-                              {row.userName}
-                              <div className="text-[10px] text-slate-400 font-normal">
-                                {row.totalTickets} leads atendidos
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-center font-black text-indigo-700">
-                              {row.overallRate}%
-                            </td>
-                            {affinityMatrixData.topConvenios.map(conv => {
-                              const cell = row.byConvenio[conv]
-                              if (!cell || cell.total === 0) {
-                                return (
-                                  <td key={conv} className="px-3 py-3 text-center text-slate-300">
-                                    -
-                                  </td>
-                                )
-                              }
+                const handleModeChange = (mode: "convenio" | "valor") => {
+                  setAffinityMode(mode)
+                  if (affinityHeaderScrollRef.current) affinityHeaderScrollRef.current.scrollLeft = 0
+                  if (affinityBodyScrollRef.current) affinityBodyScrollRef.current.scrollLeft = 0
+                }
 
-                              const isStrong = cell.strength === "forte"
-                              const isWeak = cell.strength === "fraco"
+                return (
+                  <div className="bg-white border border-slate-200 rounded-xl shadow-2xs">
+                    <div className="sticky top-0 z-20 bg-white rounded-t-xl border-b border-slate-200 shadow-2xs">
+                      <div className="px-4 py-3 bg-slate-50/95 rounded-t-xl flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4 text-indigo-600" />
+                            Matriz Cruzada
+                          </h3>
+                          <div className="inline-flex items-center rounded-lg bg-slate-200/70 p-0.5 border border-slate-200">
+                            <button
+                              type="button"
+                              onClick={() => handleModeChange("convenio")}
+                              className={cn(
+                                "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                                affinityMode === "convenio"
+                                  ? "bg-white text-indigo-700 shadow-2xs"
+                                  : "text-slate-600 hover:text-slate-900"
+                              )}
+                            >
+                              Por Convênio
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleModeChange("valor")}
+                              className={cn(
+                                "px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                                affinityMode === "valor"
+                                  ? "bg-white text-indigo-700 shadow-2xs"
+                                  : "text-slate-600 hover:text-slate-900"
+                              )}
+                            >
+                              Por Valor Financeiro
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 text-[10px]">
+                          <span className="flex items-center gap-1 text-emerald-700 font-bold">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Ponto Forte (Alta Conv.)
+                          </span>
+                          <span className="flex items-center gap-1 text-rose-700 font-bold">
+                            <span className="w-2 h-2 rounded-full bg-rose-500"></span> Gargalo (Baixa Conv.)
+                          </span>
+                        </div>
+                      </div>
+
+                      <div
+                        ref={affinityHeaderScrollRef}
+                        onScroll={() => syncAffinityScroll("header")}
+                        className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-t border-slate-200 bg-slate-100"
+                      >
+                        <table
+                          className="w-full table-fixed text-left text-xs"
+                          style={{ minWidth: tableMinWidth }}
+                        >
+                          <colgroup>
+                            <col className="w-[200px]" />
+                            {activeColumns.map(col => (
+                              <col key={col} className="w-[132px]" />
+                            ))}
+                            <col />
+                          </colgroup>
+                          <thead className="bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
+                            <tr>
+                              <th className="px-4 py-2.5 whitespace-nowrap">Corretor / Operador</th>
+                              {activeColumns.map(col => (
+                                <th
+                                  key={col}
+                                  className={cn(
+                                    "px-2.5 py-2.5 text-center leading-tight",
+                                    affinityMode === "valor" && "normal-case"
+                                  )}
+                                >
+                                  {col}
+                                </th>
+                              ))}
+                              <th className="px-4 py-2.5 text-left whitespace-nowrap">Insight Gerencial</th>
+                            </tr>
+                          </thead>
+                        </table>
+                      </div>
+                    </div>
+
+                    <div
+                      ref={affinityBodyScrollRef}
+                      onScroll={() => syncAffinityScroll("body")}
+                      className="overflow-x-auto rounded-b-xl"
+                    >
+                      <table
+                        className="w-full table-fixed text-left text-xs"
+                        style={{ minWidth: tableMinWidth }}
+                      >
+                        <colgroup>
+                          <col className="w-[200px]" />
+                          {activeColumns.map(col => (
+                            <col key={col} className="w-[132px]" />
+                          ))}
+                          <col />
+                        </colgroup>
+                        <tbody className="divide-y divide-slate-100">
+                          {affinityMatrixData.rows.length === 0 ? (
+                            <tr>
+                              <td colSpan={activeColumns.length + 2} className="px-4 py-8 text-center text-slate-400">
+                                Dados insuficientes para cruzar afinidade no período.
+                              </td>
+                            </tr>
+                          ) : (
+                            affinityMatrixData.rows.map(row => {
+                              const bestInsight = affinityMode === "convenio" ? row.bestConvenio : row.bestTier
+                              const worstInsight = affinityMode === "convenio" ? row.worstConvenio : row.worstTier
 
                               return (
-                                <td key={conv} className="px-3 py-3 text-center">
-                                  <div className={cn(
-                                    "inline-flex flex-col items-center justify-center px-2 py-1 rounded-md text-[11px] font-bold border",
-                                    isStrong ? "bg-emerald-50 text-emerald-800 border-emerald-300" :
-                                    isWeak ? "bg-rose-50 text-rose-800 border-rose-300" :
-                                    "bg-slate-50 text-slate-700 border-slate-200"
-                                  )}>
-                                    <span>{cell.rate}%</span>
-                                    <span className="text-[9px] font-normal text-slate-500">
-                                      {cell.converted}/{cell.total}
-                                    </span>
-                                  </div>
-                                </td>
+                                <tr key={row.userId} className="hover:bg-slate-50/80 transition-colors">
+                                  <td className="px-4 py-3 font-bold text-slate-900">
+                                    {row.userName}
+                                    <div className="text-[10px] text-slate-400 font-normal">
+                                      {row.totalTickets} leads em negociação
+                                    </div>
+                                  </td>
+                                  {activeColumns.map(col => {
+                                    const cell = affinityMode === "convenio" ? row.byConvenio[col] : row.byTier[col]
+                                    if (!cell || cell.total === 0) {
+                                      return (
+                                        <td key={col} className="px-2.5 py-3 text-center text-slate-300">
+                                          -
+                                        </td>
+                                      )
+                                    }
+
+                                    const isStrong = cell.strength === "forte"
+                                    const isWeak = cell.strength === "fraco"
+
+                                    return (
+                                      <td key={col} className="px-2.5 py-3 text-center">
+                                        <div className={cn(
+                                          "inline-flex flex-col items-center justify-center px-2 py-1 rounded-md text-[11px] font-bold border",
+                                          isStrong ? "bg-emerald-50 text-emerald-800 border-emerald-300" :
+                                          isWeak ? "bg-rose-50 text-rose-800 border-rose-300" :
+                                          "bg-slate-50 text-slate-700 border-slate-200"
+                                        )}>
+                                          <span>{cell.rate}%</span>
+                                          <span className="text-[9px] font-normal text-slate-500">
+                                            {cell.converted}/{cell.total}
+                                          </span>
+                                        </div>
+                                      </td>
+                                    )
+                                  })}
+                                  <td className="px-4 py-3 text-[11px]">
+                                    {bestInsight && (
+                                      <div className="text-emerald-700 font-medium">
+                                        ★ Especialista em {bestInsight}
+                                      </div>
+                                    )}
+                                    {worstInsight && (
+                                      <div className="text-rose-600 font-medium">
+                                        ⚠ Baixo fechamento em {worstInsight}
+                                      </div>
+                                    )}
+                                    {!bestInsight && !worstInsight && (
+                                      <span className="text-slate-400 italic">Desempenho homogêneo</span>
+                                    )}
+                                  </td>
+                                </tr>
                               )
-                            })}
-                            <td className="px-4 py-3 text-[11px]">
-                              {row.bestConvenio && (
-                                <div className="text-emerald-700 font-medium">
-                                  ★ Especialista em {row.bestConvenio}
-                                </div>
-                              )}
-                              {row.worstConvenio && (
-                                <div className="text-rose-600 font-medium">
-                                  ⚠ Baixo fechamento em {row.worstConvenio}
-                                </div>
-                              )}
-                              {!row.bestConvenio && !row.worstConvenio && (
-                                <span className="text-slate-400 italic">Desempenho homogêneo</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           )}
 
@@ -1469,18 +1828,113 @@ export function PipelineIntelligenceDrawer({
                     />
                   </div>
 
-                  <select
-                    value={effectiveRiskStageFilter}
-                    onChange={(e) => setRiskStageFilter(e.target.value)}
-                    className="w-full sm:w-auto bg-white border border-slate-200 text-slate-700 font-medium rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
-                  >
-                    <option value="all">Todas as Etapas ({riskStageOptions.length})</option>
-                    {riskStageOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label} ({opt.count})
-                      </option>
-                    ))}
-                  </select>
+                  {/* Etapas (Múltipla Seleção) */}
+                  <div className="relative w-full sm:w-auto" ref={stageDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenDropdown(prev => prev === "stage" ? null : "stage")}
+                      className={cn(
+                        "w-full sm:w-auto border rounded-lg px-2.5 py-1.5 text-xs font-medium flex items-center justify-between gap-1.5 cursor-pointer transition-colors max-w-full sm:max-w-[220px]",
+                        effectiveRiskStageFilters.length > 0
+                          ? "bg-rose-50 border-rose-300 text-rose-900 font-bold"
+                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                      )}
+                    >
+                      <span className="truncate">
+                        {effectiveRiskStageFilters.length === 0
+                          ? `Todas as Etapas (${riskStageOptions.length})`
+                          : effectiveRiskStageFilters.length === 1
+                          ? (riskStageOptions.find(opt => opt.value === effectiveRiskStageFilters[0])?.label || "1 Etapa")
+                          : `${effectiveRiskStageFilters.length} Etapas`}
+                      </span>
+                      {effectiveRiskStageFilters.length > 0 ? (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setRiskStageFilters([])
+                          }}
+                          className="w-4 h-4 rounded-full bg-rose-200/80 hover:bg-rose-300 text-rose-800 flex items-center justify-center text-[10px] shrink-0"
+                          title="Limpar filtro de etapas"
+                        >
+                          ×
+                        </span>
+                      ) : (
+                        <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform", openDropdown === "stage" && "rotate-180")} />
+                      )}
+                    </button>
+
+                    {openDropdown === "stage" && (
+                      <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-64 max-w-[85vw] bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 text-slate-900 text-xs">
+                        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-100 px-1">
+                          <span className="font-bold text-[10.5px] text-slate-700 uppercase tracking-wider">Etapas em Risco</span>
+                          {effectiveRiskStageFilters.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setRiskStageFilters([])}
+                              className="text-[10.5px] font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                            >
+                              Limpar ({effectiveRiskStageFilters.length})
+                            </button>
+                          )}
+                        </div>
+                        <div className="max-h-60 overflow-y-auto space-y-0.5 pr-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setRiskStageFilters([])}
+                            className={cn(
+                              "w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
+                              effectiveRiskStageFilters.length === 0
+                                ? "bg-rose-50 text-rose-900 font-bold"
+                                : "text-slate-700 hover:bg-slate-50 font-medium"
+                            )}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span className={cn(
+                                "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                                effectiveRiskStageFilters.length === 0 ? "border-rose-600 bg-rose-600 text-white" : "border-slate-300 bg-white"
+                              )}>
+                                {effectiveRiskStageFilters.length === 0 && <Check className="w-3 h-3 stroke-[3]" />}
+                              </span>
+                              <span>Todas as Etapas</span>
+                            </span>
+                            <span className="text-[10px] text-slate-400">({riskStageOptions.length})</span>
+                          </button>
+                          <div className="my-1 border-t border-slate-100" />
+                          {riskStageOptions.map(opt => {
+                            const isSelected = effectiveRiskStageFilters.includes(opt.value)
+                            return (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => {
+                                  setRiskStageFilters(prev =>
+                                    prev.includes(opt.value) ? prev.filter(item => item !== opt.value) : [...prev, opt.value]
+                                  )
+                                }}
+                                className={cn(
+                                  "w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs",
+                                  isSelected
+                                    ? "bg-rose-50 text-rose-900 font-bold"
+                                    : "text-slate-700 hover:bg-slate-50 font-medium"
+                                )}
+                              >
+                                <span className="flex items-center gap-2 truncate pr-2">
+                                  <span className={cn(
+                                    "w-4 h-4 rounded border flex items-center justify-center shrink-0",
+                                    isSelected ? "border-rose-600 bg-rose-600 text-white" : "border-slate-300 bg-white"
+                                  )}>
+                                    {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                  </span>
+                                  <span className="truncate">{opt.label}</span>
+                                </span>
+                                <span className="text-[10px] text-slate-400 shrink-0">({opt.count})</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1580,8 +2034,15 @@ export function PipelineIntelligenceDrawer({
                             <div>
                               <span className="text-slate-400 block text-[10px]">Tempo sem Contato:</span>
                               <span className="font-black text-rose-600 flex items-center gap-1">
-                                <Clock className="w-3.5 h-3.5" />
-                                {item.hoursInactive} horas
+                                <Clock className="w-3.5 h-3.5 shrink-0" />
+                                {(() => {
+                                  const days = Math.floor(item.hoursInactive / 24)
+                                  const remHours = item.hoursInactive % 24
+                                  if (days <= 0) return `${item.hoursInactive} ${item.hoursInactive === 1 ? "hora" : "horas"}`
+                                  const daysPart = `${days} ${days === 1 ? "dia" : "dias"}`
+                                  const hoursPart = remHours > 0 ? ` e ${remHours} ${remHours === 1 ? "hora" : "horas"}` : ""
+                                  return `${daysPart}${hoursPart}`
+                                })()}
                               </span>
                             </div>
                           </div>
@@ -1597,11 +2058,10 @@ export function PipelineIntelligenceDrawer({
                               type="button"
                               onClick={() => {
                                 onSelectTicket(t)
-                                handleClose()
                               }}
                               className="px-3 py-1 bg-slate-900 hover:bg-indigo-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                             >
-                              <span>Atender Lead</span>
+                              <span>Ver atendimento</span>
                               <ExternalLink className="w-3.5 h-3.5" />
                             </button>
                           )}
@@ -1625,7 +2085,9 @@ export function PipelineIntelligenceDrawer({
             Fechar
           </button>
         </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }
