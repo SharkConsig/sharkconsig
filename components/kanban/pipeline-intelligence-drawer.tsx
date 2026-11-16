@@ -1178,53 +1178,22 @@ export function PipelineIntelligenceDrawer({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.24, ease: "easeOut" }}
-          className="fixed inset-x-0 bottom-0 top-16 lg:top-20 z-50 overflow-hidden bg-slate-950/55 flex justify-end will-change-[opacity]"
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="fixed inset-0 z-[150] overflow-hidden bg-slate-950/60 flex items-center justify-center will-change-[opacity]"
           onClick={(e) => {
             if (e.target === e.currentTarget && !isExecSummaryOpen) handleClose()
           }}
         >
           <motion.div
             key="pipeline-intelligence-panel"
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "tween", duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
-            className="w-full lg:w-[calc(100vw-84px)] max-w-[1720px] bg-white h-full shadow-2xl flex flex-col border-l border-slate-200 will-change-transform"
+            initial={{ opacity: 0, scale: 0.985 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.985 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="w-full lg:w-[calc(100vw-48px)] max-w-[1720px] bg-white h-full shadow-2xl flex flex-col border-x border-slate-200 will-change-transform"
             role="dialog"
             aria-modal="true"
           >
-        {/* CABEÇALHO EXECUTIVO */}
-        <div className="px-6 lg:px-7 py-4 border-b border-slate-200 bg-linear-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-indigo-500 p-0.5 shadow-md flex items-center justify-center">
-              <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-amber-400" />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
-                  Inteligência do Pipeline
-                </h2>
-              </div>
-              <p className="text-xs text-slate-300">
-                Auditoria de velocidade comercial, capital represado e matriz de afinidade.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="p-2 text-slate-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-              title="Fechar painel"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
 
         {/* BARRA DE FILTROS GERENCIAIS */}
         <div className="px-6 lg:px-7 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3.5 text-xs shrink-0">
@@ -1506,15 +1475,15 @@ export function PipelineIntelligenceDrawer({
         </div>
 
         {/* CARDS RESUMO EXECUTIVO (KPIs) */}
-        <div className="px-6 lg:px-7 py-4 grid grid-cols-2 md:grid-cols-4 gap-4 bg-white border-b border-slate-200 shrink-0">
+        <div className="px-6 lg:px-7 py-2.5 grid grid-cols-2 md:grid-cols-4 gap-3 bg-white border-b border-slate-200 shrink-0">
           {/* Card 1: TEMPO MÉDIO */}
-          <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center gap-2 text-sky-900">
-              <Zap className="w-4 h-4 text-sky-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[11px] font-black uppercase tracking-wider">TEMPO MÉDIO</span>
+          <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center gap-1.5 text-sky-900">
+              <Zap className="w-3.5 h-3.5 text-sky-600 shrink-0" strokeWidth={2.6} />
+              <span className="text-[10px] font-black uppercase tracking-wider">TEMPO MÉDIO</span>
             </div>
-            <div className="mt-1.5">
-              <div className="text-xl font-black text-sky-950">
+            <div className="mt-0.5">
+              <div className="text-base lg:text-lg font-black text-sky-950 leading-tight">
                 {speedToLeadData.generalAvgMinutes > 0 ? (
                   speedToLeadData.generalAvgMinutes < 60 ? (
                     `${speedToLeadData.generalAvgMinutes} min`
@@ -1525,51 +1494,51 @@ export function PipelineIntelligenceDrawer({
                   "N/A"
                 )}
               </div>
-              <span className="text-[11px] text-sky-900 font-bold">Em negociação ➔ Gerada a ADE</span>
+              <span className="text-[10px] text-sky-900 font-bold leading-tight block mt-0.5">Em negociação ➔ Gerada a ADE</span>
             </div>
           </div>
 
           {/* Card 2: Capital no Pipeline */}
-          <div className="bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-100/90 border-2 border-emerald-400 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center gap-2 text-emerald-900">
-              <DollarSign className="w-4 h-4 text-emerald-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[11px] font-black uppercase tracking-wider">Capital no Pipeline</span>
+          <div className="bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-100/90 border-2 border-emerald-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center gap-1.5 text-emerald-900">
+              <DollarSign className="w-3.5 h-3.5 text-emerald-600 shrink-0" strokeWidth={2.6} />
+              <span className="text-[10px] font-black uppercase tracking-wider">Capital no Pipeline</span>
             </div>
-            <div className="mt-1.5">
-              <div className="text-xl font-black text-emerald-950">
+            <div className="mt-0.5">
+              <div className="text-base lg:text-lg font-black text-emerald-950 leading-tight">
                 {fmtCurrency(stageAgingData.grandTotalCapital)}
               </div>
-              <span className="text-[11px] text-emerald-900 font-bold">
+              <span className="text-[10px] text-emerald-900 font-bold leading-tight block mt-0.5">
                 Prod. Estimada: {fmtCurrency(stageAgingData.grandTotalProducao)}
               </span>
             </div>
           </div>
 
           {/* Card 3: GARGALOS (> 48h) */}
-          <div className="bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100/90 border-2 border-amber-400 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center gap-2 text-amber-900">
-              <Clock className="w-4 h-4 text-amber-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[11px] font-black tracking-wider">GARGALOS (&gt; 48h)</span>
+          <div className="bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100/90 border-2 border-amber-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center gap-1.5 text-amber-900">
+              <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" strokeWidth={2.6} />
+              <span className="text-[10px] font-black tracking-wider">GARGALOS (&gt; 48h)</span>
             </div>
-            <div className="mt-1.5">
-              <div className="text-xl font-black text-amber-950">
+            <div className="mt-0.5">
+              <div className="text-base lg:text-lg font-black text-amber-950 leading-tight">
                 {stageAgingData.grandTotalStuck48hCount} leads
               </div>
-              <span className="text-[11px] text-amber-900 font-bold">Sem avanço na cadência</span>
+              <span className="text-[10px] text-amber-900 font-bold leading-tight block mt-0.5">Sem avanço na cadência</span>
             </div>
           </div>
 
           {/* Card 4: Risco de Queima */}
-          <div className="bg-gradient-to-br from-rose-100 via-rose-50 to-red-100/90 border-2 border-rose-400 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center gap-2 text-rose-900">
-              <Flame className="w-4 h-4 text-rose-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[11px] font-black uppercase tracking-wider">Risco de Queima</span>
+          <div className="bg-gradient-to-br from-rose-100 via-rose-50 to-red-100/90 border-2 border-rose-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center gap-1.5 text-rose-900">
+              <Flame className="w-3.5 h-3.5 text-rose-600 shrink-0" strokeWidth={2.6} />
+              <span className="text-[10px] font-black uppercase tracking-wider">Risco de Queima</span>
             </div>
-            <div className="mt-1.5">
-              <div className="text-xl font-black text-rose-950">
+            <div className="mt-0.5">
+              <div className="text-base lg:text-lg font-black text-rose-950 leading-tight">
                 {riskLeadsData.length} leads
               </div>
-              <span className="text-[11px] text-rose-900 font-bold">Parados há mais de 48h</span>
+              <span className="text-[10px] text-rose-900 font-bold leading-tight block mt-0.5">Parados há mais de 48h</span>
             </div>
           </div>
         </div>
@@ -1580,7 +1549,7 @@ export function PipelineIntelligenceDrawer({
             type="button"
             onClick={() => setActiveTab("speed")}
             className={cn(
-              "py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors",
+              "relative group/tooltip py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors",
               activeTab === "speed"
                 ? "border-indigo-600 text-indigo-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
@@ -1588,13 +1557,19 @@ export function PipelineIntelligenceDrawer({
           >
             <Zap className="w-4 h-4" />
             <span>1. Tempo Médio (Em negociação ➔ Gerada a ADE)</span>
+            <span
+              role="tooltip"
+              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-72 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700"
+            >
+              Mede quantos minutos o corretor leva entre a negociação com o lead e digitação da proposta no banco (gerar a ADE).
+            </span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("aging")}
             className={cn(
-              "py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors",
+              "relative group/tooltip py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors",
               activeTab === "aging"
                 ? "border-indigo-600 text-indigo-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
@@ -1602,13 +1577,19 @@ export function PipelineIntelligenceDrawer({
           >
             <Clock className="w-4 h-4" />
             <span>2. Capital Imobilizado por Etapa</span>
+            <span
+              role="tooltip"
+              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700"
+            >
+              Mostra o volume financeiro (Valor Operação e Produção Estimada) e o tempo médio de permanência retidos em cada etapa do pipeline, com quebra por faixa de ticket (Alto, Médio e Baixo) e destaque para gargalos acima de 48h.
+            </span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("affinity")}
             className={cn(
-              "py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors",
+              "relative group/tooltip py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors",
               activeTab === "affinity"
                 ? "border-indigo-600 text-indigo-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
@@ -1616,13 +1597,19 @@ export function PipelineIntelligenceDrawer({
           >
             <Award className="w-4 h-4" />
             <span>3. Matriz de Afinidade</span>
+            <span
+              role="tooltip"
+              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700"
+            >
+              Identifica a aptidão de cada corretor com perfis de clientes específicos. Ao rotear leads de determinados convênios ou faixas de valores financeiros para os operadores com maior taxa de conversão demonstrada, maximiza-se a receita da empresa sem aumentar o custo de aquisição.
+            </span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab("risk")}
             className={cn(
-              "py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors relative",
+              "relative group/tooltip py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors",
               activeTab === "risk"
                 ? "border-rose-600 text-rose-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
@@ -1635,6 +1622,12 @@ export function PipelineIntelligenceDrawer({
                 {riskLeadsData.length}
               </span>
             )}
+            <span
+              role="tooltip"
+              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute right-0 sm:left-0 sm:right-auto top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700"
+            >
+              Lista em tempo real os leads parados há mais de 48 horas nas etapas ativas, ordenados por criticidade de ticket e tempo sem contato, permitindo priorizar o resgate de oportunidades antes da perda.
+            </span>
           </button>
         </div>
 
@@ -1649,22 +1642,9 @@ export function PipelineIntelligenceDrawer({
           {/* ABA 1: TEMPO MÉDIO (EM NEGOCIAÇÃO -> GERADA A ADE)              */}
           {/* ============================================================== */}
           {activeTab === "speed" && (
-            <div className="flex-1 min-h-0 flex flex-col gap-4">
-              {/* Box de Instrução Exata */}
-              <div className="bg-sky-50 border border-sky-200 rounded-xl p-3.5 flex items-start gap-3 shrink-0">
-                <Zap className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="text-xs font-bold text-sky-950">
-                    Definição de Tempo Médio
-                  </h4>
-                  <p className="text-xs text-sky-800 mt-0.5 leading-relaxed">
-                    Mede quantos minutos o corretor leva entre a negociação com o lead e digitação da proposta no banco (gerar a ADE).
-                  </p>
-                </div>
-              </div>
-
+            <div className="flex-1 min-h-0 flex flex-col">
               {/* Tabela de Ranking por Corretor */}
-              <div className="flex-1 min-h-[380px] flex flex-col bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
+              <div className="flex-1 min-h-[260px] flex flex-col bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
                 <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/95 flex items-center justify-between shrink-0">
                   <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                     <Users className="w-4 h-4 text-indigo-600" />
@@ -1865,24 +1845,11 @@ export function PipelineIntelligenceDrawer({
           {/* ABA 3: MATRIZ DE AFINIDADE (CORRETOR X CONVÊNIO)               */}
           {/* ============================================================== */}
           {activeTab === "affinity" && (
-            <div className="flex-1 min-h-0 flex flex-col gap-4">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 flex items-start gap-3 shrink-0">
-                <Award className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="text-xs font-bold text-indigo-950">
-                    Otimização de Distribuição Inteligente por Afinidade
-                  </h4>
-                  <p className="text-xs text-indigo-800 mt-0.5 leading-relaxed">
-                    Identifica a aptidão de cada corretor com perfis de clientes específicos. Ao rotear leads de determinados convênios ou faixas de valores financeiros para os operadores com maior taxa de conversão demonstrada, maximiza-se a receita da empresa sem aumentar o custo de aquisição.
-                  </p>
-                </div>
-              </div>
-
+            <div className="flex-1 min-h-0 flex flex-col">
               {(() => {
                 const activeColumns = affinityMode === "convenio"
                   ? affinityMatrixData.topConvenios
                   : affinityMatrixData.valueTiers
-                const tableMinWidth = `${200 + activeColumns.length * 132 + 250}px`
 
                 const handleModeChange = (mode: "convenio" | "valor") => {
                   setAffinityMode(mode)
@@ -1893,7 +1860,7 @@ export function PipelineIntelligenceDrawer({
                 }
 
                 return (
-                  <div className="flex-1 min-h-[380px] flex flex-col bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
+                  <div className="flex-1 min-h-[260px] flex flex-col bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
                     <div className="px-4 py-3 bg-slate-50/95 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
                       <div className="flex flex-wrap items-center gap-3">
                         <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
@@ -1941,33 +1908,22 @@ export function PipelineIntelligenceDrawer({
                       ref={affinityBodyScrollRef}
                       className="flex-1 min-h-0 overflow-auto"
                     >
-                      <table
-                        className="w-full table-fixed border-separate border-spacing-0 text-left text-xs"
-                        style={{ minWidth: tableMinWidth }}
-                      >
+                      <table className="w-full min-w-[700px] table-fixed border-separate border-spacing-0 text-left text-xs">
                         <colgroup>
-                          <col className="w-[200px]" />
-                          {activeColumns.map(col => (
-                            <col key={col} className="w-[132px]" />
-                          ))}
+                          <col className="w-[210px]" />
                           <col />
+                          <col className="w-[260px] lg:w-[290px]" />
                         </colgroup>
                         <thead className="sticky top-0 z-10 bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
                           <tr>
                             <th className="px-4 py-2.5 whitespace-nowrap bg-slate-100 border-b border-r border-slate-200">
                               Corretor / Operador
                             </th>
-                            {activeColumns.map(col => (
-                              <th
-                                key={col}
-                                className={cn(
-                                  "px-2.5 py-2.5 text-center leading-tight bg-slate-100 border-b border-r border-slate-200",
-                                  affinityMode === "valor" && "normal-case"
-                                )}
-                              >
-                                {col}
-                              </th>
-                            ))}
+                            <th className="px-4 py-2.5 whitespace-nowrap bg-slate-100 border-b border-r border-slate-200">
+                              {affinityMode === "convenio"
+                                ? "Performance por Convênio (Kanban ➔ ADE)"
+                                : "Performance por Valor Financeiro (Kanban ➔ ADE)"}
+                            </th>
                             <th className="px-4 py-2.5 text-left whitespace-nowrap bg-slate-100 border-b border-slate-200">
                               Insight Gerencial
                             </th>
@@ -1976,7 +1932,7 @@ export function PipelineIntelligenceDrawer({
                         <tbody>
                           {affinityMatrixData.rows.length === 0 ? (
                             <tr>
-                              <td colSpan={activeColumns.length + 2} className="px-4 py-8 text-center text-slate-400">
+                              <td colSpan={3} className="px-4 py-8 text-center text-slate-400">
                                 Dados insuficientes para cruzar afinidade no período.
                               </td>
                             </tr>
@@ -1985,43 +1941,101 @@ export function PipelineIntelligenceDrawer({
                               const bestInsight = affinityMode === "convenio" ? row.bestConvenio : row.bestTier
                               const worstInsight = affinityMode === "convenio" ? row.worstConvenio : row.worstTier
 
+                              const barItems = activeColumns
+                                .map(col => ({
+                                  col,
+                                  cell: affinityMode === "convenio" ? row.byConvenio[col] : row.byTier[col]
+                                }))
+                                .filter((item): item is { col: string; cell: NonNullable<typeof item.cell> } =>
+                                  Boolean(item.cell && item.cell.total > 0)
+                                )
+
+                              if (affinityMode === "convenio") {
+                                barItems.sort((a, b) => {
+                                  if (b.cell.rate !== a.cell.rate) return b.cell.rate - a.cell.rate
+                                  if (b.cell.converted !== a.cell.converted) return b.cell.converted - a.cell.converted
+                                  if (b.cell.total !== a.cell.total) return b.cell.total - a.cell.total
+                                  return a.col.localeCompare(b.col, "pt-BR")
+                                })
+                              }
+
                               return (
-                                <tr key={row.userId} className="hover:bg-slate-50/80 transition-colors">
+                                <tr key={row.userId} className="hover:bg-slate-50/80 transition-colors align-top">
                                   <td className="px-4 py-3 font-bold text-slate-900 border-b border-r border-slate-200">
-                                    {row.userName}
-                                    <div className="text-[10px] text-slate-400 font-normal">
+                                    <div>{row.userName}</div>
+                                    <div className="text-[10px] text-slate-400 font-normal mt-0.5">
                                       {row.totalTickets} leads em negociação
                                     </div>
+                                    <div className="text-[10px] text-indigo-600 font-semibold mt-0.5">
+                                      Conversão geral: {row.overallRate}% ({row.totalConverted}/{row.totalTickets})
+                                    </div>
                                   </td>
-                                  {activeColumns.map(col => {
-                                    const cell = affinityMode === "convenio" ? row.byConvenio[col] : row.byTier[col]
-                                    if (!cell || cell.total === 0) {
-                                      return (
-                                        <td key={col} className="px-2.5 py-3 text-center text-slate-300 border-b border-r border-slate-200">
-                                          -
-                                        </td>
-                                      )
-                                    }
+                                  <td className="px-4 py-3 border-b border-r border-slate-200">
+                                    {barItems.length === 0 ? (
+                                      <span className="text-slate-400 italic text-[11px]">
+                                        Sem movimentações no Kanban para exibir.
+                                      </span>
+                                    ) : (
+                                      <div className="space-y-2">
+                                        {barItems.map(({ col, cell }) => {
+                                          const isStrong = cell.strength === "forte"
+                                          const isWeak = cell.strength === "fraco"
 
-                                    const isStrong = cell.strength === "forte"
-                                    const isWeak = cell.strength === "fraco"
-
-                                    return (
-                                      <td key={col} className="px-2.5 py-3 text-center border-b border-r border-slate-200">
-                                        <div className={cn(
-                                          "inline-flex flex-col items-center justify-center px-2 py-1 rounded-md text-[11px] font-bold border",
-                                          isStrong ? "bg-emerald-50 text-emerald-800 border-emerald-300" :
-                                          isWeak ? "bg-rose-50 text-rose-800 border-rose-300" :
-                                          "bg-slate-50 text-slate-700 border-slate-200"
-                                        )}>
-                                          <span>{cell.rate}%</span>
-                                          <span className="text-[9px] font-normal text-slate-500">
-                                            {cell.converted}/{cell.total}
-                                          </span>
-                                        </div>
-                                      </td>
-                                    )
-                                  })}
+                                          return (
+                                            <div key={col} className="flex items-center gap-2.5">
+                                              <span
+                                                title={col}
+                                                className="w-36 sm:w-44 shrink-0 truncate text-[11px] font-semibold text-slate-700"
+                                              >
+                                                {col}
+                                              </span>
+                                              <div
+                                                className={cn(
+                                                  "flex-1 h-4 rounded-md border overflow-hidden relative flex items-center",
+                                                  isStrong
+                                                    ? "bg-emerald-50/70 border-emerald-200"
+                                                    : isWeak
+                                                    ? "bg-rose-50/70 border-rose-200"
+                                                    : "bg-slate-100 border-slate-200"
+                                                )}
+                                              >
+                                                <div
+                                                  className={cn(
+                                                    "h-full rounded-l-md transition-all duration-300",
+                                                    isStrong
+                                                      ? "bg-emerald-500"
+                                                      : isWeak
+                                                      ? "bg-rose-500"
+                                                      : "bg-slate-400"
+                                                  )}
+                                                  style={{
+                                                    width: `${cell.rate > 0 ? Math.max(cell.rate, 4) : 0}%`
+                                                  }}
+                                                />
+                                              </div>
+                                              <div className="w-20 shrink-0 text-right tabular-nums whitespace-nowrap">
+                                                <span
+                                                  className={cn(
+                                                    "text-[11px] font-bold",
+                                                    isStrong
+                                                      ? "text-emerald-700"
+                                                      : isWeak
+                                                      ? "text-rose-700"
+                                                      : "text-slate-700"
+                                                  )}
+                                                >
+                                                  {cell.rate}%
+                                                </span>
+                                                <span className="text-[10px] text-slate-500 ml-1">
+                                                  ({cell.converted}/{cell.total})
+                                                </span>
+                                              </div>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                    )}
+                                  </td>
                                   <td className="px-4 py-3 text-[11px] border-b border-slate-200">
                                     {bestInsight && (
                                       <div className="text-emerald-700 font-medium">
@@ -2029,7 +2043,7 @@ export function PipelineIntelligenceDrawer({
                                       </div>
                                     )}
                                     {worstInsight && (
-                                      <div className="text-rose-600 font-medium">
+                                      <div className="text-rose-600 font-medium mt-1">
                                         ⚠ Baixo fechamento em {worstInsight}
                                       </div>
                                     )}
@@ -2055,14 +2069,14 @@ export function PipelineIntelligenceDrawer({
           {/* ============================================================== */}
           {activeTab === "risk" && (
             <div className="flex-1 min-h-0 flex flex-col">
-              <div className="shrink-0 relative z-20 px-6 lg:px-7 pt-5 pb-4 bg-slate-50 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+              <div className="shrink-0 relative z-20 px-6 lg:px-7 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
                 <div className="flex flex-wrap items-center gap-2 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => setRiskTierFilter(prev => prev === "high" ? "all" : "high")}
                       className={cn(
-                        "px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                        "px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer",
                         riskTierFilter === "high"
                           ? "bg-orange-700 text-white border-orange-700 shadow-xs"
                           : "bg-white text-orange-700 border-orange-200 hover:bg-orange-50"
@@ -2074,7 +2088,7 @@ export function PipelineIntelligenceDrawer({
                       type="button"
                       onClick={() => setRiskTierFilter(prev => prev === "mid" ? "all" : "mid")}
                       className={cn(
-                        "px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                        "px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer",
                         riskTierFilter === "mid"
                           ? "bg-orange-500 text-white border-orange-500 shadow-xs"
                           : "bg-white text-orange-500 border-orange-200 hover:bg-orange-50"
@@ -2086,7 +2100,7 @@ export function PipelineIntelligenceDrawer({
                       type="button"
                       onClick={() => setRiskTierFilter(prev => prev === "low" ? "all" : "low")}
                       className={cn(
-                        "px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                        "px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer",
                         riskTierFilter === "low"
                           ? "bg-slate-700 text-white border-slate-700 shadow-xs"
                           : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
@@ -2097,13 +2111,13 @@ export function PipelineIntelligenceDrawer({
                   </div>
 
                   <div className="relative w-full sm:w-60">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
                       value={searchRiskQuery}
                       onChange={(e) => setSearchRiskQuery(e.target.value)}
                       placeholder="Filtrar por cliente, CPF ou corretor..."
-                      className="w-full bg-white border border-slate-200 rounded-lg pl-9 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
+                      className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-2.5 py-1 text-[11px] focus:ring-2 focus:ring-rose-500 focus:outline-hidden"
                     />
                   </div>
 
@@ -2113,7 +2127,7 @@ export function PipelineIntelligenceDrawer({
                       type="button"
                       onClick={() => setOpenDropdown(prev => prev === "stage" ? null : "stage")}
                       className={cn(
-                        "w-full sm:w-auto border rounded-lg px-2.5 py-1.5 text-xs font-medium flex items-center justify-between gap-1.5 cursor-pointer transition-colors max-w-full sm:max-w-[220px]",
+                        "w-full sm:w-auto border rounded-lg px-2.5 py-1 text-[11px] font-medium flex items-center justify-between gap-1.5 cursor-pointer transition-colors max-w-full sm:max-w-[220px]",
                         effectiveRiskStageFilters.length > 0
                           ? "bg-rose-50 border-rose-300 text-rose-900 font-bold"
                           : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
@@ -2368,7 +2382,7 @@ export function PipelineIntelligenceDrawer({
         </div>
           </motion.div>
 
-        {/* MODAL RESUMO EXECUTIVO — CENTRAL DE DIAGNÓSTICO ACIONÁVEL (fora do painel com transform e abaixo da barra do topo) */}
+        {/* MODAL RESUMO EXECUTIVO — CENTRAL DE DIAGNÓSTICO ACIONÁVEL */}
         <AnimatePresence>
           {isExecSummaryOpen && executiveSummaryData && (
             <motion.div
@@ -2377,7 +2391,7 @@ export function PipelineIntelligenceDrawer({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
-              className="absolute inset-y-0 right-0 left-0 lg:left-20 z-30 bg-slate-950/65 flex items-center justify-center p-4 sm:p-6 lg:p-8"
+              className="absolute inset-0 z-30 bg-slate-950/65 flex items-center justify-center p-4 sm:p-6 lg:p-8"
               onClick={(e) => {
                 if (e.target === e.currentTarget) setIsExecSummaryOpen(false)
               }}
