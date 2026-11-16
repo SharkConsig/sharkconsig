@@ -69,6 +69,7 @@ export function PipelineIntelligenceDrawer({
   const [selectedOperators, setSelectedOperators] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState<ActiveTab>("speed")
   const [affinityMode, setAffinityMode] = useState<"convenio" | "valor">("convenio")
+  const [isExecSummaryOpen, setIsExecSummaryOpen] = useState(false)
   const [searchRiskQuery, setSearchRiskQuery] = useState("")
   const [riskTierFilter, setRiskTierFilter] = useState<"all" | "high" | "mid" | "low">("all")
   const [riskStageFilters, setRiskStageFilters] = useState<string[]>([])
@@ -865,12 +866,20 @@ export function PipelineIntelligenceDrawer({
     if (!searchRiskQuery.trim()) return list
 
     const q = searchRiskQuery.toLowerCase().trim()
+    const qDigits = q.replace(/\D/g, "")
     return list.filter(item => {
       const cName = (item.ticket.cliente_nome || "").toLowerCase()
       const cCpf = (item.ticket.cliente_cpf || "").toLowerCase()
+      const cCpfDigits = cCpf.replace(/\D/g, "")
       const uName = (item.ticket.user_nome || "").toLowerCase()
       const conv = (item.ticket.convenio || "").toLowerCase()
-      return cName.includes(q) || cCpf.includes(q) || uName.includes(q) || conv.includes(q)
+      return (
+        cName.includes(q) ||
+        cCpf.includes(q) ||
+        (qDigits.length >= 6 && cCpfDigits.includes(qDigits)) ||
+        uName.includes(q) ||
+        conv.includes(q)
+      )
     })
   }, [riskLeadsData, effectiveRiskStageFilters, searchRiskQuery])
 
@@ -904,6 +913,272 @@ export function PipelineIntelligenceDrawer({
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(val)
   }
 
+  const fmtDurationShort = (minutes: number) => {
+    if (!minutes || minutes <= 0) return "N/A"
+    if (minutes < 60) return `${minutes} min`
+    return `${(minutes / 60).toFixed(1)}h`
+  }
+
+  // 5. CENTRAL DE DIAGNÓSTICO ACIONÁVEL — RESUMO EXECUTIVO (computado sob demanda ao abrir)
+  const executiveSummaryData = useMemo(() => {
+    if (!isExecSummaryOpen) return null
+
+    // Eixo 1: VIP (>30k) em risco (>48h)
+    const vipRiskLeads = riskLeadsData.filter(item => item.valorOperacao >= 30000)
+    let vipOperacao = 0
+    let vipProducao = 0
+    const vipByStageMap = new Map<string, { label: string; count: number; operacao: number; producao: number }>()
+
+    const STAGE_LABELS: Record<string, string> = {
+      "EM RETOMADA": "Em Retomada / Interação",
+      "EM NEGOCIAÇÃO": "Em Negociação",
+      "EM REATIVAÇÃO": "Em Reativação",
+      "SEM INTERESSE": "Sem Interesse"
+    }
+
+    const stuckByUserMap = new Map<string, number>()
+    const riskIdSet = new Set<string>()
+    riskLeadsData.forEach(item => {
+      riskIdSet.add(String(item.ticket.id))
+      const uId = item.ticket.user_id || "unassigned"
+      stuckByUserMap.set(uId, (stuckByUserMap.get(uId) || 0) + 1)
+    })
+
+    vipRiskLeads.forEach(item => {
+      vipOperacao += item.valorOperacao
+      vipProducao += item.valorProducao
+      const stKey = getRiskStageKey(item.ticket.status)
+      const current = vipByStageMap.get(stKey) || {
+        label: STAGE_LABELS[stKey] || stKey || "Outras",
+        count: 0,
+        operacao: 0,
+        producao: 0
+      }
+      current.count++
+      current.operacao += item.valorOperacao
+      current.producao += item.valorProducao
+      vipByStageMap.set(stKey, current)
+    })
+
+    const topVipStage = Array.from(vipByStageMap.entries())
+      .map(([key, val]) => ({ key, ...val }))
+      .sort((a, b) => b.operacao - a.operacao || b.count - a.count)[0] || null
+
+    // Eixo 5: Concentração de capital e potencial nas etapas quentes
+    const sortedCapitalStages = [...stageAgingData.stages].sort((a, b) => b.totalOperacao - a.totalOperacao)
+    const topCapitalStage = sortedCapitalStages[0] || null
+    const topCapitalSharePct =
+      topCapitalStage && stageAgingData.grandTotalCapital > 0
+        ? Math.round((topCapitalStage.totalOperacao / stageAgingData.grandTotalCapital) * 100)
+        : 0
+
+    const negStage = stageAgingData.stages.find(s => s.key === "EM NEGOCIAÇÃO") || null
+    const reativacaoStage = stageAgingData.stages.find(s => s.key === "EM REATIVAÇÃO") || null
+    const retomadaStage = stageAgingData.stages.find(s => s.key === "EM RETOMADA") || null
+    const warmRepresadoOperacao = (reativacaoStage?.totalOperacao || 0) + (retomadaStage?.totalOperacao || 0)
+    const warmRepresadoProducao = (reativacaoStage?.totalProducao || 0) + (retomadaStage?.totalProducao || 0)
+    const stuckBasePct =
+      filteredTickets.length > 0
+        ? Math.round((stageAgingData.grandTotalStuck48hCount / filteredTickets.length) * 100)
+        : 0
+
+    // Eixo 3: Eficiência da equipe, velocidade e gargalos de SLA
+    const totalPropostas = speedToLeadData.ranking.reduce((acc, op) => acc + op.totalPropostasDigitadas, 0)
+    const totalNegociacoes = speedToLeadData.ranking.reduce((acc, op) => acc + op.totalNegociacoes, 0)
+    const rankingWithSamples = speedToLeadData.ranking.filter(op => op.sampleCount > 0)
+
+    const fastestOp = rankingWithSamples[0] || null
+    const volumeLeader =
+      [...speedToLeadData.ranking]
+        .filter(op => op.totalPropostasDigitadas > 0)
+        .sort((a, b) => b.totalPropostasDigitadas - a.totalPropostasDigitadas || a.avgMinutesToAde - b.avgMinutesToAde)[0] || null
+
+    const bottleneckOps = speedToLeadData.ranking
+      .map(op => {
+        const convRate = op.totalNegociacoes > 0 ? Math.min(100, Math.round((op.totalPropostasDigitadas / op.totalNegociacoes) * 100)) : 0
+        return {
+          ...op,
+          convRate,
+          stuck48hCount: stuckByUserMap.get(op.userId) || 0
+        }
+      })
+      .filter(
+        op =>
+          (op.sampleCount >= 2 && op.avgMinutesToAde > 24 * 60) ||
+          (op.totalNegociacoes >= 5 && op.convRate < 15)
+      )
+      .sort((a, b) => b.avgMinutesToAde - a.avgMinutesToAde || a.convRate - b.convRate)
+      .slice(0, 4)
+
+    // Eixo 2: Sugestões de roteamento por afinidade (melhores matches e desperdícios)
+    const bestConvenioMatches: Array<{
+      convenio: string
+      userName: string
+      rate: number
+      converted: number
+      total: number
+    }> = []
+
+    for (const conv of affinityMatrixData.topConvenios) {
+      let best: { userName: string; rate: number; converted: number; total: number } | null = null
+      for (const row of affinityMatrixData.rows) {
+        const cell = row.byConvenio[conv]
+        if (!cell || cell.total < 2 || cell.rate < 25) continue
+        if (
+          !best ||
+          cell.rate > best.rate ||
+          (cell.rate === best.rate && cell.total > best.total)
+        ) {
+          best = {
+            userName: row.userName,
+            rate: cell.rate,
+            converted: cell.converted,
+            total: cell.total
+          }
+        }
+      }
+      if (best) {
+        bestConvenioMatches.push({ convenio: conv, ...best })
+      }
+    }
+    bestConvenioMatches.sort((a, b) => b.rate - a.rate || b.total - a.total)
+
+    let bestHighTierMatch: { userName: string; rate: number; converted: number; total: number } | null = null
+    for (const row of affinityMatrixData.rows) {
+      const cell = row.byTier["Alto (>30k)"]
+      if (!cell || cell.total < 2 || cell.rate < 20) continue
+      if (
+        !bestHighTierMatch ||
+        cell.rate > bestHighTierMatch.rate ||
+        (cell.rate === bestHighTierMatch.rate && cell.total > bestHighTierMatch.total)
+      ) {
+        bestHighTierMatch = {
+          userName: row.userName,
+          rate: cell.rate,
+          converted: cell.converted,
+          total: cell.total
+        }
+      }
+    }
+
+    const wasteMatches: Array<{
+      userName: string
+      convenio: string
+      rate: number
+      converted: number
+      total: number
+    }> = []
+
+    affinityMatrixData.rows.forEach(row => {
+      affinityMatrixData.topConvenios.forEach(conv => {
+        const cell = row.byConvenio[conv]
+        if (!cell || cell.total < 3) return
+        if (cell.rate === 0 || cell.strength === "fraco") {
+          wasteMatches.push({
+            userName: row.userName,
+            convenio: conv,
+            rate: cell.rate,
+            converted: cell.converted,
+            total: cell.total
+          })
+        }
+      })
+    })
+    wasteMatches.sort((a, b) => a.rate - b.rate || b.total - a.total)
+
+    // Eixo 4: CPFs ativos duplicados / fragmentados entre operadores
+    const now = Date.now()
+    const cpfGroups = new Map<string, Array<{
+      ticket: KanbanTicketItem
+      opVal: number
+      hoursInactive: number
+      inRisk: boolean
+    }>>()
+
+    filteredTickets.forEach(t => {
+      const s = (t.status || "").toUpperCase()
+      if (s.includes("FECHAD") || s.includes("PERDID")) return
+      const cpfDigits = String(t.cliente_cpf || "").replace(/\D/g, "")
+      if (cpfDigits.length !== 11) return
+
+      const opVal = getValorOperacaoDeAbertura(t).num || 0
+      const dateMs = new Date(t.updated_at || t.created_at || now).getTime()
+      const hoursInactive = Math.floor(Math.max(0, (now - dateMs) / (1000 * 60 * 60)))
+
+      const arr = cpfGroups.get(cpfDigits) || []
+      arr.push({
+        ticket: t,
+        opVal,
+        hoursInactive,
+        inRisk: riskIdSet.has(String(t.id))
+      })
+      cpfGroups.set(cpfDigits, arr)
+    })
+
+    const duplicateConflicts = Array.from(cpfGroups.entries())
+      .filter(([, items]) => items.length >= 2)
+      .map(([cpfDigits, items]) => {
+        const sortedItems = [...items].sort((a, b) => b.opVal - a.opVal || b.hoursInactive - a.hoursInactive)
+        const uniqueOperators = Array.from(
+          new Set(sortedItems.map(i => (i.ticket.user_nome || "Não Atribuído").trim()))
+        )
+        const maxOperacao = sortedItems[0]?.opVal || 0
+        const maxHoursInactive = Math.max(...sortedItems.map(i => i.hoursInactive))
+        const criticalCount = sortedItems.filter(i => i.inRisk).length
+
+        return {
+          cpfDigits,
+          displayCpf: sortedItems[0]?.ticket.cliente_cpf || cpfDigits,
+          clientName: sortedItems[0]?.ticket.cliente_nome || "Cliente sem Nome",
+          ticketCount: sortedItems.length,
+          uniqueOperators,
+          isMultiOperator: uniqueOperators.length >= 2,
+          maxOperacao,
+          maxHoursInactive,
+          criticalCount,
+          topTicket: sortedItems[0].ticket
+        }
+      })
+      .sort(
+        (a, b) =>
+          Number(b.isMultiOperator) - Number(a.isMultiOperator) ||
+          b.uniqueOperators.length - a.uniqueOperators.length ||
+          b.criticalCount - a.criticalCount ||
+          b.maxOperacao - a.maxOperacao
+      )
+
+    return {
+      vipCount: vipRiskLeads.length,
+      vipOperacao,
+      vipProducao,
+      topVipStage,
+      topCapitalStage,
+      topCapitalSharePct,
+      negStage,
+      warmRepresadoOperacao,
+      warmRepresadoProducao,
+      stuckBasePct,
+      totalPropostas,
+      totalNegociacoes,
+      fastestOp,
+      volumeLeader,
+      bottleneckOps,
+      bestConvenioMatches: bestConvenioMatches.slice(0, 4),
+      bestHighTierMatch,
+      wasteMatches: wasteMatches.slice(0, 4),
+      duplicateConflicts: duplicateConflicts.slice(0, 5),
+      totalDuplicateClients: duplicateConflicts.length
+    }
+  }, [
+    isExecSummaryOpen,
+    filteredTickets,
+    speedToLeadData,
+    stageAgingData,
+    affinityMatrixData,
+    riskLeadsData,
+    getValorOperacaoDeAbertura
+  ])
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -913,9 +1188,9 @@ export function PipelineIntelligenceDrawer({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.24, ease: "easeOut" }}
-          className="fixed inset-0 z-50 overflow-hidden bg-slate-950/60 flex justify-end will-change-[opacity]"
+          className="fixed inset-x-0 bottom-0 top-16 lg:top-20 z-50 overflow-hidden bg-slate-950/55 flex justify-end will-change-[opacity]"
           onClick={(e) => {
-            if (e.target === e.currentTarget) handleClose()
+            if (e.target === e.currentTarget && !isExecSummaryOpen) handleClose()
           }}
         >
           <motion.div
@@ -924,12 +1199,12 @@ export function PipelineIntelligenceDrawer({
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "tween", duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
-            className="w-full max-w-5xl bg-white h-full shadow-2xl flex flex-col border-l border-slate-200 will-change-transform"
+            className="w-full lg:w-[calc(100vw-84px)] max-w-[1720px] bg-white h-full shadow-2xl flex flex-col border-l border-slate-200 will-change-transform"
             role="dialog"
             aria-modal="true"
           >
         {/* CABEÇALHO EXECUTIVO */}
-        <div className="px-6 py-4 border-b border-slate-200 bg-linear-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0 shadow-xs">
+        <div className="px-6 lg:px-7 py-4 border-b border-slate-200 bg-linear-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0 shadow-xs">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-indigo-500 p-0.5 shadow-md flex items-center justify-center">
               <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center">
@@ -940,13 +1215,10 @@ export function PipelineIntelligenceDrawer({
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
                   Inteligência do Pipeline
-                  <span className="text-[10px] px-2 py-0.5 bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 rounded-full font-bold uppercase tracking-wider">
-                    Executive Analytics
-                  </span>
                 </h2>
               </div>
               <p className="text-xs text-slate-300">
-                Auditoria de velocidade comercial, capital represado e matriz de afinidade por convênio.
+                Auditoria de velocidade comercial, capital represado e matriz de afinidade.
               </p>
             </div>
           </div>
@@ -964,7 +1236,7 @@ export function PipelineIntelligenceDrawer({
         </div>
 
         {/* BARRA DE FILTROS GERENCIAIS */}
-        <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+        <div className="px-6 lg:px-7 py-3.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3.5 text-xs shrink-0">
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1 text-slate-600 font-semibold mr-1">
               <Filter className="w-3.5 h-3.5 text-indigo-600" />
@@ -1212,20 +1484,45 @@ export function PipelineIntelligenceDrawer({
             </div>
           </div>
 
-          <div className="text-xs text-slate-500 font-medium">
-            <span className="font-bold text-slate-900">{filteredTickets.length}</span> atendimentos analisados
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-xs text-slate-500 font-medium">
+              <span className="font-bold text-slate-900">{filteredTickets.length}</span> atendimentos analisados
+            </div>
+            <motion.button
+              type="button"
+              onClick={() => setIsExecSummaryOpen(true)}
+              animate={{
+                scale: [1, 1.05, 1],
+                boxShadow: [
+                  "0 1px 2px 0 rgba(15, 23, 42, 0.15)",
+                  "0 0 0 4px rgba(99, 102, 241, 0.30)",
+                  "0 1px 2px 0 rgba(15, 23, 42, 0.15)"
+                ]
+              }}
+              transition={{
+                duration: 1.5,
+                repeat: Infinity,
+                ease: "easeInOut"
+              }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.96 }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>Resumo Executivo</span>
+            </motion.button>
           </div>
         </div>
 
         {/* CARDS RESUMO EXECUTIVO (KPIs) */}
-        <div className="px-6 py-3.5 grid grid-cols-2 md:grid-cols-4 gap-3 bg-white border-b border-slate-200 shrink-0">
+        <div className="px-6 lg:px-7 py-4 grid grid-cols-2 md:grid-cols-4 gap-4 bg-white border-b border-slate-200 shrink-0">
           {/* Card 1: TEMPO MÉDIO */}
-          <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl p-3 flex flex-col justify-between shadow-xs">
+          <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
             <div className="flex items-center gap-2 text-sky-900">
               <Zap className="w-4 h-4 text-sky-600 shrink-0" strokeWidth={2.6} />
               <span className="text-[11px] font-black uppercase tracking-wider">TEMPO MÉDIO</span>
             </div>
-            <div className="mt-1">
+            <div className="mt-1.5">
               <div className="text-xl font-black text-sky-950">
                 {speedToLeadData.generalAvgMinutes > 0 ? (
                   speedToLeadData.generalAvgMinutes < 60 ? (
@@ -1242,12 +1539,12 @@ export function PipelineIntelligenceDrawer({
           </div>
 
           {/* Card 2: Capital no Pipeline */}
-          <div className="bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-100/90 border-2 border-emerald-400 rounded-xl p-3 flex flex-col justify-between shadow-xs">
+          <div className="bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-100/90 border-2 border-emerald-400 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
             <div className="flex items-center gap-2 text-emerald-900">
               <DollarSign className="w-4 h-4 text-emerald-600 shrink-0" strokeWidth={2.6} />
               <span className="text-[11px] font-black uppercase tracking-wider">Capital no Pipeline</span>
             </div>
-            <div className="mt-1">
+            <div className="mt-1.5">
               <div className="text-xl font-black text-emerald-950">
                 {fmtCurrency(stageAgingData.grandTotalCapital)}
               </div>
@@ -1258,12 +1555,12 @@ export function PipelineIntelligenceDrawer({
           </div>
 
           {/* Card 3: GARGALOS (> 48h) */}
-          <div className="bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100/90 border-2 border-amber-400 rounded-xl p-3 flex flex-col justify-between shadow-xs">
+          <div className="bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100/90 border-2 border-amber-400 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
             <div className="flex items-center gap-2 text-amber-900">
               <Clock className="w-4 h-4 text-amber-600 shrink-0" strokeWidth={2.6} />
               <span className="text-[11px] font-black tracking-wider">GARGALOS (&gt; 48h)</span>
             </div>
-            <div className="mt-1">
+            <div className="mt-1.5">
               <div className="text-xl font-black text-amber-950">
                 {stageAgingData.grandTotalStuck48hCount} leads
               </div>
@@ -1272,12 +1569,12 @@ export function PipelineIntelligenceDrawer({
           </div>
 
           {/* Card 4: Risco de Queima */}
-          <div className="bg-gradient-to-br from-rose-100 via-rose-50 to-red-100/90 border-2 border-rose-400 rounded-xl p-3 flex flex-col justify-between shadow-xs">
+          <div className="bg-gradient-to-br from-rose-100 via-rose-50 to-red-100/90 border-2 border-rose-400 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
             <div className="flex items-center gap-2 text-rose-900">
               <Flame className="w-4 h-4 text-rose-600 shrink-0" strokeWidth={2.6} />
               <span className="text-[11px] font-black uppercase tracking-wider">Risco de Queima</span>
             </div>
-            <div className="mt-1">
+            <div className="mt-1.5">
               <div className="text-xl font-black text-rose-950">
                 {riskLeadsData.length} leads
               </div>
@@ -1287,7 +1584,7 @@ export function PipelineIntelligenceDrawer({
         </div>
 
         {/* NAVEGAÇÃO ENTRE ABAS */}
-        <div className="px-6 bg-white border-b border-slate-200 flex items-center gap-6 shrink-0">
+        <div className="px-6 lg:px-7 bg-white border-b border-slate-200 flex items-center gap-7 shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab("speed")}
@@ -1351,14 +1648,14 @@ export function PipelineIntelligenceDrawer({
         </div>
 
         {/* ÁREA DE CONTEÚDO PRINCIPAL (COM SCROLL) */}
-        <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+        <div className="flex-1 overflow-y-auto p-6 lg:p-7 bg-slate-50/50">
           {/* ============================================================== */}
           {/* ABA 1: TEMPO MÉDIO (EM NEGOCIAÇÃO -> GERADA A ADE)              */}
           {/* ============================================================== */}
           {activeTab === "speed" && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               {/* Box de Instrução Exata */}
-              <div className="bg-sky-50 border border-sky-200 rounded-xl p-3.5 flex items-start gap-3">
+              <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 flex items-start gap-3">
                 <Zap className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-xs font-bold text-sky-950">
@@ -1489,10 +1786,10 @@ export function PipelineIntelligenceDrawer({
           {/* ABA 2: CAPITAL IMOBILIZADO POR ETAPA                           */}
           {/* ============================================================== */}
           {activeTab === "aging" && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
                 {stageAgingData.stages.map(st => (
-                  <div key={st.key} className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col justify-between">
+                  <div key={st.key} className="bg-white border border-slate-200 rounded-xl p-4 lg:p-5 shadow-2xs flex flex-col justify-between">
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-slate-900">{st.label}</span>
@@ -1570,8 +1867,8 @@ export function PipelineIntelligenceDrawer({
           {/* ABA 3: MATRIZ DE AFINIDADE (CORRETOR X CONVÊNIO)               */}
           {/* ============================================================== */}
           {activeTab === "affinity" && (
-            <div className="space-y-4">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 flex items-start gap-3">
+            <div className="space-y-5">
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-start gap-3">
                 <Award className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-xs font-bold text-indigo-950">
@@ -1775,8 +2072,8 @@ export function PipelineIntelligenceDrawer({
           {/* ABA 4: RADAR DE RISCO DE QUEIMA                                */}
           {/* ============================================================== */}
           {activeTab === "risk" && (
-            <div className="space-y-4">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="space-y-5">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
                 <div className="flex flex-wrap items-center gap-2 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <button
@@ -1938,9 +2235,9 @@ export function PipelineIntelligenceDrawer({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-5">
                 {filteredRiskLeads.length === 0 ? (
-                  <div className="col-span-2 bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 text-xs">
+                  <div className="col-span-full bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500 text-xs">
                     <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
                     Parabéns! Nenhum lead está inativo acima do limite de tolerância comercial para os filtros selecionados.
                   </div>
@@ -1951,7 +2248,7 @@ export function PipelineIntelligenceDrawer({
                       <div 
                         key={t.id} 
                         className={cn(
-                          "bg-white border rounded-xl p-4 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between",
+                          "bg-white border rounded-xl p-4 lg:p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between",
                           item.isHighRisk ? "border-rose-300 ring-1 ring-rose-200" : "border-slate-200"
                         )}
                       >
@@ -2076,7 +2373,7 @@ export function PipelineIntelligenceDrawer({
         </div>
 
         {/* RODAPÉ */}
-        <div className="px-6 py-3 border-t border-slate-200 bg-white flex items-center justify-start text-xs shrink-0">
+        <div className="px-6 lg:px-7 py-3.5 border-t border-slate-200 bg-white flex items-center justify-start text-xs shrink-0">
           <button
             type="button"
             onClick={handleClose}
@@ -2086,6 +2383,401 @@ export function PipelineIntelligenceDrawer({
           </button>
         </div>
           </motion.div>
+
+        {/* MODAL RESUMO EXECUTIVO — CENTRAL DE DIAGNÓSTICO ACIONÁVEL (fora do painel com transform e abaixo da barra do topo) */}
+        <AnimatePresence>
+          {isExecSummaryOpen && executiveSummaryData && (
+            <motion.div
+              key="exec-summary-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="absolute inset-y-0 right-0 left-0 lg:left-20 z-30 bg-slate-950/65 flex items-center justify-center p-4 sm:p-6 lg:p-8"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setIsExecSummaryOpen(false)
+              }}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.97, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.97, y: 10 }}
+                transition={{ duration: 0.2 }}
+                className="w-full max-w-6xl xl:max-w-[1260px] max-h-full bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Resumo Executivo do Pipeline"
+              >
+                {/* Cabeçalho */}
+                <div className="px-7 py-4 bg-linear-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center shrink-0">
+                      <Sparkles className="w-5 h-5 text-amber-300" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
+                        Resumo Executivo
+                      </h3>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        Base filtrada: <strong className="text-white">{filteredTickets.length} atendimentos</strong> • Pipeline ativo (Valor Operação): <strong className="text-emerald-300">{fmtCurrency(stageAgingData.grandTotalCapital)}</strong> e Produção Estimada de: <strong className="text-[#05BDFF]">{fmtCurrency(stageAgingData.grandTotalProducao)}</strong>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsExecSummaryOpen(false)}
+                    className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    title="Fechar Resumo Executivo"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Pulso Rápido */}
+                <div className="px-7 py-4 bg-slate-50 border-b border-slate-200 grid grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+                  <div className="bg-white rounded-xl border border-orange-200 p-3.5">
+                    <div className="text-[10px] font-bold uppercase text-orange-700">VIPs (&gt;30k) em Risco</div>
+                    <div className="text-lg font-black text-slate-900 mt-1">{executiveSummaryData.vipCount} leads</div>
+                    <div className="text-xs font-semibold text-sky-600 mt-0.5">
+                      Prod. Est.: {fmtCurrency(executiveSummaryData.vipProducao)}
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-amber-200 p-3.5">
+                    <div className="text-[10px] font-bold uppercase text-amber-700">Estagnados (&gt;48h)</div>
+                    <div className="text-lg font-black text-slate-900 mt-1">
+                      {stageAgingData.grandTotalStuck48hCount} ({executiveSummaryData.stuckBasePct}%)
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">da base analisada</div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-sky-200 p-3.5">
+                    <div className="text-[10px] font-bold uppercase text-sky-700">Tempo Médio ➔ ADE</div>
+                    <div className="text-lg font-black text-slate-900 mt-1">
+                      {fmtDurationShort(speedToLeadData.generalAvgMinutes)}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">
+                      {executiveSummaryData.totalPropostas} propostas / {executiveSummaryData.totalNegociacoes} neg.
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-rose-200 p-3.5">
+                    <div className="text-[10px] font-bold uppercase text-rose-700">CPFs Duplicados</div>
+                    <div className="text-lg font-black text-slate-900 mt-1">
+                      {executiveSummaryData.totalDuplicateClients} clientes
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">com múltiplos cards ativos</div>
+                  </div>
+                </div>
+
+                {/* Corpo Diagnóstico (3 Blocos Acionáveis cobrindo os 5 eixos) */}
+                <div className="flex-1 overflow-y-auto p-6 lg:p-7 space-y-5 bg-slate-50/60">
+                  {/* BLOCO 1: Oportunidade Ouro & Potencial Represado (Eixos 1 e 5) */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-8 h-8 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center shrink-0">
+                          <Flame className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
+                            1. Oportunidade Ouro &amp; Potencial dentro de Casa
+                          </h4>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Onde está o dinheiro mais rápido de recuperar agora</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab("risk")
+                            setRiskTierFilter("high")
+                            setRiskStageFilters([])
+                            setSearchRiskQuery("")
+                            setIsExecSummaryOpen(false)
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                        >
+                          <span>Resgatar VIPs no Radar</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab("aging")
+                            setIsExecSummaryOpen(false)
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold cursor-pointer transition-colors"
+                        >
+                          Ver Etapas
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <div className="bg-orange-50/70 border border-orange-200 rounded-lg p-4 space-y-1.5">
+                        <div className="text-[10px] font-black uppercase text-orange-800">
+                          Alerta Prioritário (&gt; 30k parados há +48h)
+                        </div>
+                        {executiveSummaryData.vipCount > 0 ? (
+                          <p className="text-slate-700 leading-relaxed">
+                            Existem <strong className="text-slate-900">{executiveSummaryData.vipCount} leads VIP</strong> esfriando, somando{" "}
+                            <strong className="text-emerald-700">{fmtCurrency(executiveSummaryData.vipOperacao)}</strong> em operação (
+                            <strong className="text-sky-600">{fmtCurrency(executiveSummaryData.vipProducao)}</strong> em produção estimada).
+                            {executiveSummaryData.topVipStage && (
+                              <>
+                                {" "}Maior concentração na etapa <strong>{executiveSummaryData.topVipStage.label}</strong> ({executiveSummaryData.topVipStage.count} leads • {fmtCurrency(executiveSummaryData.topVipStage.operacao)}).
+                              </>
+                            )}
+                          </p>
+                        ) : (
+                          <p className="text-slate-600">Nenhum lead VIP (&gt;30k) parado há mais de 48h nos filtros atuais.</p>
+                        )}
+                      </div>
+
+                      <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-4 space-y-1.5">
+                        <div className="text-[10px] font-black uppercase text-emerald-800">
+                          Previsibilidade &amp; Capital Engatilhado
+                        </div>
+                        <p className="text-slate-700 leading-relaxed">
+                          {executiveSummaryData.topCapitalStage ? (
+                            <>
+                              A etapa <strong>{executiveSummaryData.topCapitalStage.label}</strong> concentra{" "}
+                              <strong>{executiveSummaryData.topCapitalSharePct}%</strong> do capital ({fmtCurrency(executiveSummaryData.topCapitalStage.totalOperacao)}).{" "}
+                            </>
+                          ) : null}
+                          Somando Reativação e Retomada, há{" "}
+                          <strong className="text-emerald-700">{fmtCurrency(executiveSummaryData.warmRepresadoOperacao)}</strong> já dentro de casa (
+                          <strong className="text-sky-600">{fmtCurrency(executiveSummaryData.warmRepresadoProducao)}</strong> em prod. est.), contra{" "}
+                          <strong>{executiveSummaryData.negStage?.count || 0} leads</strong> ({fmtCurrency(executiveSummaryData.negStage?.totalOperacao || 0)}) atualmente Em Negociação.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BLOCO 2: Eficiência da Equipe & Gargalos de SLA (Eixo 3) */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
+                          <Zap className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
+                            2. Eficiência da Equipe &amp; Gargalos de SLA
+                          </h4>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Velocidade entre Em Negociação e digitação da proposta (ADE)</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab("speed")
+                          setIsExecSummaryOpen(false)
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        <span>Ver Ranking de Velocidade</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <div className="bg-sky-50/70 border border-sky-200 rounded-lg p-4 space-y-2">
+                        <div className="text-[10px] font-black uppercase text-sky-800">Destaques de Conversão &amp; Agilidade</div>
+                        <ul className="space-y-1.5 text-slate-700 leading-relaxed">
+                          <li>
+                            • Tempo médio geral da equipe: <strong className="text-slate-900">{fmtDurationShort(speedToLeadData.generalAvgMinutes)}</strong>.
+                          </li>
+                          {executiveSummaryData.volumeLeader && (
+                            <li>
+                              • Líder em ADEs geradas: <strong>{executiveSummaryData.volumeLeader.userName}</strong> ({executiveSummaryData.volumeLeader.totalPropostasDigitadas} propostas •{" "}
+                              {executiveSummaryData.volumeLeader.totalNegociacoes > 0
+                                ? Math.min(100, Math.round((executiveSummaryData.volumeLeader.totalPropostasDigitadas / executiveSummaryData.volumeLeader.totalNegociacoes) * 100))
+                                : 0}% de avanço).
+                            </li>
+                          )}
+                          {executiveSummaryData.fastestOp && (
+                            <li>
+                              • Maior agilidade: <strong>{executiveSummaryData.fastestOp.userName}</strong> em{" "}
+                              <strong className="text-emerald-700">{fmtDurationShort(executiveSummaryData.fastestOp.avgMinutesToAde)}</strong>.
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+
+                      <div className="bg-rose-50/60 border border-rose-200 rounded-lg p-4 space-y-2">
+                        <div className="text-[10px] font-black uppercase text-rose-800">
+                          Suporte / Redistribuição Recomendada
+                        </div>
+                        {executiveSummaryData.bottleneckOps.length > 0 ? (
+                          <ul className="space-y-1.5 text-slate-700 leading-relaxed">
+                            {executiveSummaryData.bottleneckOps.map(op => (
+                              <li key={op.userId}>
+                                • <strong>{op.userName}</strong>: SLA {fmtDurationShort(op.avgMinutesToAde)} • {op.convRate}% avanço
+                                {op.stuck48hCount > 0 ? ` (${op.stuck48hCount} parados >48h)` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-slate-600">Nenhum operador com SLA crítico (&gt;24h) ou conversão abaixo de 15% neste recorte.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BLOCO 3: Roteamento Inteligente & Higienização de CPFs (Eixos 2 e 4) */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                          <Award className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
+                            3. Sugestões de Roteamento &amp; Conflitos de Atendimento
+                          </h4>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Onde aumentar conversão sem custo extra e eliminar duplicidades</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab("affinity")
+                          setIsExecSummaryOpen(false)
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        <span>Abrir Matriz Cruzada</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      {/* Roteamento por Afinidade */}
+                      <div className="bg-indigo-50/60 border border-indigo-200 rounded-lg p-4 space-y-2.5">
+                        <div className="text-[10px] font-black uppercase text-indigo-900">
+                          Ajuste de Roleta por Convênio &amp; Ticket
+                        </div>
+                        {executiveSummaryData.bestConvenioMatches.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <div className="text-[11px] font-bold text-emerald-700">Direcionar leads para:</div>
+                            {executiveSummaryData.bestConvenioMatches.map(m => (
+                              <div key={`${m.convenio}-${m.userName}`} className="text-slate-700 flex items-center justify-between gap-3">
+                                <span className="truncate">
+                                  <strong>{m.userName}</strong> ➔ {m.convenio}
+                                </span>
+                                <span className="shrink-0 font-bold text-emerald-700">
+                                  {m.rate}% ({m.converted}/{m.total})
+                                </span>
+                              </div>
+                            ))}
+                            {executiveSummaryData.bestHighTierMatch && (
+                              <div className="text-slate-700 flex items-center justify-between gap-3 pt-1.5 border-t border-indigo-200/70">
+                                <span className="truncate">
+                                  <strong>{executiveSummaryData.bestHighTierMatch.userName}</strong> ➔ Ticket Alto (&gt;30k)
+                                </span>
+                                <span className="shrink-0 font-bold text-indigo-700">
+                                  {executiveSummaryData.bestHighTierMatch.rate}% ({executiveSummaryData.bestHighTierMatch.converted}/{executiveSummaryData.bestHighTierMatch.total})
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-slate-600">Amostra insuficiente de negociações para recomendar matches por convênio.</p>
+                        )}
+
+                        {executiveSummaryData.wasteMatches.length > 0 && (
+                          <div className="pt-2.5 border-t border-indigo-200/70 space-y-1.5">
+                            <div className="text-[11px] font-bold text-rose-700">Evitar envio (conversão zerada/baixa):</div>
+                            {executiveSummaryData.wasteMatches.map(w => (
+                              <div key={`${w.userName}-${w.convenio}`} className="text-slate-600 flex items-center justify-between gap-3 text-[11px]">
+                                <span className="truncate">
+                                  {w.userName} em <strong>{w.convenio}</strong>
+                                </span>
+                                <span className="shrink-0 font-bold text-rose-600">
+                                  {w.rate}% ({w.converted}/{w.total})
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Conflitos / CPFs Duplicados */}
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2.5">
+                        <div className="text-[10px] font-black uppercase text-slate-700 flex items-center gap-1.5">
+                          <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+                          Higienização: CPFs em Múltiplos Cards Ativos
+                        </div>
+                        {executiveSummaryData.duplicateConflicts.length > 0 ? (
+                          <div className="space-y-2.5">
+                            {executiveSummaryData.duplicateConflicts.map(dup => (
+                              <div
+                                key={dup.cpfDigits}
+                                className="bg-white border border-slate-200 rounded-lg p-3 flex flex-col gap-2"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-slate-900 truncate">{dup.clientName}</div>
+                                    <div className="text-[10.5px] text-slate-500 mt-0.5">
+                                      CPF: {dup.displayCpf} • <strong>{dup.ticketCount} cards</strong> ({dup.uniqueOperators.join(", ")})
+                                    </div>
+                                  </div>
+                                  <span className="text-xs font-black text-emerald-700 shrink-0">
+                                    {fmtCurrency(dup.maxOperacao)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-2 text-[10.5px]">
+                                  <span className="text-rose-600 font-semibold">
+                                    {dup.isMultiOperator ? "Conflito entre corretores" : "Cards duplicados"} • até {Math.floor(dup.maxHoursInactive / 24)}d parado
+                                  </span>
+                                  {dup.criticalCount > 0 && (
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveTab("risk")
+                                          setRiskTierFilter("all")
+                                          setRiskStageFilters([])
+                                          setSearchRiskQuery(dup.cpfDigits)
+                                          setIsExecSummaryOpen(false)
+                                        }}
+                                        className="px-2.5 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 cursor-pointer"
+                                      >
+                                        Filtrar no Radar
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-emerald-700 font-medium py-2">
+                            <CheckCircle2 className="w-4 h-4 shrink-0" />
+                            <span>Nenhum CPF ativo duplicado encontrado nos filtros atuais.</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Rodapé do Modal */}
+                <div className="px-7 py-3.5 bg-white border-t border-slate-200 flex items-center justify-between text-xs shrink-0">
+                  <span className="text-[11px] text-slate-500">
+                    Diagnóstico calculado em tempo real sobre os filtros aplicados.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsExecSummaryOpen(false)}
+                    className="px-5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white font-bold cursor-pointer transition-colors"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>

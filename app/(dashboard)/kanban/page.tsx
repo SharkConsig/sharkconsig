@@ -1781,16 +1781,6 @@ export default function KanbanPage() {
   const userRole = (perfil?.role || "").trim()
   const userFuncao = (perfil?.funcao || "").trim().toLowerCase()
 
-  // Usuário estritamente 'Desenvolvedor' (em produção, NUNCA inclui Administrador, Supervisor ou Operacional)
-  const isStrictDesenvolvedor = Boolean(
-    (userRole === "Desenvolvedor" || perfil?.role === "Desenvolvedor" || userFuncao === "desenvolvedor") &&
-    userRole !== "Administrador" &&
-    userRole !== "Admin" &&
-    userFuncao !== "administrador" &&
-    userRole !== "Supervisor" &&
-    userRole !== "Operacional"
-  )
-
   // Permissão de exportação para Excel: Operacional, Supervisor, Monitoramento, Administrador, Desenvolvedor
   const canExportExcel = Boolean(
     isAdmin ||
@@ -1806,17 +1796,11 @@ export default function KanbanPage() {
     ["operacional", "supervisor", "monitoramento", "administrador", "desenvolvedor"].includes(userFuncao)
   )
 
-  // Permissão Inteligência do Pipeline: exclusivo para Administrador, Supervisor e Operacional
+  // Permissão Inteligência do Pipeline (Desenvolvimento e Produção): Desenvolvedor, Administrador, Supervisor, Operacional e Recursos Humanos
   const canAccessPipelineIntelligence = Boolean(
     isAdmin ||
-    isDeveloper ||
-    isSupervisor ||
-    isOperational ||
-    userRole === "Administrador" ||
-    userRole === "Supervisor" ||
-    userRole === "Operacional" ||
-    userRole === "Desenvolvedor" ||
-    ["administrador", "supervisor", "operacional", "desenvolvedor"].includes(userFuncao)
+    ["desenvolvedor", "administrador", "admin", "supervisor", "operacional", "recursos humanos", "rh"].includes(userRole.toLowerCase()) ||
+    ["desenvolvedor", "administrador", "admin", "supervisor", "operacional", "recursos humanos", "rh"].includes(userFuncao)
   )
 
   // Porcentagens nos cabeçalhos das colunas/etapas: visível somente para Administrador, Operacional, Supervisor e Desenvolvedor
@@ -1940,7 +1924,6 @@ export default function KanbanPage() {
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false)
   const sortDropdownRef = useRef<HTMLDivElement>(null)
   const [showIntelligenceDrawer, setShowIntelligenceDrawer] = useState(false)
-  const [showIntelligenceEmDesenvolvimentoModal, setShowIntelligenceEmDesenvolvimentoModal] = useState(false)
 
   // Próximas Ações e Regras de Vencimento dinâmicas
   const [proximasAcoesConfig, setProximasAcoesConfig] = useState<ProximaAcaoConfig[]>(() => getLocalProximasAcoes())
@@ -7489,14 +7472,7 @@ export default function KanbanPage() {
             {canAccessPipelineIntelligence && (
               <button
                 type="button"
-                onClick={() => {
-                  const isCurrentDev = hasCheckedEnv ? isDevEnv : checkIsDevEnvironment()
-                  if (isCurrentDev || isStrictDesenvolvedor) {
-                    setShowIntelligenceDrawer(true)
-                  } else {
-                    setShowIntelligenceEmDesenvolvimentoModal(true)
-                  }
-                }}
+                onClick={() => setShowIntelligenceDrawer(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-xs cursor-pointer shrink-0 border border-indigo-700 select-none"
                 title="Abrir painel de Inteligência do Pipeline (Speed-to-Lead, Capital Represado, Afinidade por Convênio)"
               >
@@ -10920,7 +10896,7 @@ export default function KanbanPage() {
       })()}
 
       {/* Drawer / Painel Executivo de Inteligência do Pipeline */}
-      {canAccessPipelineIntelligence && (isDevEnv || isStrictDesenvolvedor) && (
+      {canAccessPipelineIntelligence && (
         <PipelineIntelligenceDrawer
           isOpen={showIntelligenceDrawer}
           onClose={() => setShowIntelligenceDrawer(false)}
@@ -10931,38 +10907,6 @@ export default function KanbanPage() {
           onSelectTicket={(ticket) => setAtendimentoModalTicket(ticket)}
         />
       )}
-
-      {/* Modal 'Em desenvolvimento.' para usuários em Produção */}
-      <Dialog
-        open={showIntelligenceEmDesenvolvimentoModal}
-        onOpenChange={setShowIntelligenceEmDesenvolvimentoModal}
-      >
-        <DialogContent className="sm:max-w-md bg-white p-6 rounded-2xl shadow-2xl border border-slate-200">
-          <div className="flex flex-col items-center text-center py-2">
-            <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200/80 flex items-center justify-center mb-3 text-amber-600 shadow-2xs">
-              <Sparkles className="w-6 h-6 text-amber-500" />
-            </div>
-            <DialogTitle className="text-base font-bold text-slate-900 tracking-tight">
-              Inteligência do Pipeline
-            </DialogTitle>
-            <p className="text-sm font-semibold text-slate-700 mt-2">
-              Em desenvolvimento.
-            </p>
-            <p className="text-xs text-slate-400 mt-1">
-              Este recurso estará disponível para a sua equipe em breve.
-            </p>
-            <div className="mt-5 w-full flex justify-center">
-              <Button
-                type="button"
-                onClick={() => setShowIntelligenceEmDesenvolvimentoModal(false)}
-                className="w-full sm:w-auto px-6 h-9 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs"
-              >
-                Fechar
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
