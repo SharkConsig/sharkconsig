@@ -19,6 +19,7 @@ import {
   FlaskConical,
   Loader2,
   ShieldAlert,
+  RotateCcw,
 } from "lucide-react"
 
 interface TableStatus {
@@ -45,6 +46,8 @@ interface FailedItem {
   error: string
 }
 
+const CURSOR_STORAGE_KEY = "sharkconsig_storage_migration_cursors_v1"
+
 export default function MigracaoStoragePage() {
   const { isAdmin, isDeveloper, isLoading: isAuthLoading } = useAuth()
   const [tables, setTables] = useState<TableStatus[]>([])
@@ -63,8 +66,49 @@ export default function MigracaoStoragePage() {
   const [migrationCompletedAll, setMigrationCompletedAll] = useState(false)
   const [lastSamples, setLastSamples] = useState<MigratedSample[]>([])
   const [failedItems, setFailedItems] = useState<FailedItem[]>([])
+  const [batchError, setBatchError] = useState<string | null>(null)
+  const [savedCursors, setSavedCursors] = useState<Record<string, string | number | null>>({})
 
   const stopRequestedRef = useRef(false)
+  const pausedByUserRef = useRef(false)
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(CURSOR_STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === "object") {
+          setSavedCursors(parsed)
+        }
+      }
+    } catch {
+      // ignora erro de leitura
+    }
+  }, [])
+
+  const updateCursorForTable = (tableName: string, cursorVal: string | number | null) => {
+    setSavedCursors((prev) => {
+      const next = { ...prev, [tableName]: cursorVal }
+      try {
+        sessionStorage.setItem(CURSOR_STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        // ignora erro de escrita
+      }
+      return next
+    })
+  }
+
+  const handleResetCursors = () => {
+    setSavedCursors({})
+    setMigrationCompletedAll(false)
+    setBatchError(null)
+    try {
+      sessionStorage.removeItem(CURSOR_STORAGE_KEY)
+    } catch {
+      // ignora
+    }
+    toast.info("Posição da varredura reiniciada.")
+  }
 
   const getAccessToken = async () => {
     const { data } = await supabase.auth.getSession()
@@ -118,12 +162,13 @@ export default function MigracaoStoragePage() {
       return
     }
 
+    setBatchError(null)
     setIsRunningPilot(true)
     try {
       const token = await getAccessToken()
 
       for (const candidate of candidates) {
-        let cursor: string | number | null = null
+        let cursor: string | number | null = savedCursors[candidate.table] ?? null
         let hasMore = true
         let attempts = 0
 
@@ -144,19 +189,24 @@ export default function MigracaoStoragePage() {
             }),
           })
 
-          const data = await res.json()
+          const data = await res.json().catch(() => ({}))
           if (!res.ok || !data?.success) {
-            toast.error(data?.error || "Erro no teste piloto.")
+            const errMsg = data?.error || `Erro HTTP ${res.status} no teste piloto.`
+            setBatchError(errMsg)
+            toast.error(errMsg)
             return
           }
 
           setSessionProcessed((prev) => prev + (data.processed || 0))
           setSessionAlreadyStorage((prev) => prev + (data.alreadyStorage || 0))
 
+          if (data.nextCursor !== undefined && data.nextCursor !== null) {
+            cursor = data.nextCursor
+            updateCursorForTable(candidate.table, cursor)
+          }
+
           if ((data.failedItems || []).length > 0) {
-            setFailedItems((prev) => [...data.failedItems, ...prev].slice(0, 20))
-            toast.error("O registro de teste falhou e foi mantido intacto no banco.")
-            return
+            setFailedItems((prev) => [...data.failedItems, ...prev].slice(0, 30))
           }
 
           if (data.migrated > 0) {
@@ -168,18 +218,66 @@ export default function MigracaoStoragePage() {
             return
           }
 
-          cursor = data.nextCursor ?? null
           hasMore = Boolean(data.hasMore) && cursor !== null
         }
       }
 
       toast.info("Nenhum registro pendente em Base64 encontrado no escopo selecionado.")
-    } catch {
-      toast.error("Erro ao executar teste piloto.")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro ao executar teste piloto."
+      setBatchError(msg)
+      toast.error(msg)
     } finally {
       setCurrentScanLabel("")
       setIsRunningPilot(false)
     }
+  }
+
+  const postBatchWithRetry = async (
+    table: string,
+    cursor: string | number | null,
+    limit: number
+  ) => {
+    let lastErrMsg = "Falha na requisição."
+
+    for (let retry = 0; retry < 3; retry++) {
+      try {
+        const token = await getAccessToken()
+        const res = await fetch("/api/propostas-comerciais/migrar-storage", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            table,
+            limit,
+            cursor,
+          }),
+        })
+
+        const data = await res.json().catch(() => null)
+        if (res.ok && data?.success) {
+          return { ok: true as const, data }
+        }
+
+        lastErrMsg = data?.error || `Erro HTTP ${res.status} ao processar lote.`
+
+        // Não insiste em erro de autenticação/permissão
+        if (res.status === 401 || res.status === 403 || res.status === 400) {
+          return { ok: false as const, error: lastErrMsg }
+        }
+      } catch (err) {
+        lastErrMsg = err instanceof Error ? err.message : "Erro de rede ao comunicar com o servidor."
+      }
+
+      if (retry < 2 && !stopRequestedRef.current) {
+        setCurrentScanLabel(`Reconectando (${retry + 1}/2)...`)
+        await new Promise((resolve) => setTimeout(resolve, 1200 * (retry + 1)))
+      }
+    }
+
+    return { ok: false as const, error: lastErrMsg }
   }
 
   const handleStartBatch = async () => {
@@ -190,45 +288,41 @@ export default function MigracaoStoragePage() {
     }
 
     stopRequestedRef.current = false
+    pausedByUserRef.current = false
+    setBatchError(null)
     setIsBatchRunning(true)
     setMigrationCompletedAll(false)
 
     try {
-      const token = await getAccessToken()
+      let errored = false
+      let consecutiveFailures = 0
 
       for (const candidate of candidates) {
         if (stopRequestedRef.current) break
 
-        let cursor: string | number | null = null
+        let cursor: string | number | null = savedCursors[candidate.table] ?? null
         let hasMore = true
 
         while (hasMore && !stopRequestedRef.current) {
           setCurrentScanLabel(`Processando ${candidate.label}...`)
 
-          const res = await fetch("/api/propostas-comerciais/migrar-storage", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              table: candidate.table,
-              limit: 5,
-              cursor,
-            }),
-          })
+          const batchResult = await postBatchWithRetry(candidate.table, cursor, 5)
 
-          const data = await res.json()
-          if (!res.ok || !data?.success) {
-            toast.error(data?.error || "Migração pausada por erro na requisição.")
+          if (!batchResult.ok) {
+            errored = true
+            setBatchError(`${candidate.label}: ${batchResult.error}`)
+            toast.error(`Migração interrompida: ${batchResult.error}`)
             stopRequestedRef.current = true
             break
           }
+
+          const data = batchResult.data
 
           setSessionProcessed((prev) => prev + (data.processed || 0))
           setSessionAlreadyStorage((prev) => prev + (data.alreadyStorage || 0))
 
           if (data.migrated > 0) {
+            consecutiveFailures = 0
             const bytesSum = (data.migratedItems || []).reduce((acc: number, item: MigratedSample) => acc + (item.bytes || 0), 0)
             setSessionMigrated((prev) => prev + data.migrated)
             setSessionBytes((prev) => prev + bytesSum)
@@ -236,28 +330,43 @@ export default function MigracaoStoragePage() {
           }
 
           if ((data.failedItems || []).length > 0) {
-            setFailedItems((prev) => [...data.failedItems, ...prev].slice(0, 20))
-            toast.error("Migração pausada porque houve falha em um registro. Base64 original foi preservado.")
+            consecutiveFailures += data.failedItems.length
+            setFailedItems((prev) => [...data.failedItems, ...prev].slice(0, 30))
+          } else if ((data.processed || 0) > 0) {
+            consecutiveFailures = 0
+          }
+
+          if (data.nextCursor !== undefined && data.nextCursor !== null) {
+            cursor = data.nextCursor
+            updateCursorForTable(candidate.table, cursor)
+          }
+
+          if (consecutiveFailures >= 5) {
+            errored = true
+            const msg = "Muitas falhas consecutivas em registros seguidos. Migração pausada para segurança."
+            setBatchError(msg)
+            toast.error(msg)
             stopRequestedRef.current = true
             break
           }
 
-          cursor = data.nextCursor ?? null
           hasMore = Boolean(data.hasMore) && cursor !== null
 
           await new Promise((resolve) => setTimeout(resolve, 150))
         }
       }
 
-      if (stopRequestedRef.current) {
-        toast.info("Migração pausada.")
-      } else {
+      if (pausedByUserRef.current) {
+        toast.info("Migração pausada pelo usuário. Ao retomar, continuará de onde parou.")
+      } else if (!errored && !stopRequestedRef.current) {
         setMigrationCompletedAll(true)
         toast.success("Varredura e migração concluídas!")
         fetchDryRun()
       }
-    } catch {
-      toast.error("Erro inesperado durante a migração em lotes.")
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro inesperado durante a migração em lotes."
+      setBatchError(msg)
+      toast.error(msg)
     } finally {
       setCurrentScanLabel("")
       setIsBatchRunning(false)
@@ -265,6 +374,7 @@ export default function MigracaoStoragePage() {
   }
 
   const handlePauseBatch = () => {
+    pausedByUserRef.current = true
     stopRequestedRef.current = true
   }
 
@@ -273,6 +383,8 @@ export default function MigracaoStoragePage() {
     (selectedTable
       ? (tables.find((t) => t.table === selectedTable)?.total || 0) > 0
       : true)
+
+  const hasSavedCursor = Object.values(savedCursors).some((v) => v !== null && v !== undefined)
 
   if (isAuthLoading) {
     return (
@@ -319,21 +431,36 @@ export default function MigracaoStoragePage() {
                     Etapa 3 — Migração Segura Base64 → Storage
                   </h1>
                   <p className="text-xs text-slate-500">
-                    Varredura pelo índice primário em lotes de 5 registros. Cada linha só é atualizada após confirmação do upload.
+                    Leitura individual por chave primária em lotes de até 5 registros, com retomada automática de onde parou.
                   </p>
                 </div>
               </div>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchDryRun}
-                disabled={isLoadingCounts || isBatchRunning || isRunningPilot}
-                className="gap-2 text-xs font-bold"
-              >
-                <RefreshCw className={isLoadingCounts ? "w-3.5 h-3.5 animate-spin" : "w-3.5 h-3.5"} />
-                Atualizar Contagem (Dry Run)
-              </Button>
+              <div className="flex items-center gap-2">
+                {hasSavedCursor && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResetCursors}
+                    disabled={isBatchRunning || isRunningPilot}
+                    className="gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800"
+                    title="Voltar a varredura para o início da tabela"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Reiniciar Varredura
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchDryRun}
+                  disabled={isLoadingCounts || isBatchRunning || isRunningPilot}
+                  className="gap-2 text-xs font-bold"
+                >
+                  <RefreshCw className={isLoadingCounts ? "w-3.5 h-3.5 animate-spin" : "w-3.5 h-3.5"} />
+                  Atualizar Contagem (Dry Run)
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -368,9 +495,9 @@ export default function MigracaoStoragePage() {
                     </span>
                     <span>Total: {t.total.toLocaleString("pt-BR")}</span>
                   </div>
-                  {t.queryError && (
-                    <p className="text-[10px] text-amber-600 mt-1 truncate" title={t.queryError}>
-                      Count rápido indisponível (use a varredura abaixo)
+                  {savedCursors[t.table] && (
+                    <p className="text-[10px] text-indigo-600 font-semibold mt-1 truncate">
+                      Ponto salvo para retomar
                     </p>
                   )}
                 </button>
@@ -421,7 +548,7 @@ export default function MigracaoStoragePage() {
                     className="gap-2 text-xs font-bold bg-[#162546] hover:bg-[#162546]/90 text-white"
                   >
                     <Play className="w-4 h-4" />
-                    Migrar em Lotes (5 por vez)
+                    {hasSavedCursor ? "Retomar Migração em Lotes" : "Migrar em Lotes (5 por vez)"}
                   </Button>
                 ) : (
                   <Button
@@ -435,6 +562,16 @@ export default function MigracaoStoragePage() {
                 )}
               </div>
             </div>
+
+            {batchError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">Motivo da interrupção:</p>
+                  <p>{batchError}</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

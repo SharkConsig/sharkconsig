@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase"
 export const dynamic = "force-dynamic"
 
 const BUCKET_NAME = "propostas-comerciais"
+const SOFT_TIME_BUDGET_MS = 15000
 
 const TARGET_TABLES = [
   { name: "historico_proposta_comercial", folder: "geral", label: "Redução de Parcela" },
@@ -211,6 +212,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now()
+
   try {
     const supabaseAdmin = createAdminClient()
     const auth = await verifyAdminRequest(req, supabaseAdmin)
@@ -247,31 +250,64 @@ export async function POST(req: NextRequest) {
     let hasMore = false
 
     if (pilot) {
-      // Varre em micro-páginas pelo índice primário (id) sem fazer LIKE na coluna TOAST inteira
       for (let page = 0; page < 15; page++) {
-        let query = supabaseAdmin
+        if (Date.now() - startedAt > SOFT_TIME_BUDGET_MS) {
+          hasMore = true
+          break
+        }
+
+        let idQuery = supabaseAdmin
           .from(targetConfig.name)
-          .select("id, cliente_nome, arquivo_url, tipo_arquivo, created_at")
+          .select("id")
           .order("id", { ascending: true })
-          .limit(3)
+          .limit(5)
 
         if (currentCursor !== null) {
-          query = query.gt("id", currentCursor)
+          idQuery = idQuery.gt("id", currentCursor)
         }
 
-        const { data: rows, error: fetchErr } = await query
-        if (fetchErr) {
-          return NextResponse.json({ success: false, error: fetchErr.message }, { status: 500 })
+        const { data: idRows, error: idErr } = await idQuery
+        if (idErr) {
+          return NextResponse.json({ success: false, error: idErr.message }, { status: 500 })
         }
 
-        if (!rows || rows.length === 0) {
+        if (!idRows || idRows.length === 0) {
           hasMore = false
           break
         }
 
-        for (const row of rows) {
+        for (const idItem of idRows) {
+          if (Date.now() - startedAt > SOFT_TIME_BUDGET_MS) {
+            hasMore = true
+            return NextResponse.json({
+              success: true,
+              table: targetConfig.name,
+              processed,
+              migrated: migratedItems.length,
+              alreadyStorage,
+              skippedEmpty,
+              failed: failedItems.length,
+              migratedItems,
+              failedItems,
+              nextCursor: currentCursor,
+              hasMore,
+            })
+          }
+
+          const { data: row, error: rowErr } = await supabaseAdmin
+            .from(targetConfig.name)
+            .select("id, cliente_nome, arquivo_url, tipo_arquivo, created_at")
+            .eq("id", idItem.id)
+            .maybeSingle()
+
           processed++
-          currentCursor = row.id
+          currentCursor = idItem.id
+
+          if (rowErr || !row) {
+            failedItems.push({ id: idItem.id, table: targetConfig.name, error: rowErr?.message || "Registro não encontrado." })
+            continue
+          }
+
           const rawUrl = typeof row.arquivo_url === "string" ? row.arquivo_url.trim() : ""
 
           if (rawUrl.startsWith("data:")) {
@@ -302,7 +338,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        hasMore = rows.length === 3
+        hasMore = idRows.length === 5
         if (!hasMore) break
       }
 
@@ -321,28 +357,50 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Varredura determinística em lote pequeno pelo índice primário (id)
-    let batchQuery = supabaseAdmin
+    // 1. Buscar apenas os IDs do lote (zero leitura de TOAST, < 5ms)
+    let idBatchQuery = supabaseAdmin
       .from(targetConfig.name)
-      .select("id, cliente_nome, arquivo_url, tipo_arquivo, created_at")
+      .select("id")
       .order("id", { ascending: true })
       .limit(safeLimit)
 
     if (currentCursor !== null) {
-      batchQuery = batchQuery.gt("id", currentCursor)
+      idBatchQuery = idBatchQuery.gt("id", currentCursor)
     }
 
-    const { data: rows, error: fetchErr } = await batchQuery
-    if (fetchErr) {
-      return NextResponse.json({ success: false, error: fetchErr.message }, { status: 500 })
+    const { data: idRows, error: idFetchErr } = await idBatchQuery
+    if (idFetchErr) {
+      return NextResponse.json({ success: false, error: idFetchErr.message }, { status: 500 })
     }
 
-    const fetchedRows = rows || []
-    hasMore = fetchedRows.length === safeLimit
+    const fetchedIds = idRows || []
+    let stoppedEarlyByTimeBudget = false
 
-    for (const row of fetchedRows) {
+    // 2. Ler e processar 1 registro por vez pelo ID primário (evita timeout de leitura em lote de TOAST e picos de RAM)
+    for (const idItem of fetchedIds) {
+      if (processed > 0 && Date.now() - startedAt > SOFT_TIME_BUDGET_MS) {
+        stoppedEarlyByTimeBudget = true
+        break
+      }
+
+      const { data: row, error: rowErr } = await supabaseAdmin
+        .from(targetConfig.name)
+        .select("id, cliente_nome, arquivo_url, tipo_arquivo, created_at")
+        .eq("id", idItem.id)
+        .maybeSingle()
+
       processed++
-      currentCursor = row.id
+      currentCursor = idItem.id
+
+      if (rowErr || !row) {
+        failedItems.push({
+          id: idItem.id,
+          table: targetConfig.name,
+          error: rowErr?.message || "Erro ao ler registro individual.",
+        })
+        continue
+      }
+
       const rawUrl = typeof row.arquivo_url === "string" ? row.arquivo_url.trim() : ""
 
       if (rawUrl.startsWith("data:")) {
@@ -358,6 +416,8 @@ export async function POST(req: NextRequest) {
         skippedEmpty++
       }
     }
+
+    hasMore = stoppedEarlyByTimeBudget || fetchedIds.length === safeLimit
 
     return NextResponse.json({
       success: true,
