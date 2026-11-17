@@ -4,6 +4,7 @@ import { X, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
+import { createPortal } from "react-dom"
 
 import { Proposal } from "@/app/(dashboard)/propostas/page"
 
@@ -31,14 +32,14 @@ const Field = ({ label, value, textToCopy, id, className, onCopy, isCopied }: Fi
   return (
     <div 
       className={cn(
-        "p-3 space-y-1 group/field relative cursor-pointer hover:bg-slate-50 transition-all active:bg-slate-100", 
+        "p-3 space-y-1 group/field relative cursor-pointer hover:bg-slate-50 transition-all active:bg-slate-100 ficha-print-field", 
         className
       )}
       onClick={() => onCopy(copyStr, id)}
     >
       <p className="text-[9px] font-bold text-slate-400 uppercase select-none">{label}</p>
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] font-bold text-slate-800">{value === null || value === undefined ? "-" : value}</div>
+        <div className="text-[11px] font-bold text-slate-800 ficha-print-field-value">{value === null || value === undefined ? "-" : value}</div>
         {isCopied && (
           <span className="text-[8px] font-black text-green-600 bg-green-50 px-1.5 py-0.5 rounded border border-green-100 animate-in fade-in zoom-in duration-200">
             COPIADO
@@ -52,7 +53,7 @@ const Field = ({ label, value, textToCopy, id, className, onCopy, isCopied }: Fi
 export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaModalProps) {
   const [copiedField, setCopiedField] = useState<string | null>(null)
 
-  if (!isOpen) return null
+  if (!isOpen || typeof document === "undefined") return null
 
   const handlePrint = () => {
     window.focus();
@@ -172,8 +173,87 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
 
   const telefonesCopyText = phoneList.map(p => p.val).join(" ");
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 print:static print:bg-white print:p-0">
+  return createPortal(
+    <div
+      id="ficha-proposta-print-root"
+      onClick={(e) => e.stopPropagation()}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200 print:static print:bg-white print:p-0"
+    >
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 6mm;
+          }
+          body > *:not(#ficha-proposta-print-root) {
+            display: none !important;
+          }
+          #ficha-proposta-print-root {
+            position: static !important;
+            display: block !important;
+            width: 100% !important;
+            height: auto !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: white !important;
+            visibility: visible !important;
+          }
+          #ficha-proposta-print-root .print-content {
+            position: static !important;
+            display: block !important;
+            width: 100% !important;
+            max-width: none !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          #ficha-proposta-print-root .ficha-print-scroll {
+            overflow: visible !important;
+            padding: 0 !important;
+            height: auto !important;
+          }
+          #ficha-proposta-print-root .ficha-print-body {
+            max-width: none !important;
+            margin: 0 !important;
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          #ficha-proposta-print-root .ficha-print-body > * + * {
+            margin-top: 8px !important;
+          }
+          #ficha-proposta-print-root .ficha-print-section {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+          #ficha-proposta-print-root .ficha-print-section > * + * {
+            margin-top: 0 !important;
+          }
+          #ficha-proposta-print-root .ficha-print-section-header {
+            padding: 3px 8px !important;
+          }
+          #ficha-proposta-print-root .ficha-print-section-header h3 {
+            font-size: 9.5px !important;
+            line-height: 1.2 !important;
+          }
+          #ficha-proposta-print-root .ficha-print-field {
+            padding: 4px 8px !important;
+          }
+          #ficha-proposta-print-root .ficha-print-field > p {
+            font-size: 7.5px !important;
+            line-height: 1.1 !important;
+            margin-bottom: 1px !important;
+          }
+          #ficha-proposta-print-root .ficha-print-field-value,
+          #ficha-proposta-print-root .ficha-print-field-value span {
+            font-size: 9.5px !important;
+            line-height: 1.2 !important;
+          }
+        }
+      `}</style>
       <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-xl shadow-2xl flex flex-col print-content print:shadow-none print:max-h-none print:rounded-none print:w-full print:h-auto print:overflow-visible">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 print-hidden">
@@ -205,12 +285,12 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8 space-y-8 print:p-0">
-          <div className="max-w-[800px] mx-auto space-y-6 print:max-w-none">
+        <div className="flex-1 overflow-y-auto p-8 space-y-8 print:p-0 ficha-print-scroll">
+          <div className="max-w-[800px] mx-auto space-y-6 print:max-w-none ficha-print-body">
             
             {/* Section: Tipo de contrato */}
-            <div className="space-y-3">
-              <div className="bg-slate-100 px-4 py-1.5 rounded-t-md border-x border-t border-slate-300">
+            <div className="space-y-3 ficha-print-section">
+              <div className="bg-slate-100 px-4 py-1.5 rounded-t-md border-x border-t border-slate-300 ficha-print-section-header">
                 <h3 className="text-[11px] font-black text-slate-700 uppercase tracking-widest text-center">Tipo de contrato</h3>
               </div>
               <div className="grid grid-cols-3 border-x border-b border-slate-300 divide-x divide-slate-300">
@@ -221,8 +301,8 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
             </div>
 
             {/* Section: Dados pessoais */}
-            <div className="space-y-3">
-              <div className="bg-slate-100 px-4 py-1.5 rounded-t-md border-x border-t border-slate-300">
+            <div className="space-y-3 ficha-print-section">
+              <div className="bg-slate-100 px-4 py-1.5 rounded-t-md border-x border-t border-slate-300 ficha-print-section-header">
                 <h3 className="text-[11px] font-black text-slate-700 uppercase tracking-widest text-center">Dados pessoais</h3>
               </div>
               <div className="border-x border-b border-slate-300 divide-y divide-slate-300">
@@ -266,8 +346,8 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
             </div>
 
             {/* Section: Dados bancários */}
-            <div className="space-y-3">
-              <div className="bg-slate-100 px-4 py-1.5 rounded-t-md border-x border-t border-slate-300">
+            <div className="space-y-3 ficha-print-section">
+              <div className="bg-slate-100 px-4 py-1.5 rounded-t-md border-x border-t border-slate-300 ficha-print-section-header">
                 <h3 className="text-[11px] font-black text-slate-700 uppercase tracking-widest text-center">Dados bancários</h3>
               </div>
               <div className="grid grid-cols-5 border-x border-b border-slate-300 divide-x divide-slate-300">
@@ -282,8 +362,8 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
             </div>
 
             {/* Section: Dados da operação */}
-            <div className="space-y-3">
-              <div className="bg-slate-100 px-4 py-1.5 rounded-t-md border-x border-t border-slate-300">
+            <div className="space-y-3 ficha-print-section">
+              <div className="bg-slate-100 px-4 py-1.5 rounded-t-md border-x border-t border-slate-300 ficha-print-section-header">
                 <h3 className="text-[11px] font-black text-slate-700 uppercase tracking-widest text-center">Dados da operação</h3>
               </div>
               <div className="border-x border-b border-slate-300 divide-y divide-slate-300">
@@ -315,6 +395,7 @@ export function FichaPropostaModal({ isOpen, onClose, proposal }: FichaPropostaM
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
