@@ -81,11 +81,19 @@ async function ensureBucket(supabaseAdmin: ReturnType<typeof createAdminClient>)
 }
 
 function parseDataUrl(dataUrl: string): { buffer: Buffer; mime: string } | null {
-  const match = dataUrl.match(/^data:([^;]+);base64,([\s\S]+)$/i)
-  if (!match) return null
-  const cleanBase64 = match[2].replace(/\s+/g, "")
+  if (!dataUrl.toLowerCase().startsWith("data:")) return null
+  const commaIdx = dataUrl.indexOf(",")
+  if (commaIdx === -1) return null
+
+  const header = dataUrl.slice(5, commaIdx)
+  if (!header.toLowerCase().includes(";base64")) return null
+
+  const mime = header.split(";")[0].toLowerCase().trim() || "application/octet-stream"
+  const cleanBase64 = dataUrl.slice(commaIdx + 1).replace(/\s+/g, "")
+  if (!cleanBase64) return null
+
   return {
-    mime: match[1].toLowerCase().trim(),
+    mime,
     buffer: Buffer.from(cleanBase64, "base64"),
   }
 }
