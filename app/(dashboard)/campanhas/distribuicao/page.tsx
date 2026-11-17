@@ -338,6 +338,7 @@ export default function DistribuicaoCampanhaPage() {
             .gte('data_chamado', sDate)
             .lte('data_chamado', eDate)
             .eq('tabulacao', 'CLIENTE CHAMADO')
+            .not('campanha_id', 'is', null)
             .order('created_at', { ascending: false })
             .range(page * pageSize, (page + 1) * pageSize - 1);
 
@@ -356,8 +357,9 @@ export default function DistribuicaoCampanhaPage() {
           page++;
         }
 
-        if (allCcRows.length > 0) {
-          allPeriodRows = allCcRows;
+        const validCcRows = allCcRows.filter(r => Boolean(r.campanha_id && String(r.campanha_id).trim() !== ''));
+        if (validCcRows.length > 0) {
+          allPeriodRows = validCcRows;
         } else {
           // 2. Fallback resiliente: consultar campanha_atendimentos também com paginação completa
           let allCaRows: any[] = [];
@@ -476,12 +478,15 @@ export default function DistribuicaoCampanhaPage() {
     const overallCampaigns = new Set<string>();
     const overallUsers = new Set<string>();
 
+    const campNameMap = new Map(campaigns.map(c => [c.id, c.nome]));
+
     reportData.forEach(item => {
+      if (!item.campanha_id) return;
       const uId = item.usuario_id || 'desconhecido';
       const uName = item.usuario_nome || 'Usuário';
       const uFuncao = item.usuario_funcao || 'Corretor';
-      const cId = item.campanha_id || 'sem_campanha';
-      const cName = item.campanha_nome || 'Sem Campanha';
+      const cId = item.campanha_id;
+      const cName = item.campanha_nome || campNameMap.get(cId) || 'Campanha';
       const cpf = item.cliente_cpf || '';
 
       overallUsers.add(uId);
@@ -632,7 +637,7 @@ export default function DistribuicaoCampanhaPage() {
           periodo_filtro: periodoTexto,
           usuario: item.usuario_nome,
           funcao: item.usuario_funcao,
-          campanha: item.campanha_nome,
+          campanha: item.campanha_nome || campaigns.find(c => c.id === item.campanha_id)?.nome || 'Campanha',
           cpf: item.cliente_cpf,
           nome: item.cliente_nome || "",
           origem: item.origem || "CAMPANHA"
