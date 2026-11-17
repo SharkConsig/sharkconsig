@@ -111,18 +111,86 @@ async function collectCounts(supabaseAdmin: ReturnType<typeof createAdminClient>
         supabaseAdmin.from(t.name).select("id", { count: "exact", head: true }).like("arquivo_url", "http%"),
       ])
 
+      const queryError =
+        pendingRes.error?.message ||
+        migratedRes.error?.message ||
+        totalRes.error?.message ||
+        null
+
       return {
         table: t.name,
         label: t.label,
-        total: totalRes.count || 0,
-        pendingBase64: pendingRes.count || 0,
-        migratedStorage: migratedRes.count || 0,
+        total: totalRes.count ?? 0,
+        pendingBase64: pendingRes.error ? null : (pendingRes.count ?? 0),
+        migratedStorage: migratedRes.error ? null : (migratedRes.count ?? 0),
+        queryError,
       }
     })
   )
 
-  const totalPending = results.reduce((acc, item) => acc + item.pendingBase64, 0)
-  return { tables: results, totalPending }
+  const hasUnknownPending = results.some((item) => item.pendingBase64 === null && item.total > 0)
+  const knownPending = results.reduce((acc, item) => acc + (item.pendingBase64 ?? 0), 0)
+  const totalRows = results.reduce((acc, item) => acc + item.total, 0)
+
+  return { tables: results, totalPending: knownPending, hasUnknownPending, totalRows }
+}
+
+async function migrateSingleRow(
+  supabaseAdmin: ReturnType<typeof createAdminClient>,
+  targetConfig: (typeof TARGET_TABLES)[number],
+  row: { id: string | number; cliente_nome?: string | null; arquivo_url?: string | null; tipo_arquivo?: string | null; created_at?: string | null }
+) {
+  const rawUrl = typeof row.arquivo_url === "string" ? row.arquivo_url.trim() : ""
+  const parsed = parseDataUrl(rawUrl)
+  if (!parsed || parsed.buffer.length === 0) {
+    return { ok: false as const, error: "Data URL Base64 inválido ou vazio." }
+  }
+
+  const { contentType, ext } = resolveMimeAndExt(parsed.mime, row.tipo_arquivo || undefined)
+  const createdDate = row.created_at ? new Date(row.created_at) : new Date()
+  const validDate = isNaN(createdDate.getTime()) ? new Date() : createdDate
+  const yearMonth = `${validDate.getUTCFullYear()}-${String(validDate.getUTCMonth() + 1).padStart(2, "0")}`
+  const storagePath = `${targetConfig.folder}/${yearMonth}/${row.id}_${crypto.randomUUID()}.${ext}`
+
+  const { error: uploadErr } = await supabaseAdmin.storage
+    .from(BUCKET_NAME)
+    .upload(storagePath, parsed.buffer, {
+      contentType,
+      cacheControl: "31536000",
+      upsert: false,
+    })
+
+  if (uploadErr) {
+    return { ok: false as const, error: uploadErr.message }
+  }
+
+  const { data: publicData } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(storagePath)
+  const publicUrl = publicData?.publicUrl
+  if (!publicUrl || !publicUrl.startsWith("http")) {
+    return { ok: false as const, error: "URL pública inválida retornada pelo Storage." }
+  }
+
+  const { error: updateErr } = await supabaseAdmin
+    .from(targetConfig.name)
+    .update({ arquivo_url: publicUrl })
+    .eq("id", row.id)
+
+  if (updateErr) {
+    await supabaseAdmin.storage.from(BUCKET_NAME).remove([storagePath]).catch(() => {})
+    return { ok: false as const, error: updateErr.message }
+  }
+
+  return {
+    ok: true as const,
+    item: {
+      id: row.id,
+      cliente_nome: row.cliente_nome || "Cliente",
+      table: targetConfig.name,
+      tipo_arquivo: row.tipo_arquivo || ext.toUpperCase(),
+      url: publicUrl,
+      bytes: parsed.buffer.length,
+    },
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -153,6 +221,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}))
     const requestedTable = typeof body?.table === "string" ? body.table.trim() : ""
     const dryRun = Boolean(body?.dryRun)
+    const pilot = Boolean(body?.pilot)
+    const cursor = body?.cursor !== undefined && body?.cursor !== null && body?.cursor !== "" ? body.cursor : null
     const rawLimit = Number(body?.limit)
     const safeLimit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 10) : 5
 
@@ -163,115 +233,144 @@ export async function POST(req: NextRequest) {
 
     await ensureBucket(supabaseAdmin)
 
-    let targetConfig = TARGET_TABLES.find((t) => t.name === requestedTable)
-    if (requestedTable && !targetConfig) {
+    const targetConfig = TARGET_TABLES.find((t) => t.name === requestedTable) || TARGET_TABLES[0]
+    if (requestedTable && !TARGET_TABLES.some((t) => t.name === requestedTable)) {
       return NextResponse.json({ success: false, error: "Tabela inválida para migração." }, { status: 400 })
-    }
-
-    if (!targetConfig) {
-      const summary = await collectCounts(supabaseAdmin)
-      const nextPending = summary.tables.find((t) => t.pendingBase64 > 0)
-      if (!nextPending) {
-        return NextResponse.json({
-          success: true,
-          finished: true,
-          processed: 0,
-          migrated: 0,
-          failed: 0,
-          migratedItems: [],
-          failedItems: [],
-          ...summary,
-        })
-      }
-      targetConfig = TARGET_TABLES.find((t) => t.name === nextPending.table)!
-    }
-
-    const { data: rows, error: fetchErr } = await supabaseAdmin
-      .from(targetConfig.name)
-      .select("id, cliente_nome, arquivo_url, tipo_arquivo, created_at")
-      .like("arquivo_url", "data:%")
-      .order("created_at", { ascending: true })
-      .limit(safeLimit)
-
-    if (fetchErr) {
-      return NextResponse.json({ success: false, error: fetchErr.message }, { status: 500 })
     }
 
     const migratedItems: Array<{ id: string | number; cliente_nome: string; table: string; tipo_arquivo: string; url: string; bytes: number }> = []
     const failedItems: Array<{ id: string | number; table: string; error: string }> = []
+    let alreadyStorage = 0
+    let skippedEmpty = 0
+    let processed = 0
+    let currentCursor: string | number | null = cursor
+    let hasMore = false
 
-    for (const row of rows || []) {
-      try {
-        const rawUrl = typeof row.arquivo_url === "string" ? row.arquivo_url : ""
-        const parsed = parseDataUrl(rawUrl)
-        if (!parsed || parsed.buffer.length === 0) {
-          failedItems.push({ id: row.id, table: targetConfig.name, error: "Data URL Base64 inválido ou vazio." })
-          continue
-        }
-
-        const { contentType, ext } = resolveMimeAndExt(parsed.mime, row.tipo_arquivo)
-        const createdDate = row.created_at ? new Date(row.created_at) : new Date()
-        const validDate = isNaN(createdDate.getTime()) ? new Date() : createdDate
-        const yearMonth = `${validDate.getUTCFullYear()}-${String(validDate.getUTCMonth() + 1).padStart(2, "0")}`
-        const storagePath = `${targetConfig.folder}/${yearMonth}/${row.id}_${crypto.randomUUID()}.${ext}`
-
-        const { error: uploadErr } = await supabaseAdmin.storage
-          .from(BUCKET_NAME)
-          .upload(storagePath, parsed.buffer, {
-            contentType,
-            cacheControl: "31536000",
-            upsert: false,
-          })
-
-        if (uploadErr) {
-          failedItems.push({ id: row.id, table: targetConfig.name, error: uploadErr.message })
-          continue
-        }
-
-        const { data: publicData } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(storagePath)
-        const publicUrl = publicData?.publicUrl
-        if (!publicUrl || !publicUrl.startsWith("http")) {
-          failedItems.push({ id: row.id, table: targetConfig.name, error: "URL pública inválida retornada pelo Storage." })
-          continue
-        }
-
-        const { error: updateErr } = await supabaseAdmin
+    if (pilot) {
+      // Varre em micro-páginas pelo índice primário (id) sem fazer LIKE na coluna TOAST inteira
+      for (let page = 0; page < 15; page++) {
+        let query = supabaseAdmin
           .from(targetConfig.name)
-          .update({ arquivo_url: publicUrl })
-          .eq("id", row.id)
+          .select("id, cliente_nome, arquivo_url, tipo_arquivo, created_at")
+          .order("id", { ascending: true })
+          .limit(3)
 
-        if (updateErr) {
-          await supabaseAdmin.storage.from(BUCKET_NAME).remove([storagePath]).catch(() => {})
-          failedItems.push({ id: row.id, table: targetConfig.name, error: updateErr.message })
-          continue
+        if (currentCursor !== null) {
+          query = query.gt("id", currentCursor)
         }
 
-        migratedItems.push({
-          id: row.id,
-          cliente_nome: row.cliente_nome || "Cliente",
-          table: targetConfig.name,
-          tipo_arquivo: row.tipo_arquivo || ext.toUpperCase(),
-          url: publicUrl,
-          bytes: parsed.buffer.length,
-        })
-      } catch (rowErr: unknown) {
-        const msg = rowErr instanceof Error ? rowErr.message : "Erro inesperado na linha."
-        failedItems.push({ id: row.id, table: targetConfig.name, error: msg })
+        const { data: rows, error: fetchErr } = await query
+        if (fetchErr) {
+          return NextResponse.json({ success: false, error: fetchErr.message }, { status: 500 })
+        }
+
+        if (!rows || rows.length === 0) {
+          hasMore = false
+          break
+        }
+
+        for (const row of rows) {
+          processed++
+          currentCursor = row.id
+          const rawUrl = typeof row.arquivo_url === "string" ? row.arquivo_url.trim() : ""
+
+          if (rawUrl.startsWith("data:")) {
+            const res = await migrateSingleRow(supabaseAdmin, targetConfig, row)
+            if (res.ok) {
+              migratedItems.push(res.item)
+            } else {
+              failedItems.push({ id: row.id, table: targetConfig.name, error: res.error })
+            }
+            hasMore = true
+            return NextResponse.json({
+              success: true,
+              table: targetConfig.name,
+              processed,
+              migrated: migratedItems.length,
+              alreadyStorage,
+              skippedEmpty,
+              failed: failedItems.length,
+              migratedItems,
+              failedItems,
+              nextCursor: currentCursor,
+              hasMore,
+            })
+          } else if (rawUrl.startsWith("http")) {
+            alreadyStorage++
+          } else {
+            skippedEmpty++
+          }
+        }
+
+        hasMore = rows.length === 3
+        if (!hasMore) break
       }
+
+      return NextResponse.json({
+        success: true,
+        table: targetConfig.name,
+        processed,
+        migrated: migratedItems.length,
+        alreadyStorage,
+        skippedEmpty,
+        failed: failedItems.length,
+        migratedItems,
+        failedItems,
+        nextCursor: currentCursor,
+        hasMore,
+      })
     }
 
-    const updatedSummary = await collectCounts(supabaseAdmin)
+    // Varredura determinística em lote pequeno pelo índice primário (id)
+    let batchQuery = supabaseAdmin
+      .from(targetConfig.name)
+      .select("id, cliente_nome, arquivo_url, tipo_arquivo, created_at")
+      .order("id", { ascending: true })
+      .limit(safeLimit)
+
+    if (currentCursor !== null) {
+      batchQuery = batchQuery.gt("id", currentCursor)
+    }
+
+    const { data: rows, error: fetchErr } = await batchQuery
+    if (fetchErr) {
+      return NextResponse.json({ success: false, error: fetchErr.message }, { status: 500 })
+    }
+
+    const fetchedRows = rows || []
+    hasMore = fetchedRows.length === safeLimit
+
+    for (const row of fetchedRows) {
+      processed++
+      currentCursor = row.id
+      const rawUrl = typeof row.arquivo_url === "string" ? row.arquivo_url.trim() : ""
+
+      if (rawUrl.startsWith("data:")) {
+        const res = await migrateSingleRow(supabaseAdmin, targetConfig, row)
+        if (res.ok) {
+          migratedItems.push(res.item)
+        } else {
+          failedItems.push({ id: row.id, table: targetConfig.name, error: res.error })
+        }
+      } else if (rawUrl.startsWith("http")) {
+        alreadyStorage++
+      } else {
+        skippedEmpty++
+      }
+    }
 
     return NextResponse.json({
       success: true,
       table: targetConfig.name,
-      processed: (rows || []).length,
+      processed,
       migrated: migratedItems.length,
+      alreadyStorage,
+      skippedEmpty,
       failed: failedItems.length,
       migratedItems,
       failedItems,
-      finished: updatedSummary.totalPending === 0,
-      ...updatedSummary,
+      nextCursor: currentCursor,
+      hasMore,
     })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Erro interno na migração."

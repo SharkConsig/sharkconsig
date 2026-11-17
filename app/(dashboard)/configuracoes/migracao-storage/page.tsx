@@ -25,8 +25,9 @@ interface TableStatus {
   table: string
   label: string
   total: number
-  pendingBase64: number
-  migratedStorage: number
+  pendingBase64: number | null
+  migratedStorage: number | null
+  queryError?: string | null
 }
 
 interface MigratedSample {
@@ -48,12 +49,18 @@ export default function MigracaoStoragePage() {
   const { isAdmin, isDeveloper, isLoading: isAuthLoading } = useAuth()
   const [tables, setTables] = useState<TableStatus[]>([])
   const [totalPending, setTotalPending] = useState<number>(0)
+  const [hasUnknownPending, setHasUnknownPending] = useState<boolean>(false)
+  const [totalRows, setTotalRows] = useState<number>(0)
   const [selectedTable, setSelectedTable] = useState<string>("")
   const [isLoadingCounts, setIsLoadingCounts] = useState(false)
   const [isRunningPilot, setIsRunningPilot] = useState(false)
   const [isBatchRunning, setIsBatchRunning] = useState(false)
+  const [currentScanLabel, setCurrentScanLabel] = useState<string>("")
+  const [sessionProcessed, setSessionProcessed] = useState(0)
   const [sessionMigrated, setSessionMigrated] = useState(0)
+  const [sessionAlreadyStorage, setSessionAlreadyStorage] = useState(0)
   const [sessionBytes, setSessionBytes] = useState(0)
+  const [migrationCompletedAll, setMigrationCompletedAll] = useState(false)
   const [lastSamples, setLastSamples] = useState<MigratedSample[]>([])
   const [failedItems, setFailedItems] = useState<FailedItem[]>([])
 
@@ -81,6 +88,8 @@ export default function MigracaoStoragePage() {
       }
       setTables(data.tables || [])
       setTotalPending(data.totalPending || 0)
+      setHasUnknownPending(Boolean(data.hasUnknownPending))
+      setTotalRows(data.totalRows || 0)
     } catch {
       toast.error("Falha de conexão ao verificar pendências.")
     } finally {
@@ -94,110 +103,163 @@ export default function MigracaoStoragePage() {
     }
   }, [isAuthLoading, isAdmin, isDeveloper, fetchDryRun])
 
+  const getCandidateTables = () => {
+    if (selectedTable) {
+      const found = tables.find((t) => t.table === selectedTable)
+      return found ? [found] : []
+    }
+    return tables.filter((t) => t.total > 0 && t.pendingBase64 !== 0)
+  }
+
   const handleRunPilot = async () => {
+    const candidates = getCandidateTables()
+    if (candidates.length === 0) {
+      toast.info("Nenhuma tabela com registros disponíveis encontrada.")
+      return
+    }
+
     setIsRunningPilot(true)
     try {
       const token = await getAccessToken()
-      const res = await fetch("/api/propostas-comerciais/migrar-storage", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          table: selectedTable || undefined,
-          limit: 1,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data?.success) {
-        toast.error(data?.error || "Erro no teste piloto.")
-        return
-      }
-      setTables(data.tables || [])
-      setTotalPending(data.totalPending || 0)
 
-      if (data.migrated > 0) {
-        const bytesSum = (data.migratedItems || []).reduce((acc: number, item: MigratedSample) => acc + (item.bytes || 0), 0)
-        setSessionMigrated((prev) => prev + data.migrated)
-        setSessionBytes((prev) => prev + bytesSum)
-        setLastSamples((prev) => [...(data.migratedItems || []), ...prev].slice(0, 10))
-        toast.success("Teste piloto concluído: 1 registro migrado! Teste o download abaixo.")
-      } else if ((data.failedItems || []).length > 0) {
-        setFailedItems((prev) => [...data.failedItems, ...prev].slice(0, 20))
-        toast.error("O registro de teste falhou e foi mantido intacto no banco.")
-      } else {
-        toast.info("Nenhum registro pendente em Base64 encontrado.")
+      for (const candidate of candidates) {
+        let cursor: string | number | null = null
+        let hasMore = true
+        let attempts = 0
+
+        while (hasMore && attempts < 20) {
+          attempts++
+          setCurrentScanLabel(`Buscando 1 Base64 em ${candidate.label}...`)
+
+          const res = await fetch("/api/propostas-comerciais/migrar-storage", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              table: candidate.table,
+              pilot: true,
+              cursor,
+            }),
+          })
+
+          const data = await res.json()
+          if (!res.ok || !data?.success) {
+            toast.error(data?.error || "Erro no teste piloto.")
+            return
+          }
+
+          setSessionProcessed((prev) => prev + (data.processed || 0))
+          setSessionAlreadyStorage((prev) => prev + (data.alreadyStorage || 0))
+
+          if ((data.failedItems || []).length > 0) {
+            setFailedItems((prev) => [...data.failedItems, ...prev].slice(0, 20))
+            toast.error("O registro de teste falhou e foi mantido intacto no banco.")
+            return
+          }
+
+          if (data.migrated > 0) {
+            const bytesSum = (data.migratedItems || []).reduce((acc: number, item: MigratedSample) => acc + (item.bytes || 0), 0)
+            setSessionMigrated((prev) => prev + data.migrated)
+            setSessionBytes((prev) => prev + bytesSum)
+            setLastSamples((prev) => [...(data.migratedItems || []), ...prev].slice(0, 10))
+            toast.success(`Teste piloto concluído (${candidate.label}): 1 registro migrado! Teste o download abaixo.`)
+            return
+          }
+
+          cursor = data.nextCursor ?? null
+          hasMore = Boolean(data.hasMore) && cursor !== null
+        }
       }
+
+      toast.info("Nenhum registro pendente em Base64 encontrado no escopo selecionado.")
     } catch {
       toast.error("Erro ao executar teste piloto.")
     } finally {
+      setCurrentScanLabel("")
       setIsRunningPilot(false)
     }
   }
 
   const handleStartBatch = async () => {
+    const candidates = getCandidateTables()
+    if (candidates.length === 0) {
+      toast.info("Nenhuma tabela com registros disponíveis para migração.")
+      return
+    }
+
     stopRequestedRef.current = false
     setIsBatchRunning(true)
+    setMigrationCompletedAll(false)
 
     try {
       const token = await getAccessToken()
-      let keepGoing = true
 
-      while (keepGoing && !stopRequestedRef.current) {
-        const res = await fetch("/api/propostas-comerciais/migrar-storage", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            table: selectedTable || undefined,
-            limit: 5,
-          }),
-        })
+      for (const candidate of candidates) {
+        if (stopRequestedRef.current) break
 
-        const data = await res.json()
-        if (!res.ok || !data?.success) {
-          toast.error(data?.error || "Migração pausada por erro na requisição.")
-          break
+        let cursor: string | number | null = null
+        let hasMore = true
+
+        while (hasMore && !stopRequestedRef.current) {
+          setCurrentScanLabel(`Processando ${candidate.label}...`)
+
+          const res = await fetch("/api/propostas-comerciais/migrar-storage", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              table: candidate.table,
+              limit: 5,
+              cursor,
+            }),
+          })
+
+          const data = await res.json()
+          if (!res.ok || !data?.success) {
+            toast.error(data?.error || "Migração pausada por erro na requisição.")
+            stopRequestedRef.current = true
+            break
+          }
+
+          setSessionProcessed((prev) => prev + (data.processed || 0))
+          setSessionAlreadyStorage((prev) => prev + (data.alreadyStorage || 0))
+
+          if (data.migrated > 0) {
+            const bytesSum = (data.migratedItems || []).reduce((acc: number, item: MigratedSample) => acc + (item.bytes || 0), 0)
+            setSessionMigrated((prev) => prev + data.migrated)
+            setSessionBytes((prev) => prev + bytesSum)
+            setLastSamples((prev) => [...(data.migratedItems || []), ...prev].slice(0, 10))
+          }
+
+          if ((data.failedItems || []).length > 0) {
+            setFailedItems((prev) => [...data.failedItems, ...prev].slice(0, 20))
+            toast.error("Migração pausada porque houve falha em um registro. Base64 original foi preservado.")
+            stopRequestedRef.current = true
+            break
+          }
+
+          cursor = data.nextCursor ?? null
+          hasMore = Boolean(data.hasMore) && cursor !== null
+
+          await new Promise((resolve) => setTimeout(resolve, 150))
         }
-
-        setTables(data.tables || [])
-        setTotalPending(data.totalPending || 0)
-
-        if (data.migrated > 0) {
-          const bytesSum = (data.migratedItems || []).reduce((acc: number, item: MigratedSample) => acc + (item.bytes || 0), 0)
-          setSessionMigrated((prev) => prev + data.migrated)
-          setSessionBytes((prev) => prev + bytesSum)
-          setLastSamples((prev) => [...(data.migratedItems || []), ...prev].slice(0, 10))
-        }
-
-        if ((data.failedItems || []).length > 0) {
-          setFailedItems((prev) => [...data.failedItems, ...prev].slice(0, 20))
-          toast.error("Migração pausada porque houve falha em um registro. Base64 original foi preservado.")
-          break
-        }
-
-        const currentTablePending = selectedTable
-          ? (data.tables || []).find((t: TableStatus) => t.table === selectedTable)?.pendingBase64 || 0
-          : data.totalPending || 0
-
-        if (data.finished || currentTablePending === 0 || data.processed === 0) {
-          keepGoing = false
-          toast.success("Migração em lotes concluída para o escopo selecionado!")
-          break
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 250))
       }
 
       if (stopRequestedRef.current) {
-        toast.info("Migração pausada pelo administrador.")
+        toast.info("Migração pausada.")
+      } else {
+        setMigrationCompletedAll(true)
+        toast.success("Varredura e migração concluídas!")
+        fetchDryRun()
       }
     } catch {
       toast.error("Erro inesperado durante a migração em lotes.")
     } finally {
+      setCurrentScanLabel("")
       setIsBatchRunning(false)
     }
   }
@@ -205,6 +267,12 @@ export default function MigracaoStoragePage() {
   const handlePauseBatch = () => {
     stopRequestedRef.current = true
   }
+
+  const canRunActions =
+    totalRows > 0 &&
+    (selectedTable
+      ? (tables.find((t) => t.table === selectedTable)?.total || 0) > 0
+      : true)
 
   if (isAuthLoading) {
     return (
@@ -251,7 +319,7 @@ export default function MigracaoStoragePage() {
                     Etapa 3 — Migração Segura Base64 → Storage
                   </h1>
                   <p className="text-xs text-slate-500">
-                    Processamento sequencial em lotes de 5 registros. Cada linha só é atualizada após confirmação do upload.
+                    Varredura pelo índice primário em lotes de 5 registros. Cada linha só é atualizada após confirmação do upload.
                   </p>
                 </div>
               </div>
@@ -260,7 +328,7 @@ export default function MigracaoStoragePage() {
                 variant="outline"
                 size="sm"
                 onClick={fetchDryRun}
-                disabled={isLoadingCounts || isBatchRunning}
+                disabled={isLoadingCounts || isBatchRunning || isRunningPilot}
                 className="gap-2 text-xs font-bold"
               >
                 <RefreshCw className={isLoadingCounts ? "w-3.5 h-3.5 animate-spin" : "w-3.5 h-3.5"} />
@@ -273,7 +341,7 @@ export default function MigracaoStoragePage() {
                 <button
                   key={t.table}
                   type="button"
-                  disabled={isBatchRunning}
+                  disabled={isBatchRunning || isRunningPilot}
                   onClick={() => setSelectedTable((prev) => (prev === t.table ? "" : t.table))}
                   className={`text-left p-4 rounded-xl border transition-all ${
                     selectedTable === t.table
@@ -284,14 +352,27 @@ export default function MigracaoStoragePage() {
                   <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                     {t.label}
                   </p>
-                  <p className="text-xl font-black text-slate-900 mt-1">
-                    {t.pendingBase64.toLocaleString("pt-BR")}
-                    <span className="text-xs font-semibold text-slate-400 ml-1">pendentes</span>
-                  </p>
+                  {t.pendingBase64 === null ? (
+                    <p className="text-sm font-black text-amber-600 mt-1.5">
+                      Verificar na varredura
+                    </p>
+                  ) : (
+                    <p className="text-xl font-black text-slate-900 mt-1">
+                      {t.pendingBase64.toLocaleString("pt-BR")}
+                      <span className="text-xs font-semibold text-slate-400 ml-1">pendentes</span>
+                    </p>
+                  )}
                   <div className="flex items-center justify-between text-[11px] text-slate-500 mt-2">
-                    <span>Storage: {t.migratedStorage.toLocaleString("pt-BR")}</span>
+                    <span>
+                      Storage: {t.migratedStorage === null ? "-" : t.migratedStorage.toLocaleString("pt-BR")}
+                    </span>
                     <span>Total: {t.total.toLocaleString("pt-BR")}</span>
                   </div>
+                  {t.queryError && (
+                    <p className="text-[10px] text-amber-600 mt-1 truncate" title={t.queryError}>
+                      Count rápido indisponível (use a varredura abaixo)
+                    </p>
+                  )}
                 </button>
               ))}
             </div>
@@ -301,12 +382,21 @@ export default function MigracaoStoragePage() {
                 <p>
                   Escopo atual:{" "}
                   <strong className="text-slate-900">
-                    {selectedTable || "Todas as tabelas pendentes"}
+                    {selectedTable || "Todas as tabelas"}
                   </strong>
+                  {currentScanLabel && (
+                    <span className="ml-2 text-indigo-600 font-semibold">• {currentScanLabel}</span>
+                  )}
                 </p>
                 <p>
-                  Pendentes totais: <strong className="text-amber-600">{totalPending.toLocaleString("pt-BR")}</strong>{" "}
-                  | Migrados nesta sessão:{" "}
+                  {hasUnknownPending ? (
+                    <>Total de registros no escopo: <strong className="text-amber-600">{totalRows.toLocaleString("pt-BR")}</strong></>
+                  ) : (
+                    <>Pendentes em Base64: <strong className="text-amber-600">{totalPending.toLocaleString("pt-BR")}</strong></>
+                  )}{" "}
+                  | Verificados: <strong className="text-slate-800">{sessionProcessed.toLocaleString("pt-BR")}</strong>{" "}
+                  | Já no Storage: <strong className="text-slate-800">{sessionAlreadyStorage.toLocaleString("pt-BR")}</strong>{" "}
+                  | Migrados agora:{" "}
                   <strong className="text-emerald-600">
                     {sessionMigrated.toLocaleString("pt-BR")} ({(sessionBytes / (1024 * 1024)).toFixed(1)} MB)
                   </strong>
@@ -317,7 +407,7 @@ export default function MigracaoStoragePage() {
                 <Button
                   variant="outline"
                   onClick={handleRunPilot}
-                  disabled={isRunningPilot || isBatchRunning || totalPending === 0}
+                  disabled={isRunningPilot || isBatchRunning || !canRunActions}
                   className="gap-2 text-xs font-bold"
                 >
                   {isRunningPilot ? <Loader2 className="w-4 h-4 animate-spin" /> : <FlaskConical className="w-4 h-4" />}
@@ -327,7 +417,7 @@ export default function MigracaoStoragePage() {
                 {!isBatchRunning ? (
                   <Button
                     onClick={handleStartBatch}
-                    disabled={isRunningPilot || totalPending === 0}
+                    disabled={isRunningPilot || !canRunActions}
                     className="gap-2 text-xs font-bold bg-[#162546] hover:bg-[#162546]/90 text-white"
                   >
                     <Play className="w-4 h-4" />
@@ -408,19 +498,20 @@ export default function MigracaoStoragePage() {
           </Card>
         )}
 
-        {totalPending === 0 && tables.length > 0 && (
+        {(migrationCompletedAll || (!hasUnknownPending && totalPending === 0 && tables.length > 0)) && (
           <Card className="border-slate-200 bg-white">
             <CardContent className="p-5 space-y-2 text-xs text-slate-600">
               <p className="font-bold text-slate-900 uppercase tracking-wider">
                 Pronto para a Etapa 4 (no horário de almoço / baixo uso)
               </p>
               <p>
-                Todos os registros já estão no Storage. Para devolver os ~3,78 GB ao disco do Supabase, execute um comando por vez no SQL Editor do Supabase:
+                Para devolver os ~3,78 GB ao disco do Supabase após concluir todas as tabelas, execute um comando por vez no SQL Editor do Supabase:
               </p>
               <div className="bg-slate-900 text-slate-100 p-3 rounded-lg font-mono text-[11px] space-y-1">
                 <p>VACUUM FULL historico_proposta_comercial;</p>
                 <p>VACUUM FULL historico_proposta_comercial_quitacao_contrato;</p>
                 <p>VACUUM FULL historico_proposta_comercial_novo_formato;</p>
+                <p>VACUUM FULL historico_proposta_comercial_calculadora;</p>
               </div>
             </CardContent>
           </Card>
