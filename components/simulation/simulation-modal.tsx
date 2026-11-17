@@ -27,6 +27,7 @@ import { getContractTypeInfo } from "@/lib/contratos-mapping";
 import { toPng, toJpeg } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { supabase } from "@/lib/supabase";
+import { uploadCommercialProposalToStorage } from "@/lib/propostas-comerciais-storage";
 import CalculadoraPage from "@/app/(dashboard)/calculadora/page";
 
 const parseCleanFloat = (val: string | number | null | undefined): number | null => {
@@ -762,6 +763,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
       };
 
       let finalDataUrl = "";
+      let uploadSource: string | Blob | null = null;
 
       if (format === "png" || format === "jpg") {
         const dataUrl = format === "png" 
@@ -769,6 +771,7 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
           : await toJpeg(element, options);
 
         finalDataUrl = dataUrl;
+        uploadSource = dataUrl;
 
         const link = document.createElement("a");
         const safeName = (nomeCliente || "Cliente").trim().replace(/\s+/g, "_");
@@ -782,10 +785,32 @@ export function SimulationModal({ isOpen, onClose, client, registrations, perfil
         
         pdf.addImage(dataUrl, "PNG", 0, 0, 210, pdfHeight, undefined, 'FAST');
 
-        finalDataUrl = pdf.output("datauristring");
+        uploadSource = pdf.output("blob");
 
         const safeName = (nomeCliente || "Cliente").trim().replace(/\s+/g, "_");
         pdf.save(`proposta_reducao_${safeName}.pdf`);
+
+        const storageUrlPreview = await uploadCommercialProposalToStorage({
+          dataUrlOrBlob: uploadSource,
+          format,
+          model,
+        });
+        if (storageUrlPreview) {
+          finalDataUrl = storageUrlPreview;
+        } else {
+          finalDataUrl = pdf.output("datauristring");
+        }
+      }
+
+      if ((format === "png" || format === "jpg") && uploadSource) {
+        const storageUrl = await uploadCommercialProposalToStorage({
+          dataUrlOrBlob: uploadSource,
+          format,
+          model,
+        });
+        if (storageUrl) {
+          finalDataUrl = storageUrl;
+        }
       }
 
       // Save proposal history to Supabase table

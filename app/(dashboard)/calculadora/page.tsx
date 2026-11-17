@@ -27,6 +27,7 @@ import {
 import { useAuth } from "@/context/auth-context"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
+import { uploadCommercialProposalToStorage } from "@/lib/propostas-comerciais-storage"
 import { Header } from "@/components/layout/header"
 
 // Helper function to format BRL currency
@@ -406,6 +407,18 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
         const { data: authData } = await supabase.auth.getUser();
         const activeUser = authData?.user;
 
+        let finalArquivoUrl = proposalData.arquivo_url || null;
+        if (typeof finalArquivoUrl === "string" && finalArquivoUrl.startsWith("data:")) {
+          const uploadedUrl = await uploadCommercialProposalToStorage({
+            dataUrlOrBlob: finalArquivoUrl,
+            format: (proposalData.tipo_arquivo || "PDF").toLowerCase(),
+            model: "calculadora",
+          });
+          if (uploadedUrl) {
+            finalArquivoUrl = uploadedUrl;
+          }
+        }
+
         const payloadToInsert = {
           cliente_cpf: cleanCpf,
           cliente_nome: nome,
@@ -418,7 +431,7 @@ export default function CalculadoraPage({ clientMargins, isEmbedded, client: pas
           parcela_media: pmMedia,
           taxa_am: taxa,
           tipo_arquivo: proposalData.tipo_arquivo || "PDF",
-          arquivo_url: proposalData.arquivo_url || null
+          arquivo_url: finalArquivoUrl
         };
 
         const { error } = await supabase

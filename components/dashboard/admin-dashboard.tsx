@@ -37,6 +37,7 @@ import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
 import { supabase } from "@/lib/supabase"
 import { RankingContractsModal, RankingContractModalParams } from "./ranking-contracts-modal"
 import { toast } from "sonner"
+import { downloadCommercialProposalFile } from "@/lib/propostas-comerciais-storage"
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -1910,8 +1911,6 @@ export function AdminDashboard({
       toast.error("Arquivo da proposta não encontrado.")
       return;
     }
-    const link = document.createElement("a");
-    link.href = proposal.arquivo_url;
     const extension = proposal.tipo_arquivo?.toLowerCase() === "pdf" ? "pdf" : "jpg";
     const safeName = (proposal.cliente_nome || "Cliente").trim().replace(/\s+/g, "_");
     let strategyName = "proposta_reducao"
@@ -1922,8 +1921,7 @@ export function AdminDashboard({
     } else if (proposal.isPersonalize) {
       strategyName = "proposta_personalizada"
     }
-    link.download = `${strategyName}_${safeName}.${extension}`;
-    link.click();
+    downloadCommercialProposalFile(proposal.arquivo_url, `${strategyName}_${safeName}.${extension}`);
   }, [])
 
   const handleDeleteProposal = React.useCallback(async (proposal: any) => {

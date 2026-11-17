@@ -69,6 +69,7 @@ import { loadTabelasConfigCache, resolvePercentualProducaoSync } from "@/compone
 import ExcelJS from "exceljs"
 import { saveAs } from "file-saver"
 import { PipelineIntelligenceDrawer } from "@/components/kanban/pipeline-intelligence-drawer"
+import { downloadCommercialProposalFile } from "@/lib/propostas-comerciais-storage"
 
 // Definição das Etapas do Kanban Comercial
 export type KanbanStage = 
@@ -2655,12 +2656,9 @@ export default function KanbanPage() {
 
   const handleDownloadProposalHistory = (proposal: Record<string, any>) => {
     if (!proposal.arquivo_url) return
-    const link = document.createElement("a")
-    link.href = proposal.arquivo_url
     const extension = proposal.tipo_arquivo?.toLowerCase() === "pdf" ? "pdf" : "jpg"
     const safeName = (proposal.cliente_nome || "Cliente").trim().replace(/\s+/g, "_")
-    link.download = `proposta_reducao_${safeName}.${extension}`
-    link.click()
+    downloadCommercialProposalFile(proposal.arquivo_url, `proposta_reducao_${safeName}.${extension}`)
   }
 
   // Sincronizar opção selecionada a partir da observação da ficha

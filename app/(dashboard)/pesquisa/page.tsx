@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { SimulationModal } from "@/components/simulation/simulation-modal"
 import { translateOrgao } from "@/lib/orgaos-mapping"
 import { getContractTypeInfo } from "@/lib/contratos-mapping"
+import { downloadCommercialProposalFile } from "@/lib/propostas-comerciais-storage"
 
 interface LoanData {
   banco: string;
@@ -670,11 +671,8 @@ export default function SearchClientPage() {
     const handleDownloadProposal = (proposal: any) => {
       if (proposal.isCalculadora || proposal.isPersonalize) {
         if (proposal.arquivo_url && proposal.arquivo_url.startsWith("http")) {
-          const link = document.createElement("a");
-          link.href = proposal.arquivo_url;
           const safeName = (proposal.cliente_nome || "Cliente").trim().replace(/\s+/g, "_");
-          link.download = `proposta_personalizada_${safeName}.pdf`;
-          link.click();
+          downloadCommercialProposalFile(proposal.arquivo_url, `proposta_personalizada_${safeName}.pdf`);
           return;
         }
         generatePersonalizedPdfWindow(proposal);
@@ -682,12 +680,9 @@ export default function SearchClientPage() {
       }
 
       if (!proposal.arquivo_url) return;
-      const link = document.createElement("a");
-      link.href = proposal.arquivo_url;
       const extension = proposal.tipo_arquivo?.toLowerCase() === "pdf" ? "pdf" : "jpg";
       const safeName = (proposal.cliente_nome || "Cliente").trim().replace(/\s+/g, "_");
-      link.download = `proposta_reducao_${safeName}.${extension}`;
-      link.click();
+      downloadCommercialProposalFile(proposal.arquivo_url, `proposta_reducao_${safeName}.${extension}`);
     };
 
     return (
