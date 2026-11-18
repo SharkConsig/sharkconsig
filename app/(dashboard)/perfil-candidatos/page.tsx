@@ -278,8 +278,25 @@ export default function PerfilCandidatosPage() {
     }
   }
 
-  // Filtragem de candidatos
-  const candidatosFiltrados = candidatos.filter(c => {
+  // Filtragem de candidatos por data e demais filtros
+  const inicioMs = filtroDataInicio ? new Date(`${filtroDataInicio}T00:00:00`).getTime() : null
+  const fimMs = filtroDataFim ? new Date(`${filtroDataFim}T23:59:59.999`).getTime() : null
+
+  const matchesDateFilter = (c: CandidatoItem) => {
+    if (inicioMs === null && fimMs === null) return true
+    const rawDate = c.data_conclusao || c.created_at
+    const refMs = rawDate ? new Date(rawDate).getTime() : NaN
+    if (isNaN(refMs)) return false
+    if (inicioMs !== null && refMs < inicioMs) return false
+    if (fimMs !== null && refMs > fimMs) return false
+    return true
+  }
+
+  const candidatosNoPeriodo = (inicioMs !== null || fimMs !== null)
+    ? candidatos.filter(matchesDateFilter)
+    : candidatos
+
+  const candidatosFiltrados = candidatosNoPeriodo.filter(c => {
     const matchStatus =
       filtroStatus === "TODOS"
         ? true
@@ -297,21 +314,8 @@ export default function PerfilCandidatosPage() {
       c.nome.toLowerCase().includes(buscaNorm) ||
       c.email.toLowerCase().includes(buscaNorm) ||
       (c.cargo_pretendido && c.cargo_pretendido.toLowerCase().includes(buscaNorm))
-    const inicioMs = filtroDataInicio ? new Date(`${filtroDataInicio}T00:00:00`).getTime() : null
-    const fimMs = filtroDataFim ? new Date(`${filtroDataFim}T23:59:59.999`).getTime() : null
-    let matchData = true
-    if (inicioMs !== null || fimMs !== null) {
-      const rawDate = c.data_conclusao || c.created_at
-      const refMs = rawDate ? new Date(rawDate).getTime() : NaN
-      if (isNaN(refMs)) {
-        matchData = false
-      } else {
-        if (inicioMs !== null && refMs < inicioMs) matchData = false
-        if (fimMs !== null && refMs > fimMs) matchData = false
-      }
-    }
 
-    return matchStatus && matchCargo && matchBusca && matchData
+    return matchStatus && matchCargo && matchBusca
   })
 
   // Candidato atualmente inspecionado
@@ -321,11 +325,11 @@ export default function PerfilCandidatosPage() {
 
   const perfilAtivo = candidatoAtivo?.perfilCalculado || null
 
-  // Métricas
-  const total = candidatos.length
-  const concluidos = candidatos.filter(c => c.status === "concluido").length
-  const pendentes = candidatos.filter(c => c.status === "pendente").length
-  const expirados = candidatos.filter(c => c.status === "expirado").length
+  // Métricas dos cards (refletem o intervalo de datas aplicado)
+  const total = candidatosNoPeriodo.length
+  const concluidos = candidatosNoPeriodo.filter(c => c.status === "concluido").length
+  const pendentes = candidatosNoPeriodo.filter(c => c.status === "pendente").length
+  const expirados = candidatosNoPeriodo.filter(c => c.status === "expirado").length
 
   return (
     <div className="min-h-screen bg-white text-slate-900 pb-16 flex flex-col">
@@ -374,7 +378,7 @@ export default function PerfilCandidatosPage() {
                     : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
                 )}
               >
-                Candidatos ({total})
+                Candidatos ({candidatos.length})
               </button>
               <button
                 onClick={() => {
