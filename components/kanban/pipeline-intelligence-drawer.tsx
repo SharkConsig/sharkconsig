@@ -29,6 +29,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "motion/react"
+import { useAuth } from "@/context/auth-context"
 
 export interface PipelineIntelligenceDrawerProps {
   isOpen: boolean
@@ -60,6 +61,12 @@ export function PipelineIntelligenceDrawer({
   getValorOperacaoDeAbertura,
   onSelectTicket
 }: PipelineIntelligenceDrawerProps) {
+  const { user, perfil } = useAuth()
+  const loggedUserName = useMemo(() => {
+    const raw = (perfil?.nome || user?.user_metadata?.nome || user?.email?.split("@")[0] || "Gestor").trim()
+    return raw || "Gestor"
+  }, [perfil?.nome, user?.user_metadata?.nome, user?.email])
+
   const handleClose = () => {
     onClose()
   }
@@ -1582,6 +1589,7 @@ export function PipelineIntelligenceDrawer({
       vipCount: vipRiskLeads.length,
       vipOperacao,
       vipProducao,
+      vipSamples: vipRiskLeads.slice(0, 3),
       topVipStage,
       topCapitalStage,
       topCapitalSharePct,
@@ -3099,486 +3107,613 @@ export function PipelineIntelligenceDrawer({
         </div>
           </motion.div>
 
-        {/* MODAL RESUMO EXECUTIVO — CENTRAL DE DIAGNÓSTICO ACIONÁVEL */}
+        {/* MODAL RESUMO EXECUTIVO — MENTOR CONVERSACIONAL DO GESTOR */}
         <AnimatePresence>
-          {isExecSummaryOpen && executiveSummaryData && (
-            <motion.div
-              key="exec-summary-overlay"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-              className="absolute inset-0 z-30 bg-slate-950/65 flex items-center justify-center p-4 sm:p-6 lg:p-8"
-              onClick={(e) => {
-                if (e.target === e.currentTarget) setIsExecSummaryOpen(false)
-              }}
-            >
+          {isExecSummaryOpen && executiveSummaryData && (() => {
+            const periodLabelMap: Record<PeriodFilter, string> = {
+              today: "hoje",
+              "7d": "nos últimos 7 dias",
+              "15d": "nos últimos 15 dias",
+              "30d": "nos últimos 30 dias",
+              month: "no mês atual",
+              all: "em todo o histórico completo"
+            }
+            const periodText = periodLabelMap[period]
+            const scopeDetails: string[] = []
+            if (selectedConvenios.length > 0) {
+              scopeDetails.push(selectedConvenios.length === 1 ? `convênio ${selectedConvenios[0]}` : `${selectedConvenios.length} convênios selecionados`)
+            }
+            if (selectedOperators.length > 0) {
+              scopeDetails.push(selectedOperators.length === 1 ? "1 colaborador filtrado" : `${selectedOperators.length} colaboradores filtrados`)
+            }
+            const scopeSuffix = scopeDetails.length > 0 ? ` (${scopeDetails.join(" • ")})` : ""
+
+            const totalFunnelSafe = Math.max(1, funnelAndOriginsData.totalFunnel)
+            const funnelVisualSlices = [
+              { key: "interacao", label: "Em interação", count: funnelAndOriginsData.totalEmInteracao, color: "bg-sky-500", dot: "bg-sky-500", text: "text-sky-700" },
+              { key: "retomada", label: "Retomada (s/ contato)", count: funnelAndOriginsData.totalEmRetomadaSemContato, color: "bg-amber-400", dot: "bg-amber-400", text: "text-amber-700" },
+              { key: "negociacao", label: "Em negociação", count: funnelAndOriginsData.totalEmNegociacaoAtual, color: "bg-indigo-500", dot: "bg-indigo-500", text: "text-indigo-700" },
+              { key: "reativacao", label: "Em reativação", count: funnelAndOriginsData.totalReativacao, color: "bg-purple-500", dot: "bg-purple-500", text: "text-purple-700" },
+              { key: "seminteresse", label: "Sem interesse", count: funnelAndOriginsData.totalSemInteresse, color: "bg-slate-400", dot: "bg-slate-400", text: "text-slate-600" },
+              { key: "fechado", label: "Fechado (ADEs)", count: funnelAndOriginsData.totalFechado, color: "bg-emerald-500", dot: "bg-emerald-500", text: "text-emerald-700" },
+              { key: "perdido", label: "Perdido", count: funnelAndOriginsData.totalPerdido, color: "bg-rose-500", dot: "bg-rose-500", text: "text-rose-700" }
+            ]
+
+            const topOriginsChart = funnelAndOriginsData.origins.slice(0, 5)
+            const maxOriginCount = Math.max(1, ...topOriginsChart.map(o => o.total))
+            const topTeamChart = speedToLeadData.ranking.filter(op => op.userId !== "unassigned").slice(0, 5)
+            const maxTeamFunil = Math.max(1, ...topTeamChart.map(op => op.totalFunil))
+
+            return (
               <motion.div
-                initial={{ opacity: 0, scale: 0.97, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.97, y: 10 }}
-                transition={{ duration: 0.2 }}
-                className="w-full max-w-6xl xl:max-w-[1260px] max-h-full bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
-                role="dialog"
-                aria-modal="true"
-                aria-label="Resumo Executivo do Pipeline"
+                key="exec-summary-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="absolute inset-0 z-30 bg-slate-950/65 flex items-center justify-center p-4 sm:p-6 lg:p-8"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) setIsExecSummaryOpen(false)
+                }}
               >
-                {/* Cabeçalho */}
-                <div className="px-7 py-4 bg-linear-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center shrink-0">
-                      <Sparkles className="w-5 h-5 text-amber-300" />
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.97, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.97, y: 10 }}
+                  transition={{ duration: 0.2 }}
+                  className="w-full max-w-5xl xl:max-w-[1140px] max-h-full bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Resumo Executivo"
+                >
+                  {/* Cabeçalho */}
+                  <div className="px-6 lg:px-8 py-4 bg-linear-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center shrink-0">
+                        <Sparkles className="w-5 h-5 text-amber-300" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
+                          Resumo Executivo
+                        </h3>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
-                        Resumo Executivo
-                      </h3>
-                      <p className="text-xs text-slate-300 mt-0.5">
-                        Base filtrada: <strong className="text-white">{filteredTickets.length} atendimentos</strong> • Pipeline ativo (Valor Operação): <strong className="text-emerald-300">{fmtCurrency(stageAgingData.grandTotalCapital)}</strong> e Produção Estimada de: <strong className="text-[#05BDFF]">{fmtCurrency(stageAgingData.grandTotalProducao)}</strong>
+                    <button
+                      type="button"
+                      onClick={() => setIsExecSummaryOpen(false)}
+                      className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      title="Fechar Resumo Executivo"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Corpo Conversacional com Gráficos, Amostras e Orientações */}
+                  <div className="flex-1 overflow-y-auto px-6 lg:px-8 py-6 space-y-6 bg-slate-50/70 text-slate-800">
+                    {/* CARTA DE ABERTURA DO MENTOR */}
+                    <div className="bg-white border border-indigo-200 rounded-2xl p-5 lg:p-6 shadow-2xs space-y-3.5">
+                      <div className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                        {loggedUserName},
+                      </div>
+                      <p className="text-[13px] sm:text-sm text-slate-700 leading-relaxed">
+                        Analisando tudo o que entrou e circulou pelo pipeline <strong className="text-slate-900">{periodText}{scopeSuffix}</strong>, sua equipe movimentou{" "}
+                        <strong className="text-indigo-700">{funnelAndOriginsData.totalFunnel} atendimentos</strong>, sendo que{" "}
+                        <strong className="text-slate-900">{funnelAndOriginsData.withMarginPct}% dos leads</strong> chegaram com margem financeira viável para operação.
+                        Dessa base, <strong className="text-slate-900">{funnelAndOriginsData.totalAlcanceNegociacao} clientes ({funnelAndOriginsData.reachedNegPct}%)</strong> avançaram até a etapa de negociação e{" "}
+                        <strong className="text-emerald-700">{funnelAndOriginsData.totalFechado} viraram ADEs fechadas</strong> — uma conversão de{" "}
+                        <strong className="text-emerald-700">{funnelAndOriginsData.funnelConvPct}% sobre todo o funil</strong> (e{" "}
+                        <strong>{funnelAndOriginsData.negToAdePct}%</strong> sobre quem entrou em negociação), somando{" "}
+                        <strong className="text-emerald-700">{fmtCurrency(funnelAndOriginsData.totalProducaoFechada)}</strong> em produção fechada
+                        {funnelAndOriginsData.totalOperacaoFechada > 0 ? ` (${fmtCurrency(funnelAndOriginsData.totalOperacaoFechada)} em operação)` : ""}.
                       </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsExecSummaryOpen(false)}
-                    className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                    title="Fechar Resumo Executivo"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
+                      <p className="text-[13px] sm:text-sm text-slate-700 leading-relaxed">
+                        Neste momento, ainda existem <strong className="text-emerald-700">{fmtCurrency(stageAgingData.grandTotalCapital)}</strong> em operação ativos dentro de casa, com potencial de{" "}
+                        <strong className="text-sky-600">{fmtCurrency(stageAgingData.grandTotalProducao)} em produção estimada</strong>. Quando a equipe fecha uma proposta, o tempo médio entre iniciar a negociação e gerar a ADE está em{" "}
+                        <strong className="text-slate-900">{fmtDurationShort(speedToLeadData.generalAvgMinutes)}</strong>.
+                      </p>
 
-                {/* Pulso Rápido */}
-                <div className="px-7 py-4 bg-slate-50 border-b border-slate-200 grid grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-                  <div className="bg-white rounded-xl border border-orange-200 p-3.5">
-                    <div className="text-[10px] font-bold uppercase text-orange-700">VIPs (&gt;30k) em Risco</div>
-                    <div className="text-lg font-black text-slate-900 mt-1">{executiveSummaryData.vipCount} leads</div>
-                    <div className="text-xs font-semibold text-sky-600 mt-0.5">
-                      Prod. Est.: {fmtCurrency(executiveSummaryData.vipProducao)}
-                    </div>
-                  </div>
-                  <div className="bg-white rounded-xl border border-amber-200 p-3.5">
-                    <div className="text-[10px] font-bold uppercase text-amber-700">Estagnados (&gt;48h)</div>
-                    <div className="text-lg font-black text-slate-900 mt-1">
-                      {stageAgingData.grandTotalStuck48hCount} ({executiveSummaryData.stuckBasePct}%)
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">da base analisada</div>
-                  </div>
-                  <div className="bg-white rounded-xl border border-sky-200 p-3.5">
-                    <div className="text-[10px] font-bold uppercase text-sky-700">Tempo Médio ➔ ADE</div>
-                    <div className="text-lg font-black text-slate-900 mt-1">
-                      {fmtDurationShort(speedToLeadData.generalAvgMinutes)}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {executiveSummaryData.totalPropostas} propostas / {executiveSummaryData.totalNegociacoes} neg.
-                    </div>
-                  </div>
-                  <div className="bg-white rounded-xl border border-rose-200 p-3.5">
-                    <div className="text-[10px] font-bold uppercase text-rose-700">CPFs Duplicados</div>
-                    <div className="text-lg font-black text-slate-900 mt-1">
-                      {executiveSummaryData.totalDuplicateClients} clientes
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">com múltiplos cards ativos</div>
-                  </div>
-                </div>
-
-                {/* Corpo Diagnóstico (Mentor do Funil + VIP/Capital + SLA/Equipe + Afinidade/CPFs) */}
-                <div className="flex-1 overflow-y-auto p-6 lg:p-7 space-y-5 bg-slate-50/60">
-                  {/* BLOCO 0: MENTOR DO FUNIL COMPLETO & QUALIDADE DAS ORIGENS */}
-                  <div className="bg-white border border-indigo-200 rounded-xl p-5 shadow-2xs space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-                          <Layers className="w-4 h-4" />
-                        </span>
-                        <div>
-                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
-                            Mentor do Funil: Jornada do Cliente, Origens e Investimento em Bases
-                          </h4>
-                          <p className="text-[11px] text-slate-500 mt-0.5">
-                            Visão de ponta a ponta: entrada, contato real, margem viável e retorno por lista/origem
-                          </p>
+                      {/* RAIO-X GRÁFICO DO FUNIL (6 ETAPAS + QUEBRA DE CONTATO) */}
+                      <div className="pt-3 border-t border-slate-100 space-y-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <BarChart3 className="w-4 h-4 text-indigo-600" />
+                            Raio-X Visual da Jornada ({funnelAndOriginsData.totalFunnel} leads distribuídos nas etapas)
+                          </span>
+                          <span className="text-[11px] text-slate-500">
+                            Passe o foco pelas cores para comparar onde o volume está concentrado
+                          </span>
+                        </div>
+                        <div className="w-full h-4 rounded-full bg-slate-100 overflow-hidden flex border border-slate-200">
+                          {funnelVisualSlices.map(slice => {
+                            if (slice.count <= 0) return null
+                            const pct = (slice.count / totalFunnelSafe) * 100
+                            return (
+                              <div
+                                key={slice.key}
+                                title={`${slice.label}: ${slice.count} leads (${Math.round(pct)}%)`}
+                                className={cn("h-full transition-all", slice.color)}
+                                style={{ width: `${Math.max(pct, 1.5)}%` }}
+                              />
+                            )
+                          })}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
+                          {funnelVisualSlices.map(slice => (
+                            <span key={`leg-${slice.key}`} className="inline-flex items-center gap-1.5 text-slate-700">
+                              <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", slice.dot)} />
+                              <span>{slice.label}:</span>
+                              <strong className={slice.text}>
+                                {slice.count} ({Math.round((slice.count / totalFunnelSafe) * 100)}%)
+                              </strong>
+                            </span>
+                          ))}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab("funnel")
-                          setIsExecSummaryOpen(false)
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
-                      >
-                        <span>Abrir Funil &amp; Origens</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                      <div className="bg-indigo-50/60 border border-indigo-200 rounded-lg p-4 space-y-2">
-                        <div className="text-[10px] font-black uppercase text-indigo-900">
-                          Saúde da Jornada (6 Etapas) &amp; Margem
-                        </div>
-                        <ul className="space-y-1.5 text-slate-700 leading-relaxed">
-                          <li>
-                            • Entraram <strong>{funnelAndOriginsData.totalFunnel} leads</strong> no pipeline ({funnelAndOriginsData.withMarginPct}% com margem viável).
-                          </li>
-                          <li>
-                            • Topo (&apos;Em interação ou retomada&apos;): <strong>{funnelAndOriginsData.totalEmInteracao} em interação</strong> vs <strong>{funnelAndOriginsData.totalEmRetomadaSemContato} sem contato</strong> em Retomada.
-                          </li>
-                          <li>
-                            • Avançaram p/ Negociação: <strong>{funnelAndOriginsData.totalAlcanceNegociacao} ({funnelAndOriginsData.reachedNegPct}%)</strong> • Fechados: <strong className="text-emerald-700">{funnelAndOriginsData.totalFechado} ADEs ({funnelAndOriginsData.funnelConvPct}%)</strong> • Perdidos: <strong className="text-rose-700">{funnelAndOriginsData.totalPerdido}</strong>.
-                          </li>
-                        </ul>
-                      </div>
-
-                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
-                        <div className="text-[10px] font-black uppercase text-slate-800">
-                          Retorno das Origens (Listas / Canais)
-                        </div>
-                        {executiveSummaryData.bestOriginMatches.length > 0 && (
-                          <div className="space-y-1">
-                            <div className="text-[11px] font-bold text-emerald-700">Melhores origens p/ investir:</div>
-                            {executiveSummaryData.bestOriginMatches.slice(0, 2).map(o => (
-                              <div key={`best-orig-${o.key}`} className="flex items-center justify-between text-[11px] text-slate-700">
-                                <span className="truncate pr-2"><strong>{o.label}</strong> ({o.total} leads • {o.marginPct}% c/ margem)</span>
-                                <span className="font-bold text-emerald-700 shrink-0">{o.fechado} ADEs ({o.convPct}%)</span>
-                              </div>
-                            ))}
+                    {/* SEÇÃO 1 & 2: PONTOS POSITIVOS vs PONTOS NEGATIVOS / ATENÇÃO */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                      {/* PONTOS POSITIVOS */}
+                      <div className="bg-white border border-emerald-200 rounded-2xl p-5 shadow-2xs space-y-3.5">
+                        <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-emerald-100">
+                          <div className="flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                              <CheckCircle2 className="w-4 h-4" />
+                            </span>
+                            <h4 className="text-xs font-black uppercase tracking-wide text-emerald-900">
+                              Pontos Positivos — O que está funcionando
+                            </h4>
                           </div>
-                        )}
-                        {executiveSummaryData.alertOrigins.length > 0 && (
-                          <div className="space-y-1 pt-1.5 border-t border-slate-200">
-                            <div className="text-[11px] font-bold text-rose-700">Origens em alerta (contato/margem/perda):</div>
-                            {executiveSummaryData.alertOrigins.slice(0, 2).map(o => (
-                              <div key={`alert-orig-${o.key}`} className="flex items-center justify-between text-[11px] text-slate-600">
-                                <span className="truncate pr-2"><strong>{o.label}</strong> ({o.total} leads)</span>
-                                <span className="font-semibold text-rose-700 shrink-0">{o.roiVerdict}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {executiveSummaryData.bestOriginMatches.length === 0 && executiveSummaryData.alertOrigins.length === 0 && (
-                          <p className="text-slate-600 text-[11px]">Amostra por origem ainda em formação no período selecionado.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* BLOCO 1: Oportunidade Ouro & Potencial Represado (Eixos 1 e 5) */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-8 h-8 rounded-lg bg-orange-100 text-orange-700 flex items-center justify-center shrink-0">
-                          <Flame className="w-4 h-4" />
-                        </span>
-                        <div>
-                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
-                            1. Oportunidade Ouro &amp; Potencial dentro de Casa
-                          </h4>
-                          <p className="text-[11px] text-slate-500 mt-0.5">Onde está o dinheiro mais rápido de recuperar agora</p>
                         </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveTab("risk")
-                            setRiskTierFilter("high")
-                            setRiskStageFilters([])
-                            setSearchRiskQuery("")
-                            setIsExecSummaryOpen(false)
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
-                        >
-                          <span>Resgatar VIPs no Radar</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveTab("funnel")
-                            setIsExecSummaryOpen(false)
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold cursor-pointer transition-colors"
-                        >
-                          Ver Etapas
-                        </button>
-                      </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                      <div className="bg-orange-50/70 border border-orange-200 rounded-lg p-4 space-y-1.5">
-                        <div className="text-[10px] font-black uppercase text-orange-800">
-                          Alerta Prioritário (&gt; 30k parados há +48h)
-                        </div>
-                        {executiveSummaryData.vipCount > 0 ? (
-                          <p className="text-slate-700 leading-relaxed">
-                            Existem <strong className="text-slate-900">{executiveSummaryData.vipCount} leads VIP</strong> esfriando, somando{" "}
-                            <strong className="text-emerald-700">{fmtCurrency(executiveSummaryData.vipOperacao)}</strong> em operação (
-                            <strong className="text-sky-600">{fmtCurrency(executiveSummaryData.vipProducao)}</strong> em produção estimada).
-                            {executiveSummaryData.topVipStage && (
+                        <div className="space-y-3 text-[12.5px] text-slate-700 leading-relaxed">
+                          <p>
+                            • <strong>Contato no topo e força de negociação:</strong>{" "}
+                            {funnelAndOriginsData.totalEmInteracao > 0 ? (
                               <>
-                                {" "}Maior concentração na etapa <strong>{executiveSummaryData.topVipStage.label}</strong> ({executiveSummaryData.topVipStage.count} leads • {fmtCurrency(executiveSummaryData.topVipStage.operacao)}).
+                                temos <strong className="text-sky-700">{funnelAndOriginsData.totalEmInteracao} leads interagindo ativamente</strong> na entrada do funil ({funnelAndOriginsData.interacaoPct}% dos que estão na etapa inicial)
+                                {funnelAndOriginsData.topOriginsInInteracao[0] ? `, puxados principalmente pela origem ${funnelAndOriginsData.topOriginsInInteracao[0].label}` : ""}.
+                              </>
+                            ) : (
+                              <>
+                                {funnelAndOriginsData.totalAlcanceNegociacao} leads avançaram para negociação direta ({funnelAndOriginsData.reachedNegPct}% da base).
                               </>
                             )}
                           </p>
-                        ) : (
-                          <p className="text-slate-600">Nenhum lead VIP (&gt;30k) parado há mais de 48h nos filtros atuais.</p>
-                        )}
-                      </div>
 
-                      <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg p-4 space-y-1.5">
-                        <div className="text-[10px] font-black uppercase text-emerald-800">
-                          Previsibilidade &amp; Capital Engatilhado
-                        </div>
-                        <p className="text-slate-700 leading-relaxed">
-                          {executiveSummaryData.topCapitalStage ? (
-                            <>
-                              A etapa <strong>{executiveSummaryData.topCapitalStage.label}</strong> concentra{" "}
-                              <strong>{executiveSummaryData.topCapitalSharePct}%</strong> do capital ({fmtCurrency(executiveSummaryData.topCapitalStage.totalOperacao)}).{" "}
-                            </>
-                          ) : null}
-                          Somando Reativação e Retomada, há{" "}
-                          <strong className="text-emerald-700">{fmtCurrency(executiveSummaryData.warmRepresadoOperacao)}</strong> já dentro de casa (
-                          <strong className="text-sky-600">{fmtCurrency(executiveSummaryData.warmRepresadoProducao)}</strong> em prod. est.), contra{" "}
-                          <strong>{executiveSummaryData.negStage?.count || 0} leads</strong> ({fmtCurrency(executiveSummaryData.negStage?.totalOperacao || 0)}) atualmente Em Negociação.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* BLOCO 2: Eficiência da Equipe & Gargalos de SLA (Eixo 3) */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-8 h-8 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
-                          <Zap className="w-4 h-4" />
-                        </span>
-                        <div>
-                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
-                            2. Eficiência da Equipe (Corretores &amp; Estagiários) e SLA
-                          </h4>
-                          <p className="text-[11px] text-slate-500 mt-0.5">Entrada no funil, conversão ponta a ponta e velocidade até a ADE</p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab("team")
-                          setIsExecSummaryOpen(false)
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
-                      >
-                        <span>Auditar Equipe Completa</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                      <div className="bg-sky-50/70 border border-sky-200 rounded-lg p-4 space-y-2">
-                        <div className="text-[10px] font-black uppercase text-sky-800">Destaques de Captação, Conversão &amp; Agilidade</div>
-                        <ul className="space-y-1.5 text-slate-700 leading-relaxed">
-                          <li>
-                            • Tempo médio geral da equipe: <strong className="text-slate-900">{fmtDurationShort(speedToLeadData.generalAvgMinutes)}</strong> (média de <strong>{speedToLeadData.avgLeadsPerOp} leads</strong>/colaborador).
-                          </li>
-                          {executiveSummaryData.topFunnelContributors[0] && (
-                            <li>
-                              • Maior entrada no funil: <strong>{executiveSummaryData.topFunnelContributors[0].userName}</strong> ({executiveSummaryData.topFunnelContributors[0].totalFunil} leads • {executiveSummaryData.topFunnelContributors[0].funnelConvRate}% conv. funil).
-                            </li>
+                          {(executiveSummaryData.volumeLeader || executiveSummaryData.fastestOp || executiveSummaryData.topFunnelContributors[0]) && (
+                            <p>
+                              • <strong>Destaques do time:</strong>{" "}
+                              {executiveSummaryData.volumeLeader && (
+                                <>
+                                  <strong>{executiveSummaryData.volumeLeader.userName}</strong> lidera os fechamentos com{" "}
+                                  <strong className="text-emerald-700">{executiveSummaryData.volumeLeader.totalPropostasDigitadas} ADEs</strong> ({executiveSummaryData.volumeLeader.negConvRate}% de conversão em negociação).{" "}
+                                </>
+                              )}
+                              {executiveSummaryData.fastestOp && (
+                                <>
+                                  Na velocidade, <strong>{executiveSummaryData.fastestOp.userName}</strong> é a referência levando apenas{" "}
+                                  <strong className="text-emerald-700">{fmtDurationShort(executiveSummaryData.fastestOp.avgMinutesToAde)}</strong> até gerar a ADE.{" "}
+                                </>
+                              )}
+                              {executiveSummaryData.topFunnelContributors[0] && (
+                                <>
+                                  Já <strong>{executiveSummaryData.topFunnelContributors[0].userName}</strong> foi quem mais abasteceu o funil ({executiveSummaryData.topFunnelContributors[0].totalFunil} leads).
+                                </>
+                              )}
+                            </p>
                           )}
-                          {executiveSummaryData.volumeLeader && (
-                            <li>
-                              • Líder em ADEs geradas: <strong>{executiveSummaryData.volumeLeader.userName}</strong> ({executiveSummaryData.volumeLeader.totalPropostasDigitadas} propostas • {executiveSummaryData.volumeLeader.negConvRate}% neg. ➔ ADE).
-                            </li>
-                          )}
-                          {executiveSummaryData.fastestOp && (
-                            <li>
-                              • Maior agilidade: <strong>{executiveSummaryData.fastestOp.userName}</strong> em{" "}
-                              <strong className="text-emerald-700">{fmtDurationShort(executiveSummaryData.fastestOp.avgMinutesToAde)}</strong>.
-                            </li>
-                          )}
-                        </ul>
-                      </div>
 
-                      <div className="bg-rose-50/60 border border-rose-200 rounded-lg p-4 space-y-2">
-                        <div className="text-[10px] font-black uppercase text-rose-800">
-                          Atenção Gerencial (Baixa Entrada / Gargalos)
-                        </div>
-                        {executiveSummaryData.bottleneckOps.length > 0 || executiveSummaryData.lowEntryOps.length > 0 ? (
-                          <ul className="space-y-1.5 text-slate-700 leading-relaxed">
-                            {executiveSummaryData.lowEntryOps.slice(0, 2).map(op => (
-                              <li key={`low-${op.userId}`}>
-                                • <strong>{op.userName}</strong> ({op.roleLabel}): apenas <strong>{op.totalFunil} leads</strong> no funil (abaixo da média).
-                              </li>
-                            ))}
-                            {executiveSummaryData.bottleneckOps.slice(0, 3).map(op => (
-                              <li key={op.userId}>
-                                • <strong>{op.userName}</strong>: SLA {fmtDurationShort(op.avgMinutesToAde)} • {op.convRate}% avanço
-                                {op.stuck48hCount > 0 ? ` (${op.stuck48hCount} parados >48h)` : ""}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-slate-600">Equipe com volume equilibrado no funil e sem gargalos críticos neste recorte.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* BLOCO 3: Roteamento Inteligente & Higienização de CPFs (Eixos 2 e 4) */}
-                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-                          <Award className="w-4 h-4" />
-                        </span>
-                        <div>
-                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
-                            3. Sugestões de Roteamento &amp; Conflitos de Atendimento
-                          </h4>
-                          <p className="text-[11px] text-slate-500 mt-0.5">Onde aumentar conversão sem custo extra e eliminar duplicidades</p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab("affinity")
-                          setIsExecSummaryOpen(false)
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
-                      >
-                        <span>Abrir Matriz Cruzada</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                      {/* Roteamento por Afinidade */}
-                      <div className="bg-indigo-50/60 border border-indigo-200 rounded-lg p-4 space-y-2.5">
-                        <div className="text-[10px] font-black uppercase text-indigo-900">
-                          Ajuste de Roleta por Convênio &amp; Ticket
-                        </div>
-                        {executiveSummaryData.bestConvenioMatches.length > 0 ? (
-                          <div className="space-y-1.5">
-                            <div className="text-[11px] font-bold text-emerald-700">Direcionar leads para:</div>
-                            {executiveSummaryData.bestConvenioMatches.map(m => (
-                              <div key={`${m.convenio}-${m.userName}`} className="text-slate-700 flex items-center justify-between gap-3">
-                                <span className="truncate">
-                                  <strong>{m.userName}</strong> ➔ {m.convenio}
-                                </span>
-                                <span className="shrink-0 font-bold text-emerald-700">
-                                  {m.rate}% ({m.converted}/{m.total})
-                                </span>
+                          {executiveSummaryData.bestOriginMatches.length > 0 ? (
+                            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 space-y-1.5">
+                              <div className="text-[10.5px] font-black uppercase text-emerald-800">
+                                Origens que estão pagando o investimento:
                               </div>
-                            ))}
-                            {executiveSummaryData.bestHighTierMatch && (
-                              <div className="text-slate-700 flex items-center justify-between gap-3 pt-1.5 border-t border-indigo-200/70">
-                                <span className="truncate">
-                                  <strong>{executiveSummaryData.bestHighTierMatch.userName}</strong> ➔ Ticket Alto (&gt;30k)
-                                </span>
-                                <span className="shrink-0 font-bold text-indigo-700">
-                                  {executiveSummaryData.bestHighTierMatch.rate}% ({executiveSummaryData.bestHighTierMatch.converted}/{executiveSummaryData.bestHighTierMatch.total})
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-slate-600">Amostra insuficiente de negociações para recomendar matches por convênio.</p>
-                        )}
-
-                        {executiveSummaryData.wasteMatches.length > 0 && (
-                          <div className="pt-2.5 border-t border-indigo-200/70 space-y-1.5">
-                            <div className="text-[11px] font-bold text-rose-700">Evitar envio (conversão zerada/baixa):</div>
-                            {executiveSummaryData.wasteMatches.map(w => (
-                              <div key={`${w.userName}-${w.convenio}`} className="text-slate-600 flex items-center justify-between gap-3 text-[11px]">
-                                <span className="truncate">
-                                  {w.userName} em <strong>{w.convenio}</strong>
-                                </span>
-                                <span className="shrink-0 font-bold text-rose-600">
-                                  {w.rate}% ({w.converted}/{w.total})
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Conflitos / CPFs Duplicados */}
-                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2.5">
-                        <div className="text-[10px] font-black uppercase text-slate-700 flex items-center gap-1.5">
-                          <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
-                          Higienização: CPFs em Múltiplos Cards Ativos
-                        </div>
-                        {executiveSummaryData.duplicateConflicts.length > 0 ? (
-                          <div className="space-y-2.5">
-                            {executiveSummaryData.duplicateConflicts.map(dup => (
-                              <div
-                                key={dup.cpfDigits}
-                                className="bg-white border border-slate-200 rounded-lg p-3 flex flex-col gap-2"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="font-bold text-slate-900 truncate">{dup.clientName}</div>
-                                    <div className="text-[10.5px] text-slate-500 mt-0.5">
-                                      CPF: {dup.displayCpf} • <strong>{dup.ticketCount} cards</strong> ({dup.uniqueOperators.join(", ")})
-                                    </div>
-                                  </div>
-                                  <span className="text-xs font-black text-emerald-700 shrink-0">
-                                    {fmtCurrency(dup.maxOperacao)}
+                              {executiveSummaryData.bestOriginMatches.slice(0, 3).map(o => (
+                                <div key={`pos-orig-${o.key}`} className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="truncate">
+                                    <strong>{o.label}</strong> ({o.total} leads • {o.marginPct}% c/ margem)
+                                  </span>
+                                  <span className="font-bold text-emerald-700 shrink-0">
+                                    {o.fechado} ADEs ({o.convPct}%)
                                   </span>
                                 </div>
-                                <div className="flex items-center justify-between gap-2 text-[10.5px]">
-                                  <span className="text-rose-600 font-semibold">
-                                    {dup.isMultiOperator ? "Conflito entre corretores" : "Cards duplicados"} • até {Math.floor(dup.maxHoursInactive / 24)}d parado
+                              ))}
+                            </div>
+                          ) : (
+                            <p>• <strong>Origens em maturação:</strong> continue acompanhando as novas listas para consolidar quais entregam mais ADEs por real investido.</p>
+                          )}
+
+                          {executiveSummaryData.bestConvenioMatches.length > 0 && (
+                            <p>
+                              • <strong>Afinidade comprovada na roleta:</strong>{" "}
+                              {executiveSummaryData.bestConvenioMatches.slice(0, 2).map((m, idx) => (
+                                <span key={`aff-pos-${m.convenio}-${m.userName}`}>
+                                  {idx > 0 ? " e " : ""}
+                                  <strong>{m.userName}</strong> em <strong>{m.convenio}</strong> ({m.rate}% em {m.total} negociações)
+                                </span>
+                              ))}
+                              {executiveSummaryData.bestHighTierMatch && (
+                                <>
+                                  {" "}— e <strong>{executiveSummaryData.bestHighTierMatch.userName}</strong> performa melhor em tickets acima de 30k ({executiveSummaryData.bestHighTierMatch.rate}%).
+                                </>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* PONTOS NEGATIVOS & ATENÇÃO */}
+                      <div className="bg-white border border-rose-200 rounded-2xl p-5 shadow-2xs space-y-3.5">
+                        <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-rose-100">
+                          <div className="flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+                              <AlertTriangle className="w-4 h-4" />
+                            </span>
+                            <h4 className="text-xs font-black uppercase tracking-wide text-rose-900">
+                              Pontos Negativos &amp; O que precisa de atenção
+                            </h4>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 text-[12.5px] text-slate-700 leading-relaxed">
+                          <p>
+                            • <strong>Gargalo de contato &amp; perdas:</strong>{" "}
+                            ainda temos <strong className="text-amber-700">{funnelAndOriginsData.totalEmRetomadaSemContato} leads sem resposta em Retomada</strong>
+                            {funnelAndOriginsData.topOriginsInRetomada[0] ? ` (maior volume vindo de ${funnelAndOriginsData.topOriginsInRetomada[0].label})` : ""}, além de{" "}
+                            <strong className="text-purple-700">{funnelAndOriginsData.totalReativacao} em reativação</strong> e{" "}
+                            <strong className="text-rose-700">{funnelAndOriginsData.totalPerdido} atendimentos perdidos</strong>.
+                          </p>
+
+                          {executiveSummaryData.alertOrigins.length > 0 && (
+                            <div className="bg-rose-50/70 border border-rose-200/80 rounded-xl p-3 space-y-1.5">
+                              <div className="text-[10.5px] font-black uppercase text-rose-800">
+                                Cuidado ao investir nestas origens (baixo contato/margem):
+                              </div>
+                              {executiveSummaryData.alertOrigins.slice(0, 3).map(o => (
+                                <div key={`neg-orig-${o.key}`} className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="truncate">
+                                    <strong>{o.label}</strong> ({o.total} leads • {o.marginPct}% margem)
                                   </span>
-                                  {dup.criticalCount > 0 && (
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setActiveTab("risk")
-                                          setRiskTierFilter("all")
-                                          setRiskStageFilters([])
-                                          setSearchRiskQuery(dup.cpfDigits)
-                                          setIsExecSummaryOpen(false)
-                                        }}
-                                        className="px-2.5 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold border border-rose-200 cursor-pointer"
-                                      >
-                                        Filtrar no Radar
-                                      </button>
-                                    </div>
+                                  <span className="font-semibold text-rose-700 shrink-0 text-[11px]">
+                                    {o.roiVerdict}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <p>
+                            • <strong>Risco de queima (&gt;48h sem avanço):</strong>{" "}
+                            há <strong className="text-rose-700">{stageAgingData.grandTotalStuck48hCount} leads ativos ({executiveSummaryData.stuckBasePct}% da base)</strong> parados há mais de 2 dias. Entre eles,{" "}
+                            <strong className="text-orange-700">{executiveSummaryData.vipCount} são clientes VIP (&gt;30k)</strong> que somam{" "}
+                            <strong className="text-sky-700">{fmtCurrency(executiveSummaryData.vipProducao)} em produção estimada</strong>
+                            {executiveSummaryData.topVipStage ? `, concentrados principalmente em ${executiveSummaryData.topVipStage.label}` : ""}.
+                          </p>
+
+                          {(executiveSummaryData.lowEntryOps.length > 0 || executiveSummaryData.bottleneckOps.length > 0) && (
+                            <p>
+                              • <strong>Desequilíbrio na equipe:</strong>{" "}
+                              {executiveSummaryData.lowEntryOps.length > 0 && (
+                                <>
+                                  {executiveSummaryData.lowEntryOps.slice(0, 2).map((op, i) => (
+                                    <span key={`low-txt-${op.userId}`}>
+                                      {i > 0 ? ", " : ""}
+                                      <strong>{op.userName}</strong> ({op.totalFunil} leads)
+                                    </span>
+                                  ))}{" "}
+                                  estão colocando menos leads no funil do que a média da operação ({speedToLeadData.avgLeadsPerOp} leads/pessoa).{" "}
+                                </>
+                              )}
+                              {executiveSummaryData.bottleneckOps.length > 0 && (
+                                <>
+                                  Em velocidade/conversão, vale acompanhar de perto{" "}
+                                  {executiveSummaryData.bottleneckOps.slice(0, 2).map((op, i) => (
+                                    <span key={`bn-txt-${op.userId}`}>
+                                      {i > 0 ? " e " : ""}
+                                      <strong>{op.userName}</strong> ({op.convRate}% avanço, SLA {fmtDurationShort(op.avgMinutesToAde)})
+                                    </span>
+                                  ))}.
+                                </>
+                              )}
+                            </p>
+                          )}
+
+                          {executiveSummaryData.wasteMatches.length > 0 && (
+                            <p>
+                              • <strong>Desperdício de roleta:</strong> evite direcionar{" "}
+                              {executiveSummaryData.wasteMatches.slice(0, 2).map((w, i) => (
+                                <span key={`w-txt-${w.userName}-${w.convenio}`}>
+                                  {i > 0 ? " ou " : ""}
+                                  <strong>{w.convenio}</strong> para <strong>{w.userName}</strong> ({w.rate}% em {w.total} leads)
+                                </span>
+                              ))}.
+                            </p>
+                          )}
+
+                          {executiveSummaryData.totalDuplicateClients > 0 && (
+                            <p>
+                              • <strong>Higienização de carteira:</strong> existem{" "}
+                              <strong className="text-rose-700">{executiveSummaryData.totalDuplicateClients} CPFs duplicados</strong> em cards ativos ao mesmo tempo — risco de dois colaboradores abordarem o mesmo cliente.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SEÇÃO 3: GRÁFICOS COMPARATIVOS (ORIGENS & EQUIPE) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                      {/* Gráfico de Origens */}
+                      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
+                              Principais Origens de Leads
+                            </h4>
+                            <p className="text-[11px] text-slate-500">Volume no funil, % com margem viável e ADEs convertidas</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab("funnel")
+                              setIsExecSummaryOpen(false)
+                            }}
+                            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer flex items-center gap-1"
+                          >
+                            <span>Ver todas</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {topOriginsChart.length === 0 ? (
+                          <p className="text-xs text-slate-400 italic py-4">Sem dados de origem neste filtro.</p>
+                        ) : (
+                          <div className="space-y-2.5 pt-1">
+                            {topOriginsChart.map(o => {
+                              const barWidth = Math.max(6, Math.round((o.total / maxOriginCount) * 100))
+                              const adeWidth = o.total > 0 ? Math.round((o.fechado / maxOriginCount) * 100) : 0
+                              return (
+                                <div key={`chart-orig-${o.key}`} className="space-y-1">
+                                  <div className="flex items-center justify-between text-[11px]">
+                                    <span className="font-bold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
+                                    <span className="text-slate-600 shrink-0 tabular-nums">
+                                      <strong>{o.total}</strong> leads • <span className="text-sky-700 font-semibold">{o.marginPct}% margem</span> •{" "}
+                                      <strong className="text-emerald-700">{o.fechado} ADEs ({o.convPct}%)</strong>
+                                    </span>
+                                  </div>
+                                  <div className="w-full h-3 rounded-full bg-slate-100 overflow-hidden relative border border-slate-200/80">
+                                    <div className="h-full bg-indigo-200 rounded-full" style={{ width: `${barWidth}%` }} />
+                                    {adeWidth > 0 && (
+                                      <div className="h-full bg-emerald-500 rounded-full absolute left-0 top-0" style={{ width: `${Math.max(adeWidth, 3)}%` }} />
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Gráfico de Equipe */}
+                      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
+                              Produção da Equipe
+                            </h4>
+                            <p className="text-[11px] text-slate-500">Leads colocados no funil vs propostas fechadas (ADE)</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab("team")
+                              setIsExecSummaryOpen(false)
+                            }}
+                            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer flex items-center gap-1"
+                          >
+                            <span>Auditar equipe</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {topTeamChart.length === 0 ? (
+                          <p className="text-xs text-slate-400 italic py-4">Sem operadores atribuídos neste filtro.</p>
+                        ) : (
+                          <div className="space-y-2.5 pt-1">
+                            {topTeamChart.map(op => {
+                              const funilWidth = Math.max(6, Math.round((op.totalFunil / maxTeamFunil) * 100))
+                              const adeWidth = op.totalPropostasDigitadas > 0 ? Math.round((op.totalPropostasDigitadas / maxTeamFunil) * 100) : 0
+                              return (
+                                <div key={`chart-op-${op.userId}`} className="space-y-1">
+                                  <div className="flex items-center justify-between text-[11px]">
+                                    <span className="font-bold text-slate-800 truncate pr-2">
+                                      {op.userName} <span className="text-[10px] font-normal text-slate-500">({op.roleLabel})</span>
+                                    </span>
+                                    <span className="text-slate-600 shrink-0 tabular-nums">
+                                      <strong>{op.totalFunil}</strong> funil •{" "}
+                                      <strong className="text-emerald-700">{op.totalPropostasDigitadas} ADEs ({op.funnelConvRate}%)</strong>
+                                    </span>
+                                  </div>
+                                  <div className="w-full h-3 rounded-full bg-slate-100 overflow-hidden relative border border-slate-200/80">
+                                    <div className="h-full bg-sky-200 rounded-full" style={{ width: `${funilWidth}%` }} />
+                                    {adeWidth > 0 && (
+                                      <div className="h-full bg-emerald-500 rounded-full absolute left-0 top-0" style={{ width: `${Math.max(adeWidth, 3)}%` }} />
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* SEÇÃO 4: AMOSTRAS REAIS DE VIPS EM RISCO E DUPLICIDADES + PLANO DO MENTOR */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                      {/* Amostras de Clientes VIP (>30k) parados >48h */}
+                      <div className="bg-white border border-orange-200 rounded-2xl p-5 shadow-2xs space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-xs font-black uppercase tracking-wide text-orange-900 flex items-center gap-1.5">
+                              <Flame className="w-4 h-4 text-orange-600" />
+                              Leads de 30K para cima parados a mais de 48 horas
+                            </h4>
+                            <p className="text-[11px] text-slate-500">Clientes reais com maior produção parada para resgate imediato</p>
+                          </div>
+                          {executiveSummaryData.vipCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setActiveTab("risk")
+                                setRiskTierFilter("high")
+                                setRiskStageFilters([])
+                                setSearchRiskQuery("")
+                                setIsExecSummaryOpen(false)
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-[11px] font-bold cursor-pointer shrink-0"
+                            >
+                              Ver todos ({executiveSummaryData.vipCount})
+                            </button>
+                          )}
+                        </div>
+
+                        {executiveSummaryData.vipSamples.length === 0 ? (
+                          <div className="py-4 text-xs text-emerald-700 font-medium flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 shrink-0" />
+                            <span>Nenhum lead VIP (&gt;30k) parado há mais de 48h neste recorte.</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {executiveSummaryData.vipSamples.map(item => (
+                              <div key={`vip-sample-${item.ticket.id}`} className="p-3 rounded-xl bg-orange-50/50 border border-orange-200/80 flex items-center justify-between gap-3 text-xs">
+                                <div className="min-w-0">
+                                  <div className="font-bold text-slate-900 truncate">{item.ticket.cliente_nome || "Cliente sem Nome"}</div>
+                                  <div className="text-[11px] text-slate-600 truncate">
+                                    {item.ticket.convenio || "Convênio N/I"} • {item.ticket.user_nome || "Sem responsável"} • <strong className="text-rose-600">{Math.floor(item.hoursInactive / 24)}d parado</strong>
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0 flex items-center gap-2.5">
+                                  <div>
+                                    <div className="font-black text-emerald-700">{fmtCurrency(item.valorOperacao)}</div>
+                                    <div className="text-[10px] font-bold text-sky-600">Prod: {fmtCurrency(item.valorProducao)}</div>
+                                  </div>
+                                  {onSelectTicket && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onSelectTicket(item.ticket)}
+                                      className="p-1.5 rounded-lg bg-slate-900 hover:bg-indigo-600 text-white cursor-pointer transition-colors"
+                                      title="Abrir atendimento"
+                                    >
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                    </button>
                                   )}
                                 </div>
                               </div>
                             ))}
                           </div>
-                        ) : (
-                          <div className="flex items-center gap-2 text-emerald-700 font-medium py-2">
-                            <CheckCircle2 className="w-4 h-4 shrink-0" />
-                            <span>Nenhum CPF ativo duplicado encontrado nos filtros atuais.</span>
+                        )}
+                      </div>
+
+                      {/* Recomendações Práticas do Mentor + Amostra de Duplicidades */}
+                      <div className="bg-white border border-indigo-200 rounded-2xl p-5 shadow-2xs space-y-3">
+                        <h4 className="text-xs font-black uppercase tracking-wide text-indigo-950 flex items-center gap-1.5">
+                          <Award className="w-4 h-4 text-indigo-600" />
+                          Sugestões para você agir hoje
+                        </h4>
+                        <ol className="space-y-2 text-[12px] text-slate-700 leading-relaxed list-decimal list-inside">
+                          <li>
+                            <strong>Destrave o dinheiro mais rápido:</strong>{" "}
+                            {executiveSummaryData.vipCount > 0 ? (
+                              <>cobre a equipe o resgate dos <strong>{executiveSummaryData.vipCount} VIPs</strong> no Radar de Risco antes que esfriem de vez ({fmtCurrency(executiveSummaryData.vipProducao)} em jogo).</>
+                            ) : (
+                              <>mantenha o acompanhamento diário sobre os leads em negociação ({executiveSummaryData.negStage?.count || 0} ativos) para não ultrapassarem 48h sem retorno.</>
+                            )}
+                          </li>
+                          <li>
+                            <strong>Ajuste o foco das compras de leads:</strong>{" "}
+                            {executiveSummaryData.alertOrigins[0] ? (
+                              <>revise a base <strong>{executiveSummaryData.alertOrigins[0].label}</strong> ({executiveSummaryData.alertOrigins[0].roiVerdict}) e priorize canais como <strong>{executiveSummaryData.bestOriginMatches[0]?.label || "os de maior margem"}</strong>.</>
+                            ) : (
+                              <>acompanhe na aba Funil &amp; Origens quais listas convertem melhor acima de 60% de margem viável.</>
+                            )}
+                          </li>
+                          <li>
+                            <strong>Alinhe roleta e volume individual:</strong>{" "}
+                            {executiveSummaryData.bestConvenioMatches[0] ? (
+                              <>use a Matriz de Afinidade para priorizar <strong>{executiveSummaryData.bestConvenioMatches[0].convenio}</strong> com <strong>{executiveSummaryData.bestConvenioMatches[0].userName}</strong> ({executiveSummaryData.bestConvenioMatches[0].rate}% de acerto)</>
+                            ) : (
+                              <>acompanhe a taxa de conversão individual na aba Eficiência da Equipe</>
+                            )}
+                            {executiveSummaryData.lowEntryOps[0] ? ` e cobre mais entrada no funil de ${executiveSummaryData.lowEntryOps[0].userName}.` : "."}
+                          </li>
+                        </ol>
+
+                        {executiveSummaryData.duplicateConflicts.length > 0 && (
+                          <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10.5px] font-black uppercase text-rose-700 flex items-center gap-1">
+                                <ShieldAlert className="w-3.5 h-3.5" />
+                                Amostra de CPFs Duplicados ({executiveSummaryData.totalDuplicateClients})
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const firstDup = executiveSummaryData.duplicateConflicts[0]
+                                  setActiveTab("risk")
+                                  setRiskTierFilter("all")
+                                  setRiskStageFilters([])
+                                  setSearchRiskQuery(firstDup ? firstDup.cpfDigits : "")
+                                  setIsExecSummaryOpen(false)
+                                }}
+                                className="text-[11px] font-bold text-rose-700 hover:underline cursor-pointer"
+                              >
+                                Filtrar no Radar
+                              </button>
+                            </div>
+                            {executiveSummaryData.duplicateConflicts.slice(0, 2).map(dup => (
+                              <div key={`dup-mini-${dup.cpfDigits}`} className="text-[11px] text-slate-600 flex items-center justify-between gap-2 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
+                                <span className="relative group/dup min-w-0 flex items-center">
+                                  <span className="truncate cursor-help">
+                                    <strong>{dup.clientName}</strong> ({dup.ticketCount} cards: {dup.uniqueOperators.join(", ")})
+                                  </span>
+                                  <span
+                                    role="tooltip"
+                                    className="pointer-events-none opacity-0 group-hover/dup:opacity-100 transition-opacity duration-150 absolute left-0 bottom-full mb-1.5 z-50 w-72 sm:w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700 whitespace-normal"
+                                  >
+                                    <span className="block font-bold text-amber-300 mb-1">
+                                      Atuando neste CPF ({dup.ticketCount} cards):
+                                    </span>
+                                    <span className="block text-slate-100">
+                                      {dup.uniqueOperators.join(" • ")}
+                                    </span>
+                                  </span>
+                                </span>
+                                <span className="font-bold text-emerald-700 shrink-0">{fmtCurrency(dup.maxOperacao)}</span>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Rodapé do Modal */}
-                <div className="px-7 py-3.5 bg-white border-t border-slate-200 flex items-center justify-between text-xs shrink-0">
-                  <span className="text-[11px] text-slate-500">
-                    Diagnóstico calculado em tempo real sobre os filtros aplicados.
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsExecSummaryOpen(false)}
-                    className="px-5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white font-bold cursor-pointer transition-colors"
-                  >
-                    Fechar
-                  </button>
-                </div>
+                  {/* Rodapé do Modal */}
+                  <div className="px-6 lg:px-8 py-3.5 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+                    <span className="text-[11px] text-slate-500">
+                      Conversa gerada em tempo real com base nos filtros aplicados no painel.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsExecSummaryOpen(false)}
+                      className="px-5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white font-bold cursor-pointer transition-colors"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                </motion.div>
               </motion.div>
-            </motion.div>
-          )}
+            )
+          })()}
         </AnimatePresence>
         </motion.div>
       )}
