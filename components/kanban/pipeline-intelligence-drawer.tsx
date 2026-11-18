@@ -48,7 +48,8 @@ export interface PipelineIntelligenceDrawerProps {
 }
 
 type PeriodFilter = "today" | "7d" | "15d" | "30d" | "month" | "all"
-type ActiveTab = "speed" | "aging" | "affinity" | "risk"
+type ActiveTab = "funnel" | "team" | "affinity" | "risk"
+type KanbanStageKey = "EM RETOMADA" | "EM NEGOCIAÇÃO" | "EM REATIVAÇÃO" | "SEM INTERESSE" | "FECHADO" | "PERDIDO"
 
 export function PipelineIntelligenceDrawer({
   isOpen,
@@ -67,7 +68,8 @@ export function PipelineIntelligenceDrawer({
   const [period, setPeriod] = useState<PeriodFilter>("all")
   const [selectedConvenios, setSelectedConvenios] = useState<string[]>([])
   const [selectedOperators, setSelectedOperators] = useState<string[]>([])
-  const [activeTab, setActiveTab] = useState<ActiveTab>("speed")
+  const [activeTab, setActiveTab] = useState<ActiveTab>("funnel")
+  const [teamRoleFilter, setTeamRoleFilter] = useState<"all" | "corretor" | "estagiario">("all")
   const [affinityMode, setAffinityMode] = useState<"convenio" | "valor">("convenio")
   const [isExecSummaryOpen, setIsExecSummaryOpen] = useState(false)
   const [searchRiskQuery, setSearchRiskQuery] = useState("")
@@ -248,33 +250,180 @@ export function PipelineIntelligenceDrawer({
     })
   }, [kanbanTickets, period, selectedConvenios, selectedOperators])
 
-  // 1. CÁLCULO DE TEMPO MÉDIO: Em negociação -> Gerada a ADE
-  // Regra: Tempo em minutos entre o momento em que o lead entrou na etapa 'Em negociação' até a geração da ADE (entrada em 'Fechado' com proposta digitada).
+  // Pré-processamento único em O(N) dos atendimentos filtrados (etapa Kanban, metadados, origem, interação/retomada e margem)
+  const parsedTickets = useMemo(() => {
+    const parseMeta = (desc?: string): Record<string, any> => {
+      if (!desc) return {}
+      try {
+        const match = String(desc).match(/<!-- TICKET_METADATA: ([\s\S]*?) -->/)
+        if (match && match[1]) return JSON.parse(match[1])
+      } catch {}
+      return {}
+    }
+
+    const resolveStageKey = (status?: string): KanbanStageKey => {
+      const s = String(status || "").trim().toUpperCase()
+      if (s === "FECHADO" || s.includes("FECHAD")) return "FECHADO"
+      if (s === "PERDIDO" || s.includes("PERDID") || s.includes("CANCELAD") || s.includes("NÃO APROVAD") || s.includes("IMPOSSIBILITADO")) return "PERDIDO"
+      if (s.includes("NEGOCIA")) return "EM NEGOCIAÇÃO"
+      if (s.includes("REATIVA")) return "EM REATIVAÇÃO"
+      if (s.includes("SEM INTERESSE")) return "SEM INTERESSE"
+      return "EM RETOMADA"
+    }
+
+    const resolveOrigin = (t: any, meta: Record<string, any>): string => {
+      const raw =
+        (meta?.origem && meta.origem !== "KANBAN" && meta.origem !== "SISTEMA" ? meta.origem : "") ||
+        (meta?.cliente_origem || "") ||
+        (t.origem && t.origem !== "KANBAN" && t.origem !== "SISTEMA" ? t.origem : "") ||
+        (t.origem && t.origem !== "KANBAN" ? t.origem : "") ||
+        meta?.origem ||
+        ""
+      const cleaned = String(raw || "").trim().replace(/\s+/g, " ")
+      if (!cleaned || cleaned === "-" || cleaned.toLowerCase() === "não informada" || cleaned.toLowerCase() === "nao informada") {
+        return "Não informada"
+      }
+      return cleaned
+    }
+
+    return filteredTickets.map(t => {
+      const meta = parseMeta(t.descricao)
+      const stageKey = resolveStageKey(t.status)
+      const movs = Array.isArray(t.historico_movimentacoes) ? t.historico_movimentacoes : []
+
+      const opData = getValorOperacaoDeAbertura(t)
+      const opVal = opData.num || 0
+      const prodVal = opData.numProducao || 0
+
+      const hasMargin =
+        opVal > 0 ||
+        Number(t.margem || 0) > 0 ||
+        Number(t.margem_liquida_5 || 0) > 0 ||
+        Number(t.margem_beneficio_5 || 0) > 0 ||
+        Number(meta?.margem || 0) > 0 ||
+        Number(meta?.valor_liberado || 0) > 0
+
+      const propAde = t.proposta_info?.ade ? String(t.proposta_info.ade).trim() : ""
+      const hasValidAde = Boolean(propAde && propAde !== "-" && propAde !== "null" && propAde !== "undefined")
+      const isFechado = stageKey === "FECHADO"
+      const isPerdido = stageKey === "PERDIDO"
+      const movToFechado = movs.some((m: any) => (m.etapa_nova || "").toUpperCase().includes("FECHAD"))
+      const isConverted = isFechado || (hasValidAde && !isPerdido) || (movToFechado && !isPerdido)
+
+      const hasNegociacao =
+        stageKey === "EM NEGOCIAÇÃO" ||
+        isFechado ||
+        movs.some(
+          (m: any) =>
+            (m.etapa_anterior || "").toUpperCase().includes("NEGOCIA") ||
+            (m.etapa_nova || "").toUpperCase().includes("NEGOCIA")
+        )
+
+      // Dentro de 'Em interação ou retomada': distinguir quem já interagiu vs quem segue em Retomada (sem contato)
+      let isEmInteracao = false
+      let isSemContatoRetomada = false
+      if (stageKey === "EM RETOMADA") {
+        const obsHistText = Array.isArray(meta?.observacoes_historico)
+          ? meta.observacoes_historico.map((o: any) => String(o?.texto || "")).join(" ").toLowerCase()
+          : ""
+        const rawVisibleDesc = String(t.descricao || "")
+          .replace(/<!-- TICKET_METADATA: [\s\S]*? -->/g, "")
+          .toLowerCase()
+        const interactedFlag =
+          Boolean(meta?.cliente_respondeu || meta?.regua_pausada) ||
+          obsHistText.includes("cliente interagiu") ||
+          obsHistText.includes("cliente respondeu") ||
+          rawVisibleDesc.includes("cliente interagiu") ||
+          rawVisibleDesc.includes("cliente respondeu")
+
+        isEmInteracao = interactedFlag
+        isSemContatoRetomada = !interactedFlag
+      }
+
+      const originLabel = resolveOrigin(t, meta)
+      const originKey = originLabel.toUpperCase()
+
+      return {
+        ticket: t,
+        meta,
+        stageKey,
+        movs,
+        opVal,
+        prodVal,
+        hasMargin,
+        isConverted,
+        isFechado,
+        isPerdido,
+        hasNegociacao,
+        isEmInteracao,
+        isSemContatoRetomada,
+        originLabel,
+        originKey
+      }
+    })
+  }, [filteredTickets, getValorOperacaoDeAbertura])
+
+  // 1. CÁLCULO DE EFICIÊNCIA DA EQUIPE & TEMPO MÉDIO (Em negociação -> Gerada a ADE + Jornada Completa)
   const speedToLeadData = useMemo(() => {
     interface OperatorSpeed {
       userId: string
       userName: string
+      roleType: "corretor" | "estagiario" | "outro"
+      roleLabel: string
+      totalFunil: number
+      emInteracao: number
+      emRetomadaSemContato: number
+      emNegociacaoAtual: number
+      emReativacao: number
+      semInteresse: number
+      totalFechado: number
+      totalPerdido: number
       totalNegociacoes: number
       totalPropostasDigitadas: number
+      producaoFechada: number
+      operacaoFechada: number
+      withMarginCount: number
       avgMinutesToAde: number
       minMinutes: number
       maxMinutes: number
       sampleCount: number
+      funnelConvRate: number
+      negConvRate: number
+      mentorVerdict: string
+      mentorTone: "emerald" | "sky" | "amber" | "rose" | "slate"
     }
+
+    const opInfoMap = new Map<string, { nome: string; roleType: "corretor" | "estagiario" | "outro"; roleLabel: string }>()
+    operatorsList.forEach(o => {
+      const regime = String(o.regime_contratacao || "").trim().toUpperCase()
+      const roleStr = String(o.funcao || o.role || "").trim().toUpperCase()
+      const isEstagio = regime.includes("ESTAG") || regime.includes("ESTÁG") || roleStr.includes("ESTAG") || roleStr.includes("ESTÁG")
+      const isCorretor = regime === "CLT" || roleStr.includes("CORRETOR")
+      const roleType: "corretor" | "estagiario" | "outro" = isEstagio ? "estagiario" : isCorretor ? "corretor" : "outro"
+      const roleLabel = isEstagio ? "Estagiário" : isCorretor ? "Corretor" : "Operador"
+      opInfoMap.set(o.id, { nome: o.nome || "Sem Nome", roleType, roleLabel })
+    })
 
     const opMap = new Map<string, {
       userId: string
       userName: string
+      roleType: "corretor" | "estagiario" | "outro"
+      roleLabel: string
+      totalFunil: number
+      emInteracao: number
+      emRetomadaSemContato: number
+      emNegociacaoAtual: number
+      emReativacao: number
+      semInteresse: number
+      totalFechado: number
+      totalPerdido: number
       totalNegociacoes: number
       totalPropostasDigitadas: number
+      producaoFechada: number
+      operacaoFechada: number
+      withMarginCount: number
       durationsMinutes: number[]
     }>()
-
-    // Helper para achar nome
-    const getName = (userId: string, fallbackName?: string) => {
-      const found = operatorsList.find(o => o.id === userId)
-      return found?.nome || fallbackName || "Não Atribuído"
-    }
 
     const parseTimestampMs = (dateStr?: string | null, requireTime = false): number | null => {
       if (!dateStr) return null
@@ -286,48 +435,63 @@ export function PipelineIntelligenceDrawer({
       return isNaN(ms) ? null : ms
     }
 
-    filteredTickets.forEach(t => {
+    parsedTickets.forEach(item => {
+      const t = item.ticket
       const uId = t.user_id || "unassigned"
-      const uName = getName(uId, t.user_nome)
+      const info = opInfoMap.get(uId)
+      const uName = info?.nome || t.user_nome || "Não Atribuído"
+      const roleType = info?.roleType || "outro"
+      const roleLabel = info?.roleLabel || "Operador"
 
       if (!opMap.has(uId)) {
         opMap.set(uId, {
           userId: uId,
           userName: uName,
+          roleType,
+          roleLabel,
+          totalFunil: 0,
+          emInteracao: 0,
+          emRetomadaSemContato: 0,
+          emNegociacaoAtual: 0,
+          emReativacao: 0,
+          semInteresse: 0,
+          totalFechado: 0,
+          totalPerdido: 0,
           totalNegociacoes: 0,
           totalPropostasDigitadas: 0,
+          producaoFechada: 0,
+          operacaoFechada: 0,
+          withMarginCount: 0,
           durationsMinutes: []
         })
       }
 
       const op = opMap.get(uId)!
-      const statusUpper = (t.status || "").toUpperCase()
-      const movs = Array.isArray(t.historico_movimentacoes) ? t.historico_movimentacoes : []
+      op.totalFunil++
+      if (item.hasMargin) op.withMarginCount++
 
-      const hasNegociacao =
-        statusUpper.includes("NEGOCIA") ||
-        movs.some(
-          (m: any) =>
-            (m.etapa_anterior || "").toUpperCase().includes("NEGOCIA") ||
-            (m.etapa_nova || "").toUpperCase().includes("NEGOCIA")
-        )
-
-      const propAde = t.proposta_info?.ade ? String(t.proposta_info.ade).trim() : ""
-      const hasValidAde = Boolean(propAde && propAde !== "-" && propAde !== "null" && propAde !== "undefined")
-      const isFechadoStatus = statusUpper === "FECHADO" || statusUpper.includes("FECHAD")
-      const isPerdidoStatus = statusUpper.includes("PERDID")
-      const movToFechado = movs.some((m: any) => (m.etapa_nova || "").toUpperCase().includes("FECHAD"))
-      const isPropostaDigitada = isFechadoStatus || (hasValidAde && !isPerdidoStatus) || (movToFechado && !isPerdidoStatus)
-
-      if (hasNegociacao) {
-        op.totalNegociacoes++
+      if (item.stageKey === "EM RETOMADA") {
+        if (item.isEmInteracao) op.emInteracao++
+        else op.emRetomadaSemContato++
+      } else if (item.stageKey === "EM NEGOCIAÇÃO") {
+        op.emNegociacaoAtual++
+      } else if (item.stageKey === "EM REATIVAÇÃO") {
+        op.emReativacao++
+      } else if (item.stageKey === "SEM INTERESSE") {
+        op.semInteresse++
+      } else if (item.stageKey === "FECHADO") {
+        op.totalFechado++
+        op.operacaoFechada += item.opVal
+        op.producaoFechada += item.prodVal
+      } else if (item.stageKey === "PERDIDO") {
+        op.totalPerdido++
       }
 
-      if (isPropostaDigitada) {
-        op.totalPropostasDigitadas++
-      }
+      if (item.hasNegociacao) op.totalNegociacoes++
+      if (item.isConverted) op.totalPropostasDigitadas++
 
-      // Procurar tempo exato: entrada em 'Em negociação' até geração da ADE / entrada em 'Fechado'
+      // Tempo exato: entrada em 'Em negociação' até geração da ADE / entrada em 'Fechado'
+      const movs = item.movs
       let negociacaoTime: number | null = null
       let movToFechadoTime: number | null = null
 
@@ -353,20 +517,18 @@ export function PipelineIntelligenceDrawer({
         }
       }
 
-      if (!negociacaoTime && statusUpper.includes("NEGOCIA")) {
+      if (!negociacaoTime && item.stageKey === "EM NEGOCIAÇÃO") {
         negociacaoTime = parseTimestampMs(t.created_at)
       }
 
       let adeTime: number | null = null
-      if (isPropostaDigitada && negociacaoTime) {
+      if (item.isConverted && negociacaoTime) {
         const propInfo = t.proposta_info
-        // 1. Prioriza data_digitacao com horário completo da proposta gerada
         const digitacaoExact = parseTimestampMs(propInfo?.data_digitacao, true)
         if (digitacaoExact && digitacaoExact >= negociacaoTime) {
           adeTime = digitacaoExact
         }
 
-        // 2. Fallback para created_at da proposta se possuir horário e for >= entrada em negociação
         if (!adeTime) {
           const propCreated = parseTimestampMs(propInfo?.created_at, true)
           if (propCreated && propCreated >= negociacaoTime) {
@@ -374,13 +536,11 @@ export function PipelineIntelligenceDrawer({
           }
         }
 
-        // 3. Fallback para movimentação explícita para FECHADO após entrada em negociação
         if (!adeTime && movToFechadoTime && movToFechadoTime >= negociacaoTime) {
           adeTime = movToFechadoTime
         }
 
-        // 4. Fallback para updated_at do cartão quando já está em FECHADO sem horário detalhado em data_digitacao
-        if (!adeTime && isFechadoStatus) {
+        if (!adeTime && item.isFechado) {
           const updatedMs = parseTimestampMs(t.updated_at, true)
           if (updatedMs && updatedMs >= negociacaoTime) {
             adeTime = updatedMs
@@ -390,19 +550,22 @@ export function PipelineIntelligenceDrawer({
 
       if (negociacaoTime && adeTime && adeTime >= negociacaoTime) {
         const diffMin = Math.round((adeTime - negociacaoTime) / (1000 * 60))
-        // Sanity filter: descartar anomalias > 30 dias (43200 min) para média executiva
         if (diffMin >= 0 && diffMin <= 43200) {
           op.durationsMinutes.push(diffMin)
         }
       }
     })
 
+    const activeOpsCount = Array.from(opMap.values()).filter(o => o.userId !== "unassigned" && o.totalFunil > 0).length
+    const totalAssignedLeads = Array.from(opMap.values()).reduce((sum, o) => sum + (o.userId !== "unassigned" ? o.totalFunil : 0), 0)
+    const avgLeadsPerOp = activeOpsCount > 0 ? Math.round(totalAssignedLeads / activeOpsCount) : 0
+
     const result: OperatorSpeed[] = []
     let totalGeneralMinutes = 0
     let totalGeneralSamples = 0
 
     opMap.forEach(op => {
-      if (op.totalNegociacoes === 0 && op.totalPropostasDigitadas === 0 && op.durationsMinutes.length === 0) return
+      if (op.totalFunil === 0) return
 
       const count = op.durationsMinutes.length
       const avg = count > 0 ? Math.round(op.durationsMinutes.reduce((a, b) => a + b, 0) / count) : 0
@@ -414,26 +577,73 @@ export function PipelineIntelligenceDrawer({
         totalGeneralSamples += count
       }
 
+      const funnelConvRate = op.totalFunil > 0 ? Math.round((op.totalPropostasDigitadas / op.totalFunil) * 100) : 0
+      const negConvRate = op.totalNegociacoes > 0 ? Math.min(100, Math.round((op.totalPropostasDigitadas / op.totalNegociacoes) * 100)) : 0
+
+      let mentorVerdict = "Em acompanhamento"
+      let mentorTone: "emerald" | "sky" | "amber" | "rose" | "slate" = "slate"
+
+      if (op.userId === "unassigned") {
+        mentorVerdict = "Distribuir leads sem responsável"
+        mentorTone = "rose"
+      } else if (op.totalFunil < Math.max(3, Math.floor(avgLeadsPerOp * 0.45))) {
+        mentorVerdict = "Pouca entrada no funil (aumentar captação)"
+        mentorTone = "amber"
+      } else if (funnelConvRate >= 15 && negConvRate >= 30 && (count === 0 || avg <= 240)) {
+        mentorVerdict = "Alta eficiência (volume, ritmo e conversão)"
+        mentorTone = "emerald"
+      } else if (op.totalNegociacoes >= 5 && negConvRate < 15) {
+        mentorVerdict = "Gargalo em negociação (treinar fechamento)"
+        mentorTone = "rose"
+      } else if (count >= 2 && avg > 480) {
+        mentorVerdict = "SLA lento na digitação da ADE (>8h)"
+        mentorTone = "amber"
+      } else if (op.totalFunil >= 5 && op.emRetomadaSemContato / op.totalFunil >= 0.65) {
+        mentorVerdict = "Muitos leads parados sem contato inicial"
+        mentorTone = "amber"
+      } else if (op.totalPropostasDigitadas > 0) {
+        mentorVerdict = "Desempenho equilibrado no funil"
+        mentorTone = "sky"
+      }
+
       result.push({
         userId: op.userId,
         userName: op.userName,
+        roleType: op.roleType,
+        roleLabel: op.roleLabel,
+        totalFunil: op.totalFunil,
+        emInteracao: op.emInteracao,
+        emRetomadaSemContato: op.emRetomadaSemContato,
+        emNegociacaoAtual: op.emNegociacaoAtual,
+        emReativacao: op.emReativacao,
+        semInteresse: op.semInteresse,
+        totalFechado: op.totalFechado,
+        totalPerdido: op.totalPerdido,
         totalNegociacoes: op.totalNegociacoes,
         totalPropostasDigitadas: op.totalPropostasDigitadas,
+        producaoFechada: op.producaoFechada,
+        operacaoFechada: op.operacaoFechada,
+        withMarginCount: op.withMarginCount,
         avgMinutesToAde: avg,
         minMinutes: min,
         maxMinutes: max,
-        sampleCount: count
+        sampleCount: count,
+        funnelConvRate,
+        negConvRate,
+        mentorVerdict,
+        mentorTone
       })
     })
 
-    // Ordenar do menor tempo médio (mais rápido) para o mais demorado
+    // Ordenar por maior fechamento/conversão no funil e agilidade
     result.sort((a, b) => {
-      if (a.sampleCount === 0 && b.sampleCount === 0) {
-        return b.totalPropostasDigitadas - a.totalPropostasDigitadas || b.totalNegociacoes - a.totalNegociacoes
+      if (b.totalPropostasDigitadas !== a.totalPropostasDigitadas) {
+        return b.totalPropostasDigitadas - a.totalPropostasDigitadas
       }
-      if (a.sampleCount === 0) return 1
-      if (b.sampleCount === 0) return -1
-      return a.avgMinutesToAde - b.avgMinutesToAde
+      if (a.sampleCount > 0 && b.sampleCount > 0 && a.avgMinutesToAde !== b.avgMinutesToAde) {
+        return a.avgMinutesToAde - b.avgMinutesToAde
+      }
+      return b.totalFunil - a.totalFunil
     })
 
     const generalAvgMinutes = totalGeneralSamples > 0 ? Math.round(totalGeneralMinutes / totalGeneralSamples) : 0
@@ -441,103 +651,112 @@ export function PipelineIntelligenceDrawer({
     return {
       ranking: result,
       generalAvgMinutes,
-      totalSamples: totalGeneralSamples
+      totalSamples: totalGeneralSamples,
+      avgLeadsPerOp
     }
-  }, [filteredTickets, operatorsList])
+  }, [parsedTickets, operatorsList])
 
-  // 2. CÁLCULO DE CAPITAL IMOBILIZADO POR ETAPA
+  // 2. JORNADA COMPLETA DO FUNIL (6 ETAPAS DO KANBAN) + CAPITAL IMOBILIZADO
   const stageAgingData = useMemo(() => {
-    const STAGES = [
-      { key: "EM RETOMADA", label: "Em Retomada / Interação", color: "amber" },
-      { key: "EM NEGOCIAÇÃO", label: "Em Negociação", color: "indigo" },
-      { key: "EM REATIVAÇÃO", label: "Em Reativação", color: "purple" },
-      { key: "SEM INTERESSE", label: "Sem Interesse", color: "slate" }
+    const STAGES: Array<{ key: KanbanStageKey; label: string; subtitle: string; color: string }> = [
+      { key: "EM RETOMADA", label: "Em interação ou retomada", subtitle: "Entrada do funil", color: "amber" },
+      { key: "EM NEGOCIAÇÃO", label: "Em negociação", subtitle: "Proposta em tratativa", color: "indigo" },
+      { key: "EM REATIVAÇÃO", label: "Em reativação", subtitle: "Resgate de esfriados", color: "purple" },
+      { key: "SEM INTERESSE", label: "Sem interesse", subtitle: "Nutrição / DDD", color: "slate" },
+      { key: "FECHADO", label: "Fechado", subtitle: "ADEs geradas (GOL)", color: "emerald" },
+      { key: "PERDIDO", label: "Perdido", subtitle: "Encerrados / cancelados", color: "rose" }
     ]
 
     const now = Date.now()
-    let grandTotalCapital = 0
+    let grandTotalCapital = 0 // Pipeline ativo (exclui Fechado e Perdido)
     let grandTotalProducao = 0
     let grandTotalStuck48hCount = 0
 
     const stageResults = STAGES.map(stageDef => {
-      const stageTickets = filteredTickets.filter(t => {
-        const s = (t.status || "").toUpperCase()
-        if (stageDef.key === "EM RETOMADA") {
-          return s.includes("RETOMADA") || s.includes("INTERAÇÃO") || s.includes("INTERACAO")
-        }
-        if (stageDef.key === "EM NEGOCIAÇÃO") {
-          return s.includes("NEGOCIA")
-        }
-        if (stageDef.key === "EM REATIVAÇÃO") {
-          return s.includes("REATIVA")
-        }
-        if (stageDef.key === "SEM INTERESSE") {
-          return s.includes("SEM INTERESSE")
-        }
-        return s === stageDef.key
-      })
+      const stageItems = parsedTickets.filter(item => item.stageKey === stageDef.key)
+      const isClosedOrLost = stageDef.key === "FECHADO" || stageDef.key === "PERDIDO"
 
       let totalOperacao = 0
       let totalProducao = 0
       let totalHours = 0
+      let withMarginCount = 0
 
-      let highTicketCount = 0 // > 30k
+      let highTicketCount = 0
       let highTicketVal = 0
-      let midTicketCount = 0  // 10k a 30k
+      let midTicketCount = 0
       let midTicketVal = 0
-      let lowTicketCount = 0  // < 10k
+      let lowTicketCount = 0
       let lowTicketVal = 0
 
       let stuckCount48h = 0
       let stuckCapital48h = 0
 
-      stageTickets.forEach(t => {
-        const opData = getValorOperacaoDeAbertura(t)
-        const opVal = opData.num || 0
-        const prodVal = opData.numProducao || 0
+      let emInteracaoCount = 0
+      let emRetomadaNoContactCount = 0
+      const lossReasonMap = new Map<string, number>()
 
-        totalOperacao += opVal
-        totalProducao += prodVal
+      stageItems.forEach(item => {
+        const t = item.ticket
+        totalOperacao += item.opVal
+        totalProducao += item.prodVal
+        if (item.hasMargin) withMarginCount++
 
-        // Horas na etapa (baseado em updated_at ou created_at)
+        if (stageDef.key === "EM RETOMADA") {
+          if (item.isEmInteracao) emInteracaoCount++
+          else emRetomadaNoContactCount++
+        }
+
+        if (stageDef.key === "PERDIDO") {
+          const reason = String(t.motivo_perda || "Sem motivo registrado").trim()
+          lossReasonMap.set(reason, (lossReasonMap.get(reason) || 0) + 1)
+        }
+
         const tDate = new Date(t.updated_at || t.created_at || now).getTime()
         const hoursInStage = Math.max(0, (now - tDate) / (1000 * 60 * 60))
         totalHours += hoursInStage
 
-        if (hoursInStage > 48) {
+        if (!isClosedOrLost && hoursInStage > 48) {
           stuckCount48h++
-          stuckCapital48h += opVal
+          stuckCapital48h += item.opVal
         }
 
-        // Segmentação por ticket
-        if (opVal >= 30000) {
+        if (item.opVal >= 30000) {
           highTicketCount++
-          highTicketVal += opVal
-        } else if (opVal >= 10000) {
+          highTicketVal += item.opVal
+        } else if (item.opVal >= 10000) {
           midTicketCount++
-          midTicketVal += opVal
+          midTicketVal += item.opVal
         } else {
           lowTicketCount++
-          lowTicketVal += opVal
+          lowTicketVal += item.opVal
         }
       })
 
-      grandTotalCapital += totalOperacao
-      grandTotalProducao += totalProducao
-      grandTotalStuck48hCount += stuckCount48h
+      if (!isClosedOrLost) {
+        grandTotalCapital += totalOperacao
+        grandTotalProducao += totalProducao
+        grandTotalStuck48hCount += stuckCount48h
+      }
 
-      const count = stageTickets.length
+      const count = stageItems.length
       const avgHours = count > 0 ? Math.round(totalHours / count) : 0
+      const topLossReason = Array.from(lossReasonMap.entries()).sort((a, b) => b[1] - a[1])[0] || null
 
       return {
         ...stageDef,
         count,
+        sharePct: parsedTickets.length > 0 ? Math.round((count / parsedTickets.length) * 100) : 0,
         totalOperacao,
         totalProducao,
+        withMarginCount,
+        marginPct: count > 0 ? Math.round((withMarginCount / count) * 100) : 0,
         avgHours,
         avgDays: (avgHours / 24).toFixed(1),
         stuckCount48h,
         stuckCapital48h,
+        emInteracaoCount,
+        emRetomadaNoContactCount,
+        topLossReason: topLossReason ? { label: topLossReason[0], count: topLossReason[1] } : null,
         ticketsByTier: {
           high: { count: highTicketCount, val: highTicketVal },
           mid: { count: midTicketCount, val: midTicketVal },
@@ -552,7 +771,207 @@ export function PipelineIntelligenceDrawer({
       grandTotalProducao,
       grandTotalStuck48hCount
     }
-  }, [filteredTickets, getValorOperacaoDeAbertura])
+  }, [parsedTickets])
+
+  // 2B. ANÁLISE DO FUNIL DE PONTA A PONTA & ROI POR ORIGEM DO CLIENTE
+  const funnelAndOriginsData = useMemo(() => {
+    const totalFunnel = parsedTickets.length
+    let totalEmRetomadaStage = 0
+    let totalEmInteracao = 0
+    let totalEmRetomadaSemContato = 0
+    let totalEmNegociacaoAtual = 0
+    let totalAlcanceNegociacao = 0
+    let totalReativacao = 0
+    let totalSemInteresse = 0
+    let totalFechado = 0
+    let totalPerdido = 0
+    let totalComMargem = 0
+    let totalAdeFechadas = 0
+    let totalOperacaoFechada = 0
+    let totalProducaoFechada = 0
+
+    interface OriginAccumulator {
+      key: string
+      label: string
+      total: number
+      emInteracao: number
+      emRetomadaSemContato: number
+      emNegociacaoAtual: number
+      alcancouNegociacao: number
+      emReativacao: number
+      semInteresse: number
+      fechado: number
+      perdido: number
+      comMargem: number
+      operacaoTotal: number
+      producaoFechada: number
+      producaoAtiva: number
+    }
+
+    const originsMap = new Map<string, OriginAccumulator>()
+
+    parsedTickets.forEach(item => {
+      if (item.hasMargin) totalComMargem++
+      if (item.hasNegociacao) totalAlcanceNegociacao++
+      if (item.isConverted) totalAdeFechadas++
+
+      if (item.stageKey === "EM RETOMADA") {
+        totalEmRetomadaStage++
+        if (item.isEmInteracao) totalEmInteracao++
+        else totalEmRetomadaSemContato++
+      } else if (item.stageKey === "EM NEGOCIAÇÃO") {
+        totalEmNegociacaoAtual++
+      } else if (item.stageKey === "EM REATIVAÇÃO") {
+        totalReativacao++
+      } else if (item.stageKey === "SEM INTERESSE") {
+        totalSemInteresse++
+      } else if (item.stageKey === "FECHADO") {
+        totalFechado++
+        totalOperacaoFechada += item.opVal
+        totalProducaoFechada += item.prodVal
+      } else if (item.stageKey === "PERDIDO") {
+        totalPerdido++
+      }
+
+      if (!originsMap.has(item.originKey)) {
+        originsMap.set(item.originKey, {
+          key: item.originKey,
+          label: item.originLabel,
+          total: 0,
+          emInteracao: 0,
+          emRetomadaSemContato: 0,
+          emNegociacaoAtual: 0,
+          alcancouNegociacao: 0,
+          emReativacao: 0,
+          semInteresse: 0,
+          fechado: 0,
+          perdido: 0,
+          comMargem: 0,
+          operacaoTotal: 0,
+          producaoFechada: 0,
+          producaoAtiva: 0
+        })
+      }
+
+      const orig = originsMap.get(item.originKey)!
+      orig.total++
+      orig.operacaoTotal += item.opVal
+      if (item.hasMargin) orig.comMargem++
+      if (item.hasNegociacao) orig.alcancouNegociacao++
+
+      if (item.stageKey === "EM RETOMADA") {
+        if (item.isEmInteracao) orig.emInteracao++
+        else orig.emRetomadaSemContato++
+        orig.producaoAtiva += item.prodVal
+      } else if (item.stageKey === "EM NEGOCIAÇÃO") {
+        orig.emNegociacaoAtual++
+        orig.producaoAtiva += item.prodVal
+      } else if (item.stageKey === "EM REATIVAÇÃO") {
+        orig.emReativacao++
+        orig.producaoAtiva += item.prodVal
+      } else if (item.stageKey === "SEM INTERESSE") {
+        orig.semInteresse++
+      } else if (item.stageKey === "FECHADO") {
+        orig.fechado++
+        orig.producaoFechada += item.prodVal
+      } else if (item.stageKey === "PERDIDO") {
+        orig.perdido++
+      }
+    })
+
+    const origins = Array.from(originsMap.values())
+      .map(o => {
+        const sharePct = totalFunnel > 0 ? Math.round((o.total / totalFunnel) * 100) : 0
+        const marginPct = o.total > 0 ? Math.round((o.comMargem / o.total) * 100) : 0
+        const negReachPct = o.total > 0 ? Math.round((o.alcancouNegociacao / o.total) * 100) : 0
+        const convPct = o.total > 0 ? Math.round((o.fechado / o.total) * 100) : 0
+        const noContactPct = o.total > 0 ? Math.round((o.emRetomadaSemContato / o.total) * 100) : 0
+        const lossPct = o.total > 0 ? Math.round((o.perdido / o.total) * 100) : 0
+
+        let roiVerdict = "Em maturação"
+        let roiTone: "emerald" | "sky" | "amber" | "rose" | "slate" = "slate"
+
+        if (o.total >= 3 && (convPct >= 10 || o.producaoFechada >= 10000)) {
+          roiVerdict = "Vale o investimento (ROI positivo)"
+          roiTone = "emerald"
+        } else if (o.total >= 5 && marginPct < 35 && o.fechado === 0) {
+          roiVerdict = "Baixa margem viável (revisar compra)"
+          roiTone = "rose"
+        } else if (o.total >= 5 && noContactPct >= 65 && o.alcancouNegociacao <= 1) {
+          roiVerdict = "Alto % sem contato (revisar telefones)"
+          roiTone = "rose"
+        } else if (o.alcancouNegociacao >= 2 && o.fechado === 0 && marginPct >= 50) {
+          roiVerdict = "Bom contato e margem (focar fechamento)"
+          roiTone = "sky"
+        } else if (o.total >= 5 && lossPct >= 50 && o.fechado === 0) {
+          roiVerdict = "Alta taxa de perda (cuidado no aporte)"
+          roiTone = "amber"
+        } else if (o.emInteracao + o.emNegociacaoAtual > 0) {
+          roiVerdict = "Base em aquecimento ativo"
+          roiTone = "amber"
+        }
+
+        return {
+          ...o,
+          sharePct,
+          marginPct,
+          negReachPct,
+          convPct,
+          noContactPct,
+          lossPct,
+          roiVerdict,
+          roiTone
+        }
+      })
+      .sort((a, b) => b.total - a.total || b.fechado - a.fechado)
+
+    const topOriginsInInteracao = origins
+      .filter(o => o.emInteracao > 0)
+      .sort((a, b) => b.emInteracao - a.emInteracao)
+      .slice(0, 5)
+
+    const topOriginsInRetomada = origins
+      .filter(o => o.emRetomadaSemContato > 0)
+      .sort((a, b) => b.emRetomadaSemContato - a.emRetomadaSemContato)
+      .slice(0, 5)
+
+    const topOriginsInNegociacao = origins
+      .filter(o => o.emNegociacaoAtual > 0)
+      .sort((a, b) => b.emNegociacaoAtual - a.emNegociacaoAtual)
+      .slice(0, 5)
+
+    const interacaoPct = totalEmRetomadaStage > 0 ? Math.round((totalEmInteracao / totalEmRetomadaStage) * 100) : 0
+    const negToAdePct = totalAlcanceNegociacao > 0 ? Math.min(100, Math.round((totalAdeFechadas / totalAlcanceNegociacao) * 100)) : 0
+    const funnelConvPct = totalFunnel > 0 ? Math.round((totalFechado / totalFunnel) * 100) : 0
+    const withMarginPct = totalFunnel > 0 ? Math.round((totalComMargem / totalFunnel) * 100) : 0
+    const reachedNegPct = totalFunnel > 0 ? Math.round((totalAlcanceNegociacao / totalFunnel) * 100) : 0
+
+    return {
+      totalFunnel,
+      totalEmRetomadaStage,
+      totalEmInteracao,
+      totalEmRetomadaSemContato,
+      totalEmNegociacaoAtual,
+      totalAlcanceNegociacao,
+      totalReativacao,
+      totalSemInteresse,
+      totalFechado,
+      totalPerdido,
+      totalComMargem,
+      totalAdeFechadas,
+      totalOperacaoFechada,
+      totalProducaoFechada,
+      interacaoPct,
+      negToAdePct,
+      funnelConvPct,
+      withMarginPct,
+      reachedNegPct,
+      origins,
+      topOriginsInInteracao,
+      topOriginsInRetomada,
+      topOriginsInNegociacao
+    }
+  }, [parsedTickets])
 
   // 3. MATRIZ DE AFINIDADE: Operador x Convênio / Valor Financeiro
   const affinityMatrixData = useMemo(() => {
@@ -976,7 +1395,9 @@ export function PipelineIntelligenceDrawer({
     // Eixo 3: Eficiência da equipe, velocidade e gargalos de SLA
     const totalPropostas = speedToLeadData.ranking.reduce((acc, op) => acc + op.totalPropostasDigitadas, 0)
     const totalNegociacoes = speedToLeadData.ranking.reduce((acc, op) => acc + op.totalNegociacoes, 0)
-    const rankingWithSamples = speedToLeadData.ranking.filter(op => op.sampleCount > 0)
+    const rankingWithSamples = [...speedToLeadData.ranking]
+      .filter(op => op.sampleCount > 0)
+      .sort((a, b) => a.avgMinutesToAde - b.avgMinutesToAde || b.totalPropostasDigitadas - a.totalPropostasDigitadas)
 
     const fastestOp = rankingWithSamples[0] || null
     const volumeLeader =
@@ -1138,6 +1559,25 @@ export function PipelineIntelligenceDrawer({
           b.maxOperacao - a.maxOperacao
       )
 
+    const bestOriginMatches = funnelAndOriginsData.origins
+      .filter(o => o.total >= 2 && (o.fechado > 0 || o.marginPct >= 60))
+      .sort((a, b) => b.convPct - a.convPct || b.producaoFechada - a.producaoFechada || b.marginPct - a.marginPct)
+      .slice(0, 4)
+
+    const alertOrigins = funnelAndOriginsData.origins
+      .filter(o => o.total >= 3 && (o.roiTone === "rose" || o.roiTone === "amber"))
+      .sort((a, b) => b.noContactPct - a.noContactPct || b.total - a.total)
+      .slice(0, 4)
+
+    const lowEntryOps = speedToLeadData.ranking
+      .filter(op => op.userId !== "unassigned" && op.totalFunil < Math.max(3, Math.floor(speedToLeadData.avgLeadsPerOp * 0.45)))
+      .slice(0, 4)
+
+    const topFunnelContributors = [...speedToLeadData.ranking]
+      .filter(op => op.userId !== "unassigned")
+      .sort((a, b) => b.totalFunil - a.totalFunil || b.totalFechado - a.totalFechado)
+      .slice(0, 4)
+
     return {
       vipCount: vipRiskLeads.length,
       vipOperacao,
@@ -1158,7 +1598,11 @@ export function PipelineIntelligenceDrawer({
       bestHighTierMatch,
       wasteMatches: wasteMatches.slice(0, 4),
       duplicateConflicts: duplicateConflicts.slice(0, 5),
-      totalDuplicateClients: duplicateConflicts.length
+      totalDuplicateClients: duplicateConflicts.length,
+      bestOriginMatches,
+      alertOrigins,
+      lowEntryOps,
+      topFunnelContributors
     }
   }, [
     isExecSummaryOpen,
@@ -1167,6 +1611,7 @@ export function PipelineIntelligenceDrawer({
     stageAgingData,
     affinityMatrixData,
     riskLeadsData,
+    funnelAndOriginsData,
     getValorOperacaoDeAbertura
   ])
 
@@ -1476,29 +1921,39 @@ export function PipelineIntelligenceDrawer({
 
         {/* CARDS RESUMO EXECUTIVO (KPIs) */}
         <div className="px-6 lg:px-7 py-2.5 grid grid-cols-2 md:grid-cols-4 gap-3 bg-white border-b border-slate-200 shrink-0">
-          {/* Card 1: TEMPO MÉDIO */}
-          <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center gap-1.5 text-sky-900">
-              <Zap className="w-3.5 h-3.5 text-sky-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[10px] font-black uppercase tracking-wider">TEMPO MÉDIO</span>
+          {/* Card 1: ENTRADA NO FUNIL */}
+          <div className="bg-gradient-to-br from-indigo-100 via-indigo-50 to-sky-100/90 border-2 border-indigo-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center gap-1.5 text-indigo-900">
+              <Layers className="w-3.5 h-3.5 text-indigo-600 shrink-0" strokeWidth={2.6} />
+              <span className="text-[10px] font-black uppercase tracking-wider">Entrada no Funil</span>
             </div>
             <div className="mt-0.5">
-              <div className="text-base lg:text-lg font-black text-sky-950 leading-tight">
-                {speedToLeadData.generalAvgMinutes > 0 ? (
-                  speedToLeadData.generalAvgMinutes < 60 ? (
-                    `${speedToLeadData.generalAvgMinutes} min`
-                  ) : (
-                    `${(speedToLeadData.generalAvgMinutes / 60).toFixed(1)} horas`
-                  )
-                ) : (
-                  "N/A"
-                )}
+              <div className="text-base lg:text-lg font-black text-indigo-950 leading-tight">
+                {funnelAndOriginsData.totalFunnel} leads
               </div>
-              <span className="text-[10px] text-sky-900 font-bold leading-tight block mt-0.5">Em negociação ➔ Gerada a ADE</span>
+              <span className="text-[10px] text-indigo-900 font-bold leading-tight block mt-0.5 truncate">
+                {funnelAndOriginsData.totalEmInteracao} interação • {funnelAndOriginsData.totalEmRetomadaSemContato} retomada ({funnelAndOriginsData.interacaoPct}% contato)
+              </span>
             </div>
           </div>
 
-          {/* Card 2: Capital no Pipeline */}
+          {/* Card 2: CONVERSÃO & TEMPO MÉDIO */}
+          <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+            <div className="flex items-center gap-1.5 text-sky-900">
+              <Zap className="w-3.5 h-3.5 text-sky-600 shrink-0" strokeWidth={2.6} />
+              <span className="text-[10px] font-black uppercase tracking-wider">Conversão &amp; Tempo</span>
+            </div>
+            <div className="mt-0.5">
+              <div className="text-base lg:text-lg font-black text-sky-950 leading-tight">
+                {funnelAndOriginsData.totalFechado} ADEs ({funnelAndOriginsData.funnelConvPct}%)
+              </div>
+              <span className="text-[10px] text-sky-900 font-bold leading-tight block mt-0.5 truncate">
+                Neg. ➔ ADE: {funnelAndOriginsData.negToAdePct}% • Tempo: {fmtDurationShort(speedToLeadData.generalAvgMinutes)}
+              </span>
+            </div>
+          </div>
+
+          {/* Card 3: CAPITAL NO PIPELINE */}
           <div className="bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-100/90 border-2 border-emerald-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
             <div className="flex items-center gap-1.5 text-emerald-900">
               <DollarSign className="w-3.5 h-3.5 text-emerald-600 shrink-0" strokeWidth={2.6} />
@@ -1508,23 +1963,9 @@ export function PipelineIntelligenceDrawer({
               <div className="text-base lg:text-lg font-black text-emerald-950 leading-tight">
                 {fmtCurrency(stageAgingData.grandTotalCapital)}
               </div>
-              <span className="text-[10px] text-emerald-900 font-bold leading-tight block mt-0.5">
-                Prod. Estimada: {fmtCurrency(stageAgingData.grandTotalProducao)}
+              <span className="text-[10px] text-emerald-900 font-bold leading-tight block mt-0.5 truncate">
+                Prod. Est.: {fmtCurrency(stageAgingData.grandTotalProducao)} • {funnelAndOriginsData.withMarginPct}% c/ margem
               </span>
-            </div>
-          </div>
-
-          {/* Card 3: GARGALOS (> 48h) */}
-          <div className="bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100/90 border-2 border-amber-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center gap-1.5 text-amber-900">
-              <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[10px] font-black tracking-wider">GARGALOS (&gt; 48h)</span>
-            </div>
-            <div className="mt-0.5">
-              <div className="text-base lg:text-lg font-black text-amber-950 leading-tight">
-                {stageAgingData.grandTotalStuck48hCount} leads
-              </div>
-              <span className="text-[10px] text-amber-900 font-bold leading-tight block mt-0.5">Sem avanço na cadência</span>
             </div>
           </div>
 
@@ -1538,50 +1979,52 @@ export function PipelineIntelligenceDrawer({
               <div className="text-base lg:text-lg font-black text-rose-950 leading-tight">
                 {riskLeadsData.length} leads
               </div>
-              <span className="text-[10px] text-rose-900 font-bold leading-tight block mt-0.5">Parados há mais de 48h</span>
+              <span className="text-[10px] text-rose-900 font-bold leading-tight block mt-0.5 truncate">
+                Parados &gt;48h • Perdidos: {funnelAndOriginsData.totalPerdido} • Reativ.: {funnelAndOriginsData.totalReativacao}
+              </span>
             </div>
           </div>
         </div>
 
         {/* NAVEGAÇÃO ENTRE ABAS */}
-        <div className="px-6 lg:px-7 bg-white border-b border-slate-200 flex items-center gap-7 shrink-0">
+        <div className="px-6 lg:px-7 bg-white border-b border-slate-200 flex items-center gap-5 lg:gap-7 shrink-0 overflow-x-auto">
           <button
             type="button"
-            onClick={() => setActiveTab("speed")}
+            onClick={() => setActiveTab("funnel")}
             className={cn(
-              "relative group/tooltip py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors",
-              activeTab === "speed"
+              "relative group/tooltip py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap shrink-0",
+              activeTab === "funnel"
                 ? "border-indigo-600 text-indigo-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
             )}
           >
-            <Zap className="w-4 h-4" />
-            <span>1. Tempo Médio (Em negociação ➔ Gerada a ADE)</span>
+            <Layers className="w-4 h-4" />
+            <span>1. Jornada do Funil &amp; Origens</span>
             <span
               role="tooltip"
-              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-72 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700"
+              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700 whitespace-normal"
             >
-              Mede quantos minutos o corretor leva entre a negociação com o lead e digitação da proposta no banco (gerar a ADE).
+              Mostra a jornada completa em todas as 6 etapas do Kanban, separando leads em interação dos sem contato (Retomada), além do ROI por Origem do Cliente (margem, avanço e fechamentos) para avaliar bases compradas.
             </span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveTab("aging")}
+            onClick={() => setActiveTab("team")}
             className={cn(
-              "relative group/tooltip py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors",
-              activeTab === "aging"
+              "relative group/tooltip py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap shrink-0",
+              activeTab === "team"
                 ? "border-indigo-600 text-indigo-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
             )}
           >
-            <Clock className="w-4 h-4" />
-            <span>2. Capital Imobilizado por Etapa</span>
+            <Zap className="w-4 h-4" />
+            <span>2. Eficiência da Equipe &amp; Tempo Médio</span>
             <span
               role="tooltip"
-              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700"
+              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700 whitespace-normal"
             >
-              Mostra o volume financeiro (Valor Operação e Produção Estimada) e o tempo médio de permanência retidos em cada etapa do pipeline, com quebra por faixa de ticket (Alto, Médio e Baixo) e destaque para gargalos acima de 48h.
+              Audita se corretores e estagiários estão colocando leads suficientes no funil, como distribuem em cada etapa, taxa de conversão em ADEs e o tempo médio entre Em negociação e geração da proposta.
             </span>
           </button>
 
@@ -1589,7 +2032,7 @@ export function PipelineIntelligenceDrawer({
             type="button"
             onClick={() => setActiveTab("affinity")}
             className={cn(
-              "relative group/tooltip py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors",
+              "relative group/tooltip py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap shrink-0",
               activeTab === "affinity"
                 ? "border-indigo-600 text-indigo-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
@@ -1599,7 +2042,7 @@ export function PipelineIntelligenceDrawer({
             <span>3. Matriz de Afinidade</span>
             <span
               role="tooltip"
-              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700"
+              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700 whitespace-normal"
             >
               Identifica a aptidão de cada corretor com perfis de clientes específicos. Ao rotear leads de determinados convênios ou faixas de valores financeiros para os operadores com maior taxa de conversão demonstrada, maximiza-se a receita da empresa sem aumentar o custo de aquisição.
             </span>
@@ -1609,7 +2052,7 @@ export function PipelineIntelligenceDrawer({
             type="button"
             onClick={() => setActiveTab("risk")}
             className={cn(
-              "relative group/tooltip py-3 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors",
+              "relative group/tooltip py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap shrink-0",
               activeTab === "risk"
                 ? "border-rose-600 text-rose-600"
                 : "border-transparent text-slate-500 hover:text-slate-900"
@@ -1624,7 +2067,7 @@ export function PipelineIntelligenceDrawer({
             )}
             <span
               role="tooltip"
-              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute right-0 sm:left-0 sm:right-auto top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700"
+              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute right-0 sm:left-0 sm:right-auto top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700 whitespace-normal"
             >
               Lista em tempo real os leads parados há mais de 48 horas nas etapas ativas, ordenados por criticidade de ticket e tempo sem contato, permitindo priorizar o resgate de oportunidades antes da perda.
             </span>
@@ -1636,117 +2079,285 @@ export function PipelineIntelligenceDrawer({
           "flex-1 min-h-0 bg-slate-50/50",
           activeTab === "risk"
             ? "overflow-hidden flex flex-col"
-            : cn("overflow-y-auto p-6 lg:p-7", (activeTab === "affinity" || activeTab === "speed") && "flex flex-col")
+            : cn("overflow-y-auto p-5 lg:p-6", (activeTab === "affinity" || activeTab === "team") && "flex flex-col")
         )}>
           {/* ============================================================== */}
-          {/* ABA 1: TEMPO MÉDIO (EM NEGOCIAÇÃO -> GERADA A ADE)              */}
+          {/* ABA 1: JORNADA COMPLETA DO FUNIL (6 ETAPAS) & ORIGENS (ROI)    */}
           {/* ============================================================== */}
-          {activeTab === "speed" && (
-            <div className="flex-1 min-h-0 flex flex-col">
-              {/* Tabela de Ranking por Corretor */}
-              <div className="flex-1 min-h-[260px] flex flex-col bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-200 bg-slate-50/95 flex items-center justify-between shrink-0">
+          {activeTab === "funnel" && (
+            <div className="space-y-4">
+              {/* Visão das 6 etapas do Kanban */}
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-indigo-600" />
+                      Jornada do Atendimento nas 6 Etapas do Kanban
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Do topo do funil (<strong>{funnelAndOriginsData.totalFunnel} leads</strong>) até o fechamento: <strong>{funnelAndOriginsData.reachedNegPct}%</strong> alcançaram negociação e <strong>{funnelAndOriginsData.funnelConvPct}%</strong> fecharam ADE.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className="px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-200 text-sky-800 font-bold">
+                      Em interação: {funnelAndOriginsData.totalEmInteracao}
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-bold">
+                      Retomada (s/ contato): {funnelAndOriginsData.totalEmRetomadaSemContato}
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 font-bold">
+                      Em negociação: {funnelAndOriginsData.totalEmNegociacaoAtual} ({funnelAndOriginsData.totalAlcanceNegociacao} passaram)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2.5">
+                  {stageAgingData.stages.map(st => {
+                    const colorBorderMap: Record<string, string> = {
+                      amber: "border-amber-200 bg-amber-50/30",
+                      indigo: "border-indigo-200 bg-indigo-50/30",
+                      purple: "border-purple-200 bg-purple-50/30",
+                      slate: "border-slate-200 bg-slate-50/40",
+                      emerald: "border-emerald-300 bg-emerald-50/40",
+                      rose: "border-rose-200 bg-rose-50/30"
+                    }
+                    const badgeMap: Record<string, string> = {
+                      amber: "bg-amber-100 text-amber-900",
+                      indigo: "bg-indigo-100 text-indigo-900",
+                      purple: "bg-purple-100 text-purple-900",
+                      slate: "bg-slate-200 text-slate-800",
+                      emerald: "bg-emerald-100 text-emerald-900",
+                      rose: "bg-rose-100 text-rose-900"
+                    }
+                    return (
+                      <div
+                        key={st.key}
+                        className={cn(
+                          "border rounded-xl p-3 flex flex-col justify-between shadow-2xs",
+                          colorBorderMap[st.color] || "border-slate-200 bg-white"
+                        )}
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-1.5">
+                            <div>
+                              <span className="text-[11.5px] font-bold text-slate-900 leading-tight block">{st.label}</span>
+                              <span className="text-[10px] text-slate-500">{st.subtitle}</span>
+                            </div>
+                            <span className={cn("px-1.5 py-0.5 rounded-md text-[10px] font-black shrink-0", badgeMap[st.color])}>
+                              {st.count} ({st.sharePct}%)
+                            </span>
+                          </div>
+
+                          {st.key === "EM RETOMADA" && (
+                            <div className="mt-2 p-2 rounded-lg bg-white border border-amber-200/80 space-y-1 text-[10.5px]">
+                              <div className="flex items-center justify-between">
+                                <span className="text-sky-700 font-semibold">Em interação:</span>
+                                <span className="font-black text-sky-800">{st.emInteracaoCount}</span>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-amber-700 font-semibold">Retomada (s/ contato):</span>
+                                <span className="font-black text-amber-800">{st.emRetomadaNoContactCount}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="mt-2 pt-2 border-t border-slate-200/70 space-y-1 text-[11px]">
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500">Operação:</span>
+                              <span className="font-black text-emerald-700">{fmtCurrency(st.totalOperacao)}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500">Prod. Est.:</span>
+                              <span className="font-black text-sky-600">{fmtCurrency(st.totalProducao)}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500">Com margem:</span>
+                              <span className="font-bold text-slate-800">{st.marginPct}%</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500">Permanência:</span>
+                              <span className="font-bold text-slate-700">
+                                {st.avgHours < 24 ? `${st.avgHours}h` : `${st.avgDays}d`}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-2 pt-1.5 border-t border-slate-200/70 text-[10px] space-y-0.5 text-slate-600">
+                          <div className="flex items-center justify-between">
+                            <span>Alto/Méd/Bx:</span>
+                            <span className="font-bold text-slate-800">
+                              {st.ticketsByTier.high.count}/{st.ticketsByTier.mid.count}/{st.ticketsByTier.low.count}
+                            </span>
+                          </div>
+                          {st.key === "PERDIDO" && st.topLossReason ? (
+                            <div className="text-[10px] text-rose-700 font-semibold truncate" title={st.topLossReason.label}>
+                              Motivo: {st.topLossReason.label} ({st.topLossReason.count})
+                            </div>
+                          ) : st.key !== "FECHADO" && st.key !== "PERDIDO" && st.stuckCount48h > 0 ? (
+                            <div className="text-[10px] text-amber-700 font-bold">
+                              ⚠ {st.stuckCount48h} parados &gt;48h
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Origens por Momento do Funil (Interação vs Retomada vs Negociação) */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                <div className="bg-white border border-sky-200 rounded-xl p-3.5 shadow-2xs">
+                  <div className="text-[10.5px] font-black uppercase text-sky-800 flex items-center justify-between">
+                    <span>Origens em Interação</span>
+                    <span className="text-sky-600">{funnelAndOriginsData.totalEmInteracao} leads</span>
+                  </div>
+                  {funnelAndOriginsData.topOriginsInInteracao.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 italic mt-2">Nenhum lead marcado em interação no topo no momento.</p>
+                  ) : (
+                    <div className="mt-2 space-y-1.5">
+                      {funnelAndOriginsData.topOriginsInInteracao.map(o => (
+                        <div key={`int-${o.key}`} className="flex items-center justify-between text-[11px] border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
+                          <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
+                          <span className="font-bold text-sky-700 shrink-0">{o.emInteracao} leads</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white border border-amber-200 rounded-xl p-3.5 shadow-2xs">
+                  <div className="text-[10.5px] font-black uppercase text-amber-800 flex items-center justify-between">
+                    <span>Origens sem Contato (Retomada)</span>
+                    <span className="text-amber-600">{funnelAndOriginsData.totalEmRetomadaSemContato} leads</span>
+                  </div>
+                  {funnelAndOriginsData.topOriginsInRetomada.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 italic mt-2">Nenhum lead pendente de primeiro contato em retomada.</p>
+                  ) : (
+                    <div className="mt-2 space-y-1.5">
+                      {funnelAndOriginsData.topOriginsInRetomada.map(o => (
+                        <div key={`ret-${o.key}`} className="flex items-center justify-between text-[11px] border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
+                          <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
+                          <span className="font-bold text-amber-700 shrink-0">{o.emRetomadaSemContato} ({o.noContactPct}%)</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white border border-indigo-200 rounded-xl p-3.5 shadow-2xs">
+                  <div className="text-[10.5px] font-black uppercase text-indigo-800 flex items-center justify-between">
+                    <span>Origens em Negociação</span>
+                    <span className="text-indigo-600">{funnelAndOriginsData.totalEmNegociacaoAtual} leads</span>
+                  </div>
+                  {funnelAndOriginsData.topOriginsInNegociacao.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 italic mt-2">Nenhum lead atualmente em negociação neste recorte.</p>
+                  ) : (
+                    <div className="mt-2 space-y-1.5">
+                      {funnelAndOriginsData.topOriginsInNegociacao.map(o => (
+                        <div key={`neg-${o.key}`} className="flex items-center justify-between text-[11px] border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
+                          <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
+                          <span className="font-bold text-indigo-700 shrink-0">{o.emNegociacaoAtual} ativos • {o.fechado} ADEs</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Tabela Gerencial Completa por Origem do Cliente (ROI das Listas) */}
+              <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-slate-200 bg-slate-50/95 flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    <Users className="w-4 h-4 text-indigo-600" />
-                    Ranking de Velocidade Comercial por Corretor / Estagiário
+                    <BarChart3 className="w-4 h-4 text-indigo-600" />
+                    Auditoria de Origens do Cliente — Qualidade de Contato, Margem e Retorno sobre Investimento
                   </h3>
                   <span className="text-[11px] text-slate-500">
-                    {speedToLeadData.ranking.length} operadores avaliados
+                    {funnelAndOriginsData.origins.length} origens identificadas
                   </span>
                 </div>
 
-                <div className="flex-1 min-h-0 overflow-auto">
-                  <table className="w-full border-separate border-spacing-0 text-left text-xs">
+                <div className="max-h-[380px] overflow-auto">
+                  <table className="w-full min-w-[980px] border-separate border-spacing-0 text-left text-xs">
                     <thead className="sticky top-0 z-10 bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
                       <tr>
-                        <th className="px-4 py-2.5 bg-slate-100 border-b border-r border-slate-200">Posição &amp; Operador</th>
-                        <th className="px-4 py-2.5 text-center bg-slate-100 border-b border-r border-slate-200">Em Negociação</th>
-                        <th className="px-4 py-2.5 text-center bg-slate-100 border-b border-r border-slate-200">Proposta Digitada</th>
-                        <th className="px-4 py-2.5 text-center bg-slate-100 border-b border-r border-slate-200">Taxa de Avanço</th>
-                        <th className="px-4 py-2.5 text-center bg-slate-100 border-b border-r border-slate-200">Tempo Médio</th>
-                        <th className="px-4 py-2.5 text-right bg-slate-100 border-b border-slate-200">Classificação</th>
+                        <th className="px-3 py-2 bg-slate-100 border-b border-r border-slate-200">Origem do Cliente</th>
+                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Entraram</th>
+                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Em Interação</th>
+                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Retomada (s/ contato)</th>
+                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Em Negociação</th>
+                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Reativ. / S. Int.</th>
+                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">% c/ Margem</th>
+                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Fechado (ADEs)</th>
+                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Perdidos</th>
+                        <th className="px-3 py-2 bg-slate-100 border-b border-slate-200">Parecer do Mentor (ROI)</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {speedToLeadData.ranking.length === 0 ? (
+                      {funnelAndOriginsData.origins.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                            Nenhum histórico de movimentação encontrado para os filtros selecionados.
+                          <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                            Nenhum lead encontrado para os filtros aplicados.
                           </td>
                         </tr>
                       ) : (
-                        speedToLeadData.ranking.map((op, idx) => {
-                          const convRate = op.totalNegociacoes > 0
-                            ? Math.min(100, Math.round((op.totalPropostasDigitadas / op.totalNegociacoes) * 100))
-                            : 0
-                          
-                          // Badge de classificação
-                          let badgeBg = "bg-slate-100 text-slate-700"
-                          let badgeText = "Sem Amostra"
-
-                          if (op.sampleCount > 0) {
-                            if (op.avgMinutesToAde <= 30) {
-                              badgeBg = "bg-emerald-100 text-emerald-800 border-emerald-200"
-                              badgeText = "⚡ Ultra Rápido (<30m)"
-                            } else if (op.avgMinutesToAde <= 120) {
-                              badgeBg = "bg-sky-100 text-sky-800 border-sky-200"
-                              badgeText = "🟢 Ágil (30m - 2h)"
-                            } else if (op.avgMinutesToAde <= 480) {
-                              badgeBg = "bg-amber-100 text-amber-800 border-amber-200"
-                              badgeText = "🟡 Moderado (2h - 8h)"
-                            } else {
-                              badgeBg = "bg-rose-100 text-rose-800 border-rose-200"
-                              badgeText = "🔴 Lento (>8h)"
-                            }
+                        funnelAndOriginsData.origins.map(o => {
+                          const toneClass: Record<string, string> = {
+                            emerald: "bg-emerald-50 text-emerald-800 border-emerald-200",
+                            sky: "bg-sky-50 text-sky-800 border-sky-200",
+                            amber: "bg-amber-50 text-amber-800 border-amber-200",
+                            rose: "bg-rose-50 text-rose-800 border-rose-200",
+                            slate: "bg-slate-100 text-slate-700 border-slate-200"
                           }
-
                           return (
-                            <tr key={op.userId} className="hover:bg-slate-50/80 transition-colors">
-                              <td className="px-4 py-3 border-b border-r border-slate-200">
-                                <div className="flex items-center gap-2.5">
-                                  <span className={cn(
-                                    "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
-                                    idx === 0 ? "bg-amber-100 text-amber-800 font-black" :
-                                    idx === 1 ? "bg-slate-200 text-slate-700 font-bold" :
-                                    idx === 2 ? "bg-amber-700/20 text-amber-900 font-bold" :
-                                    "bg-slate-100 text-slate-500"
-                                  )}>
-                                    {idx + 1}º
-                                  </span>
-                                  <div>
-                                    <div className="font-bold text-slate-900">{op.userName}</div>
-                                    <div className="text-[10px] text-slate-400">ID: {op.userId.slice(0, 8)}</div>
-                                  </div>
+                            <tr key={o.key} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="px-3 py-2 font-bold text-slate-900 border-b border-r border-slate-200 max-w-[200px]">
+                                <div className="truncate" title={o.label}>{o.label}</div>
+                                <div className="text-[10px] text-slate-400 font-normal">
+                                  {o.sharePct}% do funil • {fmtCurrency(o.operacaoTotal)}
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-center font-medium text-slate-700 border-b border-r border-slate-200">
-                                {op.totalNegociacoes}
+                              <td className="px-2.5 py-2 text-center font-bold text-slate-900 border-b border-r border-slate-200 tabular-nums">
+                                {o.total}
                               </td>
-                              <td className="px-4 py-3 text-center font-medium text-slate-700 border-b border-r border-slate-200">
-                                {op.totalPropostasDigitadas}
+                              <td className="px-2.5 py-2 text-center font-semibold text-sky-700 border-b border-r border-slate-200 tabular-nums">
+                                {o.emInteracao}
                               </td>
-                              <td className="px-4 py-3 text-center border-b border-r border-slate-200">
-                                <span className={cn(
-                                  "font-bold",
-                                  convRate >= 50 ? "text-emerald-600" : convRate >= 25 ? "text-indigo-600" : "text-slate-500"
-                                )}>
-                                  {convRate}%
+                              <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
+                                <span className={cn("font-semibold", o.noContactPct >= 60 ? "text-amber-700" : "text-slate-700")}>
+                                  {o.emRetomadaSemContato}
+                                </span>
+                                <span className="text-[10px] text-slate-400 ml-1">({o.noContactPct}%)</span>
+                              </td>
+                              <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
+                                <span className="font-bold text-indigo-700">{o.emNegociacaoAtual}</span>
+                                <span className="text-[10px] text-slate-400 block">({o.negReachPct}% avanço)</span>
+                              </td>
+                              <td className="px-2.5 py-2 text-center text-slate-600 border-b border-r border-slate-200 tabular-nums">
+                                {o.emReativacao} / {o.semInteresse}
+                              </td>
+                              <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
+                                <span className={cn("font-bold", o.marginPct >= 60 ? "text-emerald-700" : o.marginPct >= 35 ? "text-amber-700" : "text-rose-700")}>
+                                  {o.marginPct}%
                                 </span>
                               </td>
-                              <td className="px-4 py-3 text-center border-b border-r border-slate-200">
-                                {op.sampleCount > 0 ? (
-                                  <span className="font-black text-slate-900">
-                                    {op.avgMinutesToAde < 60 
-                                      ? `${op.avgMinutesToAde} min` 
-                                      : `${(op.avgMinutesToAde / 60).toFixed(1)} h`}
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-400 italic">Sem transição direta</span>
+                              <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
+                                <span className={cn("font-black", o.fechado > 0 ? "text-emerald-700" : "text-slate-400")}>
+                                  {o.fechado} ({o.convPct}%)
+                                </span>
+                                {o.producaoFechada > 0 && (
+                                  <span className="block text-[10px] font-semibold text-sky-600">{fmtCurrency(o.producaoFechada)}</span>
                                 )}
                               </td>
-                              <td className="px-4 py-3 text-right border-b border-slate-200">
-                                <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-bold border", badgeBg)}>
-                                  {badgeText}
+                              <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
+                                <span className={cn("font-semibold", o.lossPct >= 50 ? "text-rose-600" : "text-slate-600")}>
+                                  {o.perdido} ({o.lossPct}%)
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 border-b border-slate-200">
+                                <span className={cn("inline-block px-2 py-0.5 rounded-md text-[10px] font-bold border", toneClass[o.roiTone])}>
+                                  {o.roiVerdict}
                                 </span>
                               </td>
                             </tr>
@@ -1757,87 +2368,193 @@ export function PipelineIntelligenceDrawer({
                   </table>
                 </div>
               </div>
+
+              {/* Alerta de Leads Parados > 48h com atalho direto pro Radar */}
+              {stageAgingData.grandTotalStuck48hCount > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <p className="text-xs text-amber-900">
+                      Existem <strong>{stageAgingData.grandTotalStuck48hCount} leads ativos</strong> parados há mais de 48h nas etapas sem avanço na cadência.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("risk")}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer shadow-xs"
+                  >
+                    Auditar no Radar de Risco
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
           {/* ============================================================== */}
-          {/* ABA 2: CAPITAL IMOBILIZADO POR ETAPA                           */}
+          {/* ABA 2: EFICIÊNCIA COMPLETA DA EQUIPE & TEMPO MÉDIO             */}
           {/* ============================================================== */}
-          {activeTab === "aging" && (
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
-                {stageAgingData.stages.map(st => (
-                  <div key={st.key} className="bg-white border border-slate-200 rounded-xl p-4 lg:p-5 shadow-2xs flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-900">{st.label}</span>
-                        <span className="text-[11px] bg-transparent text-slate-600 font-bold">
-                          {st.count} leads
-                        </span>
-                      </div>
+          {activeTab === "team" && (
+            <div className="flex-1 min-h-0 flex flex-col">
+              {(() => {
+                const filteredTeamRanking = speedToLeadData.ranking.filter(op => {
+                  if (teamRoleFilter === "all") return true
+                  return op.roleType === teamRoleFilter
+                })
 
-                      <div className="mt-3">
-                        <div className="text-[11px] text-slate-500 font-medium">Tempo Médio de Permanência:</div>
-                        <div className="text-lg font-black text-slate-900">
-                          {st.avgHours < 24 ? `${st.avgHours} horas` : `${st.avgDays} dias`}
+                return (
+                  <div className="flex-1 min-h-[260px] flex flex-col bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-slate-200 bg-slate-50/95 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <Users className="w-4 h-4 text-indigo-600" />
+                          Eficiência Completa e Velocidade Comercial por Corretor / Estagiário
+                        </h3>
+                        <div className="inline-flex items-center rounded-lg bg-slate-200/70 p-0.5 border border-slate-200">
+                          {([
+                            { id: "all", label: "Todos" },
+                            { id: "corretor", label: "Corretores" },
+                            { id: "estagiario", label: "Estagiários" }
+                          ] as const).map(opt => (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => setTeamRoleFilter(opt.id)}
+                              className={cn(
+                                "px-2.5 py-0.5 rounded-md text-[11px] font-bold transition-all cursor-pointer",
+                                teamRoleFilter === opt.id
+                                  ? "bg-white text-indigo-700 shadow-2xs"
+                                  : "text-slate-600 hover:text-slate-900"
+                              )}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
                         </div>
                       </div>
-
-                      <div className="mt-2.5 pt-2.5 border-t border-slate-100">
-                        <div className="text-[11px] text-slate-500 font-medium">Capital Imobilizado:</div>
-                        <div className="text-base font-black text-emerald-700">
-                          {fmtCurrency(st.totalOperacao)}
-                        </div>
-                        <div className="text-[11px] text-slate-500 font-medium mt-2">Produção Estimada:</div>
-                        <div className="text-base font-black text-sky-400">
-                          {fmtCurrency(st.totalProducao)}
-                        </div>
-                      </div>
+                      <span className="text-[11px] text-slate-500">
+                        Média de entrada no funil: <strong className="text-slate-800">{speedToLeadData.avgLeadsPerOp} leads/colaborador</strong> • {filteredTeamRanking.length} avaliados
+                      </span>
                     </div>
 
-                    {/* Quebra por ticket */}
-                    <div className="mt-3 pt-2 border-t border-slate-100 space-y-1 text-[11px]">
-                      <div className="flex items-center justify-between text-orange-700">
-                        <span>Alto (&gt;30k):</span>
-                        <span className="font-bold text-orange-700">{st.ticketsByTier.high.count} ({fmtCurrency(st.ticketsByTier.high.val)})</span>
-                      </div>
-                      <div className="flex items-center justify-between text-orange-500">
-                        <span>Médio (10k-30k):</span>
-                        <span className="font-bold text-orange-500">{st.ticketsByTier.mid.count} ({fmtCurrency(st.ticketsByTier.mid.val)})</span>
-                      </div>
-                      <div className="flex items-center justify-between text-slate-600">
-                        <span>Baixo (&lt;10k):</span>
-                        <span className="font-bold text-slate-800">{st.ticketsByTier.low.count} ({fmtCurrency(st.ticketsByTier.low.val)})</span>
-                      </div>
+                    <div className="flex-1 min-h-0 overflow-auto">
+                      <table className="w-full min-w-[1040px] border-separate border-spacing-0 text-left text-xs">
+                        <thead className="sticky top-0 z-10 bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
+                          <tr>
+                            <th className="px-3 py-2 bg-slate-100 border-b border-r border-slate-200">Posição &amp; Colaborador</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">No Funil</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Interação / Retomada</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Em Negociação</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Reativ. / S. Int.</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Fechado (ADEs)</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Perdido</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">% Conv. Funil</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Tempo Médio (ADE)</th>
+                            <th className="px-3 py-2 bg-slate-100 border-b border-slate-200">Parecer do Mentor</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredTeamRanking.length === 0 ? (
+                            <tr>
+                              <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
+                                Nenhum atendimento encontrado para os filtros selecionados.
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredTeamRanking.map((op, idx) => {
+                              const verdictToneClass: Record<string, string> = {
+                                emerald: "bg-emerald-50 text-emerald-800 border-emerald-200",
+                                sky: "bg-sky-50 text-sky-800 border-sky-200",
+                                amber: "bg-amber-50 text-amber-800 border-amber-200",
+                                rose: "bg-rose-50 text-rose-800 border-rose-200",
+                                slate: "bg-slate-100 text-slate-700 border-slate-200"
+                              }
+                              const isLowEntry = op.userId !== "unassigned" && op.totalFunil < Math.max(3, Math.floor(speedToLeadData.avgLeadsPerOp * 0.45))
+
+                              return (
+                                <tr key={op.userId} className="hover:bg-slate-50/80 transition-colors">
+                                  <td className="px-3 py-2.5 border-b border-r border-slate-200">
+                                    <div className="flex items-center gap-2">
+                                      <span className={cn(
+                                        "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
+                                        idx === 0 ? "bg-amber-100 text-amber-800 font-black" :
+                                        idx === 1 ? "bg-slate-200 text-slate-700 font-bold" :
+                                        idx === 2 ? "bg-amber-700/20 text-amber-900 font-bold" :
+                                        "bg-slate-100 text-slate-500"
+                                      )}>
+                                        {idx + 1}º
+                                      </span>
+                                      <div className="min-w-0">
+                                        <div className="font-bold text-slate-900 truncate max-w-[180px]" title={op.userName}>{op.userName}</div>
+                                        <div className="text-[10px] text-slate-500">{op.roleLabel}</div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
+                                    <span className={cn("font-black", isLowEntry ? "text-amber-700" : "text-slate-900")}>
+                                      {op.totalFunil}
+                                    </span>
+                                    {isLowEntry && (
+                                      <span className="block text-[9.5px] font-bold text-amber-600">abaixo média</span>
+                                    )}
+                                  </td>
+                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
+                                    <span className="font-bold text-sky-700">{op.emInteracao}</span>
+                                    <span className="text-slate-400 mx-1">/</span>
+                                    <span className="font-semibold text-amber-700">{op.emRetomadaSemContato}</span>
+                                  </td>
+                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
+                                    <span className="font-bold text-indigo-700">{op.emNegociacaoAtual}</span>
+                                    <span className="text-[10px] text-slate-400 block">({op.totalNegociacoes} total)</span>
+                                  </td>
+                                  <td className="px-2.5 py-2.5 text-center text-slate-600 border-b border-r border-slate-200 tabular-nums">
+                                    {op.emReativacao} / {op.semInteresse}
+                                  </td>
+                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
+                                    <span className="font-black text-emerald-700">{op.totalPropostasDigitadas}</span>
+                                    {op.producaoFechada > 0 && (
+                                      <span className="block text-[10px] font-semibold text-sky-600">{fmtCurrency(op.producaoFechada)}</span>
+                                    )}
+                                  </td>
+                                  <td className="px-2.5 py-2.5 text-center text-rose-600 font-semibold border-b border-r border-slate-200 tabular-nums">
+                                    {op.totalPerdido}
+                                  </td>
+                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
+                                    <span className={cn(
+                                      "font-black",
+                                      op.funnelConvRate >= 15 ? "text-emerald-600" : op.funnelConvRate >= 5 ? "text-indigo-600" : "text-slate-500"
+                                    )}>
+                                      {op.funnelConvRate}%
+                                    </span>
+                                    <span className="block text-[10px] text-slate-400">Neg: {op.negConvRate}%</span>
+                                  </td>
+                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
+                                    {op.sampleCount > 0 ? (
+                                      <span className="font-black text-slate-900">
+                                        {op.avgMinutesToAde < 60
+                                          ? `${op.avgMinutesToAde} min`
+                                          : `${(op.avgMinutesToAde / 60).toFixed(1)} h`}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400 italic text-[11px]">Sem amostra</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-2.5 border-b border-slate-200">
+                                    <span className={cn("inline-block px-2 py-0.5 rounded-md text-[10px] font-bold border", verdictToneClass[op.mentorTone])}>
+                                      {op.mentorVerdict}
+                                    </span>
+                                  </td>
+                                </tr>
+                              )
+                            })
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
-                ))}
-              </div>
-
-              {/* Destaque de Capital Parado > 48h */}
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
-                    <Clock className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-amber-950">
-                      Gargalo de Lead parado a mais de 48 Horas sem Avanço
-                    </h4>
-                    <p className="text-xs text-amber-800 mt-0.5">
-                      Existe um total de <strong>{stageAgingData.grandTotalStuck48hCount} leads</strong> parados há mais de 48 horas nas colunas ativas. Isso representa capital comercial dormente sem retorno de contato.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("risk")}
-                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer shadow-xs"
-                >
-                  Auditar Leads no Radar de Risco
-                </button>
-              </div>
+                )
+              })()}
             </div>
           )}
 
@@ -2465,8 +3182,88 @@ export function PipelineIntelligenceDrawer({
                   </div>
                 </div>
 
-                {/* Corpo Diagnóstico (3 Blocos Acionáveis cobrindo os 5 eixos) */}
+                {/* Corpo Diagnóstico (Mentor do Funil + VIP/Capital + SLA/Equipe + Afinidade/CPFs) */}
                 <div className="flex-1 overflow-y-auto p-6 lg:p-7 space-y-5 bg-slate-50/60">
+                  {/* BLOCO 0: MENTOR DO FUNIL COMPLETO & QUALIDADE DAS ORIGENS */}
+                  <div className="bg-white border border-indigo-200 rounded-xl p-5 shadow-2xs space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                          <Layers className="w-4 h-4" />
+                        </span>
+                        <div>
+                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
+                            Mentor do Funil: Jornada do Cliente, Origens e Investimento em Bases
+                          </h4>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Visão de ponta a ponta: entrada, contato real, margem viável e retorno por lista/origem
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab("funnel")
+                          setIsExecSummaryOpen(false)
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        <span>Abrir Funil &amp; Origens</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <div className="bg-indigo-50/60 border border-indigo-200 rounded-lg p-4 space-y-2">
+                        <div className="text-[10px] font-black uppercase text-indigo-900">
+                          Saúde da Jornada (6 Etapas) &amp; Margem
+                        </div>
+                        <ul className="space-y-1.5 text-slate-700 leading-relaxed">
+                          <li>
+                            • Entraram <strong>{funnelAndOriginsData.totalFunnel} leads</strong> no pipeline ({funnelAndOriginsData.withMarginPct}% com margem viável).
+                          </li>
+                          <li>
+                            • Topo (&apos;Em interação ou retomada&apos;): <strong>{funnelAndOriginsData.totalEmInteracao} em interação</strong> vs <strong>{funnelAndOriginsData.totalEmRetomadaSemContato} sem contato</strong> em Retomada.
+                          </li>
+                          <li>
+                            • Avançaram p/ Negociação: <strong>{funnelAndOriginsData.totalAlcanceNegociacao} ({funnelAndOriginsData.reachedNegPct}%)</strong> • Fechados: <strong className="text-emerald-700">{funnelAndOriginsData.totalFechado} ADEs ({funnelAndOriginsData.funnelConvPct}%)</strong> • Perdidos: <strong className="text-rose-700">{funnelAndOriginsData.totalPerdido}</strong>.
+                          </li>
+                        </ul>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
+                        <div className="text-[10px] font-black uppercase text-slate-800">
+                          Retorno das Origens (Listas / Canais)
+                        </div>
+                        {executiveSummaryData.bestOriginMatches.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="text-[11px] font-bold text-emerald-700">Melhores origens p/ investir:</div>
+                            {executiveSummaryData.bestOriginMatches.slice(0, 2).map(o => (
+                              <div key={`best-orig-${o.key}`} className="flex items-center justify-between text-[11px] text-slate-700">
+                                <span className="truncate pr-2"><strong>{o.label}</strong> ({o.total} leads • {o.marginPct}% c/ margem)</span>
+                                <span className="font-bold text-emerald-700 shrink-0">{o.fechado} ADEs ({o.convPct}%)</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {executiveSummaryData.alertOrigins.length > 0 && (
+                          <div className="space-y-1 pt-1.5 border-t border-slate-200">
+                            <div className="text-[11px] font-bold text-rose-700">Origens em alerta (contato/margem/perda):</div>
+                            {executiveSummaryData.alertOrigins.slice(0, 2).map(o => (
+                              <div key={`alert-orig-${o.key}`} className="flex items-center justify-between text-[11px] text-slate-600">
+                                <span className="truncate pr-2"><strong>{o.label}</strong> ({o.total} leads)</span>
+                                <span className="font-semibold text-rose-700 shrink-0">{o.roiVerdict}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {executiveSummaryData.bestOriginMatches.length === 0 && executiveSummaryData.alertOrigins.length === 0 && (
+                          <p className="text-slate-600 text-[11px]">Amostra por origem ainda em formação no período selecionado.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   {/* BLOCO 1: Oportunidade Ouro & Potencial Represado (Eixos 1 e 5) */}
                   <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2499,7 +3296,7 @@ export function PipelineIntelligenceDrawer({
                         <button
                           type="button"
                           onClick={() => {
-                            setActiveTab("aging")
+                            setActiveTab("funnel")
                             setIsExecSummaryOpen(false)
                           }}
                           className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold cursor-pointer transition-colors"
@@ -2559,37 +3356,39 @@ export function PipelineIntelligenceDrawer({
                         </span>
                         <div>
                           <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
-                            2. Eficiência da Equipe &amp; Gargalos de SLA
+                            2. Eficiência da Equipe (Corretores &amp; Estagiários) e SLA
                           </h4>
-                          <p className="text-[11px] text-slate-500 mt-0.5">Velocidade entre Em Negociação e digitação da proposta (ADE)</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Entrada no funil, conversão ponta a ponta e velocidade até a ADE</p>
                         </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => {
-                          setActiveTab("speed")
+                          setActiveTab("team")
                           setIsExecSummaryOpen(false)
                         }}
                         className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
                       >
-                        <span>Ver Ranking de Velocidade</span>
+                        <span>Auditar Equipe Completa</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                       <div className="bg-sky-50/70 border border-sky-200 rounded-lg p-4 space-y-2">
-                        <div className="text-[10px] font-black uppercase text-sky-800">Destaques de Conversão &amp; Agilidade</div>
+                        <div className="text-[10px] font-black uppercase text-sky-800">Destaques de Captação, Conversão &amp; Agilidade</div>
                         <ul className="space-y-1.5 text-slate-700 leading-relaxed">
                           <li>
-                            • Tempo médio geral da equipe: <strong className="text-slate-900">{fmtDurationShort(speedToLeadData.generalAvgMinutes)}</strong>.
+                            • Tempo médio geral da equipe: <strong className="text-slate-900">{fmtDurationShort(speedToLeadData.generalAvgMinutes)}</strong> (média de <strong>{speedToLeadData.avgLeadsPerOp} leads</strong>/colaborador).
                           </li>
+                          {executiveSummaryData.topFunnelContributors[0] && (
+                            <li>
+                              • Maior entrada no funil: <strong>{executiveSummaryData.topFunnelContributors[0].userName}</strong> ({executiveSummaryData.topFunnelContributors[0].totalFunil} leads • {executiveSummaryData.topFunnelContributors[0].funnelConvRate}% conv. funil).
+                            </li>
+                          )}
                           {executiveSummaryData.volumeLeader && (
                             <li>
-                              • Líder em ADEs geradas: <strong>{executiveSummaryData.volumeLeader.userName}</strong> ({executiveSummaryData.volumeLeader.totalPropostasDigitadas} propostas •{" "}
-                              {executiveSummaryData.volumeLeader.totalNegociacoes > 0
-                                ? Math.min(100, Math.round((executiveSummaryData.volumeLeader.totalPropostasDigitadas / executiveSummaryData.volumeLeader.totalNegociacoes) * 100))
-                                : 0}% de avanço).
+                              • Líder em ADEs geradas: <strong>{executiveSummaryData.volumeLeader.userName}</strong> ({executiveSummaryData.volumeLeader.totalPropostasDigitadas} propostas • {executiveSummaryData.volumeLeader.negConvRate}% neg. ➔ ADE).
                             </li>
                           )}
                           {executiveSummaryData.fastestOp && (
@@ -2603,11 +3402,16 @@ export function PipelineIntelligenceDrawer({
 
                       <div className="bg-rose-50/60 border border-rose-200 rounded-lg p-4 space-y-2">
                         <div className="text-[10px] font-black uppercase text-rose-800">
-                          Suporte / Redistribuição Recomendada
+                          Atenção Gerencial (Baixa Entrada / Gargalos)
                         </div>
-                        {executiveSummaryData.bottleneckOps.length > 0 ? (
+                        {executiveSummaryData.bottleneckOps.length > 0 || executiveSummaryData.lowEntryOps.length > 0 ? (
                           <ul className="space-y-1.5 text-slate-700 leading-relaxed">
-                            {executiveSummaryData.bottleneckOps.map(op => (
+                            {executiveSummaryData.lowEntryOps.slice(0, 2).map(op => (
+                              <li key={`low-${op.userId}`}>
+                                • <strong>{op.userName}</strong> ({op.roleLabel}): apenas <strong>{op.totalFunil} leads</strong> no funil (abaixo da média).
+                              </li>
+                            ))}
+                            {executiveSummaryData.bottleneckOps.slice(0, 3).map(op => (
                               <li key={op.userId}>
                                 • <strong>{op.userName}</strong>: SLA {fmtDurationShort(op.avgMinutesToAde)} • {op.convRate}% avanço
                                 {op.stuck48hCount > 0 ? ` (${op.stuck48hCount} parados >48h)` : ""}
@@ -2615,7 +3419,7 @@ export function PipelineIntelligenceDrawer({
                             ))}
                           </ul>
                         ) : (
-                          <p className="text-slate-600">Nenhum operador com SLA crítico (&gt;24h) ou conversão abaixo de 15% neste recorte.</p>
+                          <p className="text-slate-600">Equipe com volume equilibrado no funil e sem gargalos críticos neste recorte.</p>
                         )}
                       </div>
                     </div>

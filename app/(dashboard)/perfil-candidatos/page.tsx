@@ -39,7 +39,9 @@ import {
   ChevronDown,
   MapPin,
   Mail,
-  Phone
+  Phone,
+  Calendar,
+  X
 } from "lucide-react"
 
 interface CandidatoItem {
@@ -67,6 +69,8 @@ export default function PerfilCandidatosPage() {
   const [candidatos, setCandidatos] = useState<CandidatoItem[]>([])
   const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "concluido" | "ja_vistos" | "nao_vistos" | "pendente" | "expirado">("TODOS")
   const [filtroCargo, setFiltroCargo] = useState<string>("TODOS")
+  const [filtroDataInicio, setFiltroDataInicio] = useState<string>("")
+  const [filtroDataFim, setFiltroDataFim] = useState<string>("")
   const [termoBusca, setTermoBusca] = useState("")
 
   const [abaAtiva, setAbaAtiva] = useState<"lista" | "analise">("lista")
@@ -293,7 +297,21 @@ export default function PerfilCandidatosPage() {
       c.nome.toLowerCase().includes(buscaNorm) ||
       c.email.toLowerCase().includes(buscaNorm) ||
       (c.cargo_pretendido && c.cargo_pretendido.toLowerCase().includes(buscaNorm))
-    return matchStatus && matchCargo && matchBusca
+    const inicioMs = filtroDataInicio ? new Date(`${filtroDataInicio}T00:00:00`).getTime() : null
+    const fimMs = filtroDataFim ? new Date(`${filtroDataFim}T23:59:59.999`).getTime() : null
+    let matchData = true
+    if (inicioMs !== null || fimMs !== null) {
+      const rawDate = c.data_conclusao || c.created_at
+      const refMs = rawDate ? new Date(rawDate).getTime() : NaN
+      if (isNaN(refMs)) {
+        matchData = false
+      } else {
+        if (inicioMs !== null && refMs < inicioMs) matchData = false
+        if (fimMs !== null && refMs > fimMs) matchData = false
+      }
+    }
+
+    return matchStatus && matchCargo && matchBusca && matchData
   })
 
   // Candidato atualmente inspecionado
@@ -510,6 +528,52 @@ export default function PerfilCandidatosPage() {
                 >
                   Expirados
                 </button>
+
+                {/* Filtro por Intervalo de Datas (Início e Fim) */}
+                <div
+                  className={cn(
+                    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold shrink-0 transition-colors",
+                    filtroDataInicio || filtroDataFim
+                      ? "bg-blue-50 text-blue-950"
+                      : "bg-slate-100 text-slate-700"
+                  )}
+                >
+                  <Calendar className={cn("w-3.5 h-3.5 shrink-0", filtroDataInicio || filtroDataFim ? "text-blue-600" : "text-slate-500")} />
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500 leading-none">De:</span>
+                  <input
+                    type="date"
+                    value={filtroDataInicio}
+                    max={filtroDataFim || undefined}
+                    onChange={e => setFiltroDataInicio(e.target.value)}
+                    aria-label="Data inicial"
+                    title="Data inicial"
+                    className="bg-transparent text-xs leading-none font-bold text-slate-900 focus:outline-hidden cursor-pointer"
+                  />
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500 leading-none">Até:</span>
+                  <input
+                    type="date"
+                    value={filtroDataFim}
+                    min={filtroDataInicio || undefined}
+                    onChange={e => setFiltroDataFim(e.target.value)}
+                    aria-label="Data final"
+                    title="Data final"
+                    className="bg-transparent text-xs leading-none font-bold text-slate-900 focus:outline-hidden cursor-pointer"
+                  />
+                  {(filtroDataInicio || filtroDataFim) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFiltroDataInicio("")
+                        setFiltroDataFim("")
+                      }}
+                      title="Limpar filtro de datas"
+                      aria-label="Limpar filtro de datas"
+                      className="p-0.5 rounded hover:bg-blue-200/70 text-blue-800 transition-colors cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
