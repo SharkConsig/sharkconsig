@@ -187,6 +187,13 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
     }
   }
 
+  const isHistoryModalOpenRef = useRef(isHistoryModalOpen)
+  const apoioDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    isHistoryModalOpenRef.current = isHistoryModalOpen
+  }, [isHistoryModalOpen])
+
   useEffect(() => {
     if (isHistoryModalOpen && isAdminUser) {
       fetchHistoryApoios()
@@ -194,7 +201,8 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
   }, [isHistoryModalOpen, filterStartDate, filterEndDate, isAdminUser])
 
   useEffect(() => {
-    if (!isSupervisorOrAbove || !user) return
+    const userId = user?.id
+    if (!isSupervisorOrAbove || !userId) return
 
     fetchActiveApoios()
 
@@ -203,23 +211,36 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
-          table: 'mensagens_chamado'
+          table: 'mensagens_chamado',
+          filter: 'action=in.(pediu_apoio,resolveu_apoio)'
         },
-        () => {
-          fetchActiveApoios()
-          if (isHistoryModalOpen && isAdminUser) {
-            fetchHistoryApoios()
+        (payload: any) => {
+          const action = payload?.new?.action
+          if (action && action !== 'pediu_apoio' && action !== 'resolveu_apoio') return
+
+          if (apoioDebounceTimerRef.current) {
+            clearTimeout(apoioDebounceTimerRef.current)
           }
+          apoioDebounceTimerRef.current = setTimeout(() => {
+            fetchActiveApoios()
+            if (isHistoryModalOpenRef.current && isAdminUser) {
+              fetchHistoryApoios()
+            }
+          }, 400)
         }
       )
       .subscribe()
 
     return () => {
+      if (apoioDebounceTimerRef.current) {
+        clearTimeout(apoioDebounceTimerRef.current)
+        apoioDebounceTimerRef.current = null
+      }
       supabase.removeChannel(channel)
     }
-  }, [user, isSupervisorOrAbove, isHistoryModalOpen, isAdminUser])
+  }, [user?.id, isSupervisorOrAbove, isAdminUser])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

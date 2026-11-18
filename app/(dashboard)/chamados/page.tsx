@@ -868,6 +868,36 @@ export default function TicketsPage() {
   const itemsPerPage = 10
   const isFirstLoadRef = React.useRef(true)
   const isFetchingTicketsRef = React.useRef(false)
+  const lastTicketsFetchAtRef = React.useRef(0)
+  const allowedUserIdsCacheRef = React.useRef<{ key: string; ids: string[] | null; fetchedAt: number } | null>(null)
+  const [expandedAttachmentsMap, setExpandedAttachmentsMap] = useState<Record<string, {
+    arquivo_rg_frente?: string | null
+    arquivo_rg_verso?: string | null
+    arquivo_contracheque?: string | null
+    arquivo_extrato?: string | null
+    arquivo_outros?: string | null
+  }>>({})
+
+  useEffect(() => {
+    if (!expandedTicketId) return
+    let isCancelled = false
+    supabase
+      .from('chamados')
+      .select('arquivo_rg_frente, arquivo_rg_verso, arquivo_contracheque, arquivo_extrato, arquivo_outros')
+      .eq('id', expandedTicketId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!isCancelled && data) {
+          setExpandedAttachmentsMap(prev => ({
+            ...prev,
+            [expandedTicketId]: data
+          }))
+        }
+      })
+    return () => {
+      isCancelled = true
+    }
+  }, [expandedTicketId])
 
   const fetchTickets = useCallback(async (isSilent = false) => {
     if (!perfil || !user) return
@@ -879,10 +909,16 @@ export default function TicketsPage() {
     isFirstLoadRef.current = false
     try {
       let allowedUserIds: string[] | null = null
+      const roleCacheKey = `${user.id}_${perfil.role}`
+      const cachedAllowed = allowedUserIdsCacheRef.current
+      const hasValidAllowedCache = cachedAllowed && cachedAllowed.key === roleCacheKey && (Date.now() - cachedAllowed.fetchedAt < 300000)
 
       // Aplicar filtros de permissão baseados na Role
-      if (perfil.role === 'Estágio' || perfil.role === 'Estagio' || perfil.role === 'Processo Seletivo' || perfil.role === 'PROCESSO SELETIVO') {
+      if (hasValidAllowedCache) {
+        allowedUserIds = cachedAllowed.ids
+      } else if (perfil.role === 'Estágio' || perfil.role === 'Estagio' || perfil.role === 'Processo Seletivo' || perfil.role === 'PROCESSO SELETIVO') {
         allowedUserIds = [user.id]
+        allowedUserIdsCacheRef.current = { key: roleCacheKey, ids: allowedUserIds, fetchedAt: Date.now() }
       } else if (perfil.role === 'Corretor') {
         try {
           const controller = new AbortController();
@@ -909,6 +945,7 @@ export default function TicketsPage() {
           }
           allowedUserIds = [user.id]
         }
+        allowedUserIdsCacheRef.current = { key: roleCacheKey, ids: allowedUserIds, fetchedAt: Date.now() }
       } else if (perfil.role === 'Supervisor') {
         try {
           const controller = new AbortController();
@@ -935,16 +972,19 @@ export default function TicketsPage() {
           }
           allowedUserIds = [user.id]
         }
+        allowedUserIdsCacheRef.current = { key: roleCacheKey, ids: allowedUserIds, fetchedAt: Date.now() }
+      } else {
+        allowedUserIdsCacheRef.current = { key: roleCacheKey, ids: null, fetchedAt: Date.now() }
       }
 
-      // Função construtora para garantir nova instância do PostgREST em cada fatia
-      const buildBaseQuery = (withCount = false) => {
+      // Função construtora para garantir nova instância do PostgREST em cada fatia (sem colunas pesadas de anexos na listagem)
+      const buildBaseQuery = () => {
         let q = supabase
           .from('chamados')
           .select(`
-            id, status, status_id, origem, cliente_nome, cliente_cpf, cliente_telefone, cliente_telefone_2, cliente_telefone_3, margem, margem_liquida_5, margem_beneficio_5, convenio, equipe, matricula, created_at, updated_at, user_id, user_nome, user_avatar, descricao, valor_operacao, escalonamento_status, arquivo_rg_frente, arquivo_rg_verso, arquivo_contracheque, arquivo_extrato, arquivo_outros,
+            id, status, status_id, origem, cliente_nome, cliente_cpf, cliente_telefone, cliente_telefone_2, cliente_telefone_3, margem, margem_liquida_5, margem_beneficio_5, convenio, equipe, matricula, created_at, updated_at, user_id, user_nome, user_avatar, descricao, valor_operacao, escalonamento_status,
             status_chamados:status_id (id, nome, cor)
-          `, withCount ? { count: 'exact' } : undefined)
+          `)
 
         if (startDate && startDate.length === 10) {
           const localStart = new Date(`${startDate}T00:00:00`)
@@ -971,9 +1011,9 @@ export default function TicketsPage() {
         return q.order('updated_at', { ascending: false, nullsFirst: false }).order('id', { ascending: false })
       }
 
-      // Primeiro lote (0 - 999) com contagem exata na mesma requisição
-      const { data: firstBatch, error: firstErr, count: totalCount } = await withRetry(() => 
-        buildBaseQuery(true).range(0, 999)
+      const step = 1000
+      const { data: firstBatch, error: firstErr } = await withRetry(() => 
+        buildBaseQuery().range(0, step - 1)
       )
 
       if (firstErr) {
@@ -981,27 +1021,22 @@ export default function TicketsPage() {
         throw firstErr
       }
 
-      let all: Ticket[] = (firstBatch || []) as Ticket[]
+      const all: Ticket[] = (firstBatch || []) as Ticket[]
 
-      // Se houver mais registros, cria os ranges necessários e busca em grupos de no máximo 3 conexões concorrentes
-      const totalRecords = totalCount || (firstBatch && firstBatch.length === 1000 ? 15000 : 0)
-      if (totalRecords > 1000) {
-        const step = 1000
-        const totalBatches = Math.ceil(totalRecords / step)
-        const ranges: Array<[number, number]> = []
-        for (let i = 1; i < totalBatches; i++) {
-          ranges.push([i * step, Math.min((i + 1) * step - 1, totalRecords - 1)])
-        }
-
-        const CONCURRENCY_LIMIT = 3
+      // Busca lotes seguintes em pares (máximo 2 conexões simultâneas) sem executar COUNT(*) extra
+      if (firstBatch && firstBatch.length === step) {
+        let offset = step
         let reachedEnd = false
-        for (let i = 0; i < ranges.length; i += CONCURRENCY_LIMIT) {
-          if (reachedEnd) break
-          const chunk = ranges.slice(i, i + CONCURRENCY_LIMIT)
+        while (!reachedEnd) {
+          const chunk = [
+            [offset, offset + step - 1],
+            [offset + step, offset + step * 2 - 1]
+          ]
           const chunkResults = await Promise.all(
             chunk.map(([from, to]) => withRetry(() => buildBaseQuery().range(from, to)))
           )
           for (const res of chunkResults) {
+            if (res.error) throw res.error
             if (res.data && res.data.length > 0) {
               all.push(...(res.data as Ticket[]))
               if (res.data.length < step) {
@@ -1013,6 +1048,7 @@ export default function TicketsPage() {
               break
             }
           }
+          offset += step * 2
         }
       }
 
@@ -1026,6 +1062,7 @@ export default function TicketsPage() {
         toast.error("Erro ao carregar a lista de chamados")
       }
     } finally {
+      lastTicketsFetchAtRef.current = Date.now()
       isFetchingTicketsRef.current = false
       setIsLoading(false)
     }
@@ -1035,18 +1072,23 @@ export default function TicketsPage() {
     if (user?.id && perfil?.id) {
       fetchTickets()
 
-      // Polling inteligente: sincroniza a cada 45 segundos somente com aba visível
+      // Polling econômico: sincroniza a cada 90 segundos somente com aba visível
       const interval = setInterval(() => {
         if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
           return
         }
+        if (Date.now() - lastTicketsFetchAtRef.current < 45000) {
+          return
+        }
         fetchTickets(true)
-      }, 45000)
+      }, 90000)
 
-      // Atualiza imediatamente quando o usuário volta para a aba
+      // Atualiza ao retornar para a aba respeitando cooldown mínimo de 30s
       const handleVisibilityChange = () => {
         if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-          fetchTickets(true)
+          if (Date.now() - lastTicketsFetchAtRef.current >= 30000) {
+            fetchTickets(true)
+          }
         }
       }
       document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -3061,11 +3103,11 @@ export default function TicketsPage() {
                                     phone: ticket.cliente_telefone,
                                     phone_2: ticket.cliente_telefone_2,
                                     phone_3: ticket.cliente_telefone_3,
-                                    arquivo_rg_frente: ticket.arquivo_rg_frente,
-                                    arquivo_rg_verso: ticket.arquivo_rg_verso,
-                                    arquivo_contracheque: ticket.arquivo_contracheque,
-                                    arquivo_extrato: ticket.arquivo_extrato,
-                                    arquivo_outros: ticket.arquivo_outros,
+                                    arquivo_rg_frente: expandedAttachmentsMap[ticket.id.toString()]?.arquivo_rg_frente ?? (ticket as any).arquivo_rg_frente ?? null,
+                                    arquivo_rg_verso: expandedAttachmentsMap[ticket.id.toString()]?.arquivo_rg_verso ?? (ticket as any).arquivo_rg_verso ?? null,
+                                    arquivo_contracheque: expandedAttachmentsMap[ticket.id.toString()]?.arquivo_contracheque ?? (ticket as any).arquivo_contracheque ?? null,
+                                    arquivo_extrato: expandedAttachmentsMap[ticket.id.toString()]?.arquivo_extrato ?? (ticket as any).arquivo_extrato ?? null,
+                                    arquivo_outros: expandedAttachmentsMap[ticket.id.toString()]?.arquivo_outros ?? (ticket as any).arquivo_outros ?? null,
                                     margem: ticket.margem,
                                     margem_liquida_5: ticket.margem_liquida_5,
                                     margem_beneficio_5: ticket.margem_beneficio_5,

@@ -2727,25 +2727,36 @@ export default function KanbanPage() {
         { name: "inss_clientes", label: "INSS" }
       ]
 
-      for (const t of tables) {
-        try {
-          const { data } = await supabase.from(t.name).select("id").or(`cpf.eq.${padded},cpf.eq.${digits}`).limit(1)
-          if (data && data.length > 0 && isMounted) {
-            setResolvedConvenio(t.label)
-            if (atendimentoModalTicket.source_table === "kanban_fichas") {
-              const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
-              delete (currentMeta as any).historico_kanban
-              delete (currentMeta as any).historico_movimentacoes
-              currentMeta.convenio = t.label
-              atendimentoModalTicket.convenio = t.label
-              supabase.from("kanban_fichas").update({
-                convenio: t.label,
-                metadata: currentMeta
-              }).eq("id", atendimentoModalTicket.id).then(() => {})
+      // Busca em lotes paralelos de 5 respeitando a ordem de prioridade, evitando até 21 idas e voltas sequenciais
+      for (let i = 0; i < tables.length; i += 5) {
+        if (!isMounted) return
+        const group = tables.slice(i, i + 5)
+        const results = await Promise.all(
+          group.map(async (t) => {
+            try {
+              const { data } = await supabase.from(t.name).select("id").or(`cpf.eq.${padded},cpf.eq.${digits}`).limit(1)
+              return data && data.length > 0 ? t : null
+            } catch {
+              return null
             }
-            return
+          })
+        )
+        const matched = results.find(Boolean)
+        if (matched && isMounted) {
+          setResolvedConvenio(matched.label)
+          if (atendimentoModalTicket.source_table === "kanban_fichas") {
+            const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
+            delete (currentMeta as any).historico_kanban
+            delete (currentMeta as any).historico_movimentacoes
+            currentMeta.convenio = matched.label
+            atendimentoModalTicket.convenio = matched.label
+            supabase.from("kanban_fichas").update({
+              convenio: matched.label,
+              metadata: currentMeta
+            }).eq("id", atendimentoModalTicket.id).then(() => {})
           }
-        } catch {}
+          return
+        }
       }
     }
 
@@ -2753,7 +2764,7 @@ export default function KanbanPage() {
     return () => {
       isMounted = false
     }
-  }, [atendimentoModalTicket])
+  }, [atendimentoModalTicket?.id, atendimentoModalTicket?.cliente_cpf, atendimentoModalTicket?.convenio])
 
   // Supervisão
   const [supervisaoNovoResponsavel, setSupervisaoNovoResponsavel] = useState("")
@@ -2797,8 +2808,17 @@ export default function KanbanPage() {
     loadUsers()
   }, [])
 
+  const isFetchingChamadosRef = useRef(false)
+  const lastChamadosFetchAtRef = useRef(0)
+  const pendingBackgroundRefreshRef = useRef(false)
+  const estagiariosCacheRef = useRef<{ userId: string; ids: string[]; fetchedAt: number } | null>(null)
+  const syncedClosedProposalIdsRef = useRef<Set<string>>(new Set())
+
   // Carregar Fichas do Supabase (Apenas registros da tabela kanban_fichas)
   const fetchChamados = useCallback(async (silent = false) => {
+    if (isFetchingChamadosRef.current) return
+    isFetchingChamadosRef.current = true
+    pendingBackgroundRefreshRef.current = false
     if (!silent) {
       setIsLoading(true)
       setIsRefreshing(true)
@@ -2813,22 +2833,28 @@ export default function KanbanPage() {
         return res
       }
 
-      // Regras de visibilidade pré-resolvidas:
+      // Regras de visibilidade pré-resolvidas (com cache de 5 minutos para evitar repetir /api/usuarios):
       // - Estágio visualiza SOMENTE os seus próprios atendimentos;
       // - Corretor visualiza os seus próprios atendimentos e os atendimentos de seus estagiários apadrinhados;
       // - Gestores visualizam os atendimentos de todos.
       let myEstagiariosIdsList: string[] = []
       if (!isGestor && user && userRole === "Corretor") {
-        try {
-          const res = await fetch("/api/usuarios")
-          if (res.ok) {
-            const allUsers = await res.json()
-            myEstagiariosIdsList = allUsers
-              .filter((u: { padrinho_id: string }) => u.padrinho_id === user.id)
-              .map((u: { id: string }) => u.id)
+        const cachedEst = estagiariosCacheRef.current
+        if (cachedEst && cachedEst.userId === user.id && (Date.now() - cachedEst.fetchedAt < 300000)) {
+          myEstagiariosIdsList = cachedEst.ids
+        } else {
+          try {
+            const res = await fetch("/api/usuarios")
+            if (res.ok) {
+              const allUsers = await res.json()
+              myEstagiariosIdsList = allUsers
+                .filter((u: { padrinho_id: string }) => u.padrinho_id === user.id)
+                .map((u: { id: string }) => u.id)
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
+          estagiariosCacheRef.current = { userId: user.id, ids: myEstagiariosIdsList, fetchedAt: Date.now() }
         }
       }
 
@@ -3024,15 +3050,14 @@ export default function KanbanPage() {
         ticketsFinal = ticketsFinal.filter(t => !isThiagoTicket(t))
       }
 
-      // Sincronização e enriquecimento atômico de dados em paralelo (Chamados, Concorrência e Propostas)
+      // Sincronização e enriquecimento de dados apenas dos cartões visíveis ao perfil (com concorrência controlada)
       let ticketsEnriched = [...ticketsFinal]
       const cpfsDosCartoes = Array.from(new Set(
-        formatted.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)
+        ticketsFinal.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)
       ))
 
-      const baseCpfs = Array.from(new Set(formatted.map(t => (t.cliente_cpf || "").replace(/\D/g, "")).filter(Boolean)))
       const allCpfVariants = new Set<string>()
-      baseCpfs.forEach(c => {
+      cpfsDosCartoes.forEach(c => {
         allCpfVariants.add(c)
         allCpfVariants.add(c.padStart(11, "0"))
         allCpfVariants.add(c.replace(/^0+/, ""))
@@ -3044,36 +3069,48 @@ export default function KanbanPage() {
 
       if (cpfsDosCartoes.length > 0 || cpfs.length > 0) {
         try {
-          const cpfChunksChamados = chunkArray(cpfsDosCartoes, 100)
-          const cpfChunksAll = chunkArray(cpfs, 100)
+          const cpfChunksChamados = chunkArray(cpfsDosCartoes, 150)
+          const cpfChunksAll = chunkArray(cpfs, 150)
+
+          const runWithLimit = async <T,>(tasks: Array<() => Promise<T>>, limit = 3): Promise<T[]> => {
+            const results: T[] = []
+            for (let i = 0; i < tasks.length; i += limit) {
+              const batch = tasks.slice(i, i + limit).map(fn => fn())
+              results.push(...await Promise.all(batch))
+            }
+            return results
+          }
 
           const [chamadosResponses, concorrenciaResponses, propostasResponses] = await Promise.all([
-            Promise.all(
-              cpfChunksChamados.map(chunk =>
-                supabase
+            runWithLimit(
+              cpfChunksChamados.map(chunk => async () =>
+                await supabase
                   .from("chamados")
                   .select("id, cliente_cpf, user_id, user_nome, margem, margem_liquida_5, margem_beneficio_5, valor_operacao, descricao, convenio, created_at, status")
                   .in("cliente_cpf", chunk)
                   .order("created_at", { ascending: false })
-              )
+              ),
+              3
             ),
-            Promise.all(
-              cpfChunksAll.map(chunk =>
-                supabase
+            runWithLimit(
+              cpfChunksAll.map(chunk => async () =>
+                await supabase
                   .from("kanban_fichas")
                   .select("cliente_cpf, operador_nome, etapa")
                   .in("cliente_cpf", chunk)
                   .neq("etapa", "PERDIDO")
-              )
+              ),
+              3
             ),
-            Promise.all(
-              cpfChunksAll.map(chunk =>
-                supabase
+            runWithLimit(
+              cpfChunksAll.map(chunk => async () =>
+                await supabase
                   .from("propostas")
                   .select("id, id_lead, cliente_cpf, ade, data_digitacao, status, corretor_id, corretor, estagiario_colaborador_id, estagiario_colaborador_nome, created_at")
                   .in("cliente_cpf", chunk)
                   .order("updated_at", { ascending: false })
-              )
+              ),
+              3
             )
           ])
 
@@ -3368,9 +3405,13 @@ export default function KanbanPage() {
               }
             })
 
-            // Sincroniza fichas fechadas no banco de dados para garantir persistência em kanban_fichas
+            // Sincroniza fichas fechadas no banco apenas uma vez por proposta nesta sessão
             propostasExistentes.filter(hasProposalDigitacao).forEach(p => {
-              syncKanbanForClosedProposal(p)
+              const propKey = String(p.id || `${p.cliente_cpf || ""}_${p.ade || ""}`)
+              if (!syncedClosedProposalIdsRef.current.has(propKey)) {
+                syncedClosedProposalIdsRef.current.add(propKey)
+                syncKanbanForClosedProposal(p)
+              }
             })
           }
         } catch (fetchErr) {
@@ -3388,6 +3429,8 @@ export default function KanbanPage() {
         setTickets([])
       }
     } finally {
+      lastChamadosFetchAtRef.current = Date.now()
+      isFetchingChamadosRef.current = false
       if (!silent) {
         setIsLoading(false)
         setIsRefreshing(false)
@@ -3404,16 +3447,20 @@ export default function KanbanPage() {
     fetchChamados()
   }, [fetchChamados, hasCheckedEnv, canAccessKanban])
 
-  // Sincronização automática em tempo real e em segundo plano (imperceptível para o usuário)
+  // Sincronização automática em tempo real e em segundo plano (com debounce e controle de recursos)
   useEffect(() => {
     if (!hasCheckedEnv || !canAccessKanban) return
 
     let debounceTimer: NodeJS.Timeout | null = null
     const scheduleSilentRefresh = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        pendingBackgroundRefreshRef.current = true
+        return
+      }
       if (debounceTimer) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(() => {
         fetchChamados(true)
-      }, 300)
+      }, 1500)
     }
 
     // 1. Canal Supabase Realtime para kanban_fichas, chamados e propostas (INSERT, UPDATE e DELETE)
@@ -3455,26 +3502,24 @@ export default function KanbanPage() {
       )
       .subscribe()
 
-    // 2. Sincronização ao retornar ou focar na aba (ex: após abrir chamado em outra tela)
+    // 2. Sincronização ao retornar para a aba com cooldown mínimo de 30s (evita rajada em focus + visibilitychange)
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === "visible") {
-        scheduleSilentRefresh()
-        fetchProximasAcoes().then(data => {
-          if (data && data.length > 0) {
-            setProximasAcoesConfig(data)
-          }
-        })
+        const elapsed = Date.now() - lastChamadosFetchAtRef.current
+        if (pendingBackgroundRefreshRef.current || elapsed >= 30000) {
+          scheduleSilentRefresh()
+        }
       }
     }
     window.addEventListener("focus", handleVisibilityOrFocus)
     document.addEventListener("visibilitychange", handleVisibilityOrFocus)
 
-    // 3. Heartbeat periódico silencioso a cada 15 segundos enquanto a aba estiver visível
+    // 3. Heartbeat periódico silencioso de segurança a cada 90 segundos enquanto a aba estiver visível
     const heartbeatInterval = setInterval(() => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "visible" && (Date.now() - lastChamadosFetchAtRef.current >= 45000)) {
         fetchChamados(true)
       }
-    }, 15000)
+    }, 90000)
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer)
