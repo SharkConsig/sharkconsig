@@ -49,7 +49,7 @@ export interface PipelineIntelligenceDrawerProps {
 }
 
 type PeriodFilter = "today" | "7d" | "15d" | "30d" | "month" | "all"
-type ActiveTab = "funnel" | "team" | "affinity" | "risk"
+type ActiveTab = "funnel" | "affinity" | "risk"
 type KanbanStageKey = "EM RETOMADA" | "EM NEGOCIAÇÃO" | "EM REATIVAÇÃO" | "SEM INTERESSE" | "FECHADO" | "PERDIDO"
 
 export function PipelineIntelligenceDrawer({
@@ -328,23 +328,25 @@ export function PipelineIntelligenceDrawer({
             (m.etapa_nova || "").toUpperCase().includes("NEGOCIA")
         )
 
-      // Dentro de 'Em interação ou retomada': distinguir quem já interagiu vs quem segue em Retomada (sem contato)
+      // Distinguir quem já interagiu (flag/histórico/descrição) e quem alcançou interação no funil
+      const obsHistText = Array.isArray(meta?.observacoes_historico)
+        ? meta.observacoes_historico.map((o: any) => String(o?.texto || "")).join(" ").toLowerCase()
+        : ""
+      const rawVisibleDesc = String(t.descricao || "")
+        .replace(/<!-- TICKET_METADATA: [\s\S]*? -->/g, "")
+        .toLowerCase()
+      const interactedFlag =
+        Boolean(meta?.cliente_respondeu || meta?.regua_pausada) ||
+        obsHistText.includes("cliente interagiu") ||
+        obsHistText.includes("cliente respondeu") ||
+        rawVisibleDesc.includes("cliente interagiu") ||
+        rawVisibleDesc.includes("cliente respondeu")
+
+      const hasInteracao = interactedFlag || hasNegociacao || isFechado
+
       let isEmInteracao = false
       let isSemContatoRetomada = false
       if (stageKey === "EM RETOMADA") {
-        const obsHistText = Array.isArray(meta?.observacoes_historico)
-          ? meta.observacoes_historico.map((o: any) => String(o?.texto || "")).join(" ").toLowerCase()
-          : ""
-        const rawVisibleDesc = String(t.descricao || "")
-          .replace(/<!-- TICKET_METADATA: [\s\S]*? -->/g, "")
-          .toLowerCase()
-        const interactedFlag =
-          Boolean(meta?.cliente_respondeu || meta?.regua_pausada) ||
-          obsHistText.includes("cliente interagiu") ||
-          obsHistText.includes("cliente respondeu") ||
-          rawVisibleDesc.includes("cliente interagiu") ||
-          rawVisibleDesc.includes("cliente respondeu")
-
         isEmInteracao = interactedFlag
         isSemContatoRetomada = !interactedFlag
       }
@@ -363,6 +365,7 @@ export function PipelineIntelligenceDrawer({
         isConverted,
         isFechado,
         isPerdido,
+        hasInteracao,
         hasNegociacao,
         isEmInteracao,
         isSemContatoRetomada,
@@ -391,6 +394,11 @@ export function PipelineIntelligenceDrawer({
       totalPropostasDigitadas: number
       producaoFechada: number
       operacaoFechada: number
+      operacaoTotal: number
+      sharePct: number
+      noContactPct: number
+      lossPct: number
+      leadsPerFechado: number | null
       withMarginCount: number
       avgMinutesToAde: number
       minMinutes: number
@@ -430,6 +438,7 @@ export function PipelineIntelligenceDrawer({
       totalPropostasDigitadas: number
       producaoFechada: number
       operacaoFechada: number
+      operacaoTotal: number
       withMarginCount: number
       durationsMinutes: number[]
     }>()
@@ -470,6 +479,7 @@ export function PipelineIntelligenceDrawer({
           totalPropostasDigitadas: 0,
           producaoFechada: 0,
           operacaoFechada: 0,
+          operacaoTotal: 0,
           withMarginCount: 0,
           durationsMinutes: []
         })
@@ -477,6 +487,7 @@ export function PipelineIntelligenceDrawer({
 
       const op = opMap.get(uId)!
       op.totalFunil++
+      op.operacaoTotal += item.opVal
       if (item.hasMargin) op.withMarginCount++
 
       if (item.stageKey === "EM RETOMADA") {
@@ -615,6 +626,11 @@ export function PipelineIntelligenceDrawer({
         mentorTone = "sky"
       }
 
+      const sharePct = parsedTickets.length > 0 ? Math.round((op.totalFunil / parsedTickets.length) * 100) : 0
+      const noContactPct = op.totalFunil > 0 ? Math.round((op.emRetomadaSemContato / op.totalFunil) * 100) : 0
+      const lossPct = op.totalFunil > 0 ? Math.round((op.totalPerdido / op.totalFunil) * 100) : 0
+      const leadsPerFechado = op.totalFechado > 0 ? Math.max(1, Math.round(op.totalFunil / op.totalFechado)) : null
+
       result.push({
         userId: op.userId,
         userName: op.userName,
@@ -632,6 +648,11 @@ export function PipelineIntelligenceDrawer({
         totalPropostasDigitadas: op.totalPropostasDigitadas,
         producaoFechada: op.producaoFechada,
         operacaoFechada: op.operacaoFechada,
+        operacaoTotal: op.operacaoTotal,
+        sharePct,
+        noContactPct,
+        lossPct,
+        leadsPerFechado,
         withMarginCount: op.withMarginCount,
         avgMinutesToAde: avg,
         minMinutes: min,
@@ -829,6 +850,7 @@ export function PipelineIntelligenceDrawer({
       key: string
       label: string
       total: number
+      hasInteracao: number
       emInteracao: number
       emRetomadaSemContato: number
       emNegociacaoAtual: number
@@ -873,6 +895,7 @@ export function PipelineIntelligenceDrawer({
           key: item.originKey,
           label: item.originLabel,
           total: 0,
+          hasInteracao: 0,
           emInteracao: 0,
           emRetomadaSemContato: 0,
           emNegociacaoAtual: 0,
@@ -892,6 +915,7 @@ export function PipelineIntelligenceDrawer({
       orig.total++
       orig.operacaoTotal += item.opVal
       if (item.hasMargin) orig.comMargem++
+      if (item.hasInteracao) orig.hasInteracao++
       if (item.hasNegociacao) orig.alcancouNegociacao++
 
       if (item.stageKey === "EM RETOMADA") {
@@ -923,27 +947,28 @@ export function PipelineIntelligenceDrawer({
         const noContactPct = o.total > 0 ? Math.round((o.emRetomadaSemContato / o.total) * 100) : 0
         const lossPct = o.total > 0 ? Math.round((o.perdido / o.total) * 100) : 0
 
+        const leadsPerInteracao = o.hasInteracao > 0 ? Math.max(1, Math.round(o.total / o.hasInteracao)) : null
+        const leadsPerNegociacao = o.alcancouNegociacao > 0 ? Math.max(1, Math.round(o.total / o.alcancouNegociacao)) : null
+        const leadsPerFechado = o.fechado > 0 ? Math.max(1, Math.round(o.total / o.fechado)) : null
+
         let roiVerdict = "Em maturação"
         let roiTone: "emerald" | "sky" | "amber" | "rose" | "slate" = "slate"
 
         if (o.total >= 3 && (convPct >= 10 || o.producaoFechada >= 10000)) {
-          roiVerdict = "Vale o investimento (ROI positivo)"
+          roiVerdict = "Ótima"
           roiTone = "emerald"
         } else if (o.total >= 5 && marginPct < 35 && o.fechado === 0) {
-          roiVerdict = "Baixa margem viável (revisar compra)"
+          roiVerdict = "Ruim"
           roiTone = "rose"
         } else if (o.total >= 5 && noContactPct >= 65 && o.alcancouNegociacao <= 1) {
-          roiVerdict = "Alto % sem contato (revisar telefones)"
+          roiVerdict = "Ruim"
           roiTone = "rose"
-        } else if (o.alcancouNegociacao >= 2 && o.fechado === 0 && marginPct >= 50) {
-          roiVerdict = "Bom contato e margem (focar fechamento)"
-          roiTone = "sky"
         } else if (o.total >= 5 && lossPct >= 50 && o.fechado === 0) {
-          roiVerdict = "Alta taxa de perda (cuidado no aporte)"
-          roiTone = "amber"
-        } else if (o.emInteracao + o.emNegociacaoAtual > 0) {
-          roiVerdict = "Base em aquecimento ativo"
-          roiTone = "amber"
+          roiVerdict = "Ruim"
+          roiTone = "rose"
+        } else if (o.total >= 3 && (o.fechado > 0 || (o.alcancouNegociacao >= 2 && marginPct >= 50))) {
+          roiVerdict = "Boa"
+          roiTone = "sky"
         }
 
         return {
@@ -954,6 +979,9 @@ export function PipelineIntelligenceDrawer({
           convPct,
           noContactPct,
           lossPct,
+          leadsPerInteracao,
+          leadsPerNegociacao,
+          leadsPerFechado,
           roiVerdict,
           roiTone
         }
@@ -973,6 +1001,21 @@ export function PipelineIntelligenceDrawer({
     const topOriginsInNegociacao = origins
       .filter(o => o.emNegociacaoAtual > 0)
       .sort((a, b) => b.emNegociacaoAtual - a.emNegociacaoAtual)
+      .slice(0, 5)
+
+    const topOriginsInSemInteresse = origins
+      .filter(o => o.semInteresse > 0)
+      .sort((a, b) => b.semInteresse - a.semInteresse)
+      .slice(0, 5)
+
+    const topOriginsInFechado = origins
+      .filter(o => o.fechado > 0)
+      .sort((a, b) => b.fechado - a.fechado || b.producaoFechada - a.producaoFechada)
+      .slice(0, 5)
+
+    const topOriginsInPerdido = origins
+      .filter(o => o.perdido > 0)
+      .sort((a, b) => b.perdido - a.perdido)
       .slice(0, 5)
 
     const interacaoPct = totalEmRetomadaStage > 0 ? Math.round((totalEmInteracao / totalEmRetomadaStage) * 100) : 0
@@ -1004,7 +1047,10 @@ export function PipelineIntelligenceDrawer({
       origins,
       topOriginsInInteracao,
       topOriginsInRetomada,
-      topOriginsInNegociacao
+      topOriginsInNegociacao,
+      topOriginsInSemInteresse,
+      topOriginsInFechado,
+      topOriginsInPerdido
     }
   }, [parsedTickets])
 
@@ -1982,25 +2028,24 @@ export function PipelineIntelligenceDrawer({
               <div className="text-base lg:text-lg font-black text-indigo-950 leading-tight">
                 {funnelAndOriginsData.totalFunnel} leads
               </div>
-              <span className="text-[10px] text-indigo-900 font-bold leading-tight block mt-0.5 truncate">
-                {funnelAndOriginsData.totalEmInteracao} interação • {funnelAndOriginsData.totalEmRetomadaSemContato} retomada ({funnelAndOriginsData.interacaoPct}% contato)
-              </span>
             </div>
           </div>
 
-          {/* Card 2: CONVERSÃO & TEMPO MÉDIO */}
+          {/* Card 2: PARA FECHAR 1 VENDA PRECISA */}
           <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
             <div className="flex items-center gap-1.5 text-sky-900">
               <Zap className="w-3.5 h-3.5 text-sky-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[10px] font-black uppercase tracking-wider">Conversão &amp; Tempo</span>
+              <span className="text-[10px] font-black uppercase tracking-wider">Para fechar 1 venda precisa de:</span>
             </div>
             <div className="mt-0.5">
               <div className="text-base lg:text-lg font-black text-sky-950 leading-tight">
-                {funnelAndOriginsData.totalFechado} ADEs ({funnelAndOriginsData.funnelConvPct}%)
+                {funnelAndOriginsData.totalFechado > 0
+                  ? (() => {
+                      const leadsNeeded = Math.max(1, Math.round(funnelAndOriginsData.totalFunnel / funnelAndOriginsData.totalFechado))
+                      return `${leadsNeeded} ${leadsNeeded === 1 ? "lead" : "leads"}`
+                    })()
+                  : "—"}
               </div>
-              <span className="text-[10px] text-sky-900 font-bold leading-tight block mt-0.5 truncate">
-                Neg. ➔ ADE: {funnelAndOriginsData.negToAdePct}% • Tempo: {fmtDurationShort(speedToLeadData.generalAvgMinutes)}
-              </span>
             </div>
           </div>
 
@@ -2014,9 +2059,6 @@ export function PipelineIntelligenceDrawer({
               <div className="text-base lg:text-lg font-black text-emerald-950 leading-tight">
                 {fmtCurrency(stageAgingData.grandTotalCapital)}
               </div>
-              <span className="text-[10px] text-emerald-900 font-bold leading-tight block mt-0.5 truncate">
-                Prod. Est.: {fmtCurrency(stageAgingData.grandTotalProducao)} • {funnelAndOriginsData.withMarginPct}% c/ margem
-              </span>
             </div>
           </div>
 
@@ -2030,9 +2072,6 @@ export function PipelineIntelligenceDrawer({
               <div className="text-base lg:text-lg font-black text-rose-950 leading-tight">
                 {riskLeadsData.length} leads
               </div>
-              <span className="text-[10px] text-rose-900 font-bold leading-tight block mt-0.5 truncate">
-                Parados &gt;48h • Perdidos: {funnelAndOriginsData.totalPerdido} • Reativ.: {funnelAndOriginsData.totalReativacao}
-              </span>
             </div>
           </div>
         </div>
@@ -2061,26 +2100,6 @@ export function PipelineIntelligenceDrawer({
 
           <button
             type="button"
-            onClick={() => setActiveTab("team")}
-            className={cn(
-              "relative group/tooltip py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap shrink-0",
-              activeTab === "team"
-                ? "border-indigo-600 text-indigo-600"
-                : "border-transparent text-slate-500 hover:text-slate-900"
-            )}
-          >
-            <Zap className="w-4 h-4" />
-            <span>2. Eficiência da Equipe &amp; Tempo Médio</span>
-            <span
-              role="tooltip"
-              className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700 whitespace-normal"
-            >
-              Audita se corretores e estagiários estão colocando leads suficientes no funil, como distribuem em cada etapa, taxa de conversão em ADEs e o tempo médio entre Em negociação e geração da proposta.
-            </span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => setActiveTab("affinity")}
             className={cn(
               "relative group/tooltip py-2.5 text-xs font-bold border-b-2 flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap shrink-0",
@@ -2090,7 +2109,7 @@ export function PipelineIntelligenceDrawer({
             )}
           >
             <Award className="w-4 h-4" />
-            <span>3. Matriz de Afinidade</span>
+            <span>2. Matriz de Afinidade</span>
             <span
               role="tooltip"
               className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700 whitespace-normal"
@@ -2110,7 +2129,7 @@ export function PipelineIntelligenceDrawer({
             )}
           >
             <Flame className="w-4 h-4 text-rose-500" />
-            <span>4. Radar de Risco de Queima</span>
+            <span>3. Radar de Risco de Queima</span>
             {riskLeadsData.length > 0 && (
               <span className="px-1.5 py-0.2 bg-rose-500 text-white text-[10px] rounded-full font-bold">
                 {riskLeadsData.length}
@@ -2130,7 +2149,7 @@ export function PipelineIntelligenceDrawer({
           "flex-1 min-h-0 bg-slate-50/50",
           activeTab === "risk"
             ? "overflow-hidden flex flex-col"
-            : cn("overflow-y-auto p-5 lg:p-6", (activeTab === "affinity" || activeTab === "team") && "flex flex-col")
+            : cn("overflow-y-auto p-5 lg:p-6", activeTab === "affinity" && "flex flex-col")
         )}>
           {/* ============================================================== */}
           {/* ABA 1: ANÁLISE GERAL DO FUNIL (6 ETAPAS) & ORIGENS (ROI)       */}
@@ -2138,7 +2157,7 @@ export function PipelineIntelligenceDrawer({
           {activeTab === "funnel" && (
             <div className="space-y-4">
               {/* Visão das 6 etapas do Kanban */}
-              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+              <div className="bg-white rounded-xl p-4 shadow-2xs space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h3 className="text-[13px] font-bold text-slate-900 flex items-center gap-1.5">
@@ -2176,7 +2195,7 @@ export function PipelineIntelligenceDrawer({
                       <div
                         key={st.key}
                         className={cn(
-                          "border rounded-xl p-3 flex flex-col justify-between shadow-2xs",
+                          "border-2 rounded-xl p-3 flex flex-col justify-between shadow-2xs",
                           colorBorderMap[st.color] || "border-slate-200 bg-white"
                         )}
                       >
@@ -2184,7 +2203,6 @@ export function PipelineIntelligenceDrawer({
                           <div className="flex items-start justify-between gap-1.5">
                             <div>
                               <span className="text-[12.5px] font-bold text-slate-900 leading-tight block">{st.label}</span>
-                              <span className="text-[11px] text-slate-500">{st.subtitle}</span>
                             </div>
                             <span className={cn("px-1.5 py-0.5 rounded-md text-[11px] font-black shrink-0", badgeMap[st.color])}>
                               {st.count} ({st.sharePct}%)
@@ -2213,16 +2231,20 @@ export function PipelineIntelligenceDrawer({
                               <span className="text-slate-500">Produção:</span>
                               <span className="font-black text-sky-600">{fmtCurrency(st.totalProducao)}</span>
                             </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-500">Com margem:</span>
-                              <span className="font-bold text-slate-800">{st.marginPct}%</span>
-                            </div>
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-slate-500 shrink-0">Permanência:</span>
-                              <span className="font-bold text-slate-700 text-right">
-                                {fmtDaysAndHours(st.avgHours)}
-                              </span>
-                            </div>
+                            {st.key !== "FECHADO" && st.key !== "PERDIDO" && (
+                              <>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-500">Com margem:</span>
+                                  <span className="font-bold text-slate-800">{st.marginPct}%</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-slate-500 shrink-0">Permanência:</span>
+                                  <span className="font-bold text-slate-700 text-right">
+                                    {fmtDaysAndHours(st.avgHours)}
+                                  </span>
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
 
@@ -2265,8 +2287,9 @@ export function PipelineIntelligenceDrawer({
                 </div>
               </div>
 
-              {/* Origens por Momento do Funil (Interação vs Retomada vs Negociação) */}
+              {/* Origens por Momento do Funil (6 cards com barras horizontais) */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                {/* 1. Origens em Interação */}
                 <div className="bg-white border border-sky-200 rounded-xl p-3.5 shadow-2xs">
                   <div className="text-[11.5px] font-black uppercase text-sky-800 flex items-center justify-between">
                     <span>Origens em Interação</span>
@@ -2275,17 +2298,29 @@ export function PipelineIntelligenceDrawer({
                   {funnelAndOriginsData.topOriginsInInteracao.length === 0 ? (
                     <p className="text-xs text-slate-400 italic mt-2">Nenhum lead marcado em interação no topo no momento.</p>
                   ) : (
-                    <div className="mt-2 space-y-1.5">
-                      {funnelAndOriginsData.topOriginsInInteracao.map(o => (
-                        <div key={`int-${o.key}`} className="flex items-center justify-between text-xs border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
-                          <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
-                          <span className="font-bold text-sky-700 shrink-0">{o.emInteracao} leads</span>
-                        </div>
-                      ))}
+                    <div className="mt-2.5 space-y-2">
+                      {(() => {
+                        const maxVal = Math.max(1, ...funnelAndOriginsData.topOriginsInInteracao.map(i => i.emInteracao))
+                        return funnelAndOriginsData.topOriginsInInteracao.map(o => {
+                          const barWidth = Math.max(4, Math.round((o.emInteracao / maxVal) * 100))
+                          return (
+                            <div key={`int-${o.key}`} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
+                                <span className="font-bold text-sky-700 shrink-0 tabular-nums">{o.emInteracao} leads</span>
+                              </div>
+                              <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${barWidth}%` }} />
+                              </div>
+                            </div>
+                          )
+                        })
+                      })()}
                     </div>
                   )}
                 </div>
 
+                {/* 2. Origens sem Contato (Retomada) */}
                 <div className="bg-white border border-amber-200 rounded-xl p-3.5 shadow-2xs">
                   <div className="text-[11.5px] font-black uppercase text-amber-800 flex items-center justify-between">
                     <span>Origens sem Contato (Retomada)</span>
@@ -2294,17 +2329,29 @@ export function PipelineIntelligenceDrawer({
                   {funnelAndOriginsData.topOriginsInRetomada.length === 0 ? (
                     <p className="text-xs text-slate-400 italic mt-2">Nenhum lead pendente de primeiro contato em retomada.</p>
                   ) : (
-                    <div className="mt-2 space-y-1.5">
-                      {funnelAndOriginsData.topOriginsInRetomada.map(o => (
-                        <div key={`ret-${o.key}`} className="flex items-center justify-between text-xs border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
-                          <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
-                          <span className="font-bold text-amber-700 shrink-0">{o.emRetomadaSemContato} ({o.noContactPct}%)</span>
-                        </div>
-                      ))}
+                    <div className="mt-2.5 space-y-2">
+                      {(() => {
+                        const maxVal = Math.max(1, ...funnelAndOriginsData.topOriginsInRetomada.map(i => i.emRetomadaSemContato))
+                        return funnelAndOriginsData.topOriginsInRetomada.map(o => {
+                          const barWidth = Math.max(4, Math.round((o.emRetomadaSemContato / maxVal) * 100))
+                          return (
+                            <div key={`ret-${o.key}`} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
+                                <span className="font-bold text-amber-700 shrink-0 tabular-nums">{o.emRetomadaSemContato} ({o.noContactPct}%)</span>
+                              </div>
+                              <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${barWidth}%` }} />
+                              </div>
+                            </div>
+                          )
+                        })
+                      })()}
                     </div>
                   )}
                 </div>
 
+                {/* 3. Origens em Negociação */}
                 <div className="bg-white border border-indigo-200 rounded-xl p-3.5 shadow-2xs">
                   <div className="text-[11.5px] font-black uppercase text-indigo-800 flex items-center justify-between">
                     <span>Origens em Negociação</span>
@@ -2313,22 +2360,132 @@ export function PipelineIntelligenceDrawer({
                   {funnelAndOriginsData.topOriginsInNegociacao.length === 0 ? (
                     <p className="text-xs text-slate-400 italic mt-2">Nenhum lead atualmente em negociação neste recorte.</p>
                   ) : (
-                    <div className="mt-2 space-y-1.5">
-                      {funnelAndOriginsData.topOriginsInNegociacao.map(o => (
-                        <div key={`neg-${o.key}`} className="flex items-center justify-between text-xs border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
-                          <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
-                          <span className="font-bold text-indigo-700 shrink-0">{o.emNegociacaoAtual} ativos • {o.fechado} ADEs</span>
-                        </div>
-                      ))}
+                    <div className="mt-2.5 space-y-2">
+                      {(() => {
+                        const maxVal = Math.max(1, ...funnelAndOriginsData.topOriginsInNegociacao.map(i => i.emNegociacaoAtual))
+                        return funnelAndOriginsData.topOriginsInNegociacao.map(o => {
+                          const barWidth = Math.max(4, Math.round((o.emNegociacaoAtual / maxVal) * 100))
+                          return (
+                            <div key={`neg-${o.key}`} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
+                                <span className="font-bold text-indigo-700 shrink-0 tabular-nums">{o.emNegociacaoAtual} ativos • {o.fechado} ADEs</span>
+                              </div>
+                              <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${barWidth}%` }} />
+                              </div>
+                            </div>
+                          )
+                        })
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Origens em Sem Interesse */}
+                <div className="bg-white border border-slate-300 rounded-xl p-3.5 shadow-2xs">
+                  <div className="text-[11.5px] font-black uppercase text-slate-800 flex items-center justify-between">
+                    <span>Origens em Sem Interesse</span>
+                    <span className="text-slate-600">{funnelAndOriginsData.totalSemInteresse} leads</span>
+                  </div>
+                  {funnelAndOriginsData.topOriginsInSemInteresse.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic mt-2">Nenhum lead marcado como sem interesse neste recorte.</p>
+                  ) : (
+                    <div className="mt-2.5 space-y-2">
+                      {(() => {
+                        const maxVal = Math.max(1, ...funnelAndOriginsData.topOriginsInSemInteresse.map(i => i.semInteresse))
+                        const stageTotal = Math.max(1, funnelAndOriginsData.totalSemInteresse)
+                        return funnelAndOriginsData.topOriginsInSemInteresse.map(o => {
+                          const barWidth = Math.max(4, Math.round((o.semInteresse / maxVal) * 100))
+                          const shareStagePct = Math.round((o.semInteresse / stageTotal) * 100)
+                          return (
+                            <div key={`sint-${o.key}`} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
+                                <span className="font-bold text-slate-700 shrink-0 tabular-nums">{o.semInteresse} ({shareStagePct}%)</span>
+                              </div>
+                              <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                <div className="h-full rounded-full bg-slate-500 transition-all" style={{ width: `${barWidth}%` }} />
+                              </div>
+                            </div>
+                          )
+                        })
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. Origens em Fechado */}
+                <div className="bg-white border border-emerald-200 rounded-xl p-3.5 shadow-2xs">
+                  <div className="text-[11.5px] font-black uppercase text-emerald-800 flex items-center justify-between">
+                    <span>Origens em Fechado</span>
+                    <span className="text-emerald-600">{funnelAndOriginsData.totalFechado} leads</span>
+                  </div>
+                  {funnelAndOriginsData.topOriginsInFechado.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic mt-2">Nenhum atendimento fechado neste recorte.</p>
+                  ) : (
+                    <div className="mt-2.5 space-y-2">
+                      {(() => {
+                        const maxVal = Math.max(1, ...funnelAndOriginsData.topOriginsInFechado.map(i => i.fechado))
+                        const stageTotal = Math.max(1, funnelAndOriginsData.totalFechado)
+                        return funnelAndOriginsData.topOriginsInFechado.map(o => {
+                          const barWidth = Math.max(4, Math.round((o.fechado / maxVal) * 100))
+                          const shareStagePct = Math.round((o.fechado / stageTotal) * 100)
+                          return (
+                            <div key={`fec-${o.key}`} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
+                                <span className="font-bold text-emerald-700 shrink-0 tabular-nums">{o.fechado} ({shareStagePct}%)</span>
+                              </div>
+                              <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${barWidth}%` }} />
+                              </div>
+                            </div>
+                          )
+                        })
+                      })()}
+                    </div>
+                  )}
+                </div>
+
+                {/* 6. Origens em Perdido */}
+                <div className="bg-white border border-rose-200 rounded-xl p-3.5 shadow-2xs">
+                  <div className="text-[11.5px] font-black uppercase text-rose-800 flex items-center justify-between">
+                    <span>Origens em Perdido</span>
+                    <span className="text-rose-600">{funnelAndOriginsData.totalPerdido} leads</span>
+                  </div>
+                  {funnelAndOriginsData.topOriginsInPerdido.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic mt-2">Nenhum atendimento perdido neste recorte.</p>
+                  ) : (
+                    <div className="mt-2.5 space-y-2">
+                      {(() => {
+                        const maxVal = Math.max(1, ...funnelAndOriginsData.topOriginsInPerdido.map(i => i.perdido))
+                        const stageTotal = Math.max(1, funnelAndOriginsData.totalPerdido)
+                        return funnelAndOriginsData.topOriginsInPerdido.map(o => {
+                          const barWidth = Math.max(4, Math.round((o.perdido / maxVal) * 100))
+                          const shareStagePct = Math.round((o.perdido / stageTotal) * 100)
+                          return (
+                            <div key={`per-${o.key}`} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
+                                <span className="font-bold text-rose-700 shrink-0 tabular-nums">{o.perdido} ({shareStagePct}%)</span>
+                              </div>
+                              <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                <div className="h-full rounded-full bg-rose-500 transition-all" style={{ width: `${barWidth}%` }} />
+                              </div>
+                            </div>
+                          )
+                        })
+                      })()}
                     </div>
                   )}
                 </div>
               </div>
 
               {/* Tabela Gerencial Completa por Origem do Cliente (ROI das Listas) */}
-              <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
+              <div className="bg-white border-2 border-slate-200 rounded-xl shadow-2xs overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-slate-200 bg-slate-50/95 flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-[13px] font-bold text-slate-800 flex items-center gap-1.5">
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
                     <BarChart3 className="w-4 h-4 text-indigo-600" />
                     Auditoria de Origens do Cliente — Qualidade de Contato, Margem e Retorno sobre Investimento
                   </h3>
@@ -2337,7 +2494,7 @@ export function PipelineIntelligenceDrawer({
                   </span>
                 </div>
 
-                <div className="max-h-[380px] overflow-auto">
+                <div className="overflow-x-auto">
                   <table className="w-full min-w-[980px] border-separate border-spacing-0 text-left text-[13px]">
                     <thead className="sticky top-0 z-10 bg-slate-100 text-slate-600 uppercase text-[11px] font-bold">
                       <tr>
@@ -2346,11 +2503,11 @@ export function PipelineIntelligenceDrawer({
                         <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Em Interação</th>
                         <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Retomada (s/ contato)</th>
                         <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Em Negociação</th>
-                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Reativ. / S. Int.</th>
-                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">% c/ Margem</th>
-                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Fechado (ADEs)</th>
+                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Em Reativação</th>
+                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Sem Interesse</th>
+                        <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Fechado</th>
                         <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Perdidos</th>
-                        <th className="px-3 py-2 bg-slate-100 border-b border-slate-200">Parecer do Mentor (ROI)</th>
+                        <th className="px-3 py-2 bg-slate-100 border-b border-slate-200">Parecer do Shark</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2373,7 +2530,7 @@ export function PipelineIntelligenceDrawer({
                             <tr key={o.key} className="hover:bg-slate-50/80 transition-colors">
                               <td className="px-3 py-2 font-bold text-slate-900 border-b border-r border-slate-200 max-w-[200px]">
                                 <div className="truncate" title={o.label}>{o.label}</div>
-                                <div className="text-[11px] text-slate-400 font-normal">
+                                <div className="text-[11px] text-slate-800 font-normal">
                                   {o.sharePct}% do funil • {fmtCurrency(o.operacaoTotal)}
                                 </div>
                               </td>
@@ -2387,23 +2544,19 @@ export function PipelineIntelligenceDrawer({
                                 <span className={cn("font-semibold", o.noContactPct >= 60 ? "text-amber-700" : "text-slate-700")}>
                                   {o.emRetomadaSemContato}
                                 </span>
-                                <span className="text-[11px] text-slate-400 ml-1">({o.noContactPct}%)</span>
                               </td>
                               <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
                                 <span className="font-bold text-indigo-700">{o.emNegociacaoAtual}</span>
-                                <span className="text-[11px] text-slate-400 block">({o.negReachPct}% avanço)</span>
                               </td>
                               <td className="px-2.5 py-2 text-center text-slate-600 border-b border-r border-slate-200 tabular-nums">
-                                {o.emReativacao} / {o.semInteresse}
+                                {o.emReativacao}
                               </td>
-                              <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
-                                <span className={cn("font-bold", o.marginPct >= 60 ? "text-emerald-700" : o.marginPct >= 35 ? "text-amber-700" : "text-rose-700")}>
-                                  {o.marginPct}%
-                                </span>
+                              <td className="px-2.5 py-2 text-center text-slate-600 border-b border-r border-slate-200 tabular-nums">
+                                {o.semInteresse}
                               </td>
                               <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
                                 <span className={cn("font-black", o.fechado > 0 ? "text-emerald-700" : "text-slate-400")}>
-                                  {o.fechado} ({o.convPct}%)
+                                  {o.fechado}
                                 </span>
                                 {o.producaoFechada > 0 && (
                                   <span className="block text-[11px] font-semibold text-sky-600">{fmtCurrency(o.producaoFechada)}</span>
@@ -2411,13 +2564,22 @@ export function PipelineIntelligenceDrawer({
                               </td>
                               <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
                                 <span className={cn("font-semibold", o.lossPct >= 50 ? "text-rose-600" : "text-slate-600")}>
-                                  {o.perdido} ({o.lossPct}%)
+                                  {o.perdido}
                                 </span>
                               </td>
-                              <td className="px-3 py-2 border-b border-slate-200">
-                                <span className={cn("inline-block px-2 py-0.5 rounded-md text-[11px] font-bold border", toneClass[o.roiTone])}>
-                                  {o.roiVerdict}
-                                </span>
+                              <td className="px-3 py-2 border-b border-slate-200 min-w-[260px] max-w-[320px]">
+                                {o.leadsPerFechado !== null ? (
+                                  <span className="text-[11.5px] leading-snug text-slate-700 font-medium block">
+                                    A <strong className="text-slate-900">{o.label}</strong> se mostrou necessário colocar aproximadamente{" "}
+                                    <strong className="text-emerald-700 tabular-nums">{o.leadsPerFechado}</strong>{" "}
+                                    {o.leadsPerFechado === 1 ? "lead" : "leads"} para dentro do funil para fechar 1 venda.
+                                  </span>
+                                ) : (
+                                  <span className="text-[11.5px] leading-snug text-slate-500 block">
+                                    A <strong className="text-slate-700">{o.label}</strong> ainda não fechou vendas ({o.total}{" "}
+                                    {o.total === 1 ? "lead entrou" : "leads entraram"} no funil).
+                                  </span>
+                                )}
                               </td>
                             </tr>
                           )
@@ -2428,47 +2590,22 @@ export function PipelineIntelligenceDrawer({
                 </div>
               </div>
 
-              {/* Alerta de Leads Parados > 48h com atalho direto pro Radar */}
-              {stageAgingData.grandTotalStuck48hCount > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
-                      <Clock className="w-4 h-4" />
-                    </div>
-                    <p className="text-[13px] text-amber-900">
-                      Existem <strong>{stageAgingData.grandTotalStuck48hCount} leads ativos</strong> parados há mais de 48h nas etapas sem avanço na cadência.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("risk")}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[13px] font-bold transition-all shrink-0 cursor-pointer shadow-xs"
-                  >
-                    Auditar no Radar de Risco
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ============================================================== */}
-          {/* ABA 2: EFICIÊNCIA COMPLETA DA EQUIPE & TEMPO MÉDIO             */}
-          {/* ============================================================== */}
-          {activeTab === "team" && (
-            <div className="flex-1 min-h-0 flex flex-col">
+              {/* Tabela Auditoria por Corretor / Estagiário */}
               {(() => {
-                const filteredTeamRanking = speedToLeadData.ranking.filter(op => {
-                  if (teamRoleFilter === "all") return true
-                  return op.roleType === teamRoleFilter
-                })
+                const filteredTeamRanking = speedToLeadData.ranking
+                  .filter(op => {
+                    if (teamRoleFilter === "all") return true
+                    return op.roleType === teamRoleFilter
+                  })
+                  .sort((a, b) => b.totalFunil - a.totalFunil || b.totalFechado - a.totalFechado)
 
                 return (
-                  <div className="flex-1 min-h-[260px] flex flex-col bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
-                    <div className="px-4 py-2.5 border-b border-slate-200 bg-slate-50/95 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                  <div className="bg-white border-2 border-slate-200 rounded-xl shadow-2xs overflow-hidden">
+                    <div className="px-4 py-2.5 border-b border-slate-200 bg-slate-50/95 flex flex-wrap items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-3">
-                        <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
                           <Users className="w-4 h-4 text-indigo-600" />
-                          Eficiência Completa e Velocidade Comercial por Corretor / Estagiário
+                          Auditoria por Corretor / Estagiário
                         </h3>
                         <div className="inline-flex items-center rounded-lg bg-slate-200/70 p-0.5 border border-slate-200">
                           {([
@@ -2492,121 +2629,92 @@ export function PipelineIntelligenceDrawer({
                           ))}
                         </div>
                       </div>
-                      <span className="text-[11px] text-slate-500">
-                        Média de entrada no funil: <strong className="text-slate-800">{speedToLeadData.avgLeadsPerOp} leads/colaborador</strong> • {filteredTeamRanking.length} avaliados
+                      <span className="text-xs text-slate-500">
+                        {filteredTeamRanking.length} colaboradores identificados
                       </span>
                     </div>
 
-                    <div className="flex-1 min-h-0 overflow-auto">
-                      <table className="w-full min-w-[1040px] border-separate border-spacing-0 text-left text-xs">
-                        <thead className="sticky top-0 z-10 bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[980px] border-separate border-spacing-0 text-left text-[13px]">
+                        <thead className="sticky top-0 z-10 bg-slate-100 text-slate-600 uppercase text-[11px] font-bold">
                           <tr>
-                            <th className="px-3 py-2 bg-slate-100 border-b border-r border-slate-200">Posição &amp; Colaborador</th>
-                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">No Funil</th>
-                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Interação / Retomada</th>
+                            <th className="px-3 py-2 bg-slate-100 border-b border-r border-slate-200">Corretor / Estagiário</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Entraram</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Em Interação</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Retomada (s/ contato)</th>
                             <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Em Negociação</th>
-                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Reativ. / S. Int.</th>
-                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Fechado (ADEs)</th>
-                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Perdido</th>
-                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">% Conv. Funil</th>
-                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Tempo Médio (ADE)</th>
-                            <th className="px-3 py-2 bg-slate-100 border-b border-slate-200">Parecer do Mentor</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Em Reativação</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Sem Interesse</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Fechado</th>
+                            <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Perdidos</th>
+                            <th className="px-3 py-2 bg-slate-100 border-b border-slate-200">Parecer do Shark</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filteredTeamRanking.length === 0 ? (
                             <tr>
                               <td colSpan={10} className="px-4 py-8 text-center text-slate-400">
-                                Nenhum atendimento encontrado para os filtros selecionados.
+                                Nenhum atendimento encontrado para os filtros aplicados.
                               </td>
                             </tr>
                           ) : (
-                            filteredTeamRanking.map((op, idx) => {
-                              const verdictToneClass: Record<string, string> = {
-                                emerald: "bg-emerald-50 text-emerald-800 border-emerald-200",
-                                sky: "bg-sky-50 text-sky-800 border-sky-200",
-                                amber: "bg-amber-50 text-amber-800 border-amber-200",
-                                rose: "bg-rose-50 text-rose-800 border-rose-200",
-                                slate: "bg-slate-100 text-slate-700 border-slate-200"
-                              }
-                              const isLowEntry = op.userId !== "unassigned" && op.totalFunil < Math.max(3, Math.floor(speedToLeadData.avgLeadsPerOp * 0.45))
-
-                              return (
-                                <tr key={op.userId} className="hover:bg-slate-50/80 transition-colors">
-                                  <td className="px-3 py-2.5 border-b border-r border-slate-200">
-                                    <div className="flex items-center gap-2">
-                                      <span className={cn(
-                                        "w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0",
-                                        idx === 0 ? "bg-amber-100 text-amber-800 font-black" :
-                                        idx === 1 ? "bg-slate-200 text-slate-700 font-bold" :
-                                        idx === 2 ? "bg-amber-700/20 text-amber-900 font-bold" :
-                                        "bg-slate-100 text-slate-500"
-                                      )}>
-                                        {idx + 1}º
-                                      </span>
-                                      <div className="min-w-0">
-                                        <div className="font-bold text-slate-900 truncate max-w-[180px]" title={op.userName}>{op.userName}</div>
-                                        <div className="text-[10px] text-slate-500">{op.roleLabel}</div>
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
-                                    <span className={cn("font-black", isLowEntry ? "text-amber-700" : "text-slate-900")}>
-                                      {op.totalFunil}
-                                    </span>
-                                    {isLowEntry && (
-                                      <span className="block text-[9.5px] font-bold text-amber-600">abaixo média</span>
-                                    )}
-                                  </td>
-                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
-                                    <span className="font-bold text-sky-700">{op.emInteracao}</span>
-                                    <span className="text-slate-400 mx-1">/</span>
-                                    <span className="font-semibold text-amber-700">{op.emRetomadaSemContato}</span>
-                                  </td>
-                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
-                                    <span className="font-bold text-indigo-700">{op.emNegociacaoAtual}</span>
-                                    <span className="text-[10px] text-slate-400 block">({op.totalNegociacoes} total)</span>
-                                  </td>
-                                  <td className="px-2.5 py-2.5 text-center text-slate-600 border-b border-r border-slate-200 tabular-nums">
-                                    {op.emReativacao} / {op.semInteresse}
-                                  </td>
-                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
-                                    <span className="font-black text-emerald-700">{op.totalPropostasDigitadas}</span>
-                                    {op.producaoFechada > 0 && (
-                                      <span className="block text-[10px] font-semibold text-sky-600">{fmtCurrency(op.producaoFechada)}</span>
-                                    )}
-                                  </td>
-                                  <td className="px-2.5 py-2.5 text-center text-rose-600 font-semibold border-b border-r border-slate-200 tabular-nums">
+                            filteredTeamRanking.map(op => (
+                              <tr key={op.userId} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="px-3 py-2 font-bold text-slate-900 border-b border-r border-slate-200 max-w-[200px]">
+                                  <div className="truncate" title={op.userName}>{op.userName}</div>
+                                  <div className="text-[11px] text-slate-800 font-normal">
+                                    {op.roleLabel} • {op.sharePct}% do funil • {fmtCurrency(op.operacaoTotal)}
+                                  </div>
+                                </td>
+                                <td className="px-2.5 py-2 text-center font-bold text-slate-900 border-b border-r border-slate-200 tabular-nums">
+                                  {op.totalFunil}
+                                </td>
+                                <td className="px-2.5 py-2 text-center font-semibold text-sky-700 border-b border-r border-slate-200 tabular-nums">
+                                  {op.emInteracao}
+                                </td>
+                                <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
+                                  <span className={cn("font-semibold", op.noContactPct >= 60 ? "text-amber-700" : "text-slate-700")}>
+                                    {op.emRetomadaSemContato}
+                                  </span>
+                                </td>
+                                <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
+                                  <span className="font-bold text-indigo-700">{op.emNegociacaoAtual}</span>
+                                </td>
+                                <td className="px-2.5 py-2 text-center text-slate-600 border-b border-r border-slate-200 tabular-nums">
+                                  {op.emReativacao}
+                                </td>
+                                <td className="px-2.5 py-2 text-center text-slate-600 border-b border-r border-slate-200 tabular-nums">
+                                  {op.semInteresse}
+                                </td>
+                                <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
+                                  <span className={cn("font-black", op.totalFechado > 0 ? "text-emerald-700" : "text-slate-400")}>
+                                    {op.totalFechado}
+                                  </span>
+                                  {op.producaoFechada > 0 && (
+                                    <span className="block text-[11px] font-semibold text-sky-600">{fmtCurrency(op.producaoFechada)}</span>
+                                  )}
+                                </td>
+                                <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
+                                  <span className={cn("font-semibold", op.lossPct >= 50 ? "text-rose-600" : "text-slate-600")}>
                                     {op.totalPerdido}
-                                  </td>
-                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
-                                    <span className={cn(
-                                      "font-black",
-                                      op.funnelConvRate >= 15 ? "text-emerald-600" : op.funnelConvRate >= 5 ? "text-indigo-600" : "text-slate-500"
-                                    )}>
-                                      {op.funnelConvRate}%
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 border-b border-slate-200 min-w-[260px] max-w-[320px]">
+                                  {op.leadsPerFechado !== null ? (
+                                    <span className="text-[11.5px] leading-snug text-slate-700 font-medium block">
+                                      Para <strong className="text-slate-900">{op.userName}</strong> se mostrou necessário colocar aproximadamente{" "}
+                                      <strong className="text-emerald-700 tabular-nums">{op.leadsPerFechado}</strong>{" "}
+                                      {op.leadsPerFechado === 1 ? "lead" : "leads"} para dentro do funil para fechar 1 venda.
                                     </span>
-                                    <span className="block text-[10px] text-slate-400">Neg: {op.negConvRate}%</span>
-                                  </td>
-                                  <td className="px-2.5 py-2.5 text-center border-b border-r border-slate-200 tabular-nums">
-                                    {op.sampleCount > 0 ? (
-                                      <span className="font-black text-slate-900">
-                                        {op.avgMinutesToAde < 60
-                                          ? `${op.avgMinutesToAde} min`
-                                          : `${(op.avgMinutesToAde / 60).toFixed(1)} h`}
-                                      </span>
-                                    ) : (
-                                      <span className="text-slate-400 italic text-[11px]">Sem amostra</span>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2.5 border-b border-slate-200">
-                                    <span className={cn("inline-block px-2 py-0.5 rounded-md text-[10px] font-bold border", verdictToneClass[op.mentorTone])}>
-                                      {op.mentorVerdict}
+                                  ) : (
+                                    <span className="text-[11.5px] leading-snug text-slate-500 block">
+                                      <strong className="text-slate-700">{op.userName}</strong> ainda não fechou vendas ({op.totalFunil}{" "}
+                                      {op.totalFunil === 1 ? "lead entrou" : "leads entraram"} no funil).
                                     </span>
-                                  </td>
-                                </tr>
-                              )
-                            })
+                                  )}
+                                </td>
+                              </tr>
+                            ))
                           )}
                         </tbody>
                       </table>
@@ -2614,6 +2722,27 @@ export function PipelineIntelligenceDrawer({
                   </div>
                 )
               })()}
+
+              {/* Alerta de Leads Parados > 48h com atalho direto pro Radar */}
+              {stageAgingData.grandTotalStuck48hCount > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                      <Clock className="w-4 h-4" />
+                    </div>
+                    <p className="text-[13px] text-amber-900">
+                      Existem <strong>{stageAgingData.grandTotalStuck48hCount} leads ativos</strong> parados há mais de 48h nas etapas sem avanço na cadência.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("risk")}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[13px] font-bold transition-all shrink-0 cursor-pointer shadow-xs"
+                  >
+                    Auditar no Radar de Risco
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -3557,7 +3686,7 @@ export function PipelineIntelligenceDrawer({
                           <button
                             type="button"
                             onClick={() => {
-                              setActiveTab("team")
+                              setActiveTab("funnel")
                               setIsExecSummaryOpen(false)
                             }}
                             className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer flex items-center gap-1"
