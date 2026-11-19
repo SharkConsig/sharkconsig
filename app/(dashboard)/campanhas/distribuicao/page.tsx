@@ -135,6 +135,102 @@ async function fetchClientDetailsFromTable(
   return results;
 }
 
+function resolveCampaignTargetTable(campaignNameRaw: string, convenioRaw?: string | null): string {
+  const cNameUpper = (campaignNameRaw || '').toUpperCase();
+  const convenioKey = (convenioRaw || '').toLowerCase().trim();
+
+  const TABLE_MAP: Record<string, string> = {
+    'siape': 'base_consulta_siape',
+    'governo_sp': 'base_consulta_governo_sp',
+    'gov_sp': 'base_consulta_governo_sp',
+    'govsp': 'base_consulta_governo_sp',
+    'governo-sp': 'base_consulta_governo_sp',
+    'spprev': 'base_consulta_governo_sp',
+    'sp': 'base_consulta_governo_sp',
+    'prefeitura_sp': 'base_consulta_prefeitura_sp',
+    'pref_sp': 'base_consulta_prefeitura_sp',
+    'pmsp': 'base_consulta_prefeitura_sp',
+    'governo_pi': 'base_consulta_governo_pi',
+    'gov_pi': 'base_consulta_governo_pi',
+    'governo_ma': 'base_consulta_governo_ma',
+    'gov_ma': 'base_consulta_governo_ma',
+    'governo_rr': 'base_consulta_governo_rr',
+    'gov_rr': 'base_consulta_governo_rr',
+    'governo_rj': 'base_consulta_governo_rj',
+    'gov_rj': 'base_consulta_governo_rj',
+    'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
+    'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
+    'governo_mg': 'base_consulta_governo_mg',
+    'gov_mg': 'base_consulta_governo_mg',
+    'governo_ms': 'base_consulta_governo_ms',
+    'gov_ms': 'base_consulta_governo_ms',
+    'prefeitura_natal': 'base_consulta_prefeitura_natal',
+    'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
+    'governo_ba': 'base_consulta_governo_ba',
+    'gov_ba': 'base_consulta_governo_ba',
+    'governo_am': 'base_consulta_governo_am',
+    'gov_am': 'base_consulta_governo_am',
+    'governo_ce': 'base_consulta_governo_ce',
+    'gov_ce': 'base_consulta_governo_ce',
+    'governo_ro': 'base_consulta_governo_ro',
+    'gov_ro': 'base_consulta_governo_ro',
+    'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
+    'amazon_prev': 'base_consulta_amazon_prev',
+    'amazonprev': 'base_consulta_amazon_prev',
+  };
+
+  if (convenioKey && TABLE_MAP[convenioKey]) {
+    return TABLE_MAP[convenioKey];
+  }
+  if (cNameUpper.includes('SANTO ANDRE') || cNameUpper.includes('SANTO ANDRÉ')) return 'base_consulta_prefeitura_santo_andre';
+  if (cNameUpper.includes('PONTA GROSSA')) return 'base_consulta_prefeitura_ponta_grossa';
+  if (cNameUpper.includes('CONTAGEM')) return 'base_consulta_prefeitura_contagem';
+  if (cNameUpper.includes('NATAL')) return 'base_consulta_prefeitura_natal';
+  if (cNameUpper.includes('PORTO VELHO')) return 'base_consulta_prefeitura_porto_velho';
+  if (cNameUpper.includes('AMAZON PREV') || cNameUpper.includes('AMAZONPREV')) return 'base_consulta_amazon_prev';
+  if (
+    cNameUpper.includes('PREFEITURA SP') ||
+    cNameUpper.includes('PREF SAO PAULO') ||
+    cNameUpper.includes('PREF SÃO PAULO') ||
+    cNameUpper.includes('PREF. SAO PAULO') ||
+    cNameUpper.includes('PREF. SÃO PAULO') ||
+    cNameUpper.includes('PREFEITURA DE SAO PAULO') ||
+    cNameUpper.includes('PREFEITURA DE SÃO PAULO') ||
+    cNameUpper.includes('PREF SP') ||
+    cNameUpper.includes('PMSP')
+  ) {
+    return 'base_consulta_prefeitura_sp';
+  }
+  if (
+    cNameUpper.includes('GOVERNO SP') ||
+    cNameUpper.includes('GOV SP') ||
+    cNameUpper.includes('GOV. SP') ||
+    cNameUpper.includes('GOV-SP') ||
+    cNameUpper.includes('SPPREV') ||
+    cNameUpper.includes('POLICIA MILITAR') ||
+    cNameUpper.includes('POLÍCIA MILITAR') ||
+    cNameUpper.includes('PM SP') ||
+    cNameUpper.includes('PM-SP') ||
+    cNameUpper.includes('SEDUC') ||
+    cNameUpper.includes('SÃO PAULO') ||
+    cNameUpper.includes('SAO PAULO')
+  ) {
+    return cNameUpper.includes('PREFEITURA') ? 'base_consulta_prefeitura_sp' : 'base_consulta_governo_sp';
+  }
+  if (cNameUpper.includes('GOVERNO PI') || cNameUpper.includes('GOV PI') || cNameUpper.includes('GOV. PI') || cNameUpper.includes('GOV-PI') || cNameUpper.includes('PIAUÍ') || cNameUpper.includes('PIAUI')) return 'base_consulta_governo_pi';
+  if (cNameUpper.includes('GOVERNO MA') || cNameUpper.includes('GOV MA') || cNameUpper.includes('GOV. MA') || cNameUpper.includes('GOV-MA') || cNameUpper.includes('MARANHÃO') || cNameUpper.includes('MARANHAO')) return 'base_consulta_governo_ma';
+  if (cNameUpper.includes('RORAIMA') || cNameUpper.includes('GOVERNO RR') || cNameUpper.includes('GOV RR') || /\bRR\b/.test(cNameUpper)) return 'base_consulta_governo_rr';
+  if (cNameUpper.includes('GOVERNO RJ') || cNameUpper.includes('GOV RJ') || cNameUpper.includes('GOV. RJ') || cNameUpper.includes('GOV-RJ') || cNameUpper.includes('RIO DE JANEIRO') || cNameUpper.includes('RIOPREVIDENCIA') || cNameUpper.includes('RIOPREVIDÊNCIA') || /\bRJ\b/.test(cNameUpper)) return 'base_consulta_governo_rj';
+  if (cNameUpper.includes('GOVERNO MG') || cNameUpper.includes('GOV MG') || cNameUpper.includes('GOV. MG') || cNameUpper.includes('GOV-MG') || cNameUpper.includes('MINAS GERAIS') || /\bMG\b/.test(cNameUpper)) return 'base_consulta_governo_mg';
+  if (cNameUpper.includes('GOVERNO MS') || cNameUpper.includes('GOV MS') || cNameUpper.includes('GOV. MS') || cNameUpper.includes('GOV-MS') || cNameUpper.includes('MATO GROSSO DO SUL') || /\bMS\b/.test(cNameUpper)) return 'base_consulta_governo_ms';
+  if (cNameUpper.includes('GOVERNO BA') || cNameUpper.includes('GOV BA') || cNameUpper.includes('GOV. BA') || cNameUpper.includes('GOV-BA') || cNameUpper.includes('BAHIA')) return 'base_consulta_governo_ba';
+  if (cNameUpper.includes('GOVERNO AM') || cNameUpper.includes('GOV AM') || cNameUpper.includes('GOV. AM') || cNameUpper.includes('GOV-AM') || cNameUpper.includes('AMAZONAS')) return 'base_consulta_governo_am';
+  if (cNameUpper.includes('GOVERNO CE') || cNameUpper.includes('GOV CE') || cNameUpper.includes('GOV. CE') || cNameUpper.includes('GOV-CE') || cNameUpper.includes('CEARÁ') || cNameUpper.includes('CEARA')) return 'base_consulta_governo_ce';
+  if (cNameUpper.includes('GOVERNO RO') || cNameUpper.includes('GOV RO') || cNameUpper.includes('GOV. RO') || cNameUpper.includes('GOV-RO') || cNameUpper.includes('RONDÔNIA') || cNameUpper.includes('RONDONIA')) return 'base_consulta_governo_ro';
+
+  return 'base_consulta_siape';
+}
+
 async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[]> {
   if (cpfs.length === 0) return [];
 
@@ -149,6 +245,7 @@ async function fetchClientDetailsFromAllTables(cpfs: string[]): Promise<{ cpf: s
     'base_consulta_prefeitura_santo_andre',
     'base_consulta_prefeitura_contagem',
     'base_consulta_governo_mg',
+    'base_consulta_governo_ms',
     'base_consulta_prefeitura_natal',
     'base_consulta_prefeitura_porto_velho',
     'base_consulta_governo_ba',
@@ -708,68 +805,8 @@ export default function DistribuicaoCampanhaPage() {
 
       const uniqueCpfs = Array.from(cpfToAtendimentoMap.keys());
 
-      const cNameUpper = campaign.nome.toUpperCase();
-      const convenioKey = campaign.filtros?.convenio;
-
-      const TABLE_MAP: Record<string, string> = {
-        'siape': 'base_consulta_siape',
-        'governo_sp': 'base_consulta_governo_sp',
-        'prefeitura_sp': 'base_consulta_prefeitura_sp',
-        'governo_pi': 'base_consulta_governo_pi',
-        'governo_ma': 'base_consulta_governo_ma',
-        'governo_rr': 'base_consulta_governo_rr',
-        'governo_rj': 'base_consulta_governo_rj',
-        'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
-        'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
-        'governo_mg': 'base_consulta_governo_mg',
-        'prefeitura_natal': 'base_consulta_prefeitura_natal',
-        'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
-        'governo_ba': 'base_consulta_governo_ba',
-        'governo_am': 'base_consulta_governo_am',
-        'governo_ce': 'base_consulta_governo_ce',
-        'governo_ro': 'base_consulta_governo_ro',
-        'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
-        'amazon_prev': 'base_consulta_amazon_prev',
-      };
-
-      let targetTable = 'base_consulta_siape';
-      if (convenioKey && TABLE_MAP[convenioKey]) {
-        targetTable = TABLE_MAP[convenioKey];
-      } else if (cNameUpper.includes('GOVERNO SP')) {
-        targetTable = 'base_consulta_governo_sp';
-      } else if (cNameUpper.includes('PREFEITURA SP')) {
-        targetTable = 'base_consulta_prefeitura_sp';
-      } else if (cNameUpper.includes('GOVERNO PI')) {
-        targetTable = 'base_consulta_governo_pi';
-      } else if (cNameUpper.includes('GOVERNO MA')) {
-        targetTable = 'base_consulta_governo_ma';
-      } else if (cNameUpper.includes('RORAIMA') || cNameUpper.includes('RR')) {
-        targetTable = 'base_consulta_governo_rr';
-      } else if (cNameUpper.includes('GOVERNO RJ') || cNameUpper.includes('RJ')) {
-        targetTable = 'base_consulta_governo_rj';
-      } else if (cNameUpper.includes('SANTO ANDRE') || cNameUpper.includes('SANTO ANDRÉ')) {
-        targetTable = 'base_consulta_prefeitura_santo_andre';
-      } else if (cNameUpper.includes('CONTAGEM')) {
-        targetTable = 'base_consulta_prefeitura_contagem';
-      } else if (cNameUpper.includes('GOVERNO MG') || cNameUpper.includes('MG')) {
-        targetTable = 'base_consulta_governo_mg';
-      } else if (cNameUpper.includes('NATAL')) {
-        targetTable = 'base_consulta_prefeitura_natal';
-      } else if (cNameUpper.includes('PORTO VELHO')) {
-        targetTable = 'base_consulta_prefeitura_porto_velho';
-      } else if (cNameUpper.includes('GOVERNO BA') || cNameUpper.includes('BAHIA')) {
-        targetTable = 'base_consulta_governo_ba';
-      } else if (cNameUpper.includes('GOVERNO AM') || cNameUpper.includes('AMAZONAS')) {
-        targetTable = 'base_consulta_governo_am';
-      } else if (cNameUpper.includes('GOVERNO CE') || cNameUpper.includes('CEARÁ') || cNameUpper.includes('CEARA')) {
-        targetTable = 'base_consulta_governo_ce';
-      } else if (cNameUpper.includes('GOVERNO RO') || cNameUpper.includes('RONDÔNIA') || cNameUpper.includes('RONDONIA')) {
-        targetTable = 'base_consulta_governo_ro';
-      } else if (cNameUpper.includes('PONTA GROSSA')) {
-        targetTable = 'base_consulta_prefeitura_ponta_grossa';
-      } else if (cNameUpper.includes('AMAZON PREV') || cNameUpper.includes('AMAZONPREV')) {
-        targetTable = 'base_consulta_amazon_prev';
-      }
+      const convenioKey = (campaign.filtros?.convenio || '').toLowerCase().trim();
+      const targetTable = resolveCampaignTargetTable(campaign.nome, convenioKey);
 
       let clientsBatchList: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
       
@@ -936,68 +973,8 @@ export default function DistribuicaoCampanhaPage() {
 
       const cpfs = atts.map(a => a.cliente_cpf).filter(Boolean);
 
-      const cNameUpper = campaignName.toUpperCase();
-      const convenioKey = campaignConvenio;
-
-      const TABLE_MAP: Record<string, string> = {
-        'siape': 'base_consulta_siape',
-        'governo_sp': 'base_consulta_governo_sp',
-        'prefeitura_sp': 'base_consulta_prefeitura_sp',
-        'governo_pi': 'base_consulta_governo_pi',
-        'governo_ma': 'base_consulta_governo_ma',
-        'governo_rr': 'base_consulta_governo_rr',
-        'governo_rj': 'base_consulta_governo_rj',
-        'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
-        'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
-        'governo_mg': 'base_consulta_governo_mg',
-        'prefeitura_natal': 'base_consulta_prefeitura_natal',
-        'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
-        'governo_ba': 'base_consulta_governo_ba',
-        'governo_am': 'base_consulta_governo_am',
-        'governo_ce': 'base_consulta_governo_ce',
-        'governo_ro': 'base_consulta_governo_ro',
-        'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
-        'amazon_prev': 'base_consulta_amazon_prev',
-      };
-
-      let targetTable = 'base_consulta_siape';
-      if (convenioKey && TABLE_MAP[convenioKey]) {
-        targetTable = TABLE_MAP[convenioKey];
-      } else if (cNameUpper.includes('GOVERNO SP')) {
-        targetTable = 'base_consulta_governo_sp';
-      } else if (cNameUpper.includes('PREFEITURA SP')) {
-        targetTable = 'base_consulta_prefeitura_sp';
-      } else if (cNameUpper.includes('GOVERNO PI')) {
-        targetTable = 'base_consulta_governo_pi';
-      } else if (cNameUpper.includes('GOVERNO MA')) {
-        targetTable = 'base_consulta_governo_ma';
-      } else if (cNameUpper.includes('RORAIMA') || cNameUpper.includes('RR')) {
-        targetTable = 'base_consulta_governo_rr';
-      } else if (cNameUpper.includes('GOVERNO RJ') || cNameUpper.includes('RJ')) {
-        targetTable = 'base_consulta_governo_rj';
-      } else if (cNameUpper.includes('SANTO ANDRE') || cNameUpper.includes('SANTO ANDRÉ')) {
-        targetTable = 'base_consulta_prefeitura_santo_andre';
-      } else if (cNameUpper.includes('CONTAGEM')) {
-        targetTable = 'base_consulta_prefeitura_contagem';
-      } else if (cNameUpper.includes('GOVERNO MG') || cNameUpper.includes('MG')) {
-        targetTable = 'base_consulta_governo_mg';
-      } else if (cNameUpper.includes('NATAL')) {
-        targetTable = 'base_consulta_prefeitura_natal';
-      } else if (cNameUpper.includes('PORTO VELHO')) {
-        targetTable = 'base_consulta_prefeitura_porto_velho';
-      } else if (cNameUpper.includes('GOVERNO BA') || cNameUpper.includes('BAHIA')) {
-        targetTable = 'base_consulta_governo_ba';
-      } else if (cNameUpper.includes('GOVERNO AM') || cNameUpper.includes('AMAZONAS')) {
-        targetTable = 'base_consulta_governo_am';
-      } else if (cNameUpper.includes('GOVERNO CE') || cNameUpper.includes('CEARÁ') || cNameUpper.includes('CEARA')) {
-        targetTable = 'base_consulta_governo_ce';
-      } else if (cNameUpper.includes('GOVERNO RO') || cNameUpper.includes('RONDÔNIA') || cNameUpper.includes('RONDONIA')) {
-        targetTable = 'base_consulta_governo_ro';
-      } else if (cNameUpper.includes('PONTA GROSSA')) {
-        targetTable = 'base_consulta_prefeitura_ponta_grossa';
-      } else if (cNameUpper.includes('AMAZON PREV') || cNameUpper.includes('AMAZONPREV')) {
-        targetTable = 'base_consulta_amazon_prev';
-      }
+      const convenioKey = (campaignConvenio || '').toLowerCase().trim();
+      const targetTable = resolveCampaignTargetTable(campaignName, convenioKey);
 
       let clientDetails: { cpf: string; nome: string; telefone_1?: string | null; telefone_2?: string | null; telefone_3?: string | null }[] = [];
       if (convenioKey === 'importado' || convenioKey === 'multi' || convenioKey === 'detect') {

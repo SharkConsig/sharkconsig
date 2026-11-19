@@ -419,7 +419,7 @@ export default function CampanhaAtendimentoPage() {
       // Determine table
       let table = 'base_consulta_siape'
       const campaignName = (camp.nome || "").toUpperCase()
-      const convenioKey = camp.filtros?.convenio
+      const convenioKey = (camp.filtros?.convenio || "").toLowerCase().trim()
 
       const TABLE_MAP: Record<string, string> = {
         'siape': 'base_consulta_siape',
@@ -430,97 +430,100 @@ export default function CampanhaAtendimentoPage() {
         'spprev': 'base_consulta_governo_sp',
         'sp': 'base_consulta_governo_sp',
         'prefeitura_sp': 'base_consulta_prefeitura_sp',
+        'pref_sp': 'base_consulta_prefeitura_sp',
+        'pmsp': 'base_consulta_prefeitura_sp',
         'governo_pi': 'base_consulta_governo_pi',
+        'gov_pi': 'base_consulta_governo_pi',
         'governo_ma': 'base_consulta_governo_ma',
+        'gov_ma': 'base_consulta_governo_ma',
         'governo_rr': 'base_consulta_governo_rr',
+        'gov_rr': 'base_consulta_governo_rr',
         'governo_rj': 'base_consulta_governo_rj',
+        'gov_rj': 'base_consulta_governo_rj',
         'prefeitura_santo_andre': 'base_consulta_prefeitura_santo_andre',
         'prefeitura_contagem': 'base_consulta_prefeitura_contagem',
         'governo_mg': 'base_consulta_governo_mg',
+        'gov_mg': 'base_consulta_governo_mg',
         'governo_ms': 'base_consulta_governo_ms',
+        'gov_ms': 'base_consulta_governo_ms',
         'prefeitura_natal': 'base_consulta_prefeitura_natal',
         'prefeitura_porto_velho': 'base_consulta_prefeitura_porto_velho',
         'governo_ba': 'base_consulta_governo_ba',
+        'gov_ba': 'base_consulta_governo_ba',
         'governo_am': 'base_consulta_governo_am',
+        'gov_am': 'base_consulta_governo_am',
         'governo_ce': 'base_consulta_governo_ce',
+        'gov_ce': 'base_consulta_governo_ce',
         'governo_ro': 'base_consulta_governo_ro',
+        'gov_ro': 'base_consulta_governo_ro',
         'prefeitura_ponta_grossa': 'base_consulta_prefeitura_ponta_grossa',
         'amazon_prev': 'base_consulta_amazon_prev',
+        'amazonprev': 'base_consulta_amazon_prev',
       }
 
-      if (convenioKey && TABLE_MAP[convenioKey || '']) {
-        table = TABLE_MAP[convenioKey || '']
-      } else if (
-        campaignName.includes("GOVERNO SP") || 
-        campaignName.includes("GOV SP") || 
-        campaignName.includes("GOV. SP") || 
-        campaignName.includes("GOV-SP") || 
-        campaignName.includes("SPPREV") || 
-        campaignName.includes("POLICIA MILITAR") ||
-        campaignName.includes("POLÍCIA MILITAR") ||
-        campaignName.includes("PM SP") ||
-        campaignName.includes("PM-SP") ||
-        campaignName.includes("EDUCAÇÃO") || 
-        campaignName.includes("EDUCACAO") || 
-        campaignName.includes("SEDUC") || 
-        campaignName.includes("SÃO PAULO") || 
-        campaignName.includes("SAO PAULO")
-      ) {
-        if (
-          campaignName.includes("PREFEITURA") ||
-          campaignName.includes("PREF SAO PAULO") ||
-          campaignName.includes("PREF SÃO PAULO") ||
-          campaignName.includes("PREF. SAO PAULO") ||
-          campaignName.includes("PREF. SÃO PAULO") ||
-          campaignName.includes("PREF SP") ||
-          campaignName.includes("PMSP")
-        ) {
-          table = 'base_consulta_prefeitura_sp'
-        } else {
-          table = 'base_consulta_governo_sp'
-        }
+      if (convenioKey && TABLE_MAP[convenioKey]) {
+        table = TABLE_MAP[convenioKey]
+      } else if (campaignName.includes("SANTO ANDRÉ") || campaignName.includes("SANTO ANDRE")) {
+        table = 'base_consulta_prefeitura_santo_andre'
+      } else if (campaignName.includes("PONTA GROSSA")) {
+        table = 'base_consulta_prefeitura_ponta_grossa'
+      } else if (campaignName.includes("CONTAGEM")) {
+        table = 'base_consulta_prefeitura_contagem'
+      } else if (campaignName.includes("NATAL")) {
+        table = 'base_consulta_prefeitura_natal'
+      } else if (campaignName.includes("PORTO VELHO")) {
+        table = 'base_consulta_prefeitura_porto_velho'
+      } else if (campaignName.includes("AMAZON PREV") || campaignName.includes("AMAZONPREV")) {
+        table = 'base_consulta_amazon_prev'
       } else if (
         campaignName.includes("PREFEITURA SP") ||
         campaignName.includes("PREF SAO PAULO") ||
         campaignName.includes("PREF SÃO PAULO") ||
         campaignName.includes("PREF. SAO PAULO") ||
         campaignName.includes("PREF. SÃO PAULO") ||
+        campaignName.includes("PREFEITURA DE SAO PAULO") ||
+        campaignName.includes("PREFEITURA DE SÃO PAULO") ||
         campaignName.includes("PREF SP") ||
         campaignName.includes("PMSP")
       ) {
         table = 'base_consulta_prefeitura_sp'
-      } else if (campaignName.includes("GOVERNO PI")) {
+      } else if (
+        campaignName.includes("GOVERNO SP") ||
+        campaignName.includes("GOV SP") ||
+        campaignName.includes("GOV. SP") ||
+        campaignName.includes("GOV-SP") ||
+        campaignName.includes("SPPREV") ||
+        campaignName.includes("POLICIA MILITAR") ||
+        campaignName.includes("POLÍCIA MILITAR") ||
+        campaignName.includes("PM SP") ||
+        campaignName.includes("PM-SP") ||
+        campaignName.includes("EDUCAÇÃO") ||
+        campaignName.includes("EDUCACAO") ||
+        campaignName.includes("SEDUC") ||
+        campaignName.includes("SÃO PAULO") ||
+        campaignName.includes("SAO PAULO")
+      ) {
+        table = campaignName.includes("PREFEITURA") ? 'base_consulta_prefeitura_sp' : 'base_consulta_governo_sp'
+      } else if (campaignName.includes("GOVERNO PI") || campaignName.includes("GOV PI") || campaignName.includes("GOV. PI") || campaignName.includes("GOV-PI") || campaignName.includes("PIAUÍ") || campaignName.includes("PIAUI")) {
         table = 'base_consulta_governo_pi'
-      } else if (campaignName.includes("GOVERNO MA")) {
+      } else if (campaignName.includes("GOVERNO MA") || campaignName.includes("GOV MA") || campaignName.includes("GOV. MA") || campaignName.includes("GOV-MA") || campaignName.includes("MARANHÃO") || campaignName.includes("MARANHAO")) {
         table = 'base_consulta_governo_ma'
-      } else if (campaignName.includes("RORAIMA") || campaignName.includes("RR")) {
+      } else if (campaignName.includes("RORAIMA") || campaignName.includes("GOVERNO RR") || campaignName.includes("GOV RR") || /\bRR\b/.test(campaignName)) {
         table = 'base_consulta_governo_rr'
-      } else if (campaignName.includes("GOVERNO RJ") || campaignName.includes("RIO DE JANEIRO")) {
+      } else if (campaignName.includes("GOVERNO RJ") || campaignName.includes("GOV RJ") || campaignName.includes("GOV. RJ") || campaignName.includes("GOV-RJ") || campaignName.includes("RIO DE JANEIRO") || campaignName.includes("RIOPREVIDENCIA") || campaignName.includes("RIOPREVIDÊNCIA")) {
         table = 'base_consulta_governo_rj'
-      } else if (campaignName.includes("SANTO ANDRÉ") || campaignName.includes("SANTO ANDRE") || campaignName.includes("PREFEITURA SANTO ANDRE")) {
-        table = 'base_consulta_prefeitura_santo_andre'
-      } else if (campaignName.includes("CONTAGEM") || campaignName.includes("PREFEITURA CONTAGEM")) {
-        table = 'base_consulta_prefeitura_contagem'
-      } else if (campaignName.includes("GOVERNO MG") || campaignName.includes("MINAS GERAIS")) {
+      } else if (campaignName.includes("GOVERNO MG") || campaignName.includes("GOV MG") || campaignName.includes("GOV. MG") || campaignName.includes("GOV-MG") || campaignName.includes("MINAS GERAIS")) {
         table = 'base_consulta_governo_mg'
-      } else if (campaignName.includes("GOVERNO MS") || campaignName.includes("MATO GROSSO DO SUL")) {
+      } else if (campaignName.includes("GOVERNO MS") || campaignName.includes("GOV MS") || campaignName.includes("GOV. MS") || campaignName.includes("GOV-MS") || campaignName.includes("MATO GROSSO DO SUL")) {
         table = 'base_consulta_governo_ms'
-      } else if (campaignName.includes("NATAL") || campaignName.includes("PREFEITURA DE NATAL")) {
-        table = 'base_consulta_prefeitura_natal'
-      } else if (campaignName.includes("PORTO VELHO") || campaignName.includes("PREFEITURA PORTO VELHO")) {
-        table = 'base_consulta_prefeitura_porto_velho'
-      } else if (campaignName.includes("GOVERNO BA") || campaignName.includes("BAHIA")) {
+      } else if (campaignName.includes("GOVERNO BA") || campaignName.includes("GOV BA") || campaignName.includes("GOV. BA") || campaignName.includes("GOV-BA") || campaignName.includes("BAHIA")) {
         table = 'base_consulta_governo_ba'
-      } else if (campaignName.includes("GOVERNO AM") || campaignName.includes("AMAZONAS")) {
+      } else if (campaignName.includes("GOVERNO AM") || campaignName.includes("GOV AM") || campaignName.includes("GOV. AM") || campaignName.includes("GOV-AM") || campaignName.includes("AMAZONAS")) {
         table = 'base_consulta_governo_am'
-      } else if (campaignName.includes("GOVERNO CE") || campaignName.includes("CEARÁ") || campaignName.includes("CEARA")) {
+      } else if (campaignName.includes("GOVERNO CE") || campaignName.includes("GOV CE") || campaignName.includes("GOV. CE") || campaignName.includes("GOV-CE") || campaignName.includes("CEARÁ") || campaignName.includes("CEARA")) {
         table = 'base_consulta_governo_ce'
-      } else if (campaignName.includes("GOVERNO RO") || campaignName.includes("RONDÔNIA") || campaignName.includes("RONDONIA")) {
+      } else if (campaignName.includes("GOVERNO RO") || campaignName.includes("GOV RO") || campaignName.includes("GOV. RO") || campaignName.includes("GOV-RO") || campaignName.includes("RONDÔNIA") || campaignName.includes("RONDONIA")) {
         table = 'base_consulta_governo_ro'
-      } else if (campaignName.includes("PONTA GROSSA") || campaignName.includes("PREFEITURA PONTA GROSSA")) {
-        table = 'base_consulta_prefeitura_ponta_grossa'
-      } else if (campaignName.includes("AMAZON PREV") || campaignName.includes("AMAZONPREV")) {
-        table = 'base_consulta_amazon_prev'
       }
       
       let data = null;
@@ -759,123 +762,299 @@ export default function CampanhaAtendimentoPage() {
           const selectedIndex = brokerRelIndex % availableMembers.length
           const campaignHasValidConvenio = Boolean(convenioKey && TABLE_MAP[convenioKey || ''])
 
-          const primarySplitTables = [
-            { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
-            { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
-            { name: 'base_consulta_siape', convenio: 'siape' },
-            { name: 'governo_sp_clientes', convenio: 'governo_sp' },
-            { name: 'clientes', convenio: 'siape' },
-          ]
+          const buildCpfVariants = (rawCpf: string) => {
+            const digits = rawCpf.replace(/\D/g, "")
+            if (!digits) return [rawCpf]
+            const padded = digits.padStart(11, '0')
+            const unpadded = digits.replace(/^0+/, '') || digits
+            const formatted = `${padded.slice(0, 3)}.${padded.slice(3, 6)}.${padded.slice(6, 9)}-${padded.slice(9, 11)}`
+            return Array.from(new Set([padded, unpadded, formatted]))
+          }
 
-          const secondarySplitTables = [
-            { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
-            { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
-            { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
-            { name: 'base_consulta_governo_rj', convenio: 'governo_rj' },
-            { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
-            { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
-            { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
-            { name: 'base_consulta_governo_ms', convenio: 'governo_ms' },
-            { name: 'base_consulta_prefeitura_natal', convenio: 'prefeitura_natal' },
-            { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho' },
-            { name: 'base_consulta_governo_ba', convenio: 'governo_ba' },
-            { name: 'base_consulta_governo_am', convenio: 'governo_am' },
-            { name: 'base_consulta_governo_ce', convenio: 'governo_ce' },
-            { name: 'base_consulta_governo_ro', convenio: 'governo_ro' },
-            { name: 'base_consulta_prefeitura_ponta_grossa', convenio: 'prefeitura_ponta_grossa' },
-            { name: 'base_consulta_amazon_prev', convenio: 'amazon_prev' },
-          ]
-
-          const maxChecks = Math.min(availableMembers.length, 100)
-          let fallbackAttempts = 0
-          const maxFallbackAttempts = 10
-
-          for (let i = 0; i < maxChecks; i++) {
-            const indexToCheck = (selectedIndex + i) % availableMembers.length
-            const matchedMember = availableMembers[indexToCheck]
-            const tempCpf = matchedMember.cliente_cpf || ""
-            const rawDigits = tempCpf.replace(/\D/g, "")
-            const cleanTempCpf = rawDigits.padStart(11, '0')
-            const unpaddedCpf = rawDigits.replace(/^0+/, '') || rawDigits
-            const cpfCandidates = unpaddedCpf && unpaddedCpf !== cleanTempCpf
-              ? [cleanTempCpf, unpaddedCpf]
-              : [cleanTempCpf]
-
+          const resolveMemberTable = (member: { cliente_cpf: string | null; convenio?: string | null }) => {
             const tempResolvedConvenio =
-              matchedMember.convenio && matchedMember.convenio.toLowerCase() !== 'detect'
-                ? matchedMember.convenio
+              member.convenio && member.convenio.toLowerCase() !== 'detect'
+                ? member.convenio
                 : null
 
-            // 1. Determinar tabela preferencial de consulta
-            let tempTable = 'base_consulta_siape'
             if (tempResolvedConvenio && TABLE_MAP[tempResolvedConvenio]) {
-              tempTable = TABLE_MAP[tempResolvedConvenio]
-            } else if (campaignHasValidConvenio) {
-              tempTable = TABLE_MAP[convenioKey || '']
-            } else if (table && table !== 'base_consulta_siape') {
-              tempTable = table
+              return TABLE_MAP[tempResolvedConvenio]
             }
+            if (campaignHasValidConvenio) {
+              return TABLE_MAP[convenioKey || '']
+            }
+            if (table && table !== 'base_consulta_siape') {
+              return table
+            }
+            return 'base_consulta_siape'
+          }
 
-            const queryByCpf = async (targetTable: string) => {
-              if (cpfCandidates.length > 1) {
-                return supabase.from(targetTable).select('*').in('cpf', cpfCandidates).limit(1)
+          const BASE_TO_PROD_TABLE: Record<string, string> = {
+            'base_consulta_siape': 'clientes',
+            'base_consulta_governo_sp': 'governo_sp_clientes',
+            'base_consulta_prefeitura_sp': 'prefeitura_sp_clientes',
+            'base_consulta_governo_pi': 'governo_pi_clientes',
+            'base_consulta_governo_ma': 'governo_ma_clientes',
+            'base_consulta_governo_rr': 'governo_rr_clientes',
+            'base_consulta_governo_rj': 'governo_rj_clientes',
+            'base_consulta_prefeitura_santo_andre': 'prefeitura_santo_andre_clientes',
+            'base_consulta_prefeitura_contagem': 'prefeitura_contagem_clientes',
+            'base_consulta_governo_mg': 'governo_mg_clientes',
+            'base_consulta_governo_ms': 'governo_ms_clientes',
+            'base_consulta_prefeitura_natal': 'prefeitura_natal_clientes',
+            'base_consulta_prefeitura_porto_velho': 'prefeitura_porto_velho_clientes',
+            'base_consulta_governo_ba': 'governo_ba_clientes',
+            'base_consulta_governo_am': 'governo_am_clientes',
+            'base_consulta_governo_ce': 'governo_ce_clientes',
+            'base_consulta_governo_ro': 'governo_ro_clientes',
+            'base_consulta_prefeitura_ponta_grossa': 'prefeitura_ponta_grossa_clientes',
+            'base_consulta_amazon_prev': 'amazon_prev_clientes',
+          }
+
+          const PROD_TO_BASE_TABLE: Record<string, string> = Object.fromEntries(
+            Object.entries(BASE_TO_PROD_TABLE).map(([baseTbl, prodTbl]) => [prodTbl, baseTbl])
+          )
+
+          const normalizeActiveTable = (sourceTable: string) => PROD_TO_BASE_TABLE[sourceTable] || sourceTable
+
+          // Fast path: tenta o primeiro candidato direto na base_consulta_* (ou na sua *_clientes equivalente)
+          const firstMember = availableMembers[selectedIndex]
+          const firstCpf = firstMember.cliente_cpf || ""
+          const firstTable = resolveMemberTable(firstMember)
+          const firstVariants = buildCpfVariants(firstCpf)
+
+          let firstLeadResult = await withRetry(() =>
+            supabase.from(firstTable).select('*').in('cpf', firstVariants).limit(1)
+          )
+
+          if (
+            (firstLeadResult.error || !firstLeadResult.data || firstLeadResult.data.length === 0) &&
+            BASE_TO_PROD_TABLE[firstTable]
+          ) {
+            const prodFirst = await supabase
+              .from(BASE_TO_PROD_TABLE[firstTable])
+              .select('*')
+              .in('cpf', firstVariants)
+              .limit(1)
+            if (!prodFirst.error && prodFirst.data && prodFirst.data.length > 0) {
+              firstLeadResult = prodFirst
+            }
+          }
+
+          if (!firstLeadResult.error && firstLeadResult.data && firstLeadResult.data.length > 0) {
+            data = firstLeadResult.data[0]
+            table = normalizeActiveTable(firstTable)
+          } else {
+            const primarySplitTables = [
+              { name: 'base_consulta_prefeitura_sp', convenio: 'prefeitura_sp' },
+              { name: 'prefeitura_sp_clientes', convenio: 'prefeitura_sp' },
+              { name: 'base_consulta_governo_sp', convenio: 'governo_sp' },
+              { name: 'governo_sp_clientes', convenio: 'governo_sp' },
+              { name: 'base_consulta_siape', convenio: 'siape' },
+              { name: 'clientes', convenio: 'siape' },
+            ]
+
+            const secondarySplitTables = [
+              { name: 'base_consulta_governo_pi', convenio: 'governo_pi' },
+              { name: 'governo_pi_clientes', convenio: 'governo_pi' },
+              { name: 'base_consulta_governo_ba', convenio: 'governo_ba' },
+              { name: 'governo_ba_clientes', convenio: 'governo_ba' },
+              { name: 'base_consulta_governo_ma', convenio: 'governo_ma' },
+              { name: 'governo_ma_clientes', convenio: 'governo_ma' },
+              { name: 'base_consulta_governo_rr', convenio: 'governo_rr' },
+              { name: 'governo_rr_clientes', convenio: 'governo_rr' },
+              { name: 'base_consulta_governo_rj', convenio: 'governo_rj' },
+              { name: 'governo_rj_clientes', convenio: 'governo_rj' },
+              { name: 'base_consulta_prefeitura_santo_andre', convenio: 'prefeitura_santo_andre' },
+              { name: 'prefeitura_santo_andre_clientes', convenio: 'prefeitura_santo_andre' },
+              { name: 'base_consulta_prefeitura_contagem', convenio: 'prefeitura_contagem' },
+              { name: 'prefeitura_contagem_clientes', convenio: 'prefeitura_contagem' },
+              { name: 'base_consulta_governo_mg', convenio: 'governo_mg' },
+              { name: 'governo_mg_clientes', convenio: 'governo_mg' },
+              { name: 'base_consulta_governo_ms', convenio: 'governo_ms' },
+              { name: 'governo_ms_clientes', convenio: 'governo_ms' },
+              { name: 'base_consulta_prefeitura_natal', convenio: 'prefeitura_natal' },
+              { name: 'prefeitura_natal_clientes', convenio: 'prefeitura_natal' },
+              { name: 'base_consulta_prefeitura_porto_velho', convenio: 'prefeitura_porto_velho' },
+              { name: 'prefeitura_porto_velho_clientes', convenio: 'prefeitura_porto_velho' },
+              { name: 'base_consulta_governo_am', convenio: 'governo_am' },
+              { name: 'governo_am_clientes', convenio: 'governo_am' },
+              { name: 'base_consulta_governo_ce', convenio: 'governo_ce' },
+              { name: 'governo_ce_clientes', convenio: 'governo_ce' },
+              { name: 'base_consulta_governo_ro', convenio: 'governo_ro' },
+              { name: 'governo_ro_clientes', convenio: 'governo_ro' },
+              { name: 'base_consulta_prefeitura_ponta_grossa', convenio: 'prefeitura_ponta_grossa' },
+              { name: 'prefeitura_ponta_grossa_clientes', convenio: 'prefeitura_ponta_grossa' },
+              { name: 'base_consulta_amazon_prev', convenio: 'amazon_prev' },
+              { name: 'amazon_prev_clientes', convenio: 'amazon_prev' },
+            ]
+
+            const totalAvail = availableMembers.length
+            const maxScan = Math.min(totalAvail, 2500)
+            const batchSize = 25
+            let fallbackBatchAttempts = 0
+            const maxFallbackBatchAttempts = 4
+
+            for (let offsetIdx = 0; offsetIdx < maxScan; offsetIdx += batchSize) {
+              const batchEnd = Math.min(offsetIdx + batchSize, maxScan)
+              const batchItems: {
+                pos: number
+                member: { cliente_cpf: string | null; convenio?: string | null }
+                normCpf: string
+                variants: string[]
+                preferredTable: string
+              }[] = []
+
+              for (let j = offsetIdx; j < batchEnd; j++) {
+                const idx = (selectedIndex + j) % totalAvail
+                const m = availableMembers[idx]
+                if (!m.cliente_cpf) continue
+                const normCpf = m.cliente_cpf.replace(/\D/g, "").padStart(11, '0')
+                batchItems.push({
+                  pos: j,
+                  member: m,
+                  normCpf,
+                  variants: buildCpfVariants(m.cliente_cpf),
+                  preferredTable: resolveMemberTable(m)
+                })
               }
-              return supabase.from(targetTable).select('*').eq('cpf', cleanTempCpf).limit(1)
-            }
 
-            // 2. Buscar o lead completo na tabela preferencial
-            const { data: fullLead, error: fullLeadError } = await withRetry(() => queryByCpf(tempTable))
+              if (batchItems.length === 0) continue
 
-            if (!fullLeadError && fullLead && fullLead.length > 0) {
-              data = fullLead[0]
-              table = tempTable
-              break
-            }
+              const allBatchVariants = Array.from(new Set(batchItems.flatMap(b => b.variants)))
 
-            // 3. Fallback controlado em ondas (apenas quando não encontrou na tabela preferencial e dentro do limite seguro)
-            if (fallbackAttempts >= maxFallbackAttempts) {
-              continue
-            }
-            fallbackAttempts++
+              // 1. Checar lote de 25 CPFs de uma só vez na(s) tabela(s) preferencial(is)
+              const tableGroups = new Map<string, typeof batchItems>()
+              batchItems.forEach(item => {
+                const arr = tableGroups.get(item.preferredTable) || []
+                arr.push(item)
+                tableGroups.set(item.preferredTable, arr)
+              })
 
-            const searchTablesWave = async (tablesList: { name: string; convenio: string }[]) => {
-              const filtered = tablesList.filter((t) => t.name !== tempTable)
-              const results = await Promise.all(
-                filtered.map(async (t) => {
-                  try {
-                    const { data: dDataList, error: dErr } = await queryByCpf(t.name)
-                    if (!dErr && dDataList && dDataList.length > 0) {
-                      return { table: t.name, convenio: t.convenio, lead: dDataList[0] }
-                    }
-                  } catch (e) {
-                    console.warn(`Erro na busca do CPF ${tempCpf} na tabela ${t.name}:`, e)
+              type CandidateMatch = {
+                pos: number
+                item: (typeof batchItems)[number]
+                sourceTable: string
+                convenio?: string
+              }
+              let matchedCandidate: CandidateMatch | null = null
+
+              const preferredMatches = await Promise.all(
+                Array.from(tableGroups.entries()).map(async ([targetTbl, items]): Promise<CandidateMatch | null> => {
+                  const groupVariants = Array.from(new Set(items.flatMap(it => it.variants)))
+                  const { data: foundCpfs, error: batchErr } = await withRetry(() =>
+                    supabase.from(targetTbl).select('cpf').in('cpf', groupVariants)
+                  )
+                  if (!batchErr && foundCpfs && foundCpfs.length > 0) {
+                    const foundSet = new Set(
+                      foundCpfs.map((r: any) => String(r.cpf || "").replace(/\D/g, "").padStart(11, '0'))
+                    )
+                    const winner = items.find(it => foundSet.has(it.normCpf))
+                    if (winner) return { pos: winner.pos, item: winner, sourceTable: targetTbl }
                   }
+
+                  const prodTbl = BASE_TO_PROD_TABLE[targetTbl]
+                  if (prodTbl) {
+                    const { data: prodCpfs, error: prodErr } = await supabase
+                      .from(prodTbl)
+                      .select('cpf')
+                      .in('cpf', groupVariants)
+                    if (!prodErr && prodCpfs && prodCpfs.length > 0) {
+                      const prodSet = new Set(
+                        prodCpfs.map((r: any) => String(r.cpf || "").replace(/\D/g, "").padStart(11, '0'))
+                      )
+                      const winner = items.find(it => prodSet.has(it.normCpf))
+                      if (winner) return { pos: winner.pos, item: winner, sourceTable: prodTbl }
+                    }
+                  }
+
                   return null
                 })
               )
-              return results.find((r) => r !== null) || null
-            }
 
-            let foundResult = await searchTablesWave(primarySplitTables)
-            if (!foundResult) {
-              foundResult = await searchTablesWave(secondarySplitTables)
-            }
+              for (const m of preferredMatches) {
+                if (m && (!matchedCandidate || m.pos < matchedCandidate.pos)) {
+                  matchedCandidate = m
+                }
+              }
 
-            if (foundResult) {
-              data = foundResult.lead
-              table = foundResult.table
-              matchedMember.convenio = foundResult.convenio
+              // 2. Se nenhum do lote estiver na tabela preferencial nem em sua *_clientes, busca nas ondas (com limite seguro)
+              if (!matchedCandidate && fallbackBatchAttempts < maxFallbackBatchAttempts) {
+                fallbackBatchAttempts++
+                const checkedTables = new Set<string>()
+                tableGroups.forEach((_, k) => {
+                  checkedTables.add(k)
+                  if (BASE_TO_PROD_TABLE[k]) checkedTables.add(BASE_TO_PROD_TABLE[k])
+                })
 
-              supabase
-                .from('campanha_membros')
-                .update({ convenio: foundResult.convenio })
-                .eq('campanha_id', camp.id)
-                .eq('cliente_cpf', tempCpf)
-                .then(() => {}, () => {})
+                const searchBatchInTables = async (tablesList: { name: string; convenio: string }[]): Promise<CandidateMatch | null> => {
+                  const toCheck = tablesList.filter(t => !checkedTables.has(t.name))
+                  if (toCheck.length === 0) return null
 
-              break
-            } else {
-              console.warn(`CPF ${tempCpf} cadastrado na campanha não foi localizado em nenhuma tabela de consulta do CRM. Pulando...`)
+                  const waveRes = await Promise.all(
+                    toCheck.map(async (t): Promise<CandidateMatch | null> => {
+                      try {
+                        const { data: foundCpfs, error: wErr } = await supabase
+                          .from(t.name)
+                          .select('cpf')
+                          .in('cpf', allBatchVariants)
+                        if (!wErr && foundCpfs && foundCpfs.length > 0) {
+                          const foundSet = new Set(
+                            foundCpfs.map((r: any) => String(r.cpf || "").replace(/\D/g, "").padStart(11, '0'))
+                          )
+                          const winner = batchItems.find(it => foundSet.has(it.normCpf))
+                          if (winner) {
+                            return { pos: winner.pos, item: winner, sourceTable: t.name, convenio: t.convenio }
+                          }
+                        }
+                      } catch (e) {
+                        console.warn(`Erro na busca em lote na tabela ${t.name}:`, e)
+                      }
+                      return null
+                    })
+                  )
+
+                  let best: CandidateMatch | null = null
+                  for (const r of waveRes) {
+                    if (r && (!best || r.pos < best.pos)) best = r
+                  }
+                  return best
+                }
+
+                matchedCandidate = await searchBatchInTables(primarySplitTables)
+                if (!matchedCandidate) {
+                  matchedCandidate = await searchBatchInTables(secondarySplitTables)
+                }
+              }
+
+              const winnerMatch = matchedCandidate
+              if (winnerMatch) {
+                const { data: fullWinner, error: fullWinnerErr } = await withRetry(() =>
+                  supabase
+                    .from(winnerMatch.sourceTable)
+                    .select('*')
+                    .in('cpf', winnerMatch.item.variants)
+                    .limit(1)
+                )
+
+                if (!fullWinnerErr && fullWinner && fullWinner.length > 0) {
+                  data = fullWinner[0]
+                  table = normalizeActiveTable(winnerMatch.sourceTable)
+
+                  if (winnerMatch.convenio) {
+                    winnerMatch.item.member.convenio = winnerMatch.convenio
+                    if (winnerMatch.item.member.cliente_cpf) {
+                      supabase
+                        .from('campanha_membros')
+                        .update({ convenio: winnerMatch.convenio })
+                        .eq('campanha_id', camp.id)
+                        .eq('cliente_cpf', winnerMatch.item.member.cliente_cpf)
+                        .then(() => {}, () => {})
+                    }
+                  }
+                  break
+                }
+              }
             }
           }
         }
@@ -1028,11 +1207,12 @@ export default function CampanhaAtendimentoPage() {
         
         // Fetch detailed registrations if SIAPE
         if (table === 'base_consulta_siape') {
+          const matriculaCpfCandidates = Array.from(new Set([client.cpf, paddedCpfStr].filter(Boolean)))
           const { data: regData } = await withRetry(() => 
             supabase
               .from('matriculas')
               .select('*, instituidores(*, itens_credito(*))')
-              .eq('cliente_cpf', client.cpf)
+              .in('cliente_cpf', matriculaCpfCandidates)
           )
           
           setRegistrations(regData || [])
@@ -1275,8 +1455,13 @@ export default function CampanhaAtendimentoPage() {
         } else {
           // Wrapped generic data
           const isGovPi = table === 'base_consulta_governo_pi';
+          const isGovMa = table === 'base_consulta_governo_ma';
           const isGovRr = table === 'base_consulta_governo_rr';
+          const isGovRj = table === 'base_consulta_governo_rj';
           const isSantoAndre = table === 'base_consulta_prefeitura_santo_andre';
+          const isPrefContagem = table === 'base_consulta_prefeitura_contagem';
+          const isGovMg = table === 'base_consulta_governo_mg';
+          const isGovMs = table === 'base_consulta_governo_ms';
           const isPrefNatal = table === 'base_consulta_prefeitura_natal';
           const isPrefPortoVelho = table === 'base_consulta_prefeitura_porto_velho';
           const isGovRo = table === 'base_consulta_governo_ro';
@@ -1292,6 +1477,44 @@ export default function CampanhaAtendimentoPage() {
           const mLiq5 = data.liquida_5 ?? data.margem_cartao_consignado ?? data.margem_cartao;
           const mBenLiq5 = data.beneficio_liquida_5 ?? data.margem_cartao_beneficio;
 
+          const fallbackUf =
+            isAmazonPrev ? 'AM' :
+            isPrefPontaGrossa ? 'PR' :
+            isGovRo ? 'RO' :
+            isGovCe ? 'CE' :
+            isGovAm ? 'AM' :
+            isGovBa ? 'BA' :
+            isSantoAndre ? 'SP' :
+            isPrefContagem ? 'MG' :
+            isGovMg ? 'MG' :
+            isGovMs ? 'MS' :
+            isGovRj ? 'RJ' :
+            isGovMa ? 'MA' :
+            isGovPi ? 'PI' :
+            isGovRr ? 'RR' :
+            isPrefNatal ? 'RN' :
+            isPrefPortoVelho ? 'RO' :
+            data.uf;
+
+          const fallbackInstNome =
+            isAmazonPrev ? 'AMAZON PREV' :
+            isPrefPontaGrossa ? 'PREFEITURA DE PONTA GROSSA' :
+            isSantoAndre ? 'PREFEITURA SANTO ANDRÉ' :
+            isPrefContagem ? 'PREFEITURA CONTAGEM' :
+            isPrefNatal ? 'PREFEITURA DE NATAL' :
+            isPrefPortoVelho ? 'PREFEITURA PORTO VELHO' :
+            isGovRr ? 'GOVERNO RORAIMA' :
+            isGovRj ? 'GOVERNO RIO DE JANEIRO' :
+            isGovMg ? 'GOVERNO MINAS GERAIS' :
+            isGovMs ? 'GOVERNO MATO GROSSO DO SUL' :
+            isGovBa ? 'GOVERNO BAHIA' :
+            isGovAm ? 'GOVERNO AMAZONAS' :
+            isGovCe ? 'GOVERNO CEARÁ' :
+            isGovRo ? 'GOVERNO RONDÔNIA' :
+            isGovPi ? 'GOVERNO PIAUÍ' :
+            isGovMa ? 'GOVERNO MARANHÃO' :
+            '';
+
           setRegistrations([{
             id: data.id || data.cpf,
             numero_matricula: mat,
@@ -1300,7 +1523,7 @@ export default function CampanhaAtendimentoPage() {
             orgao: data.orgao,
             lotacao: data.lotacao,
             regime_juridico: data.regime_juridico,
-            uf: isAmazonPrev ? 'AM' : (isPrefPontaGrossa ? 'PR' : (isGovRo ? 'RO' : (isGovCe ? 'CE' : (isGovAm ? 'AM' : (isGovBa ? 'BA' : (isSantoAndre ? 'SP' : (isGovPi ? 'PI' : (isGovRr ? 'RR' : (isPrefNatal ? 'RN' : (isPrefPortoVelho ? 'RO' : data.uf)))))))))),
+            uf: data.uf || fallbackUf,
             matricula: mat,
             vinculo: vinc,
             situacao: data.situacao,
@@ -1313,7 +1536,7 @@ export default function CampanhaAtendimentoPage() {
             margem_liquida_cartao: data.margem_liquida_cartao,
             instituidores: [{
                id: 'main',
-               nome: data.orgao || (isAmazonPrev ? 'AMAZON PREV' : (isPrefPontaGrossa ? 'PREFEITURA DE PONTA GROSSA' : (isGovRr ? 'GOVERNO RR' : (isPrefNatal ? 'PREFEITURA DE NATAL' : (isPrefPortoVelho ? 'PREFEITURA PORTO VELHO' : ''))))),
+               nome: data.orgao || fallbackInstNome,
                saldo_70: data.saldo_70,
                margem_35: m35,
                bruta_5: data.bruta_5,
