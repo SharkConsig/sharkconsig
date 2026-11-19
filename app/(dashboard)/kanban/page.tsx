@@ -8641,17 +8641,49 @@ export default function KanbanPage() {
                     )
                   })()}
 
-                  {/* CONVÊNIO (EM TODAS AS ETAPAS) */}
+                  {/* CONVÊNIO, ORIGEM DO CLIENTE E NÚMERO DA ACERTO */}
                   {(() => {
                     const meta = parseMetadata(atendimentoModalTicket.descricao)
                     const conv = resolvedConvenio || formatConvenioOrigem(atendimentoModalTicket.convenio || meta.convenio) || "Não informado"
+                    const rawOrigem = (
+                      ((meta as any).origem && (meta as any).origem !== "KANBAN" && (meta as any).origem !== "SISTEMA" ? (meta as any).origem : "") ||
+                      ((meta as any).cliente_origem ? (meta as any).cliente_origem : "") ||
+                      (atendimentoModalTicket.origem && atendimentoModalTicket.origem !== "KANBAN" && atendimentoModalTicket.origem !== "SISTEMA" ? atendimentoModalTicket.origem : "") ||
+                      (atendimentoModalTicket.origem && atendimentoModalTicket.origem !== "KANBAN" ? atendimentoModalTicket.origem : "") ||
+                      (meta as any).origem ||
+                      "Não informada"
+                    )
+                    const rawEmpresaPhone = atendimentoModalTicket.telefone_empresa || (meta as any).telefone_empresa || ""
+                    const empresaPhoneFormatted = rawEmpresaPhone ? (formatPhone(rawEmpresaPhone) || rawEmpresaPhone) : "Não informado"
+
                     return (
-                      <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                        <span className="font-semibold text-slate-500">Convênio:</span>
-                        <span className="font-medium text-slate-800">
-                          {conv}
-                        </span>
-                      </div>
+                      <>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <span className="font-semibold text-slate-500">Convênio:</span>
+                          <span className="font-medium text-slate-800">
+                            {conv}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <span className="font-semibold text-slate-500">Origem do Cliente:</span>
+                          <span className="font-medium text-slate-800">
+                            {rawOrigem}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                          <span className="font-semibold text-slate-500">Número da Acerto:</span>
+                          <span
+                            onClick={() => rawEmpresaPhone && handleCopy(empresaPhoneFormatted, "Número da Acerto")}
+                            className={cn(
+                              "font-mono font-medium text-slate-800 transition-colors",
+                              rawEmpresaPhone && "cursor-pointer hover:text-indigo-600"
+                            )}
+                            title={rawEmpresaPhone ? "Clique para copiar Número da Acerto" : undefined}
+                          >
+                            {empresaPhoneFormatted}
+                          </span>
+                        </div>
+                      </>
                     )
                   })()}
                 </div>

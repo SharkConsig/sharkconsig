@@ -79,6 +79,8 @@ export function PipelineIntelligenceDrawer({
   const [teamRoleFilter, setTeamRoleFilter] = useState<"all" | "corretor" | "estagiario">("all")
   const [affinityMode, setAffinityMode] = useState<"convenio" | "valor">("convenio")
   const [isExecSummaryOpen, setIsExecSummaryOpen] = useState(false)
+  const [stuckModalStageKey, setStuckModalStageKey] = useState<KanbanStageKey | null>(null)
+  const [stuckModalSearch, setStuckModalSearch] = useState("")
   const [searchRiskQuery, setSearchRiskQuery] = useState("")
   const [riskTierFilter, setRiskTierFilter] = useState<"all" | "high" | "mid" | "low">("all")
   const [riskStageFilters, setRiskStageFilters] = useState<string[]>([])
@@ -670,9 +672,14 @@ export function PipelineIntelligenceDrawer({
       { key: "EM NEGOCIAÇÃO", label: "Em negociação", subtitle: "Proposta em tratativa", color: "indigo" },
       { key: "EM REATIVAÇÃO", label: "Em reativação", subtitle: "Resgate de esfriados", color: "purple" },
       { key: "SEM INTERESSE", label: "Sem interesse", subtitle: "Nutrição / DDD", color: "slate" },
-      { key: "FECHADO", label: "Fechado", subtitle: "ADEs geradas (GOL)", color: "emerald" },
+      { key: "FECHADO", label: "Fechado", subtitle: "Andamento / Aguardando Pagamento", color: "emerald" },
       { key: "PERDIDO", label: "Perdido", subtitle: "Encerrados / cancelados", color: "rose" }
     ]
+
+    const operatorNameMap = new Map<string, string>()
+    operatorsList.forEach(o => {
+      if (o.id) operatorNameMap.set(String(o.id), o.nome)
+    })
 
     const now = Date.now()
     let grandTotalCapital = 0 // Pipeline ativo (exclui Fechado e Perdido)
@@ -697,6 +704,14 @@ export function PipelineIntelligenceDrawer({
 
       let stuckCount48h = 0
       let stuckCapital48h = 0
+      const stuckLeads48h: Array<{
+        ticket: any
+        operatorName: string
+        stageName: string
+        opVal: number
+        prodVal: number
+        hoursInactive: number
+      }> = []
 
       let emInteracaoCount = 0
       let emRetomadaNoContactCount = 0
@@ -725,6 +740,16 @@ export function PipelineIntelligenceDrawer({
         if (!isClosedOrLost && hoursInStage > 48) {
           stuckCount48h++
           stuckCapital48h += item.opVal
+          const opId = t.user_id ? String(t.user_id) : ""
+          const operatorName = (opId && operatorNameMap.get(opId)) || t.user_nome || "Não Atribuído"
+          stuckLeads48h.push({
+            ticket: t,
+            operatorName,
+            stageName: t.status || stageDef.label,
+            opVal: item.opVal,
+            prodVal: item.prodVal,
+            hoursInactive: Math.floor(hoursInStage)
+          })
         }
 
         if (item.opVal >= 30000) {
@@ -745,6 +770,8 @@ export function PipelineIntelligenceDrawer({
         grandTotalStuck48hCount += stuckCount48h
       }
 
+      stuckLeads48h.sort((a, b) => b.prodVal - a.prodVal || b.opVal - a.opVal || b.hoursInactive - a.hoursInactive)
+
       const count = stageItems.length
       const avgHours = count > 0 ? Math.round(totalHours / count) : 0
       const topLossReason = Array.from(lossReasonMap.entries()).sort((a, b) => b[1] - a[1])[0] || null
@@ -761,6 +788,7 @@ export function PipelineIntelligenceDrawer({
         avgDays: (avgHours / 24).toFixed(1),
         stuckCount48h,
         stuckCapital48h,
+        stuckLeads48h,
         emInteracaoCount,
         emRetomadaNoContactCount,
         topLossReason: topLossReason ? { label: topLossReason[0], count: topLossReason[1] } : null,
@@ -778,7 +806,7 @@ export function PipelineIntelligenceDrawer({
       grandTotalProducao,
       grandTotalStuck48hCount
     }
-  }, [parsedTickets])
+  }, [parsedTickets, operatorsList])
 
   // 2B. ANÁLISE DO FUNIL DE PONTA A PONTA & ROI POR ORIGEM DO CLIENTE
   const funnelAndOriginsData = useMemo(() => {
@@ -1336,6 +1364,21 @@ export function PipelineIntelligenceDrawer({
     return `${(minutes / 60).toFixed(1)}h`
   }
 
+  const fmtDaysAndHours = (totalHours: number) => {
+    const safeHours = Math.max(0, Math.floor(totalHours || 0))
+    const days = Math.floor(safeHours / 24)
+    const remHours = safeHours % 24
+    if (days <= 0) return `${safeHours} ${safeHours === 1 ? "hora" : "horas"}`
+    const daysPart = `${days} ${days === 1 ? "dia" : "dias"}`
+    const hoursPart = remHours > 0 ? ` e ${remHours} ${remHours === 1 ? "hora" : "horas"}` : ""
+    return `${daysPart}${hoursPart}`
+  }
+
+  const stuckModalStage = useMemo(() => {
+    if (!stuckModalStageKey) return null
+    return stageAgingData.stages.find(s => s.key === stuckModalStageKey) || null
+  }, [stuckModalStageKey, stageAgingData.stages])
+
   // 5. CENTRAL DE DIAGNÓSTICO ACIONÁVEL — RESUMO EXECUTIVO (computado sob demanda ao abrir)
   const executiveSummaryData = useMemo(() => {
     if (!isExecSummaryOpen) return null
@@ -1634,7 +1677,7 @@ export function PipelineIntelligenceDrawer({
           transition={{ duration: 0.2, ease: "easeOut" }}
           className="fixed inset-0 z-[150] overflow-hidden bg-slate-950/60 flex items-center justify-center will-change-[opacity]"
           onClick={(e) => {
-            if (e.target === e.currentTarget && !isExecSummaryOpen) handleClose()
+            if (e.target === e.currentTarget && !isExecSummaryOpen && !stuckModalStageKey) handleClose()
           }}
         >
           <motion.div
@@ -2007,7 +2050,7 @@ export function PipelineIntelligenceDrawer({
             )}
           >
             <Layers className="w-4 h-4" />
-            <span>1. Jornada do Funil &amp; Origens</span>
+            <span>1. Análise Geral</span>
             <span
               role="tooltip"
               className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 group-focus-visible/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-1.5 z-50 w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700 whitespace-normal"
@@ -2090,7 +2133,7 @@ export function PipelineIntelligenceDrawer({
             : cn("overflow-y-auto p-5 lg:p-6", (activeTab === "affinity" || activeTab === "team") && "flex flex-col")
         )}>
           {/* ============================================================== */}
-          {/* ABA 1: JORNADA COMPLETA DO FUNIL (6 ETAPAS) & ORIGENS (ROI)    */}
+          {/* ABA 1: ANÁLISE GERAL DO FUNIL (6 ETAPAS) & ORIGENS (ROI)       */}
           {/* ============================================================== */}
           {activeTab === "funnel" && (
             <div className="space-y-4">
@@ -2098,24 +2141,16 @@ export function PipelineIntelligenceDrawer({
               <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <h3 className="text-[13px] font-bold text-slate-900 flex items-center gap-1.5">
                       <Layers className="w-4 h-4 text-indigo-600" />
                       Jornada do Atendimento nas 6 Etapas do Kanban
                     </h3>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Do topo do funil (<strong>{funnelAndOriginsData.totalFunnel} leads</strong>) até o fechamento: <strong>{funnelAndOriginsData.reachedNegPct}%</strong> alcançaram negociação e <strong>{funnelAndOriginsData.funnelConvPct}%</strong> fecharam ADE.
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Da entrada no funil ({funnelAndOriginsData.totalFunnel} leads) até o fechamento:{" "}
+                      <strong className="text-slate-700">
+                        {funnelAndOriginsData.reachedNegPct}% alcançaram negociação e {funnelAndOriginsData.funnelConvPct}% estão em Andamento / Aguardando Pagamento
+                      </strong>.
                     </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
-                    <span className="px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-200 text-sky-800 font-bold">
-                      Em interação: {funnelAndOriginsData.totalEmInteracao}
-                    </span>
-                    <span className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-bold">
-                      Retomada (s/ contato): {funnelAndOriginsData.totalEmRetomadaSemContato}
-                    </span>
-                    <span className="px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-800 font-bold">
-                      Em negociação: {funnelAndOriginsData.totalEmNegociacaoAtual} ({funnelAndOriginsData.totalAlcanceNegociacao} passaram)
-                    </span>
                   </div>
                 </div>
 
@@ -2148,16 +2183,16 @@ export function PipelineIntelligenceDrawer({
                         <div>
                           <div className="flex items-start justify-between gap-1.5">
                             <div>
-                              <span className="text-[11.5px] font-bold text-slate-900 leading-tight block">{st.label}</span>
-                              <span className="text-[10px] text-slate-500">{st.subtitle}</span>
+                              <span className="text-[12.5px] font-bold text-slate-900 leading-tight block">{st.label}</span>
+                              <span className="text-[11px] text-slate-500">{st.subtitle}</span>
                             </div>
-                            <span className={cn("px-1.5 py-0.5 rounded-md text-[10px] font-black shrink-0", badgeMap[st.color])}>
+                            <span className={cn("px-1.5 py-0.5 rounded-md text-[11px] font-black shrink-0", badgeMap[st.color])}>
                               {st.count} ({st.sharePct}%)
                             </span>
                           </div>
 
                           {st.key === "EM RETOMADA" && (
-                            <div className="mt-2 p-2 rounded-lg bg-white border border-amber-200/80 space-y-1 text-[10.5px]">
+                            <div className="mt-2 p-2 rounded-lg bg-white border border-amber-200/80 space-y-1 text-[11.5px]">
                               <div className="flex items-center justify-between">
                                 <span className="text-sky-700 font-semibold">Em interação:</span>
                                 <span className="font-black text-sky-800">{st.emInteracaoCount}</span>
@@ -2169,43 +2204,59 @@ export function PipelineIntelligenceDrawer({
                             </div>
                           )}
 
-                          <div className="mt-2 pt-2 border-t border-slate-200/70 space-y-1 text-[11px]">
+                          <div className="mt-2 pt-2 border-t border-slate-200/70 space-y-1 text-xs">
                             <div className="flex items-center justify-between">
                               <span className="text-slate-500">Operação:</span>
                               <span className="font-black text-emerald-700">{fmtCurrency(st.totalOperacao)}</span>
                             </div>
                             <div className="flex items-center justify-between">
-                              <span className="text-slate-500">Prod. Est.:</span>
+                              <span className="text-slate-500">Produção:</span>
                               <span className="font-black text-sky-600">{fmtCurrency(st.totalProducao)}</span>
                             </div>
                             <div className="flex items-center justify-between">
                               <span className="text-slate-500">Com margem:</span>
                               <span className="font-bold text-slate-800">{st.marginPct}%</span>
                             </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-500">Permanência:</span>
-                              <span className="font-bold text-slate-700">
-                                {st.avgHours < 24 ? `${st.avgHours}h` : `${st.avgDays}d`}
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-slate-500 shrink-0">Permanência:</span>
+                              <span className="font-bold text-slate-700 text-right">
+                                {fmtDaysAndHours(st.avgHours)}
                               </span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="mt-2 pt-1.5 border-t border-slate-200/70 text-[10px] space-y-0.5 text-slate-600">
-                          <div className="flex items-center justify-between">
-                            <span>Alto/Méd/Bx:</span>
-                            <span className="font-bold text-slate-800">
-                              {st.ticketsByTier.high.count}/{st.ticketsByTier.mid.count}/{st.ticketsByTier.low.count}
-                            </span>
+                        <div className="mt-2 pt-1.5 border-t border-slate-200/70 text-[11px] space-y-1 text-slate-600">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center justify-between text-orange-700 font-bold">
+                              <span>Alto &gt;30k:</span>
+                              <span className="tabular-nums">{st.ticketsByTier.high.count}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-orange-500 font-bold">
+                              <span>Médio 10k - 30k:</span>
+                              <span className="tabular-nums">{st.ticketsByTier.mid.count}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-slate-700 font-bold">
+                              <span>Baixo &lt;10k:</span>
+                              <span className="tabular-nums">{st.ticketsByTier.low.count}</span>
+                            </div>
                           </div>
                           {st.key === "PERDIDO" && st.topLossReason ? (
-                            <div className="text-[10px] text-rose-700 font-semibold truncate" title={st.topLossReason.label}>
+                            <div className="text-[11px] text-rose-700 font-semibold truncate pt-0.5" title={st.topLossReason.label}>
                               Motivo: {st.topLossReason.label} ({st.topLossReason.count})
                             </div>
                           ) : st.key !== "FECHADO" && st.key !== "PERDIDO" && st.stuckCount48h > 0 ? (
-                            <div className="text-[10px] text-amber-700 font-bold">
-                              ⚠ {st.stuckCount48h} parados &gt;48h
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStuckModalSearch("")
+                                setStuckModalStageKey(st.key)
+                              }}
+                              className="w-full text-left text-[11px] text-amber-700 hover:text-amber-900 font-bold pt-0.5 hover:underline cursor-pointer transition-colors"
+                              title="Clique para ver a lista de atendimentos parados há mais de 48 horas"
+                            >
+                              ⚠ {st.stuckCount48h} {st.stuckCount48h === 1 ? "parado" : "parados"} há mais de 48 horas
+                            </button>
                           ) : null}
                         </div>
                       </div>
@@ -2217,16 +2268,16 @@ export function PipelineIntelligenceDrawer({
               {/* Origens por Momento do Funil (Interação vs Retomada vs Negociação) */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 <div className="bg-white border border-sky-200 rounded-xl p-3.5 shadow-2xs">
-                  <div className="text-[10.5px] font-black uppercase text-sky-800 flex items-center justify-between">
+                  <div className="text-[11.5px] font-black uppercase text-sky-800 flex items-center justify-between">
                     <span>Origens em Interação</span>
                     <span className="text-sky-600">{funnelAndOriginsData.totalEmInteracao} leads</span>
                   </div>
                   {funnelAndOriginsData.topOriginsInInteracao.length === 0 ? (
-                    <p className="text-[11px] text-slate-400 italic mt-2">Nenhum lead marcado em interação no topo no momento.</p>
+                    <p className="text-xs text-slate-400 italic mt-2">Nenhum lead marcado em interação no topo no momento.</p>
                   ) : (
                     <div className="mt-2 space-y-1.5">
                       {funnelAndOriginsData.topOriginsInInteracao.map(o => (
-                        <div key={`int-${o.key}`} className="flex items-center justify-between text-[11px] border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
+                        <div key={`int-${o.key}`} className="flex items-center justify-between text-xs border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
                           <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
                           <span className="font-bold text-sky-700 shrink-0">{o.emInteracao} leads</span>
                         </div>
@@ -2236,16 +2287,16 @@ export function PipelineIntelligenceDrawer({
                 </div>
 
                 <div className="bg-white border border-amber-200 rounded-xl p-3.5 shadow-2xs">
-                  <div className="text-[10.5px] font-black uppercase text-amber-800 flex items-center justify-between">
+                  <div className="text-[11.5px] font-black uppercase text-amber-800 flex items-center justify-between">
                     <span>Origens sem Contato (Retomada)</span>
                     <span className="text-amber-600">{funnelAndOriginsData.totalEmRetomadaSemContato} leads</span>
                   </div>
                   {funnelAndOriginsData.topOriginsInRetomada.length === 0 ? (
-                    <p className="text-[11px] text-slate-400 italic mt-2">Nenhum lead pendente de primeiro contato em retomada.</p>
+                    <p className="text-xs text-slate-400 italic mt-2">Nenhum lead pendente de primeiro contato em retomada.</p>
                   ) : (
                     <div className="mt-2 space-y-1.5">
                       {funnelAndOriginsData.topOriginsInRetomada.map(o => (
-                        <div key={`ret-${o.key}`} className="flex items-center justify-between text-[11px] border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
+                        <div key={`ret-${o.key}`} className="flex items-center justify-between text-xs border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
                           <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
                           <span className="font-bold text-amber-700 shrink-0">{o.emRetomadaSemContato} ({o.noContactPct}%)</span>
                         </div>
@@ -2255,16 +2306,16 @@ export function PipelineIntelligenceDrawer({
                 </div>
 
                 <div className="bg-white border border-indigo-200 rounded-xl p-3.5 shadow-2xs">
-                  <div className="text-[10.5px] font-black uppercase text-indigo-800 flex items-center justify-between">
+                  <div className="text-[11.5px] font-black uppercase text-indigo-800 flex items-center justify-between">
                     <span>Origens em Negociação</span>
                     <span className="text-indigo-600">{funnelAndOriginsData.totalEmNegociacaoAtual} leads</span>
                   </div>
                   {funnelAndOriginsData.topOriginsInNegociacao.length === 0 ? (
-                    <p className="text-[11px] text-slate-400 italic mt-2">Nenhum lead atualmente em negociação neste recorte.</p>
+                    <p className="text-xs text-slate-400 italic mt-2">Nenhum lead atualmente em negociação neste recorte.</p>
                   ) : (
                     <div className="mt-2 space-y-1.5">
                       {funnelAndOriginsData.topOriginsInNegociacao.map(o => (
-                        <div key={`neg-${o.key}`} className="flex items-center justify-between text-[11px] border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
+                        <div key={`neg-${o.key}`} className="flex items-center justify-between text-xs border-b border-slate-100 pb-1 last:border-b-0 last:pb-0">
                           <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
                           <span className="font-bold text-indigo-700 shrink-0">{o.emNegociacaoAtual} ativos • {o.fechado} ADEs</span>
                         </div>
@@ -2277,18 +2328,18 @@ export function PipelineIntelligenceDrawer({
               {/* Tabela Gerencial Completa por Origem do Cliente (ROI das Listas) */}
               <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-slate-200 bg-slate-50/95 flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <h3 className="text-[13px] font-bold text-slate-800 flex items-center gap-1.5">
                     <BarChart3 className="w-4 h-4 text-indigo-600" />
                     Auditoria de Origens do Cliente — Qualidade de Contato, Margem e Retorno sobre Investimento
                   </h3>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-xs text-slate-500">
                     {funnelAndOriginsData.origins.length} origens identificadas
                   </span>
                 </div>
 
                 <div className="max-h-[380px] overflow-auto">
-                  <table className="w-full min-w-[980px] border-separate border-spacing-0 text-left text-xs">
-                    <thead className="sticky top-0 z-10 bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
+                  <table className="w-full min-w-[980px] border-separate border-spacing-0 text-left text-[13px]">
+                    <thead className="sticky top-0 z-10 bg-slate-100 text-slate-600 uppercase text-[11px] font-bold">
                       <tr>
                         <th className="px-3 py-2 bg-slate-100 border-b border-r border-slate-200">Origem do Cliente</th>
                         <th className="px-2.5 py-2 text-center bg-slate-100 border-b border-r border-slate-200">Entraram</th>
@@ -2322,7 +2373,7 @@ export function PipelineIntelligenceDrawer({
                             <tr key={o.key} className="hover:bg-slate-50/80 transition-colors">
                               <td className="px-3 py-2 font-bold text-slate-900 border-b border-r border-slate-200 max-w-[200px]">
                                 <div className="truncate" title={o.label}>{o.label}</div>
-                                <div className="text-[10px] text-slate-400 font-normal">
+                                <div className="text-[11px] text-slate-400 font-normal">
                                   {o.sharePct}% do funil • {fmtCurrency(o.operacaoTotal)}
                                 </div>
                               </td>
@@ -2336,11 +2387,11 @@ export function PipelineIntelligenceDrawer({
                                 <span className={cn("font-semibold", o.noContactPct >= 60 ? "text-amber-700" : "text-slate-700")}>
                                   {o.emRetomadaSemContato}
                                 </span>
-                                <span className="text-[10px] text-slate-400 ml-1">({o.noContactPct}%)</span>
+                                <span className="text-[11px] text-slate-400 ml-1">({o.noContactPct}%)</span>
                               </td>
                               <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
                                 <span className="font-bold text-indigo-700">{o.emNegociacaoAtual}</span>
-                                <span className="text-[10px] text-slate-400 block">({o.negReachPct}% avanço)</span>
+                                <span className="text-[11px] text-slate-400 block">({o.negReachPct}% avanço)</span>
                               </td>
                               <td className="px-2.5 py-2 text-center text-slate-600 border-b border-r border-slate-200 tabular-nums">
                                 {o.emReativacao} / {o.semInteresse}
@@ -2355,7 +2406,7 @@ export function PipelineIntelligenceDrawer({
                                   {o.fechado} ({o.convPct}%)
                                 </span>
                                 {o.producaoFechada > 0 && (
-                                  <span className="block text-[10px] font-semibold text-sky-600">{fmtCurrency(o.producaoFechada)}</span>
+                                  <span className="block text-[11px] font-semibold text-sky-600">{fmtCurrency(o.producaoFechada)}</span>
                                 )}
                               </td>
                               <td className="px-2.5 py-2 text-center border-b border-r border-slate-200 tabular-nums">
@@ -2364,7 +2415,7 @@ export function PipelineIntelligenceDrawer({
                                 </span>
                               </td>
                               <td className="px-3 py-2 border-b border-slate-200">
-                                <span className={cn("inline-block px-2 py-0.5 rounded-md text-[10px] font-bold border", toneClass[o.roiTone])}>
+                                <span className={cn("inline-block px-2 py-0.5 rounded-md text-[11px] font-bold border", toneClass[o.roiTone])}>
                                   {o.roiVerdict}
                                 </span>
                               </td>
@@ -2384,14 +2435,14 @@ export function PipelineIntelligenceDrawer({
                     <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
                       <Clock className="w-4 h-4" />
                     </div>
-                    <p className="text-xs text-amber-900">
+                    <p className="text-[13px] text-amber-900">
                       Existem <strong>{stageAgingData.grandTotalStuck48hCount} leads ativos</strong> parados há mais de 48h nas etapas sem avanço na cadência.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setActiveTab("risk")}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer shadow-xs"
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[13px] font-bold transition-all shrink-0 cursor-pointer shadow-xs"
                   >
                     Auditar no Radar de Risco
                   </button>
@@ -3714,6 +3765,196 @@ export function PipelineIntelligenceDrawer({
               </motion.div>
             )
           })()}
+        </AnimatePresence>
+
+        {/* MODAL ATENDIMENTOS PARADOS HÁ MAIS DE 48 HORAS */}
+        <AnimatePresence>
+          {stuckModalStage && (
+            <motion.div
+              key="stuck-leads-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="absolute inset-0 z-30 bg-slate-950/65 flex items-center justify-center p-4 sm:p-6 lg:p-8"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setStuckModalStageKey(null)
+              }}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.97, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.97, y: 10 }}
+                transition={{ duration: 0.2 }}
+                className="w-full max-w-4xl max-h-full bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
+                role="dialog"
+                aria-modal="true"
+                aria-label={`Atendimentos parados há mais de 48 horas em ${stuckModalStage.label}`}
+              >
+                {/* Cabeçalho */}
+                <div className="px-6 py-4 bg-linear-to-r from-slate-900 via-amber-950 to-slate-900 text-white flex items-center justify-between gap-3 shrink-0">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-amber-400/15 border border-amber-400/30 flex items-center justify-center shrink-0">
+                      <Clock className="w-5 h-5 text-amber-300" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-sm sm:text-base font-black tracking-tight text-white truncate">
+                        {stuckModalStage.label} — {stuckModalStage.stuckCount48h}{" "}
+                        {stuckModalStage.stuckCount48h === 1 ? "atendimento parado" : "atendimentos parados"} há mais de 48 horas
+                      </h3>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        Ordenados do maior para o menor valor da produção
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStuckModalStageKey(null)}
+                    className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                    title="Fechar lista"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Busca no topo da lista */}
+                {(() => {
+                  const q = stuckModalSearch.trim().toLowerCase()
+                  const qDigits = q.replace(/\D/g, "")
+                  const filteredStuckLeads = !q
+                    ? stuckModalStage.stuckLeads48h
+                    : stuckModalStage.stuckLeads48h.filter(item => {
+                        const cName = String(item.ticket.cliente_nome || "").toLowerCase()
+                        const opName = String(item.operatorName || "").toLowerCase()
+                        const cpfRaw = String(item.ticket.cliente_cpf || "").toLowerCase()
+                        const cpfDigits = cpfRaw.replace(/\D/g, "")
+                        const telRaw = String(item.ticket.cliente_telefone || "").toLowerCase()
+                        const telDigits = telRaw.replace(/\D/g, "")
+                        return (
+                          cName.includes(q) ||
+                          opName.includes(q) ||
+                          cpfRaw.includes(q) ||
+                          telRaw.includes(q) ||
+                          (qDigits.length >= 3 && (cpfDigits.includes(qDigits) || telDigits.includes(qDigits)))
+                        )
+                      })
+
+                  return (
+                    <>
+                      <div className="px-6 py-3 bg-white border-b border-slate-200 flex items-center justify-between gap-3 shrink-0">
+                        <div className="relative flex-1">
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            value={stuckModalSearch}
+                            onChange={(e) => setStuckModalSearch(e.target.value)}
+                            placeholder="Buscar por CPF, telefone, nome do cliente ou responsável..."
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 py-2 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-amber-500 focus:bg-white focus:outline-hidden transition-colors"
+                          />
+                          {stuckModalSearch && (
+                            <button
+                              type="button"
+                              onClick={() => setStuckModalSearch("")}
+                              title="Limpar busca"
+                              aria-label="Limpar busca"
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition-colors cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <span className="text-[11px] font-bold text-slate-500 shrink-0 tabular-nums">
+                          {filteredStuckLeads.length} de {stuckModalStage.stuckLeads48h.length}
+                        </span>
+                      </div>
+
+                      {/* Lista de Atendimentos */}
+                      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2.5 bg-slate-50/70">
+                        {filteredStuckLeads.length === 0 ? (
+                          <div className="py-8 text-center text-xs text-slate-500">
+                            {stuckModalStage.stuckLeads48h.length === 0
+                              ? "Nenhum atendimento parado há mais de 48 horas nesta etapa."
+                              : "Nenhum atendimento encontrado para a busca informada."}
+                          </div>
+                        ) : (
+                          filteredStuckLeads.map(item => (
+                            <div
+                              key={`stuck-${stuckModalStage.key}-${item.ticket.id}`}
+                              className="bg-white border border-slate-200 hover:border-amber-300 rounded-xl p-3.5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+                            >
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-bold text-sm text-slate-900 truncate">
+                                    {item.ticket.cliente_nome || "Cliente sem Nome"}
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-bold shrink-0">
+                                    {fmtDaysAndHours(item.hoursInactive)} parado
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                                  <span>
+                                    Responsável: <strong className="text-slate-900">{item.operatorName}</strong>
+                                  </span>
+                                  {item.ticket.convenio && (
+                                    <span>
+                                      Convênio: <strong className="text-slate-800">{item.ticket.convenio}</strong>
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 border-t sm:border-t-0 pt-2.5 sm:pt-0 border-slate-100">
+                          <div className="flex items-center gap-4 text-right">
+                            <div>
+                              <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                                Operação
+                              </span>
+                              <span className="font-black text-sm text-emerald-700 tabular-nums">
+                                {fmtCurrency(item.opVal)}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="block text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                                Produção
+                              </span>
+                              <span className="font-black text-sm text-sky-600 tabular-nums">
+                                {fmtCurrency(item.prodVal)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {onSelectTicket && (
+                            <button
+                              type="button"
+                              onClick={() => onSelectTicket(item.ticket)}
+                              className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                            >
+                              <span>Ver atendimento</span>
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )
+                })()}
+
+                {/* Rodapé */}
+                <div className="px-6 py-3 bg-white border-t border-slate-200 flex items-center justify-end shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setStuckModalStageKey(null)}
+                    className="px-5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
         </AnimatePresence>
         </motion.div>
       )}
