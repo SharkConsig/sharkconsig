@@ -1926,6 +1926,18 @@ export default function KanbanPage() {
   const sortDropdownRef = useRef<HTMLDivElement>(null)
   const [showIntelligenceDrawer, setShowIntelligenceDrawer] = useState(false)
 
+  // Paginação progressiva por coluna (exibe 35 cards iniciais por coluna + "Mostrar mais" mantendo todos os totais íntegros)
+  const CARDS_PER_PAGE = 35
+  const [columnLimits, setColumnLimits] = useState<Record<string, number>>({})
+  const loadedCpfsRef = useRef<Set<string>>(new Set())
+  const getColumnLimit = (colKey: string) => columnLimits[colKey] ?? CARDS_PER_PAGE
+  const showMoreInColumn = (colKey: string, step: number = CARDS_PER_PAGE) => {
+    setColumnLimits(prev => ({
+      ...prev,
+      [colKey]: (prev[colKey] ?? CARDS_PER_PAGE) + step
+    }))
+  }
+
   // Próximas Ações e Regras de Vencimento dinâmicas
   const [proximasAcoesConfig, setProximasAcoesConfig] = useState<ProximaAcaoConfig[]>(() => getLocalProximasAcoes())
 
@@ -2376,6 +2388,10 @@ export default function KanbanPage() {
   const [isResponsavelDropdownOpen, setIsResponsavelDropdownOpen] = useState(false)
   const [responsavelSearchQuery, setResponsavelSearchQuery] = useState("")
   const responsavelDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setColumnLimits({})
+  }, [activeView, displayMode, selectedResponsavel, selectedAlertFilter])
 
   // Lista de usuários ativos ordenada alfabeticamente
   const activeUsersList = useMemo(() => {
@@ -3406,10 +3422,42 @@ export default function KanbanPage() {
             })
 
             // Sincroniza fichas fechadas no banco apenas uma vez por proposta nesta sessão
+            // e somente quando ainda houver alguma ficha correspondente fora do estado esperado
             propostasExistentes.filter(hasProposalDigitacao).forEach(p => {
               const propKey = String(p.id || `${p.cliente_cpf || ""}_${p.ade || ""}`)
-              if (!syncedClosedProposalIdsRef.current.has(propKey)) {
-                syncedClosedProposalIdsRef.current.add(propKey)
+              if (syncedClosedProposalIdsRef.current.has(propKey)) return
+              syncedClosedProposalIdsRef.current.add(propKey)
+
+              const rawPropCpf = String(p.cliente_cpf || "").replace(/\D/g, "")
+              const pPadded = rawPropCpf.padStart(11, "0")
+              const pUnpadded = rawPropCpf.replace(/^0+/, "")
+              const pAde = String(p.ade || "").trim()
+              const isCancelledProp = isProposalCancelled(p.status)
+
+              const needsDbSync = ticketsEnriched.some(t => {
+                const rawCardCpf = String(t.cliente_cpf || "").replace(/\D/g, "")
+                const sameCpf = Boolean(rawPropCpf && rawCardCpf && (
+                  rawCardCpf === rawPropCpf ||
+                  rawCardCpf.padStart(11, "0") === pPadded ||
+                  (pUnpadded && rawCardCpf.replace(/^0+/, "") === pUnpadded)
+                ))
+                const sameLead = Boolean(p.id_lead && String(p.id_lead).trim() === String(t.id).trim())
+                if (!sameCpf && !sameLead) return false
+
+                const tStage = String((t as any).etapa || t.status || "").toUpperCase()
+                if (isCancelledProp) {
+                  return tStage !== "PERDIDO"
+                }
+                const isClosedOrLost = tStage === "FECHADO" || tStage === "PERDIDO"
+                if (!isClosedOrLost) return true
+                if (tStage === "FECHADO" && pAde && pAde !== "-") {
+                  const tAde = String(t.proposta_info?.ade || "").trim()
+                  if (tAde && tAde !== pAde) return true
+                }
+                return false
+              })
+
+              if (needsDbSync) {
                 syncKanbanForClosedProposal(p)
               }
             })
@@ -3418,6 +3466,18 @@ export default function KanbanPage() {
           console.warn("Aviso ao carregar dados complementares dos cartões:", fetchErr)
         }
       }
+
+      const nextLoadedCpfs = new Set<string>()
+      ticketsEnriched.forEach(t => {
+        const clean = String(t.cliente_cpf || "").replace(/\D/g, "")
+        if (clean) {
+          nextLoadedCpfs.add(clean)
+          nextLoadedCpfs.add(clean.padStart(11, "0"))
+          const unpadded = clean.replace(/^0+/, "")
+          if (unpadded) nextLoadedCpfs.add(unpadded)
+        }
+      })
+      loadedCpfsRef.current = nextLoadedCpfs
 
       setConcorrenciaPorCpf(mapConcorrencia)
       setPropostasPorCpf(mapPropsByTicketId)
@@ -3460,7 +3520,17 @@ export default function KanbanPage() {
       if (debounceTimer) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(() => {
         fetchChamados(true)
-      }, 1500)
+      }, 3500)
+    }
+
+    const isRelevantCpfPayload = (payload: any): boolean => {
+      const cpfRaw = payload?.new?.cliente_cpf ?? payload?.old?.cliente_cpf
+      if (!cpfRaw) return true
+      const clean = String(cpfRaw).replace(/\D/g, "")
+      if (!clean) return true
+      const loaded = loadedCpfsRef.current
+      if (loaded.size === 0) return false
+      return loaded.has(clean) || loaded.has(clean.padStart(11, "0")) || loaded.has(clean.replace(/^0+/, ""))
     }
 
     // 1. Canal Supabase Realtime para kanban_fichas, chamados e propostas (INSERT, UPDATE e DELETE)
@@ -3482,14 +3552,16 @@ export default function KanbanPage() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "chamados" },
-        () => {
+        (payload: any) => {
+          if (!isRelevantCpfPayload(payload)) return
           scheduleSilentRefresh()
         }
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "propostas" },
-        () => {
+        (payload: any) => {
+          if (!isRelevantCpfPayload(payload)) return
           scheduleSilentRefresh()
         }
       )
@@ -3502,11 +3574,11 @@ export default function KanbanPage() {
       )
       .subscribe()
 
-    // 2. Sincronização ao retornar para a aba com cooldown mínimo de 30s (evita rajada em focus + visibilitychange)
+    // 2. Sincronização ao retornar para a aba com cooldown mínimo de 60s (evita rajada em focus + visibilitychange)
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === "visible") {
         const elapsed = Date.now() - lastChamadosFetchAtRef.current
-        if (pendingBackgroundRefreshRef.current || elapsed >= 30000) {
+        if (pendingBackgroundRefreshRef.current || elapsed >= 60000) {
           scheduleSilentRefresh()
         }
       }
@@ -3514,12 +3586,12 @@ export default function KanbanPage() {
     window.addEventListener("focus", handleVisibilityOrFocus)
     document.addEventListener("visibilitychange", handleVisibilityOrFocus)
 
-    // 3. Heartbeat periódico silencioso de segurança a cada 90 segundos enquanto a aba estiver visível
+    // 3. Heartbeat periódico silencioso de segurança a cada 3 minutos enquanto a aba estiver visível
     const heartbeatInterval = setInterval(() => {
-      if (document.visibilityState === "visible" && (Date.now() - lastChamadosFetchAtRef.current >= 45000)) {
+      if (document.visibilityState === "visible" && (Date.now() - lastChamadosFetchAtRef.current >= 120000)) {
         fetchChamados(true)
       }
-    }, 90000)
+    }, 180000)
 
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer)
@@ -3530,26 +3602,64 @@ export default function KanbanPage() {
     }
   }, [hasCheckedEnv, canAccessKanban, fetchChamados])
 
+  // Pré-indexação em 1 passagem O(N): cache de metadata já parseado + índice de concorrência por CPF
+  // Elimina milhões de JSON.parse e o loop O(N²) que travava o navegador ao renderizar os cartões
+  const { parsedMetaByTicketId, localConcorrenciaByCpf } = useMemo(() => {
+    const metaMap = new Map<string, TicketMetadata>()
+    const concMap = new Map<string, Array<{ id: string; nome: string }>>()
+
+    for (const t of tickets) {
+      const meta = parseMetadata(t.descricao)
+      metaMap.set(t.id, meta)
+
+      const cleanCpf = (t.cliente_cpf || "").replace(/\D/g, "")
+      if (!cleanCpf) continue
+
+      const isDrawer = (
+        t.status === "NÃO EXISTE WHATSAPP" ||
+        t.status === "NAO_EXISTE_WHATSAPP" ||
+        t.status === "WHATSAPP DIVERGENTE" ||
+        Boolean(meta.tabulacao_whatsapp)
+      )
+      if (!isDrawer && t.status !== "PERDIDO") {
+        const nome = ((t as any).responsavel_nome || (t as any).corretor_nome || t.user_nome || "").trim()
+        const arr = concMap.get(cleanCpf)
+        const entry = { id: t.id, nome }
+        if (arr) {
+          arr.push(entry)
+        } else {
+          concMap.set(cleanCpf, [entry])
+        }
+      }
+    }
+
+    return { parsedMetaByTicketId: metaMap, localConcorrenciaByCpf: concMap }
+  }, [tickets])
+
+  const getTicketMeta = useCallback((t: TicketItem): TicketMetadata => {
+    return parsedMetaByTicketId.get(t.id) ?? parseMetadata(t.descricao)
+  }, [parsedMetaByTicketId])
+
   // Filtragem dos chamados
   const naoExisteWhatsappTickets = useMemo(() => {
     return tickets.filter(t => {
       if (t.status === "EM ABORDAGEM" || t.status === "EM NEGOCIAÇÃO" || t.status === "EM RETOMADA" || t.status === "EM REATIVAÇÃO" || t.status === "SEM INTERESSE" || t.status === "FECHADO") {
         return false
       }
-      const meta = parseMetadata(t.descricao)
+      const meta = getTicketMeta(t)
       return t.status === "NÃO EXISTE WHATSAPP" || t.status === "NAO_EXISTE_WHATSAPP" || meta.tabulacao_whatsapp === "NAO_EXISTE_WHATSAPP"
     })
-  }, [tickets])
+  }, [tickets, getTicketMeta])
 
   const whatsappDivergenteTickets = useMemo(() => {
     return tickets.filter(t => {
       if (t.status === "EM ABORDAGEM" || t.status === "EM NEGOCIAÇÃO" || t.status === "EM RETOMADA" || t.status === "EM REATIVAÇÃO" || t.status === "SEM INTERESSE" || t.status === "FECHADO") {
         return false
       }
-      const meta = parseMetadata(t.descricao)
+      const meta = getTicketMeta(t)
       return t.status === "WHATSAPP DIVERGENTE" || meta.tabulacao_whatsapp === "WHATSAPP_DIVERGENTE"
     })
-  }, [tickets])
+  }, [tickets, getTicketMeta])
 
   const currentDrawerTickets = useMemo(() => {
     if (selectedDrawer === "NAO_EXISTE") return naoExisteWhatsappTickets
@@ -3559,7 +3669,7 @@ export default function KanbanPage() {
 
   const filteredTickets = useMemo(() => {
     return tickets.filter(t => {
-      const meta = parseMetadata(t.descricao)
+      const meta = getTicketMeta(t)
 
       // Se estiver arquivado em uma das gavetas (pela etapa ou metadados), não exibe nas colunas normais do Kanban
       const isWhatsappDrawerLoss = (t as any).motivo_perda === "Não Existe Whatsapp" || (t as any).motivo_perda === "Whatsapp Divergente"
@@ -3646,7 +3756,7 @@ export default function KanbanPage() {
 
       return true
     })
-  }, [tickets, selectedResponsavel, selectedAlertFilter, searchTerm])
+  }, [tickets, getTicketMeta, selectedResponsavel, selectedAlertFilter, searchTerm])
 
   // Agrupamento dos chamados pelas 7 colunas
   const groupedColumns = useMemo(() => {
@@ -3662,7 +3772,7 @@ export default function KanbanPage() {
     }
 
     filteredTickets.forEach(t => {
-      const meta = parseMetadata(t.descricao)
+      const meta = getTicketMeta(t)
       const prop = propostasPorCpf[t.id] || t.proposta_info
       let stage = inferKanbanStage(t, meta, prop)
       if (stage === "EM ABORDAGEM" || (stage as string) === "ENTRADA DO SITE") stage = "EM RETOMADA"
@@ -3674,7 +3784,7 @@ export default function KanbanPage() {
     })
 
     return map
-  }, [filteredTickets, propostasPorCpf])
+  }, [filteredTickets, propostasPorCpf, getTicketMeta])
 
   // Totais Gerais para o Dashboard superior
   const metrics = useMemo(() => {
@@ -3685,7 +3795,7 @@ export default function KanbanPage() {
     let totalFechados = groupedColumns["FECHADO"].length
 
     filteredTickets.forEach(t => {
-      const meta = parseMetadata(t.descricao)
+      const meta = getTicketMeta(t)
       const opData = getValorOperacaoDeAbertura(t)
       const opNum = parseValorToNumber(opData.valor)
       const val = opNum > 0 ? opNum : Number(t.valor_operacao || t.margem || 0)
@@ -3703,7 +3813,7 @@ export default function KanbanPage() {
       totalConflitos,
       totalFechados
     }
-  }, [filteredTickets, groupedColumns])
+  }, [filteredTickets, groupedColumns, getTicketMeta])
 
   // Exportar atendimentos do Kanban para planilha Excel
   const handleExportExcel = async () => {
@@ -6091,14 +6201,14 @@ export default function KanbanPage() {
     const acaoEspecial: TicketItem[] = []
 
     const leadsAtivos = filteredTickets.filter(t => {
-      const meta = parseMetadata(t.descricao)
+      const meta = getTicketMeta(t)
       const prop = propostasPorCpf[t.id] || t.proposta_info
       const stage = inferKanbanStage(t, meta, prop)
       return stage !== "FECHADO" && stage !== "PERDIDO" && t.status !== "FECHADO" && t.status !== "PERDIDO"
     })
 
     leadsAtivos.forEach(ticket => {
-      const meta = parseMetadata(ticket.descricao)
+      const meta = getTicketMeta(ticket)
       const isAcaoEspecial = Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"
 
       const dateStr = meta.vencimento_acao || meta.agendamento_data || meta.regua_proximo_vencimento
@@ -6164,7 +6274,7 @@ export default function KanbanPage() {
       valorAcaoEspecial: acaoEspecialVals.operacao,
       prodAcaoEspecial: acaoEspecialVals.producao
     }
-  }, [filteredTickets, propostasPorCpf])
+  }, [filteredTickets, propostasPorCpf, getTicketMeta])
 
   // Função reutilizável para renderizar exatamente o mesmo Cartão de Tarefa em ambas as visões
   const renderTicketCard = (
@@ -6174,7 +6284,7 @@ export default function KanbanPage() {
     customBorderClass?: string,
     isMinhaFilaAcaoEspecial: boolean = false
   ) => {
-    const meta = parseMetadata(ticket.descricao)
+    const meta = getTicketMeta(ticket)
     const opData = getValorOperacaoDeAbertura(ticket)
     const opValorNum = parseValorToNumber(opData.valor)
     const valorTotal = opValorNum > 0 ? opValorNum : Number(ticket.valor_operacao || ticket.margem || 0)
@@ -6370,21 +6480,11 @@ export default function KanbanPage() {
               // 1. Operadores obtidos do mapa global concorrenciaPorCpf
               const listaDoMapa = (concorrenciaPorCpf[cleanCpf] || []).map(n => n.trim()).filter(Boolean)
 
-              // 2. Operadores obtidos em memória na lista tickets com mesmo CPF
-              const outrosAtendendo = tickets.filter(t => {
-                if (t.id === ticket.id) return false
-                const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")
-                if (!cleanCpf || tCpf !== cleanCpf) return false
-                const tMeta = parseMetadata(t.descricao)
-                const isDrawer = (
-                  t.status === "NÃO EXISTE WHATSAPP" ||
-                  t.status === "NAO_EXISTE_WHATSAPP" ||
-                  t.status === "WHATSAPP DIVERGENTE" ||
-                  Boolean(tMeta.tabulacao_whatsapp)
-                )
-                return !isDrawer && t.status !== "PERDIDO"
-              })
-              const outrosNomesMemoria = outrosAtendendo.map(t => (t.responsavel_nome || t.corretor_nome || t.user_nome || "").trim()).filter(Boolean)
+              // 2. Operadores obtidos em O(1) do índice pré-computado localConcorrenciaByCpf
+              const outrosAtendendo = cleanCpf
+                ? (localConcorrenciaByCpf.get(cleanCpf) || []).filter(entry => entry.id !== ticket.id)
+                : []
+              const outrosNomesMemoria = outrosAtendendo.map(entry => entry.nome).filter(Boolean)
 
               // 3. Metadados salvos
               const metaOutros = (Array.isArray(meta.concorrencia_outros_operadores) ? meta.concorrencia_outros_operadores : []).map((n: string) => typeof n === "string" ? n.trim() : "").filter(Boolean)
@@ -7034,7 +7134,7 @@ export default function KanbanPage() {
 
   // Renderizador do Item em Modo Lista (Linha sequencial de etapa)
   const renderTicketListItem = (ticket: TicketItem) => {
-    const meta = parseMetadata(ticket.descricao)
+    const meta = getTicketMeta(ticket)
     const opData = getValorOperacaoDeAbertura(ticket)
     const opValorNum = parseValorToNumber(opData.valor)
     const valorTotal = opValorNum > 0 ? opValorNum : Number(ticket.valor_operacao || ticket.margem || 0)
@@ -8120,7 +8220,18 @@ export default function KanbanPage() {
                             Nenhum atendimento para agora
                           </div>
                         ) : (
-                          ticketsAgora.map(ticket => renderTicketCard(ticket, undefined, false))
+                          <>
+                            {ticketsAgora.slice(0, getColumnLimit("fila_agora")).map(ticket => renderTicketCard(ticket, undefined, false))}
+                            {ticketsAgora.length > getColumnLimit("fila_agora") && (
+                              <button
+                                type="button"
+                                onClick={() => showMoreInColumn("fila_agora")}
+                                className="w-full py-2 px-3 rounded-lg border border-emerald-300 bg-white/90 hover:bg-emerald-100 text-emerald-900 text-xs font-bold transition-colors cursor-pointer"
+                              >
+                                Mostrar mais ({ticketsAgora.length - getColumnLimit("fila_agora")} restantes)
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -8181,7 +8292,18 @@ export default function KanbanPage() {
                             Nenhum atendimento vencido
                           </div>
                         ) : (
-                          filteredVencidas.map(item => renderTicketCard(item.ticket, item.atrasoTexto, false))
+                          <>
+                            {filteredVencidas.slice(0, getColumnLimit("fila_vencidas")).map(item => renderTicketCard(item.ticket, item.atrasoTexto, false))}
+                            {filteredVencidas.length > getColumnLimit("fila_vencidas") && (
+                              <button
+                                type="button"
+                                onClick={() => showMoreInColumn("fila_vencidas")}
+                                className="w-full py-2 px-3 rounded-lg border border-rose-300 bg-white/90 hover:bg-rose-100 text-rose-900 text-xs font-bold transition-colors cursor-pointer"
+                              >
+                                Mostrar mais ({filteredVencidas.length - getColumnLimit("fila_vencidas")} restantes)
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -8242,7 +8364,18 @@ export default function KanbanPage() {
                             Nenhum agendamento futuro
                           </div>
                         ) : (
-                          ticketsFuturas.map(ticket => renderTicketCard(ticket, undefined, false))
+                          <>
+                            {ticketsFuturas.slice(0, getColumnLimit("fila_futuras")).map(ticket => renderTicketCard(ticket, undefined, false))}
+                            {ticketsFuturas.length > getColumnLimit("fila_futuras") && (
+                              <button
+                                type="button"
+                                onClick={() => showMoreInColumn("fila_futuras")}
+                                className="w-full py-2 px-3 rounded-lg border border-indigo-300 bg-white/90 hover:bg-indigo-100 text-indigo-900 text-xs font-bold transition-colors cursor-pointer"
+                              >
+                                Mostrar mais ({ticketsFuturas.length - getColumnLimit("fila_futuras")} restantes)
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -8303,7 +8436,18 @@ export default function KanbanPage() {
                             Nenhuma ação especial pendente
                           </div>
                         ) : (
-                          ticketsAcao.map(ticket => renderTicketCard(ticket, undefined, false, undefined, true))
+                          <>
+                            {ticketsAcao.slice(0, getColumnLimit("fila_acao_especial")).map(ticket => renderTicketCard(ticket, undefined, false, undefined, true))}
+                            {ticketsAcao.length > getColumnLimit("fila_acao_especial") && (
+                              <button
+                                type="button"
+                                onClick={() => showMoreInColumn("fila_acao_especial")}
+                                className="w-full py-2 px-3 rounded-lg border border-amber-300 bg-white/90 hover:bg-amber-100 text-amber-900 text-xs font-bold transition-colors cursor-pointer"
+                              >
+                                Mostrar mais ({ticketsAcao.length - getColumnLimit("fila_acao_especial")} restantes)
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -8434,7 +8578,18 @@ export default function KanbanPage() {
                           Nenhum lead nesta etapa
                         </div>
                       ) : (
-                        colTickets.map(ticket => renderTicketCard(ticket, undefined, true, col.cardBorder))
+                        <>
+                          {colTickets.slice(0, getColumnLimit(`kanban_${col.id}`)).map(ticket => renderTicketCard(ticket, undefined, true, col.cardBorder))}
+                          {colTickets.length > getColumnLimit(`kanban_${col.id}`) && (
+                            <button
+                              type="button"
+                              onClick={() => showMoreInColumn(`kanban_${col.id}`)}
+                              className="w-full py-2 px-3 rounded-lg border border-slate-300 bg-white/90 hover:bg-slate-100 text-slate-800 text-xs font-bold transition-colors cursor-pointer"
+                            >
+                              Mostrar mais ({colTickets.length - getColumnLimit(`kanban_${col.id}`)} restantes)
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -8521,7 +8676,18 @@ export default function KanbanPage() {
                               Nenhum lead nesta etapa
                             </div>
                           ) : (
-                            sec.displayTickets.map(ticket => renderTicketListItem(ticket))
+                            <>
+                              {sec.displayTickets.slice(0, getColumnLimit(`list_${sec.id}`)).map(ticket => renderTicketListItem(ticket))}
+                              {sec.displayTickets.length > getColumnLimit(`list_${sec.id}`) && (
+                                <button
+                                  type="button"
+                                  onClick={() => showMoreInColumn(`list_${sec.id}`, 50)}
+                                  className="w-full py-2 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-xs font-bold transition-colors cursor-pointer"
+                                >
+                                  Mostrar mais ({sec.displayTickets.length - getColumnLimit(`list_${sec.id}`)} restantes)
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       )}
@@ -10970,8 +11136,8 @@ export default function KanbanPage() {
         )
       })()}
 
-      {/* Drawer / Painel Executivo de Inteligência do Pipeline */}
-      {canAccessPipelineIntelligence && (
+      {/* Drawer / Painel Executivo de Inteligência do Pipeline (montado apenas quando aberto) */}
+      {canAccessPipelineIntelligence && showIntelligenceDrawer && (
         <PipelineIntelligenceDrawer
           isOpen={showIntelligenceDrawer}
           onClose={() => setShowIntelligenceDrawer(false)}
