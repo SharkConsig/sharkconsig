@@ -1825,6 +1825,22 @@ export default function KanbanPage() {
     userRole === "RH"
   )
 
+  const userRoleNorm = userRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  const userFuncaoNorm = userFuncao.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+  const isKanbanReadOnly = Boolean(
+    !isAdmin &&
+    !isDeveloper &&
+    !isSupervisor &&
+    !isOperational &&
+    !isMonitoramento &&
+    (
+      userRoleNorm === "recursos humanos" ||
+      userRoleNorm === "rh" ||
+      userFuncaoNorm === "recursos humanos" ||
+      userFuncaoNorm === "rh"
+    )
+  )
+
   // Identificação de papéis e regimes para acesso ao Kanban
   const isDevUser = Boolean(
     isDeveloper || 
@@ -2760,7 +2776,7 @@ export default function KanbanPage() {
         const matched = results.find(Boolean)
         if (matched && isMounted) {
           setResolvedConvenio(matched.label)
-          if (atendimentoModalTicket.source_table === "kanban_fichas") {
+          if (!isKanbanReadOnly && atendimentoModalTicket.source_table === "kanban_fichas") {
             const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
             delete (currentMeta as any).historico_kanban
             delete (currentMeta as any).historico_movimentacoes
@@ -2780,7 +2796,7 @@ export default function KanbanPage() {
     return () => {
       isMounted = false
     }
-  }, [atendimentoModalTicket?.id, atendimentoModalTicket?.cliente_cpf, atendimentoModalTicket?.convenio])
+  }, [atendimentoModalTicket?.id, atendimentoModalTicket?.cliente_cpf, atendimentoModalTicket?.convenio, isKanbanReadOnly])
 
   // Supervisão
   const [supervisaoNovoResponsavel, setSupervisaoNovoResponsavel] = useState("")
@@ -3457,7 +3473,7 @@ export default function KanbanPage() {
                 return false
               })
 
-              if (needsDbSync) {
+              if (!isKanbanReadOnly && needsDbSync) {
                 syncKanbanForClosedProposal(p)
               }
             })
@@ -3496,7 +3512,7 @@ export default function KanbanPage() {
         setIsRefreshing(false)
       }
     }
-  }, [isGestor, user, userRole])
+  }, [isGestor, isKanbanReadOnly, user, userRole])
 
   useEffect(() => {
     if (!hasCheckedEnv) return
@@ -3999,6 +4015,10 @@ export default function KanbanPage() {
 
   // Ação Rápida: WhatsApp
   const handleOpenWhatsApp = async (ticket: TicketItem) => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     const rawPhone = ticket.cliente_telefone || ticket.cliente_telefone_2 || ""
     const cleanDigits = rawPhone.replace(/\D/g, "")
     if (!cleanDigits) {
@@ -4047,11 +4067,15 @@ export default function KanbanPage() {
 
   // Ação Rápida: Ligar (Discadora / Registro de Ligação)
   const handleOpenCallFeedback = (ticket: TicketItem) => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     setCallFeedbackTicket(ticket)
   }
 
   const handleRegisterCallResult = async (resultado: string) => {
-    if (!callFeedbackTicket || !user) return
+    if (isKanbanReadOnly || !callFeedbackTicket || !user) return
     try {
       const meta = parseMetadata(callFeedbackTicket.descricao)
       const stage = inferKanbanStage(callFeedbackTicket, meta)
@@ -4079,6 +4103,10 @@ export default function KanbanPage() {
 
   // Ação Rápida: Agendar Retorno
   const handleOpenAgendar = (ticket: TicketItem) => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     setAgendarModalTicket(ticket)
     setAgendamentoData(format(new Date(), "yyyy-MM-dd"))
     setAgendamentoHora("14:30")
@@ -4086,7 +4114,7 @@ export default function KanbanPage() {
   }
 
   const handleConfirmAgendamento = async () => {
-    if (!agendarModalTicket || !user) return
+    if (isKanbanReadOnly || !agendarModalTicket || !user) return
     try {
       const meta = parseMetadata(agendarModalTicket.descricao)
       const nowIso = new Date().toISOString()
@@ -4240,6 +4268,10 @@ export default function KanbanPage() {
     destinoEtapa: KanbanStage,
     motivo?: string
   ) => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     if (!ticket || !user) return
     try {
       const meta = parseMetadata(ticket.descricao)
@@ -4425,6 +4457,10 @@ export default function KanbanPage() {
 
   // Ação Manual via Botão: Abre o Modal "Mover Etapa Comercial"
   const handleOpenMoverEtapa = (ticket: TicketItem, etapaDestino?: KanbanStage) => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     const meta = parseMetadata(ticket.descricao)
     const current = inferKanbanStage(ticket, meta)
     setMoverModalTicket(ticket)
@@ -4434,7 +4470,7 @@ export default function KanbanPage() {
 
   // Confirmação via Modal
   const handleConfirmMoverEtapa = async () => {
-    if (!moverModalTicket) return
+    if (isKanbanReadOnly || !moverModalTicket) return
     const ticket = moverModalTicket
     const destino = novaEtapaSelecionada
     const motivo = motivoMudancaEtapa
@@ -4445,6 +4481,10 @@ export default function KanbanPage() {
   // Excluir card/ficha do Kanban
   const [isDeletingTicket, setIsDeletingTicket] = useState(false)
   const handleDeleteTicket = async (ticket: TicketItem) => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     if (!window.confirm(`Deseja realmente remover o atendimento de "${ticket.cliente_nome}" do Kanban?`)) {
       return
     }
@@ -4499,7 +4539,7 @@ export default function KanbanPage() {
     setAtendimentoModalTicket(ticket)
     setAtendimentoMensagem("")
     loadHistoricoChamado(ticket.id)
-    if (isGestor) {
+    if (isGestor && !isKanbanReadOnly) {
       const meta = parseMetadata(ticket.descricao)
       setSupervisaoNovoResponsavel(ticket.user_id || "")
       setSupervisaoMotivoTransbordo("")
@@ -4527,6 +4567,10 @@ export default function KanbanPage() {
 
   // Enviar anotação na Modal de Atendimento (exclusivamente na tabela kanban_fichas)
   const handleSaveAtendimentoInteracao = async (acaoTipo = "registro_contato") => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     if (!atendimentoModalTicket || !user || !atendimentoMensagem.trim()) {
       toast.warning("Digite uma mensagem ou observação do contato.")
       return
@@ -4681,6 +4725,10 @@ export default function KanbanPage() {
 
   // Solicitação de Ação Especial na Modal de Atendimento
   const handleSolicitarAcaoEspecial = async () => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     if (!atendimentoModalTicket || !user) return
     const textoAcao = acaoEspecialTexto.trim()
     if (!textoAcao) {
@@ -4838,6 +4886,10 @@ export default function KanbanPage() {
 
   // Conclusão / Atendimento da Ação Especial (Muda status, retorna o cartão à etapa de origem e atualiza para verde 'Ação solicitada por {nome}')
   const handleAtenderAcaoEspecial = async () => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     if (!atendimentoModalTicket || !user) return
     setIsSubmittingAcaoEspecial(true)
     const nowIso = new Date().toISOString()
@@ -4959,7 +5011,7 @@ export default function KanbanPage() {
   // HANDLERS DO MOTOR DE CADÊNCIA (A0, RT1-RT6, RE1-RE3)
   // ==========================================
   const handleAvancarCadencia = async () => {
-    if (!atendimentoModalTicket || !user) return
+    if (isKanbanReadOnly || !atendimentoModalTicket || !user) return
     setIsAvancandoCadencia(true)
     const now = new Date()
     const nowIso = now.toISOString()
@@ -5037,7 +5089,7 @@ export default function KanbanPage() {
   }
 
   const handleClienteInteragiuManterInteracao = async () => {
-    if (!atendimentoModalTicket || !user) return
+    if (isKanbanReadOnly || !atendimentoModalTicket || !user) return
     setIsAvancandoCadencia(true)
     const now = new Date()
     const nowIso = now.toISOString()
@@ -5111,7 +5163,7 @@ export default function KanbanPage() {
   }
 
   const handleClienteRespondeu = async () => {
-    if (!atendimentoModalTicket || !user) return
+    if (isKanbanReadOnly || !atendimentoModalTicket || !user) return
     setIsAvancandoCadencia(true)
     const nowIso = new Date().toISOString()
     const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
@@ -5174,7 +5226,7 @@ export default function KanbanPage() {
   }
 
   const handleEncerrarPorEsgotamento = async () => {
-    if (!atendimentoModalTicket || !user) return
+    if (isKanbanReadOnly || !atendimentoModalTicket || !user) return
     setIsAvancandoCadencia(true)
     const nowIso = new Date().toISOString()
     const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
@@ -5238,7 +5290,7 @@ export default function KanbanPage() {
 
   // Alternar opções rápidas (Sem interação / Sem interesse) com gravação direta em kanban_fichas
   const handleToggleOpcaoAtendimento = async (opcao: "Sem interação" | "Sem interesse") => {
-    if (!atendimentoModalTicket) return
+    if (isKanbanReadOnly || !atendimentoModalTicket) return
     const novaOpcao = opcaoSelecionada === opcao ? "" : opcao
     const isSemInteresse = novaOpcao === "Sem interesse"
     setOpcaoSelecionada(novaOpcao)
@@ -5438,7 +5490,7 @@ export default function KanbanPage() {
 
   // Executar Transbordo de Responsável na Modal de Supervisão
   const handleConfirmSupervisaoTransbordo = async () => {
-    if (!supervisaoModalTicket || !user || !supervisaoNovoResponsavel) return
+    if (isKanbanReadOnly || !supervisaoModalTicket || !user || !supervisaoNovoResponsavel) return
     setIsSubmittingSupervisao(true)
     try {
       const targetUser = usersList.find(u => u.id === supervisaoNovoResponsavel)
@@ -5603,7 +5655,7 @@ export default function KanbanPage() {
 
   // Resolver Conflito de Titularidade na Modal de Supervisão
   const handleResolverConflito = async (liberar: boolean) => {
-    if (!supervisaoModalTicket || !user) return
+    if (isKanbanReadOnly || !supervisaoModalTicket || !user) return
     try {
       const meta = parseMetadata(supervisaoModalTicket.descricao)
       const updatedMeta: TicketMetadata = {
@@ -5653,7 +5705,7 @@ export default function KanbanPage() {
 
   // Concluir Ação Especial na Modal de Supervisão
   const handleConcluirAcaoEspecial = async () => {
-    if (!supervisaoModalTicket || !user) return
+    if (isKanbanReadOnly || !supervisaoModalTicket || !user) return
     try {
       const meta = parseMetadata(supervisaoModalTicket.descricao)
       const updatedMeta: TicketMetadata = {
@@ -5699,6 +5751,10 @@ export default function KanbanPage() {
 
   // Ações das Gavetas de Triagem
   const handleDropInDrawer = async (ticket: TicketItem, drawerType: "NAO_EXISTE" | "DIVERGENTE") => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     const label = drawerType === "NAO_EXISTE" ? "Não Existe Whatsapp" : "Whatsapp Divergente"
     try {
       const meta = parseMetadata(ticket.descricao)
@@ -5766,6 +5822,10 @@ export default function KanbanPage() {
   }
 
   const handleRestoreFromDrawer = async (ticket: TicketItem) => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     try {
       const meta = parseMetadata(ticket.descricao)
       delete meta.tabulacao_whatsapp
@@ -5827,6 +5887,10 @@ export default function KanbanPage() {
     tabulacao: "CLIENTE CHAMADO" | "NÃO EXISTE WHATSAPP" | "WHATSAPP DIVERGENTE",
     clientInfo: LeadContactInfo
   ) => {
+    if (isKanbanReadOnly) {
+      toast.error("Seu perfil possui acesso somente de visualização neste módulo.")
+      return
+    }
     try {
       const cleanCpf = clientInfo.cpf.replace(/\D/g, "").padStart(11, "0")
       const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str))
@@ -6807,48 +6871,53 @@ export default function KanbanPage() {
           className="flex items-center justify-between gap-1 pt-1 border-t border-slate-100"
           onClick={(e) => e.stopPropagation()}
         >
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleOpenWhatsApp(ticket)}
-            className="h-7 p-0 flex items-center justify-center text-emerald-600 bg-white hover:bg-emerald-500 hover:border-emerald-500 hover:text-white [&:hover>svg]:text-white flex-1 border border-emerald-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
-            title="WhatsApp"
-            aria-label="WhatsApp"
-          >
-            <MessageCircle className="w-3.5 h-3.5 transition-colors" />
-          </Button>
+          {!isKanbanReadOnly && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleOpenWhatsApp(ticket)}
+                className="h-7 p-0 flex items-center justify-center text-emerald-600 bg-white hover:bg-emerald-500 hover:border-emerald-500 hover:text-white [&:hover>svg]:text-white flex-1 border border-emerald-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
+                title="WhatsApp"
+                aria-label="WhatsApp"
+              >
+                <MessageCircle className="w-3.5 h-3.5 transition-colors" />
+              </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleOpenAgendar(ticket)}
-            className="h-7 p-0 flex items-center justify-center text-sky-600 bg-white hover:bg-sky-500 hover:border-sky-500 hover:text-white [&:hover>svg]:text-white flex-1 border border-sky-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
-            title="Agendar Retorno"
-            aria-label="Agendar"
-          >
-            <CalendarIcon className="w-3.5 h-3.5 transition-colors" />
-          </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleOpenAgendar(ticket)}
+                className="h-7 p-0 flex items-center justify-center text-sky-600 bg-white hover:bg-sky-500 hover:border-sky-500 hover:text-white [&:hover>svg]:text-white flex-1 border border-sky-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
+                title="Agendar Retorno"
+                aria-label="Agendar"
+              >
+                <CalendarIcon className="w-3.5 h-3.5 transition-colors" />
+              </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleOpenMoverEtapa(ticket)}
-            className="h-7 p-0 flex items-center justify-center text-indigo-600 bg-white hover:bg-indigo-600 hover:border-indigo-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-indigo-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
-            title="Mover para outra Etapa"
-            aria-label="Mover"
-          >
-            <ArrowRight className="w-3.5 h-3.5 transition-colors" />
-          </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleOpenMoverEtapa(ticket)}
+                className="h-7 p-0 flex items-center justify-center text-indigo-600 bg-white hover:bg-indigo-600 hover:border-indigo-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-indigo-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
+                title="Mover para outra Etapa"
+                aria-label="Mover"
+              >
+                <ArrowRight className="w-3.5 h-3.5 transition-colors" />
+              </Button>
+            </>
+          )}
 
           <Button
             variant="outline"
             size="sm"
             onClick={() => setHistoricoModalTicket(ticket)}
-            className="h-7 p-0 flex items-center justify-center text-purple-600 bg-white hover:bg-purple-600 hover:border-purple-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-purple-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
+            className="h-7 p-0 flex items-center justify-center gap-1.5 text-purple-600 bg-white hover:bg-purple-600 hover:border-purple-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-purple-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
             title="Histórico do Atendimento"
             aria-label="Histórico do Atendimento"
           >
             <History className="w-3.5 h-3.5 transition-colors" />
+            {isKanbanReadOnly && <span className="text-[11px] font-bold">Histórico</span>}
           </Button>
         </div>
       </div>
@@ -7364,7 +7433,7 @@ export default function KanbanPage() {
 
         {/* Coluna 5: Ações Rápidas (Execução item a item) */}
         <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
-          {/* Botão de Atendimento */}
+          {/* Botão de Atendimento / Visualização */}
           <Button
             size="sm"
             variant="outline"
@@ -7375,47 +7444,51 @@ export default function KanbanPage() {
             }}
             className={cn(
               "h-8 px-2.5 text-xs font-bold rounded-lg border shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer",
-              isEmRetomada
+              !isKanbanReadOnly && isEmRetomada
                 ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 hover:shadow-xs"
                 : "bg-sky-600 hover:bg-sky-700 text-white border-sky-700 hover:shadow-xs"
             )}
-            title={isEmRetomada ? "Iniciar Abordagem com este cliente" : "Abrir Informações do Cliente"}
+            title={!isKanbanReadOnly && isEmRetomada ? "Iniciar Abordagem com este cliente" : "Abrir Informações do Cliente"}
           >
-            {isEmRetomada ? <Zap className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            {!isKanbanReadOnly && isEmRetomada ? <Zap className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             <span className="hidden sm:inline">
-              {isEmRetomada ? "INICIAR ABORDAGEM" : "INFORMAÇÕES"}
+              {!isKanbanReadOnly && isEmRetomada ? "INICIAR ABORDAGEM" : "INFORMAÇÕES"}
             </span>
           </Button>
 
-          {/* Botão AÇÃO ESPECIAL (cor âmbar da coluna Ação Especial) */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setAtendimentoModalTicket(ticket)
-              setIsAcaoEspecialModalOpen(true)
-            }}
-            className="h-8 px-2.5 text-xs font-bold rounded-lg border border-amber-400 bg-amber-500 hover:bg-amber-600 text-white shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
-            title="Solicitar Ação Especial para este cliente"
-          >
-            <AlertCircle className="w-3.5 h-3.5 text-white" />
-            <span className="hidden sm:inline">AÇÃO ESPECIAL</span>
-          </Button>
+          {!isKanbanReadOnly && (
+            <>
+              {/* Botão AÇÃO ESPECIAL (cor âmbar da coluna Ação Especial) */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setAtendimentoModalTicket(ticket)
+                  setIsAcaoEspecialModalOpen(true)
+                }}
+                className="h-8 px-2.5 text-xs font-bold rounded-lg border border-amber-400 bg-amber-500 hover:bg-amber-600 text-white shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Solicitar Ação Especial para este cliente"
+              >
+                <AlertCircle className="w-3.5 h-3.5 text-white" />
+                <span className="hidden sm:inline">AÇÃO ESPECIAL</span>
+              </Button>
 
-          {/* Botão Mover Etapa */}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setMoverModalTicket(ticket)
-              setNovaEtapaSelecionada(ticket.status || "EM ABORDAGEM")
-              setMotivoMudancaEtapa("")
-            }}
-            className="h-8 px-2 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg text-xs font-semibold cursor-pointer"
-            title="Mover etapa do Kanban"
-          >
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Button>
+              {/* Botão Mover Etapa */}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setMoverModalTicket(ticket)
+                  setNovaEtapaSelecionada(ticket.status || "EM ABORDAGEM")
+                  setMotivoMudancaEtapa("")
+                }}
+                className="h-8 px-2 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg text-xs font-semibold cursor-pointer"
+                title="Mover etapa do Kanban"
+              >
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            </>
+          )}
 
           {/* Botão Histórico */}
           <Button
@@ -7623,19 +7696,29 @@ export default function KanbanPage() {
                 <span>Inteligência do Pipeline</span>
               </button>
             )}
+
+            {isKanbanReadOnly && (
+              <div
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-xl text-[11px] font-bold shrink-0 select-none"
+                title="Perfil Recursos Humanos: alterações, criações e exclusões bloqueadas"
+              >
+                <Eye className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                <span>Somente Visualização</span>
+              </div>
+            )}
           </div>
 
           {/* Gavetas de WhatsApp Arquivado */}
           <div className="flex items-center gap-2.5 shrink-0">
             {/* Gaveta: Não Existe Whatsapp */}
             <div
-              onDragOver={(e) => {
+              onDragOver={isKanbanReadOnly ? undefined : (e) => {
                 e.preventDefault()
                 e.dataTransfer.dropEffect = "move"
                 if (dragOverDrawer !== "NAO_EXISTE") setDragOverDrawer("NAO_EXISTE")
               }}
-              onDragLeave={() => setDragOverDrawer(null)}
-              onDrop={(e) => {
+              onDragLeave={isKanbanReadOnly ? undefined : () => setDragOverDrawer(null)}
+              onDrop={isKanbanReadOnly ? undefined : (e) => {
                 e.preventDefault()
                 setDragOverDrawer(null)
                 const ticketId = e.dataTransfer.getData("text/plain")
@@ -7649,7 +7732,7 @@ export default function KanbanPage() {
                 "w-[200px] sm:w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2.5 cursor-pointer group select-none",
                 dragOverDrawer === "NAO_EXISTE" && "ring-2 ring-rose-500 bg-rose-50/50 border-rose-300"
               )}
-              title="Gaveta: Não Existe Whatsapp (Clique para abrir ou arraste leads para cá)"
+              title={isKanbanReadOnly ? "Gaveta: Não Existe Whatsapp (Clique para visualizar)" : "Gaveta: Não Existe Whatsapp (Clique para abrir ou arraste leads para cá)"}
             >
               <div className="w-6 h-6 rounded-lg bg-rose-50 border border-rose-200/60 flex items-center justify-center text-rose-600 shrink-0">
                 <PhoneOff className="w-3.5 h-3.5" />
@@ -7669,13 +7752,13 @@ export default function KanbanPage() {
 
             {/* Gaveta: Whatsapp Divergente */}
             <div
-              onDragOver={(e) => {
+              onDragOver={isKanbanReadOnly ? undefined : (e) => {
                 e.preventDefault()
                 e.dataTransfer.dropEffect = "move"
                 if (dragOverDrawer !== "DIVERGENTE") setDragOverDrawer("DIVERGENTE")
               }}
-              onDragLeave={() => setDragOverDrawer(null)}
-              onDrop={(e) => {
+              onDragLeave={isKanbanReadOnly ? undefined : () => setDragOverDrawer(null)}
+              onDrop={isKanbanReadOnly ? undefined : (e) => {
                 e.preventDefault()
                 setDragOverDrawer(null)
                 const ticketId = e.dataTransfer.getData("text/plain")
@@ -7689,7 +7772,7 @@ export default function KanbanPage() {
                 "w-[200px] sm:w-[215px] shrink-0 bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl px-3 py-1.5 shadow-2xs hover:shadow-xs transition-all flex items-center gap-2.5 cursor-pointer group select-none",
                 dragOverDrawer === "DIVERGENTE" && "ring-2 ring-amber-500 bg-amber-50/50 border-amber-300"
               )}
-              title="Gaveta: Whatsapp Divergente (Clique para abrir ou arraste leads para cá)"
+              title={isKanbanReadOnly ? "Gaveta: Whatsapp Divergente (Clique para visualizar)" : "Gaveta: Whatsapp Divergente (Clique para abrir ou arraste leads para cá)"}
             >
               <div className="w-6 h-6 rounded-lg bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600 shrink-0">
                 <MessageSquareOff className="w-3.5 h-3.5" />
@@ -8504,19 +8587,19 @@ export default function KanbanPage() {
                     return (
                       <div
                         key={col.id}
-                        onDragOver={(e) => {
+                        onDragOver={isKanbanReadOnly ? undefined : (e) => {
                           e.preventDefault()
                           e.dataTransfer.dropEffect = "move"
                           if (dragOverColumnId !== col.id) {
                             setDragOverColumnId(col.id)
                           }
                         }}
-                        onDragLeave={(e) => {
+                        onDragLeave={isKanbanReadOnly ? undefined : (e) => {
                           if (!e.currentTarget.contains(e.relatedTarget as Node)) {
                             setDragOverColumnId(null)
                           }
                         }}
-                        onDrop={(e) => {
+                        onDrop={isKanbanReadOnly ? undefined : (e) => {
                           e.preventDefault()
                           setDragOverColumnId(null)
                           const ticketId = e.dataTransfer.getData("text/plain")
@@ -8579,7 +8662,7 @@ export default function KanbanPage() {
                         </div>
                       ) : (
                         <>
-                          {colTickets.slice(0, getColumnLimit(`kanban_${col.id}`)).map(ticket => renderTicketCard(ticket, undefined, true, col.cardBorder))}
+                          {colTickets.slice(0, getColumnLimit(`kanban_${col.id}`)).map(ticket => renderTicketCard(ticket, undefined, !isKanbanReadOnly, col.cardBorder))}
                           {colTickets.length > getColumnLimit(`kanban_${col.id}`) && (
                             <button
                               type="button"
@@ -8855,7 +8938,7 @@ export default function KanbanPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {isGestor && (
+                {isGestor && !isKanbanReadOnly && (
                   <Button
                     type="button"
                     variant="outline"
@@ -8954,6 +9037,7 @@ export default function KanbanPage() {
                       </div>
 
                       {/* Botões do Motor de Cadência */}
+                      {!isKanbanReadOnly && (
                       <div className="flex flex-col gap-2 pt-1">
                         {modalCadencia.proximaEtapa ? (
                           <div className="flex items-center gap-2 flex-wrap">
@@ -9013,6 +9097,7 @@ export default function KanbanPage() {
                           </Button>
                         </div>
                       </div>
+                      )}
                     </div>
                   )}
 
@@ -9073,6 +9158,7 @@ export default function KanbanPage() {
                   )}
 
                   <div className="flex flex-wrap items-center justify-between gap-3 mt-2 pb-4">
+                    {!isKanbanReadOnly ? (
                     <div className="flex items-center gap-5">
                       {/* Opção 'Sem interação': fica oculta quando a seção dos RTs estiver ativa em 'Em interação ou retomada' ou a dos REs em 'Em reativação' */}
                       {!(
@@ -9106,6 +9192,7 @@ export default function KanbanPage() {
                         <span>Sem interesse</span>
                       </label>
                     </div>
+                    ) : <div />}
 
                     <div className="flex flex-col items-end gap-1.5">
                       <Button
@@ -9115,14 +9202,14 @@ export default function KanbanPage() {
                         className="text-xs h-7.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs px-3 rounded-lg cursor-pointer w-full sm:w-auto justify-center"
                       >
                         <UserCheck className="w-3.5 h-3.5" />
-                        {hasChamadoOuPropostaNoAtendimento
+                        {isKanbanReadOnly || hasChamadoOuPropostaNoAtendimento
                           ? "INFORMAÇÕES DO CLIENTE"
                           : (modalStage === "EM ABORDAGEM" || modalStage === "EM RETOMADA"
                               ? "INICIAR ABORDAGEM"
                               : "INFORMAÇÕES DO CLIENTE")}
                       </Button>
 
-                      {(() => {
+                      {!isKanbanReadOnly && (() => {
                         const currentMeta = parseMetadata(atendimentoModalTicket.descricao)
                         const isAcaoEspecialPendente = Boolean(currentMeta.acao_especial || currentMeta.acao_especial_status === "pendente")
                         const roleNorm = (perfil?.role || perfil?.funcao || userRole || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -9174,28 +9261,32 @@ export default function KanbanPage() {
 
                   {/* Card da Seção de Observações */}
                   <div className="bg-white rounded-xl border border-slate-200/90 p-4 shadow-xs space-y-2.5">
-                    <label className="text-xs font-bold text-slate-700 block">
-                      Registrar Resultado do Contato / Observação:
-                    </label>
-                    <textarea
-                      value={atendimentoMensagem}
-                      onChange={e => setAtendimentoMensagem(e.target.value)}
-                      placeholder="Descreva o andamento da conversa com o cliente, objeções ou próximos passos..."
-                      rows={3}
-                      className="w-full text-xs p-3 bg-slate-50/50 border border-slate-200 text-slate-800 placeholder:text-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white transition-colors shadow-2xs"
-                    />
-                    <div className="flex items-center justify-end pt-1">
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => handleSaveAtendimentoInteracao("atendimento_registro")}
-                        disabled={isSubmittingAtendimento || !atendimentoMensagem.trim()}
-                        className="text-xs h-8 bg-sky-600 hover:bg-sky-500 text-white gap-1 shadow-sm font-semibold cursor-pointer"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        Salvar Registro
-                      </Button>
-                    </div>
+                    {!isKanbanReadOnly && (
+                      <>
+                        <label className="text-xs font-bold text-slate-700 block">
+                          Registrar Resultado do Contato / Observação:
+                        </label>
+                        <textarea
+                          value={atendimentoMensagem}
+                          onChange={e => setAtendimentoMensagem(e.target.value)}
+                          placeholder="Descreva o andamento da conversa com o cliente, objeções ou próximos passos..."
+                          rows={3}
+                          className="w-full text-xs p-3 bg-slate-50/50 border border-slate-200 text-slate-800 placeholder:text-slate-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white transition-colors shadow-2xs"
+                        />
+                        <div className="flex items-center justify-end pt-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => handleSaveAtendimentoInteracao("atendimento_registro")}
+                            disabled={isSubmittingAtendimento || !atendimentoMensagem.trim()}
+                            className="text-xs h-8 bg-sky-600 hover:bg-sky-500 text-white gap-1 shadow-sm font-semibold cursor-pointer"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            Salvar Registro
+                          </Button>
+                        </div>
+                      </>
+                    )}
 
                     {/* Observações registradas exibidas logo abaixo da linha do botão, somente texto preto 70%, sem card, com data e hora ao lado esquerdo e texto em itálico */}
                     {(() => {
@@ -9812,7 +9903,7 @@ export default function KanbanPage() {
       )}
 
       {/* MODAL 2: SUPERVISÃO (Gestores: Supervisor, Operacional, Administrador, Monitoramento) */}
-      {supervisaoModalTicket && (
+      {supervisaoModalTicket && !isKanbanReadOnly && (
         <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-[#FAFAFA] rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 text-slate-800">
             {/* Cabeçalho da Modal */}
@@ -10080,7 +10171,7 @@ export default function KanbanPage() {
       )}
 
       {/* MODAL: SOLICITAR AÇÃO ESPECIAL */}
-      {isAcaoEspecialModalOpen && atendimentoModalTicket && (
+      {isAcaoEspecialModalOpen && atendimentoModalTicket && !isKanbanReadOnly && (
         <div className="fixed inset-0 z-[400] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl border border-amber-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
@@ -10179,7 +10270,7 @@ export default function KanbanPage() {
       )}
 
       {/* MODAL 3: AGENDAMENTO RÁPIDO */}
-      {agendarModalTicket && (
+      {agendarModalTicket && !isKanbanReadOnly && (
         <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -10258,7 +10349,7 @@ export default function KanbanPage() {
       )}
 
       {/* MODAL 4: MOVER ETAPA MANUAL */}
-      {moverModalTicket && (
+      {moverModalTicket && !isKanbanReadOnly && (
         <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -10543,7 +10634,7 @@ export default function KanbanPage() {
       })()}
 
       {/* MODAL 5: REGISTRO RÁPIDO DE LIGAÇÃO */}
-      {callFeedbackTicket && (
+      {callFeedbackTicket && !isKanbanReadOnly && (
         <div className="fixed inset-0 z-[300] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
@@ -10855,15 +10946,15 @@ export default function KanbanPage() {
                 setLeadModalAttendanceContext(null)
                 fetchChamados(true)
               }}
-              title={isDrawerLeadModal ? "Informações sobre o Lead" : (isKanbanSearchModal ? "EM ABORDAGEM" : "Informações sobre o Lead")}
-              isEmAbordagem={isKanbanSearchModal || isDrawerLeadModal}
-              onSelectTabulacao={isClientInAnyKanbanStage ? undefined : handleTabulacaoFromModal}
-              showTabulacoes={!isClientInAnyKanbanStage}
-              hidePhoneSelectionBanner={isClientInAnyKanbanStage}
-              showPipelineActionButtons={isClientInAnyKanbanStage}
-              hideAbrirChamado={Boolean(leadModalAttendanceContext?.hasChamado)}
-              hideDigitarProposta={Boolean(leadModalAttendanceContext?.hasProposta)}
-              onTelefonesSelecionadosChange={(cpf, selected) => {
+              title={isKanbanReadOnly ? "Informações do Cliente" : (isDrawerLeadModal ? "Informações sobre o Lead" : (isKanbanSearchModal ? "EM ABORDAGEM" : "Informações sobre o Lead"))}
+              isEmAbordagem={!isKanbanReadOnly && (isKanbanSearchModal || isDrawerLeadModal)}
+              onSelectTabulacao={isKanbanReadOnly || isClientInAnyKanbanStage ? undefined : handleTabulacaoFromModal}
+              showTabulacoes={!isKanbanReadOnly && !isClientInAnyKanbanStage}
+              hidePhoneSelectionBanner={isKanbanReadOnly || isClientInAnyKanbanStage}
+              showPipelineActionButtons={!isKanbanReadOnly && isClientInAnyKanbanStage}
+              hideAbrirChamado={isKanbanReadOnly || Boolean(leadModalAttendanceContext?.hasChamado)}
+              hideDigitarProposta={isKanbanReadOnly || Boolean(leadModalAttendanceContext?.hasProposta)}
+              onTelefonesSelecionadosChange={isKanbanReadOnly ? undefined : (cpf, selected) => {
                 const cleanCpf = cpf.replace(/\D/g, "")
                 setTickets(prev => prev.map(t => {
                   const tCpf = (t.cliente_cpf || "").replace(/\D/g, "")

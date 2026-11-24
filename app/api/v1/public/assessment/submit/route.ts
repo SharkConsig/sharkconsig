@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase"
 import { calcularPerfil } from "@/lib/perfil-profissional"
-import { getQuestoesTeste } from "@/lib/perfil-profissional-data"
+import {
+  getQuestoesTeste,
+  PERIODO_ESTUDO_OPCOES,
+  DISPONIBILIDADE_ESTAGIO_OPCOES,
+  DESLOCAMENTO_OPCOES,
+  COMPATIBILIDADE_HORARIOS_OPCOES,
+  QuestionarioInicialCandidato
+} from "@/lib/perfil-profissional-data"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { fallbackCandidatosStore } from "@/lib/candidatos-store"
 
@@ -24,7 +31,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { token, respostas } = body
+    const { token, respostas, questionarioInicial } = body
 
     // 2. Proteção Estrita contra IDOR:
     // Nunca aceita ou confia em user_id, candidate_id ou outros identificadores no corpo da requisição.
@@ -41,6 +48,38 @@ export async function POST(request: Request) {
         { success: false, error: "Respostas não informadas ou em formato inválido." },
         { status: 400 }
       )
+    }
+
+    // Validação das 6 perguntas iniciais (pré-teste)
+    const qi = questionarioInicial && typeof questionarioInicial === "object" ? questionarioInicial : null
+    const instituicaoEnsino = typeof qi?.instituicao_ensino === "string" ? qi.instituicao_ensino.trim().slice(0, 500) : ""
+    const periodoEstudo = typeof qi?.periodo_estudo === "string" ? qi.periodo_estudo.trim() : ""
+    const horarioSaida = typeof qi?.horario_saida === "string" ? qi.horario_saida.trim() : ""
+    const disponibilidadeEstagio = typeof qi?.disponibilidade_estagio === "string" ? qi.disponibilidade_estagio.trim() : ""
+    const deslocamento = typeof qi?.deslocamento === "string" ? qi.deslocamento.trim() : ""
+    const compatibilidadeHorarios = typeof qi?.compatibilidade_horarios === "string" ? qi.compatibilidade_horarios.trim() : ""
+
+    if (
+      !instituicaoEnsino ||
+      !(PERIODO_ESTUDO_OPCOES as readonly string[]).includes(periodoEstudo) ||
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(horarioSaida) ||
+      !(DISPONIBILIDADE_ESTAGIO_OPCOES as readonly string[]).includes(disponibilidadeEstagio) ||
+      !(DESLOCAMENTO_OPCOES as readonly string[]).includes(deslocamento) ||
+      !(COMPATIBILIDADE_HORARIOS_OPCOES as readonly string[]).includes(compatibilidadeHorarios)
+    ) {
+      return NextResponse.json(
+        { success: false, error: "É obrigatório responder às 6 perguntas iniciais antes de enviar a avaliação." },
+        { status: 400 }
+      )
+    }
+
+    const preTesteLimpo: QuestionarioInicialCandidato = {
+      instituicao_ensino: instituicaoEnsino,
+      periodo_estudo: periodoEstudo,
+      horario_saida: horarioSaida,
+      disponibilidade_estagio: disponibilidadeEstagio,
+      deslocamento,
+      compatibilidade_horarios: compatibilidadeHorarios
     }
 
     const supabaseAdmin = createAdminClient()
@@ -78,7 +117,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // 4. Validação das 36 questões para o cargo do candidato
+    // 4. Validação das questões para o cargo do candidato
     const listaQuestoes = getQuestoesTeste(candidato.cargo_pretendido)
     const questoesRespondidas = Object.keys(respostas).filter(k => {
       const num = parseInt(k, 10)
@@ -124,14 +163,25 @@ export async function POST(request: Request) {
     }
 
     // 6. Cálculo psicométrico completo no backend
-    const perfilCalculado = calcularPerfil(respostas, candidato.nome, listaQuestoes)
+    const respostasLimpas: Record<string, any> = {}
+    for (const q of listaQuestoes) {
+      const val = respostas[String(q.numero)] ?? respostas[q.numero]
+      if (["A", "B", "C", "D"].includes(val)) {
+        respostasLimpas[String(q.numero)] = val
+      }
+    }
+    const perfilCalculado = calcularPerfil(respostasLimpas, candidato.nome, listaQuestoes)
+    const respostasComPreTeste: Record<string, any> = {
+      ...respostasLimpas,
+      questionario_inicial: preTesteLimpo
+    }
 
     // 7. Atualização atômica marcando como concluído e invalidando o token
     if (!usingFallback) {
       const { error: updateErr } = await supabaseAdmin
         .from("perfil_candidatos")
         .update({
-          respostas,
+          respostas: respostasComPreTeste,
           raw_scores: perfilCalculado.rawScores,
           normalized_scores: perfilCalculado.normalizedScores,
           faixas: perfilCalculado.faixas,
@@ -163,7 +213,7 @@ export async function POST(request: Request) {
     // Também atualiza o fallbackStore se aplicável
     const updatedCandidate = {
       ...candidato,
-      respostas,
+      respostas: respostasComPreTeste,
       raw_scores: perfilCalculado.rawScores,
       normalized_scores: perfilCalculado.normalizedScores,
       faixas: perfilCalculado.faixas,

@@ -1451,3 +1451,37 @@ export const MATRIZ_LIDER_LIDERADO: Record<string, { sinergia: string; risco: st
     acao: "Para liderar: deixar limites e checkpoints explícitos."
   }
 }
+
+export const PERIODO_ESTUDO_OPCOES = [
+  "Matutino",
+  "Vespertino",
+  "Noturno",
+  "Integral",
+  "EAD"
+] as const
+
+export const DISPONIBILIDADE_ESTAGIO_OPCOES = [
+  "das 9h às 15h",
+  "das 13h às 19h"
+] as const
+
+export const DESLOCAMENTO_OPCOES = [
+  "Ônibus",
+  "Carro ou moto",
+  "Bicicleta",
+  "A pé",
+  "Aplicativo de transporte",
+  "Outro"
+] as const
+
+export const COMPATIBILIDADE_HORARIOS_OPCOES = ["Sim", "Não"] as const
+
+export interface QuestionarioInicialCandidato {
+  instituicao_ensino: string
+  periodo_estudo: string
+  horario_saida: string
+  disponibilidade_estagio: string
+  deslocamento: string
+  compatibilidade_horarios: string
+}
+

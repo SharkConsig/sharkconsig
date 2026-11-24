@@ -9,7 +9,8 @@ import {
   ARQUETIPO_INFO,
   DimensaoCodigo,
   FaixaScore,
-  isRoleOrCargoEstagio
+  isRoleOrCargoEstagio,
+  QuestionarioInicialCandidato
 } from "@/lib/perfil-profissional-data"
 import { PerfilCalculado } from "@/lib/perfil-profissional"
 import { cn } from "@/lib/utils"
@@ -41,7 +42,8 @@ import {
   Mail,
   Phone,
   Calendar,
-  X
+  X,
+  GraduationCap
 } from "lucide-react"
 
 interface CandidatoItem {
@@ -57,7 +59,7 @@ interface CandidatoItem {
   data_expiracao: string
   data_conclusao?: string
   created_at: string
-  respostas?: Record<string, any>
+  respostas?: Record<string, any> & { questionario_inicial?: QuestionarioInicialCandidato }
   perfilCalculado?: PerfilCalculado | null
   perfil_visto?: boolean
 }
@@ -352,17 +354,15 @@ export default function PerfilCandidatosPage() {
                 </p>
               </div>
 
-              <div>
-                <button
-                  onClick={() => {
-                    setConviteGerado(null)
-                    setModalConvidar(true)
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] uppercase tracking-wider shadow-xs transition-all cursor-pointer"
-                >
-                  <span>Convidar Candidato</span>
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  setConviteGerado(null)
+                  setModalConvidar(true)
+                }}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] uppercase tracking-wider shadow-xs transition-all cursor-pointer"
+              >
+                <span>Convidar Candidato</span>
+              </button>
             </div>
           </div>
 
@@ -857,6 +857,81 @@ export default function PerfilCandidatosPage() {
                     {perfilAtivo.tipoResultado}
                   </h2>
                 </div>
+
+                {/* Questionário Inicial do Candidato (6 perguntas pré-teste) */}
+                {candidatoAtivo.respostas?.questionario_inicial && (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-7 space-y-4 shadow-xs">
+                    <div className="flex items-center gap-2 text-slate-900 border-b border-slate-100 pb-3">
+                      <GraduationCap className="w-4.5 h-4.5 text-blue-600" />
+                      <h3 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-wider">
+                        Questionário Inicial — Rotina & Disponibilidade
+                      </h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-1 md:col-span-2 lg:col-span-3">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
+                          1. Instituição de ensino e curso
+                        </span>
+                        <p className="text-sm font-bold text-slate-900 whitespace-pre-wrap leading-relaxed">
+                          {candidatoAtivo.respostas.questionario_inicial.instituicao_ensino || "—"}
+                        </p>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-1">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
+                          2. Período de estudo
+                        </span>
+                        <p className="text-sm font-black text-slate-900">
+                          {candidatoAtivo.respostas.questionario_inicial.periodo_estudo || "—"}
+                        </p>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-1">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
+                          3. Horário de saída da aula
+                        </span>
+                        <p className="text-sm font-black text-slate-900">
+                          {candidatoAtivo.respostas.questionario_inicial.horario_saida || "—"}
+                        </p>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-1">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
+                          4. Disponibilidade de horário
+                        </span>
+                        <p className="text-sm font-black text-emerald-700">
+                          {candidatoAtivo.respostas.questionario_inicial.disponibilidade_estagio || "—"}
+                        </p>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-1">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
+                          5. Deslocamento até a empresa
+                        </span>
+                        <p className="text-sm font-black text-slate-900">
+                          {candidatoAtivo.respostas.questionario_inicial.deslocamento || "—"}
+                        </p>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-1 md:col-span-2">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
+                          6. Disponibilidade para ajustar rotina de estudos
+                        </span>
+                        <p
+                          className={cn(
+                            "text-sm font-black",
+                            candidatoAtivo.respostas.questionario_inicial.compatibilidade_horarios === "Sim"
+                              ? "text-emerald-700"
+                              : "text-amber-700"
+                          )}
+                        >
+                          {candidatoAtivo.respostas.questionario_inicial.compatibilidade_horarios || "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* 2. Síntese do Perfil */}
                 <div className="bg-emerald-100/90 border border-emerald-300 rounded-2xl p-5 space-y-1.5">
