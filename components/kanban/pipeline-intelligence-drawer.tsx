@@ -706,6 +706,7 @@ export function PipelineIntelligenceDrawer({
     let grandTotalCapital = 0 // Pipeline ativo (exclui Fechado e Perdido)
     let grandTotalProducao = 0
     let grandTotalStuck48hCount = 0
+    const activePipelineCpfs = new Set<string>()
 
     const stageResults = STAGES.map(stageDef => {
       const stageItems = parsedTickets.filter(item => item.stageKey === stageDef.key)
@@ -757,6 +758,15 @@ export function PipelineIntelligenceDrawer({
         const tDate = new Date(t.updated_at || t.created_at || now).getTime()
         const hoursInStage = Math.max(0, (now - tDate) / (1000 * 60 * 60))
         totalHours += hoursInStage
+
+        if (!isClosedOrLost) {
+          const cpfDigits = String(t.cliente_cpf || "").replace(/\D/g, "")
+          if (cpfDigits.length === 11) {
+            activePipelineCpfs.add(cpfDigits)
+          } else {
+            activePipelineCpfs.add(`ticket:${t.id}`)
+          }
+        }
 
         if (!isClosedOrLost && hoursInStage > 48) {
           stuckCount48h++
@@ -825,7 +835,8 @@ export function PipelineIntelligenceDrawer({
       stages: stageResults,
       grandTotalCapital,
       grandTotalProducao,
-      grandTotalStuck48hCount
+      grandTotalStuck48hCount,
+      uniquePipelineCpfsCount: activePipelineCpfs.size
     }
   }, [parsedTickets, operatorsList])
 
@@ -1721,7 +1732,7 @@ export function PipelineIntelligenceDrawer({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          className="fixed inset-0 z-[150] overflow-hidden bg-slate-950/60 flex items-center justify-center will-change-[opacity]"
+          className="fixed inset-0 z-[150] overflow-hidden bg-slate-950/60 flex items-center justify-center py-4 lg:py-6 will-change-[opacity]"
           onClick={(e) => {
             if (e.target === e.currentTarget && !isExecSummaryOpen && !stuckModalStageKey) handleClose()
           }}
@@ -1732,7 +1743,7 @@ export function PipelineIntelligenceDrawer({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.985 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="w-full lg:w-[calc(100vw-48px)] max-w-[1720px] bg-white h-full shadow-2xl flex flex-col border-x border-slate-200 will-change-transform"
+            className="w-full lg:w-[calc(100vw-48px)] max-w-[1720px] bg-white h-full shadow-2xl flex flex-col border border-slate-200 lg:rounded-2xl overflow-hidden will-change-transform"
             role="dialog"
             aria-modal="true"
           >
@@ -2017,60 +2028,73 @@ export function PipelineIntelligenceDrawer({
         </div>
 
         {/* CARDS RESUMO EXECUTIVO (KPIs) */}
-        <div className="px-6 lg:px-7 py-2.5 grid grid-cols-2 md:grid-cols-4 gap-3 bg-white border-b border-slate-200 shrink-0">
-          {/* Card 1: ENTRADA NO FUNIL */}
-          <div className="bg-gradient-to-br from-indigo-100 via-indigo-50 to-sky-100/90 border-2 border-indigo-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center gap-1.5 text-indigo-900">
-              <Layers className="w-3.5 h-3.5 text-indigo-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[10px] font-black uppercase tracking-wider">Entrada no Funil</span>
-            </div>
-            <div className="mt-0.5">
-              <div className="text-base lg:text-lg font-black text-indigo-950 leading-tight">
-                {funnelAndOriginsData.totalFunnel} leads
-              </div>
-            </div>
+        <div className="px-6 lg:px-7 py-2.5 bg-white border-b border-slate-200 shrink-0 space-y-2">
+          <div className="flex items-center gap-1.5 text-left">
+            <DollarSign className="w-3.5 h-3.5 text-emerald-600 shrink-0" strokeWidth={2.6} />
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">
+              Capital do Pipeline:
+            </span>
+            <strong className="text-sm font-black text-emerald-700 tabular-nums">
+              {fmtCurrency(stageAgingData.grandTotalCapital)}
+            </strong>
           </div>
 
-          {/* Card 2: PARA FECHAR 1 VENDA PRECISA */}
-          <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center gap-1.5 text-sky-900">
-              <Zap className="w-3.5 h-3.5 text-sky-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[10px] font-black uppercase tracking-wider">Para fechar 1 venda precisa de:</span>
-            </div>
-            <div className="mt-0.5">
-              <div className="text-base lg:text-lg font-black text-sky-950 leading-tight">
-                {funnelAndOriginsData.totalFechado > 0
-                  ? (() => {
-                      const leadsNeeded = Math.max(1, Math.round(funnelAndOriginsData.totalFunnel / funnelAndOriginsData.totalFechado))
-                      return `${leadsNeeded} ${leadsNeeded === 1 ? "lead" : "leads"}`
-                    })()
-                  : "—"}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Card 1: ENTRADA NO FUNIL */}
+            <div className="bg-gradient-to-br from-indigo-100 via-indigo-50 to-sky-100/90 border-2 border-indigo-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+              <div className="flex items-center gap-1.5 text-indigo-900">
+                <Layers className="w-3.5 h-3.5 text-indigo-600 shrink-0" strokeWidth={2.6} />
+                <span className="text-[10px] font-black uppercase tracking-wider">Entrada no Funil</span>
+              </div>
+              <div className="mt-0.5">
+                <div className="text-base lg:text-lg font-black text-indigo-950 leading-tight">
+                  {funnelAndOriginsData.totalFunnel} leads
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Card 3: CAPITAL NO PIPELINE */}
-          <div className="bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-100/90 border-2 border-emerald-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center gap-1.5 text-emerald-900">
-              <DollarSign className="w-3.5 h-3.5 text-emerald-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[10px] font-black uppercase tracking-wider">Capital no Pipeline</span>
-            </div>
-            <div className="mt-0.5">
-              <div className="text-base lg:text-lg font-black text-emerald-950 leading-tight">
-                {fmtCurrency(stageAgingData.grandTotalCapital)}
+            {/* Card 2: PARA FECHAR 1 VENDA PRECISA */}
+            <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+              <div className="flex items-center gap-1.5 text-sky-900">
+                <Zap className="w-3.5 h-3.5 text-sky-600 shrink-0" strokeWidth={2.6} />
+                <span className="text-[10px] font-black uppercase tracking-wider">Para fechar 1 venda precisa de:</span>
+              </div>
+              <div className="mt-0.5">
+                <div className="text-base lg:text-lg font-black text-sky-950 leading-tight">
+                  {funnelAndOriginsData.totalFechado > 0
+                    ? (() => {
+                        const leadsNeeded = Math.max(1, Math.round(funnelAndOriginsData.totalFunnel / funnelAndOriginsData.totalFechado))
+                        return `${leadsNeeded} ${leadsNeeded === 1 ? "lead" : "leads"}`
+                      })()
+                    : "—"}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Card 4: Risco de Queima */}
-          <div className="bg-gradient-to-br from-rose-100 via-rose-50 to-red-100/90 border-2 border-rose-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
-            <div className="flex items-center gap-1.5 text-rose-900">
-              <Flame className="w-3.5 h-3.5 text-rose-600 shrink-0" strokeWidth={2.6} />
-              <span className="text-[10px] font-black uppercase tracking-wider">Risco de Queima</span>
+            {/* Card 3: LEADS ÚNICOS NO PIPELINE (CPFs ÚNICOS) */}
+            <div className="bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-100/90 border-2 border-emerald-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+              <div className="flex items-center gap-1.5 text-emerald-900">
+                <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" strokeWidth={2.6} />
+                <span className="text-[10px] font-black uppercase tracking-wider">Leads Únicos no Pipeline</span>
+              </div>
+              <div className="mt-0.5">
+                <div className="text-base lg:text-lg font-black text-emerald-950 leading-tight">
+                  {stageAgingData.uniquePipelineCpfsCount}{" "}
+                  {stageAgingData.uniquePipelineCpfsCount === 1 ? "CPF único" : "CPFs únicos"}
+                </div>
+              </div>
             </div>
-            <div className="mt-0.5">
-              <div className="text-base lg:text-lg font-black text-rose-950 leading-tight">
-                {riskLeadsData.length} leads
+
+            {/* Card 4: Risco de Queima */}
+            <div className="bg-gradient-to-br from-rose-100 via-rose-50 to-red-100/90 border-2 border-rose-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+              <div className="flex items-center gap-1.5 text-rose-900">
+                <Flame className="w-3.5 h-3.5 text-rose-600 shrink-0" strokeWidth={2.6} />
+                <span className="text-[10px] font-black uppercase tracking-wider">Risco de Queima</span>
+              </div>
+              <div className="mt-0.5">
+                <div className="text-base lg:text-lg font-black text-rose-950 leading-tight">
+                  {riskLeadsData.length} leads
+                </div>
               </div>
             </div>
           </div>
