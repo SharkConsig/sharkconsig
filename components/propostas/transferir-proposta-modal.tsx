@@ -26,6 +26,7 @@ interface User {
   email?: string
   funcao?: string
   supervisor_nome?: string
+  status?: string
 }
 
 interface TransferirPropostaModalProps {
@@ -66,7 +67,10 @@ export function TransferirPropostaModal({
       const response = await fetch("/api/usuarios")
       if (!response.ok) throw new Error("Falha ao buscar usuários")
       const data = await response.json()
-      setUsers(data)
+      const activeUsers = (Array.isArray(data) ? data : []).filter(
+        (u: User) => (u.status || "ATIVO").trim().toUpperCase() === "ATIVO"
+      )
+      setUsers(activeUsers)
     } catch (error) {
       console.error("Erro ao buscar usuários:", error)
       toast.error("Erro ao carregar lista de usuários")
