@@ -46,6 +46,8 @@ import {
   GraduationCap
 } from "lucide-react"
 
+const CANDIDATOS_CACHE_KEY = "sharkconsig_perfil_candidatos_cache_v1"
+
 interface CandidatoItem {
   id: string
   nome: string
@@ -59,15 +61,26 @@ interface CandidatoItem {
   data_expiracao: string
   data_conclusao?: string
   created_at: string
+  arquetipo_primario?: string | null
+  arquetipo_secundario?: string | null
   respostas?: Record<string, any> & { questionario_inicial?: QuestionarioInicialCandidato }
   perfilCalculado?: PerfilCalculado | null
   perfil_visto?: boolean
+}
+
+function salvarCacheLeveCandidatos(lista: CandidatoItem[]) {
+  if (typeof window === "undefined") return
+  try {
+    const leve = lista.map(({ respostas: _r, perfilCalculado: _p, ...rest }) => rest)
+    sessionStorage.setItem(CANDIDATOS_CACHE_KEY, JSON.stringify(leve))
+  } catch (_) {}
 }
 
 export default function PerfilCandidatosPage() {
   const { user, isAdmin, isDeveloper, isRecursosHumanos } = useAuth()
 
   const [loading, setLoading] = useState(true)
+  const [carregandoDetalhe, setCarregandoDetalhe] = useState(false)
   const [candidatos, setCandidatos] = useState<CandidatoItem[]>([])
   const [filtroStatus, setFiltroStatus] = useState<"TODOS" | "concluido" | "ja_vistos" | "nao_vistos" | "pendente" | "expirado">("TODOS")
   const [filtroCargo, setFiltroCargo] = useState<string>("TODOS")
@@ -84,14 +97,16 @@ export default function PerfilCandidatosPage() {
     const token = candidato.token_acesso
 
     // Atualização otimista no estado local
-    setCandidatos((prev) =>
-      prev.map((c) => {
+    setCandidatos((prev) => {
+      const atualizada = prev.map((c) => {
         if ((id && c.id === id) || (token && c.token_acesso === token)) {
           return { ...c, perfil_visto: novoVisto }
         }
         return c
       })
-    )
+      salvarCacheLeveCandidatos(atualizada)
+      return atualizada
+    })
 
     // Persistência na tabela perfil_candidatos via API
     try {
@@ -145,7 +160,25 @@ export default function PerfilCandidatosPage() {
   }
 
   useEffect(() => {
-    carregarCandidatos()
+    let usouCache = false
+    if (typeof window !== "undefined") {
+      try {
+        const raw = sessionStorage.getItem(CANDIDATOS_CACHE_KEY)
+        if (raw) {
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCandidatos(parsed)
+            const primeiroConcluido = parsed.find((c: CandidatoItem) => c.status === "concluido")
+            if (primeiroConcluido) {
+              setCandidatoSelecionadoId(prev => prev || primeiroConcluido.id || primeiroConcluido.token_acesso)
+            }
+            setLoading(false)
+            usouCache = true
+          }
+        }
+      } catch (_) {}
+    }
+    carregarCandidatos(usouCache)
   }, [])
 
   useEffect(() => {
@@ -158,17 +191,40 @@ export default function PerfilCandidatosPage() {
     }
   }, [abaAtiva, candidatoSelecionadoId])
 
-  const carregarCandidatos = async () => {
-    setLoading(true)
+  const carregarCandidatos = async (silent = false) => {
+    if (!silent) {
+      setLoading(true)
+    }
     try {
       const res = await fetch(`/api/candidatos-perfil?_t=${Date.now()}`, { cache: "no-store" })
       const data = await res.json()
       if (data.success && Array.isArray(data.candidatos)) {
-        setCandidatos(data.candidatos)
+        setCandidatos(prev => {
+          const detalhesPorChave = new Map<string, CandidatoItem>()
+          for (const item of prev) {
+            if (item.perfilCalculado || item.respostas) {
+              if (item.id) detalhesPorChave.set(item.id, item)
+              if (item.token_acesso) detalhesPorChave.set(item.token_acesso, item)
+            }
+          }
+          const mesclado = data.candidatos.map((novo: CandidatoItem) => {
+            const existente = (novo.id && detalhesPorChave.get(novo.id)) || detalhesPorChave.get(novo.token_acesso)
+            if (existente) {
+              return {
+                ...novo,
+                respostas: existente.respostas,
+                perfilCalculado: existente.perfilCalculado
+              }
+            }
+            return novo
+          })
+          salvarCacheLeveCandidatos(mesclado)
+          return mesclado
+        })
         // Se ainda não houver selecionado e tiver candidatos concluídos, seleciona o primeiro
         const primeiroConcluido = data.candidatos.find((c: CandidatoItem) => c.status === "concluido")
-        if (primeiroConcluido && !candidatoSelecionadoId) {
-          setCandidatoSelecionadoId(primeiroConcluido.id || primeiroConcluido.token_acesso)
+        if (primeiroConcluido) {
+          setCandidatoSelecionadoId(prev => prev || primeiroConcluido.id || primeiroConcluido.token_acesso)
         }
       }
     } catch (err) {
@@ -326,6 +382,51 @@ export default function PerfilCandidatosPage() {
   ) || candidatos.find(c => c.status === "concluido") || null
 
   const perfilAtivo = candidatoAtivo?.perfilCalculado || null
+
+  const candidatoAtivoId = candidatoAtivo?.id || ""
+  const candidatoAtivoToken = candidatoAtivo?.token_acesso || ""
+  const candidatoAtivoStatus = candidatoAtivo?.status || ""
+  const candidatoAtivoTemDetalhe = Boolean(candidatoAtivo?.perfilCalculado)
+
+  useEffect(() => {
+    if (abaAtiva !== "analise") return
+    if (candidatoAtivoStatus !== "concluido" || candidatoAtivoTemDetalhe) return
+    if (!candidatoAtivoId && !candidatoAtivoToken) return
+
+    let cancelado = false
+    setCarregandoDetalhe(true)
+    const param = candidatoAtivoId
+      ? `id=${encodeURIComponent(candidatoAtivoId)}`
+      : `token=${encodeURIComponent(candidatoAtivoToken)}`
+
+    fetch(`/api/candidatos-perfil?${param}&_t=${Date.now()}`, { cache: "no-store" })
+      .then(res => res.json())
+      .then(data => {
+        if (cancelado || !data?.success || !data?.candidato) return
+        const detalhe = data.candidato as CandidatoItem
+        setCandidatos(prev =>
+          prev.map(item => {
+            if (
+              (detalhe.id && item.id === detalhe.id) ||
+              (detalhe.token_acesso && item.token_acesso === detalhe.token_acesso)
+            ) {
+              return { ...item, ...detalhe }
+            }
+            return item
+          })
+        )
+      })
+      .catch(err => {
+        console.error("Erro ao carregar detalhes do candidato:", err)
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoDetalhe(false)
+      })
+
+    return () => {
+      cancelado = true
+    }
+  }, [abaAtiva, candidatoAtivoId, candidatoAtivoToken, candidatoAtivoStatus, candidatoAtivoTemDetalhe])
 
   // Métricas dos cards (refletem o intervalo de datas aplicado)
   const total = candidatosNoPeriodo.length
@@ -627,9 +728,12 @@ export default function PerfilCandidatosPage() {
                             {c.status === "concluido" ? "Concluído" : c.status === "pendente" ? "Pendente" : "Expirado"}
                           </span>
 
-                          {c.perfilCalculado?.arqPrimario && (
+                          {(c.perfilCalculado?.arqPrimario || c.arquetipo_primario) && (
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">
-                              {c.perfilCalculado.arqPrimario} / {c.perfilCalculado.arqSecundario}
+                              {c.perfilCalculado?.arqPrimario || c.arquetipo_primario}
+                              {(c.perfilCalculado?.arqSecundario || c.arquetipo_secundario)
+                                ? ` / ${c.perfilCalculado?.arqSecundario || c.arquetipo_secundario}`
+                                : ""}
                             </span>
                           )}
                         </div>
@@ -817,7 +921,12 @@ export default function PerfilCandidatosPage() {
               </select>
             </div>
 
-            {!candidatoAtivo || candidatoAtivo.status !== "concluido" || !perfilAtivo ? (
+            {carregandoDetalhe && !perfilAtivo ? (
+              <div className="bg-slate-50 border border-slate-200 rounded-3xl p-12 text-center space-y-2">
+                <p className="text-sm font-black text-slate-700">Carregando análise completa do candidato...</p>
+                <p className="text-xs text-slate-500 font-medium">Buscando questionário inicial e dimensões psicométricas.</p>
+              </div>
+            ) : !candidatoAtivo || candidatoAtivo.status !== "concluido" || !perfilAtivo ? (
               <div className="bg-slate-50 border border-slate-200 rounded-3xl p-12 text-center space-y-3">
                 <AlertCircle className="w-10 h-10 text-amber-500 mx-auto" />
                 <h3 className="text-base font-black text-slate-800">Nenhum teste concluído selecionado</h3>

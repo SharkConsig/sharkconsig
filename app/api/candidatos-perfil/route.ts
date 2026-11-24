@@ -25,17 +25,90 @@ const isValidUUID = (str?: string | null): boolean => {
 
 export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url)
+    const detailId = searchParams.get("id")?.trim() || ""
+    const detailToken = searchParams.get("token")?.trim() || ""
+    const agora = new Date()
+
+    // Modo Detalhe (sob demanda para 1 único candidato)
+    if (detailId || detailToken) {
+      let candidato: any = null
+
+      try {
+        const supabaseAdmin = createAdminClient()
+        let query = supabaseAdmin.from("perfil_candidatos").select("*")
+        if (detailId) {
+          query = query.eq("id", detailId)
+        } else {
+          query = query.eq("token_acesso", detailToken)
+        }
+        const { data, error } = await query.maybeSingle()
+        if (!error && data) {
+          candidato = data
+        }
+      } catch (err) {
+        console.warn("[API Candidatos Perfil GET Detail] Erro Supabase:", err)
+      }
+
+      if (!candidato) {
+        for (const fb of fallbackCandidatosStore.values()) {
+          if ((detailId && fb.id === detailId) || (detailToken && fb.token_acesso === detailToken)) {
+            candidato = fb
+            break
+          }
+        }
+      }
+
+      if (!candidato) {
+        return NextResponse.json({ success: false, error: "Candidato não encontrado." }, { status: 404 })
+      }
+
+      const isExpirado = candidato.status !== "concluido" && new Date(candidato.data_expiracao) < agora
+      const statusFinal = isExpirado ? "expirado" : candidato.status
+
+      let perfilCalculado = null
+      if (candidato.status === "concluido" && candidato.respostas && Object.keys(candidato.respostas).length > 0) {
+        perfilCalculado = calcularPerfil(candidato.respostas, candidato.nome, candidato.cargo_pretendido || "")
+      }
+
+      const perfilVisto = Boolean(candidato.perfil_visto === true || candidato.respostas?.perfil_visto === true)
+
+      return NextResponse.json(
+        {
+          success: true,
+          candidato: {
+            ...candidato,
+            status: statusFinal,
+            perfilCalculado,
+            perfil_visto: perfilVisto
+          }
+        },
+        { headers: { "Cache-Control": "no-store, max-age=0" } }
+      )
+    }
+
+    // Modo Lista Leve (sem SELECT * e sem recalcular perfil de todos os candidatos)
     let candidatos: any[] = []
 
     try {
       const supabaseAdmin = createAdminClient()
       const { data, error } = await supabaseAdmin
         .from("perfil_candidatos")
-        .select("*")
+        .select(
+          "id, nome, email, telefone, cargo_pretendido, token_acesso, status, utilizado, data_expiracao, data_conclusao, created_at, arquetipo_primario, arquetipo_secundario, perfil_visto_json:respostas->perfil_visto"
+        )
         .order("created_at", { ascending: false })
 
       if (!error && Array.isArray(data)) {
         candidatos = data
+      } else if (error) {
+        const fallbackQuery = await supabaseAdmin
+          .from("perfil_candidatos")
+          .select("id, nome, email, telefone, cargo_pretendido, token_acesso, status, utilizado, data_expiracao, data_conclusao, created_at, respostas")
+          .order("created_at", { ascending: false })
+        if (!fallbackQuery.error && Array.isArray(fallbackQuery.data)) {
+          candidatos = fallbackQuery.data
+        }
       }
     } catch (err) {
       console.warn("[API Candidatos Perfil GET] Usando fallback em memória:", err)
@@ -50,29 +123,33 @@ export async function GET(request: Request) {
       }
     }
 
-    // Formata e adiciona cálculos psicométricos para candidatos com teste concluído
-    const agora = new Date()
-    const perfisFormatados = candidatos.map(c => {
+    const perfisLeves = candidatos.map(c => {
       const isExpirado = c.status !== "concluido" && new Date(c.data_expiracao) < agora
       const statusFinal = isExpirado ? "expirado" : c.status
-
-      let perfilCalculado = null
-      if (c.status === "concluido" && c.respostas && Object.keys(c.respostas).length > 0) {
-        perfilCalculado = calcularPerfil(c.respostas, c.nome, c.cargo_pretendido || "")
-      }
-
-      const perfilVisto = Boolean(c.perfil_visto === true || c.respostas?.perfil_visto === true)
+      const perfilVisto = Boolean(
+        c.perfil_visto === true || c.perfil_visto_json === true || c.respostas?.perfil_visto === true
+      )
 
       return {
-        ...c,
+        id: c.id,
+        nome: c.nome,
+        email: c.email || "",
+        telefone: c.telefone || "",
+        cargo_pretendido: c.cargo_pretendido || "",
+        token_acesso: c.token_acesso,
         status: statusFinal,
-        perfilCalculado,
+        utilizado: Boolean(c.utilizado),
+        data_expiracao: c.data_expiracao,
+        data_conclusao: c.data_conclusao,
+        created_at: c.created_at,
+        arquetipo_primario: c.arquetipo_primario || null,
+        arquetipo_secundario: c.arquetipo_secundario || null,
         perfil_visto: perfilVisto
       }
     })
 
     return NextResponse.json(
-      { success: true, candidatos: perfisFormatados },
+      { success: true, candidatos: perfisLeves },
       { headers: { "Cache-Control": "no-store, max-age=0" } }
     )
   } catch (err: any) {
