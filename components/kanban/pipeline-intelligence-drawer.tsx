@@ -160,35 +160,55 @@ export function PipelineIntelligenceDrawer({
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"))
   }, [kanbanTickets])
 
-  // Lista unificada de operadores (para resolução de nomes nas análises)
+  // Conjunto de usuários explicitamente INATIVOS para desconsiderá-los nas análises de equipe
+  const inactiveOperators = useMemo(() => {
+    const ids = new Set<string>()
+    const names = new Set<string>()
+
+    const registerIfInactive = (u: any) => {
+      if (!u) return
+      const status = String(u.status || "ATIVO").trim().toUpperCase()
+      if (status && status !== "ATIVO") {
+        const id = String(u.id || "").trim().toLowerCase()
+        const nome = String(u.nome || u.nome_completo || "").trim().toLowerCase()
+        if (id) ids.add(id)
+        if (nome) names.add(nome)
+      }
+    }
+
+    usersList.forEach(registerIfInactive)
+    cltCollaborators.forEach(registerIfInactive)
+
+    return { ids, names }
+  }, [usersList, cltCollaborators])
+
+  // Lista unificada de operadores ativos (para resolução de nomes nas análises)
   const operatorsList = useMemo(() => {
     const map = new Map<string, { id: string; nome: string; equipe?: string; regime_contratacao?: string; funcao?: string; role?: string }>()
-    usersList.forEach(u => {
-      if (u.id) {
+    const registerActive = (u: any) => {
+      if (!u?.id) return
+      const idNorm = String(u.id).trim().toLowerCase()
+      const nomeNorm = String(u.nome || u.nome_completo || "").trim().toLowerCase()
+      const status = String(u.status || "ATIVO").trim().toUpperCase()
+      if ((status && status !== "ATIVO") || inactiveOperators.ids.has(idNorm) || (nomeNorm && inactiveOperators.names.has(nomeNorm))) {
+        return
+      }
+      if (!map.has(String(u.id))) {
         map.set(String(u.id), {
           id: String(u.id),
-          nome: u.nome || "Sem Nome",
+          nome: u.nome || u.nome_completo || "Sem Nome",
           equipe: u.equipe,
           regime_contratacao: u.regime_contratacao,
           funcao: u.funcao,
           role: u.role
         })
       }
-    })
-    cltCollaborators.forEach(c => {
-      if (c.id && !map.has(String(c.id))) {
-        map.set(String(c.id), {
-          id: String(c.id),
-          nome: c.nome || "Sem Nome",
-          equipe: c.equipe,
-          regime_contratacao: c.regime_contratacao,
-          funcao: c.funcao,
-          role: c.role
-        })
-      }
-    })
+    }
+
+    usersList.forEach(registerActive)
+    cltCollaborators.forEach(registerActive)
     return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
-  }, [usersList, cltCollaborators])
+  }, [usersList, cltCollaborators, inactiveOperators])
 
   // Lista para o seletor de equipe: somente usuários CLT e Estágio com atendimento no Kanban
   const teamOperatorsList = useMemo(() => {
@@ -456,6 +476,11 @@ export function PipelineIntelligenceDrawer({
     parsedTickets.forEach(item => {
       const t = item.ticket
       const uId = t.user_id || "unassigned"
+      const uIdNorm = String(uId).trim().toLowerCase()
+      const uNameNorm = String(t.user_nome || "").trim().toLowerCase()
+      if (uId !== "unassigned" && (inactiveOperators.ids.has(uIdNorm) || (uNameNorm && inactiveOperators.names.has(uNameNorm)))) {
+        return
+      }
       const info = opInfoMap.get(uId)
       const uName = info?.nome || t.user_nome || "Não Atribuído"
       const roleType = info?.roleType || "outro"
@@ -684,7 +709,7 @@ export function PipelineIntelligenceDrawer({
       totalSamples: totalGeneralSamples,
       avgLeadsPerOp
     }
-  }, [parsedTickets, operatorsList])
+  }, [parsedTickets, operatorsList, inactiveOperators])
 
   // 2. JORNADA COMPLETA DO FUNIL (6 ETAPAS DO KANBAN) + CAPITAL IMOBILIZADO
   const stageAgingData = useMemo(() => {
@@ -759,7 +784,7 @@ export function PipelineIntelligenceDrawer({
         const hoursInStage = Math.max(0, (now - tDate) / (1000 * 60 * 60))
         totalHours += hoursInStage
 
-        if (!isClosedOrLost) {
+        if (!isClosedOrLost && stageDef.key !== "SEM INTERESSE") {
           const cpfDigits = String(t.cliente_cpf || "").replace(/\D/g, "")
           if (cpfDigits.length === 11) {
             activePipelineCpfs.add(cpfDigits)
@@ -1128,6 +1153,11 @@ export function PipelineIntelligenceDrawer({
       const tier = opVal >= 30000 ? "Alto (>30k)" : opVal >= 10000 ? "Médio (10k-30k)" : "Baixo (<10k)"
 
       const uId = t.user_id || "unassigned"
+      const uIdNorm = String(uId).trim().toLowerCase()
+      const uNameNorm = String(t.user_nome || "").trim().toLowerCase()
+      if (uId !== "unassigned" && (inactiveOperators.ids.has(uIdNorm) || (uNameNorm && inactiveOperators.names.has(uNameNorm)))) {
+        return
+      }
       const uName = operatorNameMap.get(uId) || t.user_nome || "Não Atribuído"
 
       if (!opMap.has(uId)) {
@@ -1268,69 +1298,69 @@ export function PipelineIntelligenceDrawer({
       valueTiers,
       rows: matrixRows
     }
-  }, [filteredTickets, operatorsList, conveniosList, selectedConvenios, getValorOperacaoDeAbertura])
+  }, [filteredTickets, operatorsList, conveniosList, selectedConvenios, getValorOperacaoDeAbertura, inactiveOperators])
 
   // 4. RADAR DE RISCO DE QUEIMA DE LEADS
   // Todos os atendimentos das etapas ativas parados sem avanço há mais de 48 horas
   const riskLeadsData = useMemo(() => {
     const now = Date.now()
 
-    return filteredTickets
-      .filter(t => {
-        const s = (t.status || "").toUpperCase()
-        if (s.includes("FECHAD") || s.includes("PERDID")) return false
+    return parsedTickets
+      .filter(p => {
+        if (p.stageKey === "FECHADO" || p.stageKey === "PERDIDO" || p.stageKey === "SEM INTERESSE") return false
+        const s = (p.ticket.status || "").toUpperCase()
         return (
           s.includes("RETOMADA") ||
           s.includes("INTERAÇÃO") ||
           s.includes("INTERACAO") ||
           s.includes("NEGOCIA") ||
-          s.includes("REATIVA") ||
-          s.includes("SEM INTERESSE")
+          s.includes("REATIVA")
         )
       })
-      .map(t => {
-        const opData = getValorOperacaoDeAbertura(t)
-        const opVal = opData.num || 0
-        const prodVal = opData.numProducao || 0
+      .map(p => {
+        const t = p.ticket
+        const s = (t.status || "").toUpperCase()
         const dateMs = new Date(t.updated_at || t.created_at || now).getTime()
         const exactHoursInactive = Math.max(0, (now - dateMs) / (1000 * 60 * 60))
         const hoursInactive = Math.floor(exactHoursInactive)
 
+        const hasInteractionStatus =
+          !s.includes("SEM INTERA") && (s.includes("INTERAÇÃO") || s.includes("INTERACAO"))
+        const riskStageKey =
+          p.stageKey === "EM NEGOCIAÇÃO"
+            ? "EM NEGOCIAÇÃO"
+            : p.stageKey === "EM REATIVAÇÃO"
+              ? "EM REATIVAÇÃO"
+              : (p.isEmInteracao || hasInteractionStatus || Boolean(t.em_interacao))
+                ? "EM INTERAÇÃO"
+                : "EM RETOMADA"
+
         return {
           ticket: t,
-          valorOperacao: opVal,
-          valorProducao: prodVal,
+          valorOperacao: p.opVal,
+          valorProducao: p.prodVal,
           hoursInactive,
           exactHoursInactive,
-          isHighRisk: opVal >= 25000 && exactHoursInactive > 48
+          isHighRisk: p.opVal >= 25000 && exactHoursInactive > 48,
+          riskStageKey
         }
       })
       .filter(item => item.exactHoursInactive > 48)
       .sort((a, b) => b.valorOperacao - a.valorOperacao || b.hoursInactive - a.hoursInactive)
-  }, [filteredTickets, getValorOperacaoDeAbertura])
-
-  const getRiskStageKey = (status?: string) => {
-    const s = String(status || "").trim().toUpperCase()
-    if (s.includes("RETOMADA") || s.includes("INTERAÇÃO") || s.includes("INTERACAO")) return "EM RETOMADA"
-    if (s.includes("NEGOCIA")) return "EM NEGOCIAÇÃO"
-    if (s.includes("REATIVA")) return "EM REATIVAÇÃO"
-    if (s.includes("SEM INTERESSE")) return "SEM INTERESSE"
-    return s
-  }
+  }, [parsedTickets])
 
   const riskStageOptions = useMemo(() => {
     const STAGE_DEFS = [
-      { value: "EM RETOMADA", label: "Em Retomada / Interação" },
+      { value: "EM RETOMADA", label: "Em Retomada" },
+      { value: "EM INTERAÇÃO", label: "Em Interação" },
       { value: "EM NEGOCIAÇÃO", label: "Em Negociação" },
-      { value: "EM REATIVAÇÃO", label: "Em Reativação" },
-      { value: "SEM INTERESSE", label: "Sem Interesse" }
+      { value: "EM REATIVAÇÃO", label: "Em Reativação" }
     ]
 
     const presentCounts = new Map<string, number>()
     riskLeadsData.forEach(item => {
-      const key = getRiskStageKey(item.ticket.status)
-      if (key) {
-        presentCounts.set(key, (presentCounts.get(key) || 0) + 1)
+      if (item.riskStageKey) {
+        presentCounts.set(item.riskStageKey, (presentCounts.get(item.riskStageKey) || 0) + 1)
       }
     })
 
@@ -1362,7 +1392,7 @@ export function PipelineIntelligenceDrawer({
 
     if (effectiveRiskStageFilters.length > 0) {
       const stageSet = new Set(effectiveRiskStageFilters)
-      list = list.filter(item => stageSet.has(getRiskStageKey(item.ticket.status)))
+      list = list.filter(item => stageSet.has(item.riskStageKey))
     }
 
     if (!searchRiskQuery.trim()) return list
@@ -1415,12 +1445,6 @@ export function PipelineIntelligenceDrawer({
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(val)
   }
 
-  const fmtDurationShort = (minutes: number) => {
-    if (!minutes || minutes <= 0) return "N/A"
-    if (minutes < 60) return `${minutes} min`
-    return `${(minutes / 60).toFixed(1)}h`
-  }
-
   const fmtDaysAndHours = (totalHours: number) => {
     const safeHours = Math.max(0, Math.floor(totalHours || 0))
     const days = Math.floor(safeHours / 24)
@@ -1429,6 +1453,25 @@ export function PipelineIntelligenceDrawer({
     const daysPart = `${days} ${days === 1 ? "dia" : "dias"}`
     const hoursPart = remHours > 0 ? ` e ${remHours} ${remHours === 1 ? "hora" : "horas"}` : ""
     return `${daysPart}${hoursPart}`
+  }
+
+  const fmtDurationShort = (minutes: number) => {
+    if (!minutes || minutes <= 0) return "N/A"
+    const totalMins = Math.round(minutes)
+    if (totalMins <= 0) return "menos de 1 minuto"
+    const days = Math.floor(totalMins / (24 * 60))
+    const hours = Math.floor((totalMins % (24 * 60)) / 60)
+    const mins = totalMins % 60
+
+    const parts: string[] = []
+    if (days > 0) parts.push(`${days} ${days === 1 ? "dia" : "dias"}`)
+    if (hours > 0) parts.push(`${hours} ${hours === 1 ? "hora" : "horas"}`)
+    if (mins > 0) parts.push(`${mins} ${mins === 1 ? "minuto" : "minutos"}`)
+
+    if (parts.length === 0) return "menos de 1 minuto"
+    if (parts.length === 1) return parts[0]
+    if (parts.length === 2) return `${parts[0]} e ${parts[1]}`
+    return `${parts[0]}, ${parts[1]} e ${parts[2]}`
   }
 
   const stuckModalStage = useMemo(() => {
@@ -1447,7 +1490,8 @@ export function PipelineIntelligenceDrawer({
     const vipByStageMap = new Map<string, { label: string; count: number; operacao: number; producao: number }>()
 
     const STAGE_LABELS: Record<string, string> = {
-      "EM RETOMADA": "Em Retomada / Interação",
+      "EM RETOMADA": "Em Retomada",
+      "EM INTERAÇÃO": "Em Interação",
       "EM NEGOCIAÇÃO": "Em Negociação",
       "EM REATIVAÇÃO": "Em Reativação",
       "SEM INTERESSE": "Sem Interesse"
@@ -1464,7 +1508,7 @@ export function PipelineIntelligenceDrawer({
     vipRiskLeads.forEach(item => {
       vipOperacao += item.valorOperacao
       vipProducao += item.valorProducao
-      const stKey = getRiskStageKey(item.ticket.status)
+      const stKey = item.riskStageKey
       const current = vipByStageMap.get(stKey) || {
         label: STAGE_LABELS[stKey] || stKey || "Outras",
         count: 0,
@@ -1605,10 +1649,18 @@ export function PipelineIntelligenceDrawer({
     })
     wasteMatches.sort((a, b) => a.rate - b.rate || b.total - a.total)
 
-    // Eixo 4: CPFs ativos duplicados / fragmentados entre operadores
+    // Eixo 4: CPFs em atendimento simultâneo entre corretores/estagiários ativos
     const now = Date.now()
+    const activeOperatorNameMap = new Map<string, string>()
+    operatorsList.forEach(o => {
+      if (o.id) activeOperatorNameMap.set(o.id.trim().toLowerCase(), o.nome)
+    })
+
     const cpfGroups = new Map<string, Array<{
       ticket: KanbanTicketItem
+      operatorName: string
+      stageLabel: string
+      stageScore: number
       opVal: number
       hoursInactive: number
       inRisk: boolean
@@ -1616,9 +1668,29 @@ export function PipelineIntelligenceDrawer({
 
     filteredTickets.forEach(t => {
       const s = (t.status || "").toUpperCase()
-      if (s.includes("FECHAD") || s.includes("PERDID")) return
+      if (s.includes("FECHAD") || s.includes("PERDID") || s.includes("SEM INTERESSE")) return
       const cpfDigits = String(t.cliente_cpf || "").replace(/\D/g, "")
       if (cpfDigits.length !== 11) return
+
+      const rawUserId = String(t.user_id || "").trim()
+      if (!rawUserId) return
+      const rawUserIdNorm = rawUserId.toLowerCase()
+      const rawUserNameNorm = String(t.user_nome || "").trim().toLowerCase()
+      if (inactiveOperators.ids.has(rawUserIdNorm) || (rawUserNameNorm && inactiveOperators.names.has(rawUserNameNorm))) {
+        return
+      }
+
+      const operatorName = (activeOperatorNameMap.get(rawUserIdNorm) || t.user_nome || "").trim()
+      if (!operatorName) return
+
+      const stageLabel = s.includes("NEGOCIA")
+        ? "Em Negociação"
+        : s.includes("REATIVA")
+          ? "Em Reativação"
+          : (s.includes("INTERA") || Boolean(t.em_interacao))
+            ? "Em Interação"
+            : "Em Retomada"
+      const stageScore = s.includes("NEGOCIA") ? 3 : s.includes("REATIVA") ? 2 : 1
 
       const opVal = getValorOperacaoDeAbertura(t).num || 0
       const dateMs = new Date(t.updated_at || t.created_at || now).getTime()
@@ -1627,6 +1699,9 @@ export function PipelineIntelligenceDrawer({
       const arr = cpfGroups.get(cpfDigits) || []
       arr.push({
         ticket: t,
+        operatorName,
+        stageLabel,
+        stageScore,
         opVal,
         hoursInactive,
         inRisk: riskIdSet.has(String(t.id))
@@ -1634,36 +1709,48 @@ export function PipelineIntelligenceDrawer({
       cpfGroups.set(cpfDigits, arr)
     })
 
+    const formatCpfDigits = (digits: string) =>
+      digits.length === 11
+        ? `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`
+        : digits
+
     const duplicateConflicts = Array.from(cpfGroups.entries())
-      .filter(([, items]) => items.length >= 2)
       .map(([cpfDigits, items]) => {
-        const sortedItems = [...items].sort((a, b) => b.opVal - a.opVal || b.hoursInactive - a.hoursInactive)
-        const uniqueOperators = Array.from(
-          new Set(sortedItems.map(i => (i.ticket.user_nome || "Não Atribuído").trim()))
+        const sortedItems = [...items].sort(
+          (a, b) => b.stageScore - a.stageScore || b.opVal - a.opVal || a.hoursInactive - b.hoursInactive
         )
-        const maxOperacao = sortedItems[0]?.opVal || 0
+        const uniqueOperators = Array.from(new Set(sortedItems.map(i => i.operatorName)))
+        const maxOperacao = Math.max(...sortedItems.map(i => i.opVal))
         const maxHoursInactive = Math.max(...sortedItems.map(i => i.hoursInactive))
         const criticalCount = sortedItems.filter(i => i.inRisk).length
 
         return {
           cpfDigits,
-          displayCpf: sortedItems[0]?.ticket.cliente_cpf || cpfDigits,
+          displayCpf: formatCpfDigits(cpfDigits),
           clientName: sortedItems[0]?.ticket.cliente_nome || "Cliente sem Nome",
           ticketCount: sortedItems.length,
           uniqueOperators,
           isMultiOperator: uniqueOperators.length >= 2,
+          attendances: sortedItems.map(i => ({
+            ticketId: String(i.ticket.id),
+            ticket: i.ticket,
+            operatorName: i.operatorName,
+            stageLabel: i.stageLabel,
+            opVal: i.opVal,
+            hoursInactive: i.hoursInactive
+          })),
           maxOperacao,
           maxHoursInactive,
           criticalCount,
           topTicket: sortedItems[0].ticket
         }
       })
+      .filter(d => d.uniqueOperators.length >= 2)
       .sort(
         (a, b) =>
-          Number(b.isMultiOperator) - Number(a.isMultiOperator) ||
           b.uniqueOperators.length - a.uniqueOperators.length ||
-          b.criticalCount - a.criticalCount ||
-          b.maxOperacao - a.maxOperacao
+          b.maxOperacao - a.maxOperacao ||
+          b.ticketCount - a.ticketCount
       )
 
     const bestOriginMatches = funnelAndOriginsData.origins
@@ -1705,7 +1792,7 @@ export function PipelineIntelligenceDrawer({
       bestConvenioMatches: bestConvenioMatches.slice(0, 4),
       bestHighTierMatch,
       wasteMatches: wasteMatches.slice(0, 4),
-      duplicateConflicts: duplicateConflicts.slice(0, 5),
+      duplicateConflicts,
       totalDuplicateClients: duplicateConflicts.length,
       bestOriginMatches,
       alertOrigins,
@@ -1715,6 +1802,8 @@ export function PipelineIntelligenceDrawer({
   }, [
     isExecSummaryOpen,
     filteredTickets,
+    operatorsList,
+    inactiveOperators,
     speedToLeadData,
     stageAgingData,
     affinityMatrixData,
@@ -2022,13 +2111,13 @@ export function PipelineIntelligenceDrawer({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>Resumo Executivo</span>
+              <span>Análise do Shark</span>
             </motion.button>
           </div>
         </div>
 
         {/* CARDS RESUMO EXECUTIVO (KPIs) */}
-        <div className="px-6 lg:px-7 py-2.5 bg-white border-b border-slate-200 shrink-0 space-y-2">
+        <div className="relative z-20 px-6 lg:px-7 py-2.5 bg-white border-b border-slate-200 shrink-0 space-y-2">
           <div className="flex items-center gap-1.5 text-left">
             <DollarSign className="w-3.5 h-3.5 text-emerald-600 shrink-0" strokeWidth={2.6} />
             <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">
@@ -2039,65 +2128,102 @@ export function PipelineIntelligenceDrawer({
             </strong>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {/* Card 1: ENTRADA NO FUNIL */}
-            <div className="bg-gradient-to-br from-indigo-100 via-indigo-50 to-sky-100/90 border-2 border-indigo-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
-              <div className="flex items-center gap-1.5 text-indigo-900">
-                <Layers className="w-3.5 h-3.5 text-indigo-600 shrink-0" strokeWidth={2.6} />
-                <span className="text-[10px] font-black uppercase tracking-wider">Entrada no Funil</span>
-              </div>
-              <div className="mt-0.5">
-                <div className="text-base lg:text-lg font-black text-indigo-950 leading-tight">
-                  {funnelAndOriginsData.totalFunnel} leads
-                </div>
-              </div>
-            </div>
+          {(() => {
+            const leadsNeeded =
+              funnelAndOriginsData.totalFechado > 0
+                ? Math.max(1, Math.round(funnelAndOriginsData.totalFunnel / funnelAndOriginsData.totalFechado))
+                : null
+            const uniqueLeads = stageAgingData.uniquePipelineCpfsCount
+            const estimatedOpportunities =
+              leadsNeeded !== null ? Math.floor(uniqueLeads / leadsNeeded) : null
 
-            {/* Card 2: PARA FECHAR 1 VENDA PRECISA */}
-            <div className="bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
-              <div className="flex items-center gap-1.5 text-sky-900">
-                <Zap className="w-3.5 h-3.5 text-sky-600 shrink-0" strokeWidth={2.6} />
-                <span className="text-[10px] font-black uppercase tracking-wider">Para fechar 1 venda precisa de:</span>
-              </div>
-              <div className="mt-0.5">
-                <div className="text-base lg:text-lg font-black text-sky-950 leading-tight">
-                  {funnelAndOriginsData.totalFechado > 0
-                    ? (() => {
-                        const leadsNeeded = Math.max(1, Math.round(funnelAndOriginsData.totalFunnel / funnelAndOriginsData.totalFechado))
-                        return `${leadsNeeded} ${leadsNeeded === 1 ? "lead" : "leads"}`
-                      })()
-                    : "—"}
-                </div>
-              </div>
-            </div>
+            let subjectPhrase = "a equipe fecha"
+            if (selectedOperators.length === 1) {
+              const op = operatorsList.find(
+                o => o.id.trim().toLowerCase() === selectedOperators[0].trim().toLowerCase()
+              )
+              const firstName = String(op?.nome || "").trim().split(/\s+/)[0]
+              subjectPhrase = firstName ? `${firstName} fecha` : "este colaborador fecha"
+            } else if (selectedOperators.length > 1) {
+              subjectPhrase = `os ${selectedOperators.length} colaboradores selecionados fecham`
+            }
 
-            {/* Card 3: LEADS ÚNICOS NO PIPELINE (CPFs ÚNICOS) */}
-            <div className="bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-100/90 border-2 border-emerald-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
-              <div className="flex items-center gap-1.5 text-emerald-900">
-                <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" strokeWidth={2.6} />
-                <span className="text-[10px] font-black uppercase tracking-wider">Leads Únicos no Pipeline</span>
-              </div>
-              <div className="mt-0.5">
-                <div className="text-base lg:text-lg font-black text-emerald-950 leading-tight">
-                  {stageAgingData.uniquePipelineCpfsCount}{" "}
-                  {stageAgingData.uniquePipelineCpfsCount === 1 ? "CPF único" : "CPFs únicos"}
-                </div>
-              </div>
-            </div>
+            const opportunityTooltipText =
+              leadsNeeded !== null && estimatedOpportunities !== null
+                ? `Se ${subjectPhrase} 1 venda a cada ${leadsNeeded} ${leadsNeeded === 1 ? "lead" : "leads"} e temos ${uniqueLeads} ${uniqueLeads === 1 ? "lead único distribuído" : "leads únicos distribuídos"} nas etapas onde a chance de realizar a venda é alta, então temos aproximadamente ${estimatedOpportunities} ${estimatedOpportunities === 1 ? "oportunidade" : "oportunidades"}!`
+                : `Ainda não há vendas fechadas neste recorte para calcular as oportunidades estimadas sobre os ${uniqueLeads} ${uniqueLeads === 1 ? "lead único" : "leads únicos"} nas etapas onde a chance de venda é alta.`
 
-            {/* Card 4: Risco de Queima */}
-            <div className="bg-gradient-to-br from-rose-100 via-rose-50 to-red-100/90 border-2 border-rose-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
-              <div className="flex items-center gap-1.5 text-rose-900">
-                <Flame className="w-3.5 h-3.5 text-rose-600 shrink-0" strokeWidth={2.6} />
-                <span className="text-[10px] font-black uppercase tracking-wider">Risco de Queima</span>
-              </div>
-              <div className="mt-0.5">
-                <div className="text-base lg:text-lg font-black text-rose-950 leading-tight">
-                  {riskLeadsData.length} leads
+            return (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {/* Card 1: ENTRADA NO FUNIL */}
+                <div className="bg-gradient-to-br from-indigo-100 via-indigo-50 to-sky-100/90 border-2 border-indigo-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+                  <div className="flex items-center gap-1.5 text-indigo-900">
+                    <Layers className="w-3.5 h-3.5 text-indigo-600 shrink-0" strokeWidth={2.6} />
+                    <span className="text-[10px] font-black uppercase tracking-wider">Entrada no Funil</span>
+                  </div>
+                  <div className="mt-0.5">
+                    <div className="text-base lg:text-lg font-black text-indigo-950 leading-tight">
+                      {funnelAndOriginsData.totalFunnel} leads
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card 2: PARA FECHAR 1 VENDA PRECISA */}
+                <div className="relative group/tooltip bg-gradient-to-br from-sky-100 via-sky-50 to-blue-100/90 border-2 border-sky-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+                  <div className="flex items-center gap-1.5 text-sky-900">
+                    <Zap className="w-3.5 h-3.5 text-sky-600 shrink-0" strokeWidth={2.6} />
+                    <span className="text-[10px] font-black uppercase tracking-wider">Para fechar 1 venda precisa de:</span>
+                  </div>
+                  <div className="mt-0.5">
+                    <div className="text-base lg:text-lg font-black text-sky-950 leading-tight">
+                      {leadsNeeded !== null
+                        ? `${leadsNeeded} ${leadsNeeded === 1 ? "lead" : "leads"}`
+                        : "—"}
+                    </div>
+                  </div>
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-2 z-50 w-72 sm:w-80 rounded-xl bg-slate-900 text-white text-[11.5px] font-medium text-left leading-relaxed px-3.5 py-2.5 shadow-xl border border-slate-700 whitespace-normal"
+                  >
+                    {opportunityTooltipText}
+                  </span>
+                </div>
+
+                {/* Card 3: LEADS ÚNICOS NO PIPELINE (CPFs ÚNICOS) */}
+                <div className="relative group/tooltip bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-100/90 border-2 border-emerald-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+                  <div className="flex items-center gap-1.5 text-emerald-900">
+                    <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" strokeWidth={2.6} />
+                    <span className="text-[10px] font-black uppercase tracking-wider">Leads Únicos no Pipeline</span>
+                  </div>
+                  <div className="mt-0.5">
+                    <div className="text-base lg:text-lg font-black text-emerald-950 leading-tight">
+                      {uniqueLeads}{" "}
+                      {uniqueLeads === 1 ? "CPF único" : "CPFs únicos"}
+                    </div>
+                  </div>
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-150 absolute left-0 top-full mt-2 z-50 w-72 sm:w-80 rounded-xl bg-slate-900 text-white text-[11.5px] font-medium text-left leading-relaxed px-3.5 py-2.5 shadow-xl border border-slate-700 whitespace-normal"
+                  >
+                    {opportunityTooltipText}
+                  </span>
+                </div>
+
+                {/* Card 4: Risco de Queima */}
+                <div className="bg-gradient-to-br from-rose-100 via-rose-50 to-red-100/90 border-2 border-rose-400 rounded-xl px-3 py-2 flex flex-col justify-between shadow-xs">
+                  <div className="flex items-center gap-1.5 text-rose-900">
+                    <Flame className="w-3.5 h-3.5 text-rose-600 shrink-0" strokeWidth={2.6} />
+                    <span className="text-[10px] font-black uppercase tracking-wider">Risco de Queima</span>
+                  </div>
+                  <div className="mt-0.5">
+                    <div className="text-base lg:text-lg font-black text-rose-950 leading-tight">
+                      {riskLeadsData.length} leads
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            )
+          })()}
         </div>
 
         {/* NAVEGAÇÃO ENTRE ABAS */}
@@ -2325,13 +2451,15 @@ export function PipelineIntelligenceDrawer({
                     <div className="mt-2.5 space-y-2">
                       {(() => {
                         const maxVal = Math.max(1, ...funnelAndOriginsData.topOriginsInInteracao.map(i => i.emInteracao))
+                        const stageTotal = Math.max(1, funnelAndOriginsData.totalEmInteracao)
                         return funnelAndOriginsData.topOriginsInInteracao.map(o => {
                           const barWidth = Math.max(4, Math.round((o.emInteracao / maxVal) * 100))
+                          const shareStagePct = Math.round((o.emInteracao / stageTotal) * 100)
                           return (
                             <div key={`int-${o.key}`} className="space-y-1">
                               <div className="flex items-center justify-between text-xs">
                                 <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
-                                <span className="font-bold text-sky-700 shrink-0 tabular-nums">{o.emInteracao} leads</span>
+                                <span className="font-bold text-sky-700 shrink-0 tabular-nums">{o.emInteracao} ({shareStagePct}%)</span>
                               </div>
                               <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
                                 <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${barWidth}%` }} />
@@ -2356,13 +2484,15 @@ export function PipelineIntelligenceDrawer({
                     <div className="mt-2.5 space-y-2">
                       {(() => {
                         const maxVal = Math.max(1, ...funnelAndOriginsData.topOriginsInRetomada.map(i => i.emRetomadaSemContato))
+                        const stageTotal = Math.max(1, funnelAndOriginsData.totalEmRetomadaSemContato)
                         return funnelAndOriginsData.topOriginsInRetomada.map(o => {
                           const barWidth = Math.max(4, Math.round((o.emRetomadaSemContato / maxVal) * 100))
+                          const shareStagePct = Math.round((o.emRetomadaSemContato / stageTotal) * 100)
                           return (
                             <div key={`ret-${o.key}`} className="space-y-1">
                               <div className="flex items-center justify-between text-xs">
                                 <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
-                                <span className="font-bold text-amber-700 shrink-0 tabular-nums">{o.emRetomadaSemContato} ({o.noContactPct}%)</span>
+                                <span className="font-bold text-amber-700 shrink-0 tabular-nums">{o.emRetomadaSemContato} ({shareStagePct}%)</span>
                               </div>
                               <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
                                 <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${barWidth}%` }} />
@@ -2387,13 +2517,15 @@ export function PipelineIntelligenceDrawer({
                     <div className="mt-2.5 space-y-2">
                       {(() => {
                         const maxVal = Math.max(1, ...funnelAndOriginsData.topOriginsInNegociacao.map(i => i.emNegociacaoAtual))
+                        const stageTotal = Math.max(1, funnelAndOriginsData.totalEmNegociacaoAtual)
                         return funnelAndOriginsData.topOriginsInNegociacao.map(o => {
                           const barWidth = Math.max(4, Math.round((o.emNegociacaoAtual / maxVal) * 100))
+                          const shareStagePct = Math.round((o.emNegociacaoAtual / stageTotal) * 100)
                           return (
                             <div key={`neg-${o.key}`} className="space-y-1">
                               <div className="flex items-center justify-between text-xs">
                                 <span className="font-semibold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
-                                <span className="font-bold text-indigo-700 shrink-0 tabular-nums">{o.emNegociacaoAtual} ativos • {o.fechado} ADEs</span>
+                                <span className="font-bold text-indigo-700 shrink-0 tabular-nums">{o.emNegociacaoAtual} ({shareStagePct}%)</span>
                               </div>
                               <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
                                 <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${barWidth}%` }} />
@@ -3273,7 +3405,7 @@ export function PipelineIntelligenceDrawer({
 
                         <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
                           <span className="text-[11px] text-slate-500 font-medium">
-                            Etapa Atual: <strong className="text-slate-900">{t.status}</strong>
+                            Etapa Atual: <strong className="text-slate-900">{item.riskStageKey || t.status}</strong>
                           </span>
 
                           {onSelectTicket && (
@@ -3314,39 +3446,69 @@ export function PipelineIntelligenceDrawer({
         {/* MODAL RESUMO EXECUTIVO — MENTOR CONVERSACIONAL DO GESTOR */}
         <AnimatePresence>
           {isExecSummaryOpen && executiveSummaryData && (() => {
-            const periodLabelMap: Record<PeriodFilter, string> = {
-              today: "hoje",
-              "7d": "nos últimos 7 dias",
-              "15d": "nos últimos 15 dias",
-              "30d": "nos últimos 30 dias",
-              month: "no mês atual",
-              all: "em todo o histórico completo"
-            }
-            const periodText = periodLabelMap[period]
-            const scopeDetails: string[] = []
-            if (selectedConvenios.length > 0) {
-              scopeDetails.push(selectedConvenios.length === 1 ? `convênio ${selectedConvenios[0]}` : `${selectedConvenios.length} convênios selecionados`)
-            }
-            if (selectedOperators.length > 0) {
-              scopeDetails.push(selectedOperators.length === 1 ? "1 colaborador filtrado" : `${selectedOperators.length} colaboradores filtrados`)
-            }
-            const scopeSuffix = scopeDetails.length > 0 ? ` (${scopeDetails.join(" • ")})` : ""
 
-            const totalFunnelSafe = Math.max(1, funnelAndOriginsData.totalFunnel)
-            const funnelVisualSlices = [
-              { key: "interacao", label: "Em interação", count: funnelAndOriginsData.totalEmInteracao, color: "bg-sky-500", dot: "bg-sky-500", text: "text-sky-700" },
-              { key: "retomada", label: "Retomada (s/ contato)", count: funnelAndOriginsData.totalEmRetomadaSemContato, color: "bg-amber-400", dot: "bg-amber-400", text: "text-amber-700" },
-              { key: "negociacao", label: "Em negociação", count: funnelAndOriginsData.totalEmNegociacaoAtual, color: "bg-indigo-500", dot: "bg-indigo-500", text: "text-indigo-700" },
-              { key: "reativacao", label: "Em reativação", count: funnelAndOriginsData.totalReativacao, color: "bg-purple-500", dot: "bg-purple-500", text: "text-purple-700" },
-              { key: "seminteresse", label: "Sem interesse", count: funnelAndOriginsData.totalSemInteresse, color: "bg-slate-400", dot: "bg-slate-400", text: "text-slate-600" },
-              { key: "fechado", label: "Fechado (ADEs)", count: funnelAndOriginsData.totalFechado, color: "bg-emerald-500", dot: "bg-emerald-500", text: "text-emerald-700" },
-              { key: "perdido", label: "Perdido", count: funnelAndOriginsData.totalPerdido, color: "bg-rose-500", dot: "bg-rose-500", text: "text-rose-700" }
-            ]
+            const firstNameUser = String(loggedUserName || "").trim().split(/\s+/)[0] || "Gestor"
+            const leadsNeeded =
+              funnelAndOriginsData.totalFechado > 0
+                ? Math.max(1, Math.round(funnelAndOriginsData.totalFunnel / funnelAndOriginsData.totalFechado))
+                : null
+            const uniqueLeads = stageAgingData.uniquePipelineCpfsCount
+            const estimatedOpportunities =
+              leadsNeeded !== null ? Math.floor(uniqueLeads / leadsNeeded) : null
 
-            const topOriginsChart = funnelAndOriginsData.origins.slice(0, 5)
-            const maxOriginCount = Math.max(1, ...topOriginsChart.map(o => o.total))
-            const topTeamChart = speedToLeadData.ranking.filter(op => op.userId !== "unassigned").slice(0, 5)
-            const maxTeamFunil = Math.max(1, ...topTeamChart.map(op => op.totalFunil))
+            const bestOrigin = executiveSummaryData.bestOriginMatches[0] || null
+            const worstOrigin = executiveSummaryData.alertOrigins[0] || null
+            const noContactRatioPct =
+              funnelAndOriginsData.totalFunnel > 0
+                ? Math.round((funnelAndOriginsData.totalEmRetomadaSemContato / funnelAndOriginsData.totalFunnel) * 100)
+                : 0
+            const avgNegotiationLabel =
+              speedToLeadData.generalAvgMinutes > 0
+                ? fmtDurationShort(speedToLeadData.generalAvgMinutes)
+                : null
+
+            let thermometerBadge = {
+              label: "Ritmo Equilibrado",
+              badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-200",
+              verdict:
+                "A operação está convertendo com previsibilidade. O melhor ganho agora vem de escalar as origens que pagam a conta e concentrar os convênios certos nos melhores fechadores."
+            }
+
+            if (funnelAndOriginsData.totalFunnel === 0) {
+              thermometerBadge = {
+                label: "Sem Volume no Recorte",
+                badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+                verdict:
+                  "Não há movimentação suficiente neste filtro para um diagnóstico confiável. Amplie o período ou limpe os filtros de convênio e equipe."
+              }
+            } else if (executiveSummaryData.vipCount > 0 && executiveSummaryData.vipProducao > 0) {
+              thermometerBadge = {
+                label: "Atenção ao Caixa Parado",
+                badgeClass: "bg-amber-100 text-amber-900 border-amber-300",
+                verdict: `Existe dinheiro grande esfriando dentro de casa: ${executiveSummaryData.vipCount} clientes acima de 30k já passaram de 48h sem avanço. Antes de comprar mais leads, o retorno mais rápido está em resgatar essa carteira.`
+              }
+            } else if (noContactRatioPct >= 30) {
+              thermometerBadge = {
+                label: "Gargalo na Abordagem",
+                badgeClass: "bg-amber-100 text-amber-900 border-amber-300",
+                verdict:
+                  "Uma fatia relevante dos leads está represada antes mesmo da primeira conversa. Acelerar a retomada no topo destrava vendas sem precisar aumentar o investimento em base."
+              }
+            } else if (funnelAndOriginsData.totalFechado === 0 && funnelAndOriginsData.totalAlcanceNegociacao > 0) {
+              thermometerBadge = {
+                label: "Falta Fechamento",
+                badgeClass: "bg-rose-100 text-rose-800 border-rose-200",
+                verdict:
+                  "Os leads estão chegando à negociação, mas ainda não estão virando ADE neste recorte. Vale revisar tabela, margem e abordagem de fechamento com o time."
+              }
+            } else if (speedToLeadData.generalAvgMinutes > 48 * 60) {
+              thermometerBadge = {
+                label: "Ciclo Lento",
+                badgeClass: "bg-amber-100 text-amber-900 border-amber-300",
+                verdict:
+                  "O tempo médio até a geração da ADE está alto. Em consignado, cada dia extra em negociação aumenta o risco de o cliente fechar com a concorrência ou perder a margem."
+              }
+            }
 
             return (
               <motion.div
@@ -3365,10 +3527,10 @@ export function PipelineIntelligenceDrawer({
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.97, y: 10 }}
                   transition={{ duration: 0.2 }}
-                  className="w-full max-w-5xl xl:max-w-[1140px] max-h-full bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
+                  className="w-full max-w-4xl xl:max-w-[980px] max-h-full bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden"
                   role="dialog"
                   aria-modal="true"
-                  aria-label="Resumo Executivo"
+                  aria-label="Análise do Shark"
                 >
                   {/* Cabeçalho */}
                   <div className="px-6 lg:px-8 py-4 bg-linear-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0">
@@ -3378,7 +3540,7 @@ export function PipelineIntelligenceDrawer({
                       </div>
                       <div>
                         <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
-                          Resumo Executivo
+                          Análise do Shark
                         </h3>
                       </div>
                     </div>
@@ -3386,525 +3548,440 @@ export function PipelineIntelligenceDrawer({
                       type="button"
                       onClick={() => setIsExecSummaryOpen(false)}
                       className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-                      title="Fechar Resumo Executivo"
+                      title="Fechar Análise do Shark"
                     >
                       <X className="w-5 h-5" />
                     </button>
                   </div>
 
-                  {/* Corpo Conversacional com Gráficos, Amostras e Orientações */}
-                  <div className="flex-1 overflow-y-auto px-6 lg:px-8 py-6 space-y-6 bg-slate-50/70 text-slate-800">
-                    {/* CARTA DE ABERTURA DO MENTOR */}
-                    <div className="bg-white border border-indigo-200 rounded-2xl p-5 lg:p-6 shadow-2xs space-y-3.5">
-                      <div className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                        {loggedUserName},
+                  {/* Corpo do Conselheiro (4 Blocos) */}
+                  <div className="flex-1 overflow-y-auto px-6 lg:px-8 py-6 space-y-5 bg-slate-50/70 text-slate-800">
+                    {/* BLOCO 1: TERMÔMETRO DA OPERAÇÃO */}
+                    <div className="bg-white border border-indigo-200 rounded-2xl p-5 lg:p-6 shadow-2xs space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
+                          {firstNameUser}, leitura direta da sua operação:
+                        </div>
+                        <span className={cn("px-2.5 py-1 rounded-lg border text-[11px] font-black uppercase tracking-wide", thermometerBadge.badgeClass)}>
+                          {thermometerBadge.label}
+                        </span>
                       </div>
-                      <p className="text-[13px] sm:text-sm text-slate-700 leading-relaxed">
-                        Analisando tudo o que entrou e circulou pelo pipeline <strong className="text-slate-900">{periodText}{scopeSuffix}</strong>, sua equipe movimentou{" "}
-                        <strong className="text-indigo-700">{funnelAndOriginsData.totalFunnel} atendimentos</strong>, sendo que{" "}
-                        <strong className="text-slate-900">{funnelAndOriginsData.withMarginPct}% dos leads</strong> chegaram com margem financeira viável para operação.
-                        Dessa base, <strong className="text-slate-900">{funnelAndOriginsData.totalAlcanceNegociacao} clientes ({funnelAndOriginsData.reachedNegPct}%)</strong> avançaram até a etapa de negociação e{" "}
-                        <strong className="text-emerald-700">{funnelAndOriginsData.totalFechado} viraram ADEs fechadas</strong> — uma conversão de{" "}
-                        <strong className="text-emerald-700">{funnelAndOriginsData.funnelConvPct}% sobre todo o funil</strong> (e{" "}
-                        <strong>{funnelAndOriginsData.negToAdePct}%</strong> sobre quem entrou em negociação), somando{" "}
-                        <strong className="text-emerald-700">{fmtCurrency(funnelAndOriginsData.totalProducaoFechada)}</strong> em produção fechada
-                        {funnelAndOriginsData.totalOperacaoFechada > 0 ? ` (${fmtCurrency(funnelAndOriginsData.totalOperacaoFechada)} em operação)` : ""}.
-                      </p>
-                      <p className="text-[13px] sm:text-sm text-slate-700 leading-relaxed">
-                        Neste momento, ainda existem <strong className="text-emerald-700">{fmtCurrency(stageAgingData.grandTotalCapital)}</strong> em operação ativos dentro de casa, com potencial de{" "}
-                        <strong className="text-sky-600">{fmtCurrency(stageAgingData.grandTotalProducao)} em produção estimada</strong>. Quando a equipe fecha uma proposta, o tempo médio entre iniciar a negociação e gerar a ADE está em{" "}
-                        <strong className="text-slate-900">{fmtDurationShort(speedToLeadData.generalAvgMinutes)}</strong>.
+
+                      <p className="text-[13.5px] sm:text-sm text-slate-700 leading-relaxed">
+                        {thermometerBadge.verdict}
                       </p>
 
-                      {/* RAIO-X GRÁFICO DO FUNIL (6 ETAPAS + QUEBRA DE CONTATO) */}
-                      <div className="pt-3 border-t border-slate-100 space-y-2.5">
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                          <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                            <BarChart3 className="w-4 h-4 text-indigo-600" />
-                            Raio-X Visual da Jornada ({funnelAndOriginsData.totalFunnel} leads distribuídos nas etapas)
-                          </span>
-                          <span className="text-[11px] text-slate-500">
-                            Passe o foco pelas cores para comparar onde o volume está concentrado
-                          </span>
-                        </div>
-                        <div className="w-full h-4 rounded-full bg-slate-100 overflow-hidden flex border border-slate-200">
-                          {funnelVisualSlices.map(slice => {
-                            if (slice.count <= 0) return null
-                            const pct = (slice.count / totalFunnelSafe) * 100
-                            return (
-                              <div
-                                key={slice.key}
-                                title={`${slice.label}: ${slice.count} leads (${Math.round(pct)}%)`}
-                                className={cn("h-full transition-all", slice.color)}
-                                style={{ width: `${Math.max(pct, 1.5)}%` }}
-                              />
-                            )
-                          })}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]">
-                          {funnelVisualSlices.map(slice => (
-                            <span key={`leg-${slice.key}`} className="inline-flex items-center gap-1.5 text-slate-700">
-                              <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", slice.dot)} />
-                              <span>{slice.label}:</span>
-                              <strong className={slice.text}>
-                                {slice.count} ({Math.round((slice.count / totalFunnelSafe) * 100)}%)
-                              </strong>
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                      <p className="text-[13px] text-slate-600 leading-relaxed pt-1 border-t border-slate-100">
+                        Hoje existem <strong className="text-emerald-700">{fmtCurrency(stageAgingData.grandTotalCapital)} em operação</strong> dentro de casa (com potencial de{" "}
+                        <strong className="text-sky-700">{fmtCurrency(stageAgingData.grandTotalProducao)} em produção</strong>)
+                        {funnelAndOriginsData.totalFechado > 0 ? (
+                          <>
+                            {" "}e já foram concretizados{" "}
+                            <strong className="text-emerald-700">{fmtCurrency(funnelAndOriginsData.totalProducaoFechada)}</strong> em produção fechada
+                            {avgNegotiationLabel ? <> em um ciclo médio de <strong className="text-slate-900">{avgNegotiationLabel}</strong></> : null}
+                          </>
+                        ) : null}
+                        .{" "}
+                        {leadsNeeded !== null && estimatedOpportunities !== null ? (
+                          <>
+                            Com a taxa atual de <strong className="text-slate-900">1 venda a cada {leadsNeeded} {leadsNeeded === 1 ? "lead" : "leads"}</strong> sobre os{" "}
+                            <strong className="text-slate-900">{uniqueLeads} CPFs únicos</strong> nas etapas de maior chance, você tem cerca de{" "}
+                            <strong className="text-indigo-700">{estimatedOpportunities} {estimatedOpportunities === 1 ? "oportunidade pronta" : "oportunidades prontas"}</strong> para converter na carteira atual.
+                          </>
+                        ) : (
+                          <>
+                            Você mantém <strong className="text-slate-900">{uniqueLeads} CPFs únicos</strong> nas etapas com maior chance de fechamento aguardando conversão.
+                          </>
+                        )}
+                      </p>
                     </div>
 
-                    {/* SEÇÃO 1 & 2: PONTOS POSITIVOS vs PONTOS NEGATIVOS / ATENÇÃO */}
+                    {/* BLOCOS 2 & 3: ONDE PERDEMOS DINHEIRO vs ONDE GANHAMOS TRAÇÃO */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                      {/* PONTOS POSITIVOS */}
-                      <div className="bg-white border border-emerald-200 rounded-2xl p-5 shadow-2xs space-y-3.5">
-                        <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-emerald-100">
-                          <div className="flex items-center gap-2">
-                            <span className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                              <CheckCircle2 className="w-4 h-4" />
-                            </span>
-                            <h4 className="text-xs font-black uppercase tracking-wide text-emerald-900">
-                              Pontos Positivos — O que está funcionando
-                            </h4>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3 text-[12.5px] text-slate-700 leading-relaxed">
-                          <p>
-                            • <strong>Contato no topo e força de negociação:</strong>{" "}
-                            {funnelAndOriginsData.totalEmInteracao > 0 ? (
-                              <>
-                                temos <strong className="text-sky-700">{funnelAndOriginsData.totalEmInteracao} leads interagindo ativamente</strong> na entrada do funil ({funnelAndOriginsData.interacaoPct}% dos que estão na etapa inicial)
-                                {funnelAndOriginsData.topOriginsInInteracao[0] ? `, puxados principalmente pela origem ${funnelAndOriginsData.topOriginsInInteracao[0].label}` : ""}.
-                              </>
-                            ) : (
-                              <>
-                                {funnelAndOriginsData.totalAlcanceNegociacao} leads avançaram para negociação direta ({funnelAndOriginsData.reachedNegPct}% da base).
-                              </>
-                            )}
-                          </p>
-
-                          {(executiveSummaryData.volumeLeader || executiveSummaryData.fastestOp || executiveSummaryData.topFunnelContributors[0]) && (
-                            <p>
-                              • <strong>Destaques do time:</strong>{" "}
-                              {executiveSummaryData.volumeLeader && (
-                                <>
-                                  <strong>{executiveSummaryData.volumeLeader.userName}</strong> lidera os fechamentos com{" "}
-                                  <strong className="text-emerald-700">{executiveSummaryData.volumeLeader.totalPropostasDigitadas} ADEs</strong> ({executiveSummaryData.volumeLeader.negConvRate}% de conversão em negociação).{" "}
-                                </>
-                              )}
-                              {executiveSummaryData.fastestOp && (
-                                <>
-                                  Na velocidade, <strong>{executiveSummaryData.fastestOp.userName}</strong> é a referência levando apenas{" "}
-                                  <strong className="text-emerald-700">{fmtDurationShort(executiveSummaryData.fastestOp.avgMinutesToAde)}</strong> até gerar a ADE.{" "}
-                                </>
-                              )}
-                              {executiveSummaryData.topFunnelContributors[0] && (
-                                <>
-                                  Já <strong>{executiveSummaryData.topFunnelContributors[0].userName}</strong> foi quem mais abasteceu o funil ({executiveSummaryData.topFunnelContributors[0].totalFunil} leads).
-                                </>
-                              )}
-                            </p>
-                          )}
-
-                          {executiveSummaryData.bestOriginMatches.length > 0 ? (
-                            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 space-y-1.5">
-                              <div className="text-[10.5px] font-black uppercase text-emerald-800">
-                                Origens que estão pagando o investimento:
-                              </div>
-                              {executiveSummaryData.bestOriginMatches.slice(0, 3).map(o => (
-                                <div key={`pos-orig-${o.key}`} className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="truncate">
-                                    <strong>{o.label}</strong> ({o.total} leads • {o.marginPct}% c/ margem)
-                                  </span>
-                                  <span className="font-bold text-emerald-700 shrink-0">
-                                    {o.fechado} ADEs ({o.convPct}%)
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p>• <strong>Origens em maturação:</strong> continue acompanhando as novas listas para consolidar quais entregam mais ADEs por real investido.</p>
-                          )}
-
-                          {executiveSummaryData.bestConvenioMatches.length > 0 && (
-                            <p>
-                              • <strong>Afinidade comprovada na roleta:</strong>{" "}
-                              {executiveSummaryData.bestConvenioMatches.slice(0, 2).map((m, idx) => (
-                                <span key={`aff-pos-${m.convenio}-${m.userName}`}>
-                                  {idx > 0 ? " e " : ""}
-                                  <strong>{m.userName}</strong> em <strong>{m.convenio}</strong> ({m.rate}% em {m.total} negociações)
-                                </span>
-                              ))}
-                              {executiveSummaryData.bestHighTierMatch && (
-                                <>
-                                  {" "}— e <strong>{executiveSummaryData.bestHighTierMatch.userName}</strong> performa melhor em tickets acima de 30k ({executiveSummaryData.bestHighTierMatch.rate}%).
-                                </>
-                              )}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* PONTOS NEGATIVOS & ATENÇÃO */}
-                      <div className="bg-white border border-rose-200 rounded-2xl p-5 shadow-2xs space-y-3.5">
-                        <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-rose-100">
-                          <div className="flex items-center gap-2">
+                      {/* BLOCO 2: ONDE ESTAMOS DEIXANDO DINHEIRO NA MESA */}
+                      <div className="bg-white border border-rose-200 rounded-2xl p-5 shadow-2xs flex flex-col justify-between space-y-4">
+                        <div className="space-y-3.5">
+                          <div className="flex items-center gap-2 pb-2.5 border-b border-rose-100">
                             <span className="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
                               <AlertTriangle className="w-4 h-4" />
                             </span>
                             <h4 className="text-xs font-black uppercase tracking-wide text-rose-900">
-                              Pontos Negativos &amp; O que precisa de atenção
+                              Onde estamos deixando dinheiro na mesa
                             </h4>
                           </div>
-                        </div>
 
-                        <div className="space-y-3 text-[12.5px] text-slate-700 leading-relaxed">
-                          <p>
-                            • <strong>Gargalo de contato &amp; perdas:</strong>{" "}
-                            ainda temos <strong className="text-amber-700">{funnelAndOriginsData.totalEmRetomadaSemContato} leads sem resposta em Retomada</strong>
-                            {funnelAndOriginsData.topOriginsInRetomada[0] ? ` (maior volume vindo de ${funnelAndOriginsData.topOriginsInRetomada[0].label})` : ""}, além de{" "}
-                            <strong className="text-purple-700">{funnelAndOriginsData.totalReativacao} em reativação</strong> e{" "}
-                            <strong className="text-rose-700">{funnelAndOriginsData.totalPerdido} atendimentos perdidos</strong>.
-                          </p>
-
-                          {executiveSummaryData.alertOrigins.length > 0 && (
-                            <div className="bg-rose-50/70 border border-rose-200/80 rounded-xl p-3 space-y-1.5">
-                              <div className="text-[10.5px] font-black uppercase text-rose-800">
-                                Cuidado ao investir nestas origens (baixo contato/margem):
-                              </div>
-                              {executiveSummaryData.alertOrigins.slice(0, 3).map(o => (
-                                <div key={`neg-orig-${o.key}`} className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="truncate">
-                                    <strong>{o.label}</strong> ({o.total} leads • {o.marginPct}% margem)
-                                  </span>
-                                  <span className="font-semibold text-rose-700 shrink-0 text-[11px]">
-                                    {o.roiVerdict}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          <p>
-                            • <strong>Risco de queima (&gt;48h sem avanço):</strong>{" "}
-                            há <strong className="text-rose-700">{stageAgingData.grandTotalStuck48hCount} leads ativos ({executiveSummaryData.stuckBasePct}% da base)</strong> parados há mais de 2 dias. Entre eles,{" "}
-                            <strong className="text-orange-700">{executiveSummaryData.vipCount} são clientes VIP (&gt;30k)</strong> que somam{" "}
-                            <strong className="text-sky-700">{fmtCurrency(executiveSummaryData.vipProducao)} em produção estimada</strong>
-                            {executiveSummaryData.topVipStage ? `, concentrados principalmente em ${executiveSummaryData.topVipStage.label}` : ""}.
-                          </p>
-
-                          {(executiveSummaryData.lowEntryOps.length > 0 || executiveSummaryData.bottleneckOps.length > 0) && (
+                          <div className="space-y-3 text-[12.5px] text-slate-700 leading-relaxed">
                             <p>
-                              • <strong>Desequilíbrio na equipe:</strong>{" "}
-                              {executiveSummaryData.lowEntryOps.length > 0 && (
+                              • <strong>Produção esfriando sem retorno:</strong>{" "}
+                              {stageAgingData.grandTotalStuck48hCount > 0 ? (
                                 <>
-                                  {executiveSummaryData.lowEntryOps.slice(0, 2).map((op, i) => (
-                                    <span key={`low-txt-${op.userId}`}>
-                                      {i > 0 ? ", " : ""}
-                                      <strong>{op.userName}</strong> ({op.totalFunil} leads)
+                                  há <strong className="text-rose-700">{stageAgingData.grandTotalStuck48hCount} atendimentos parados há mais de 48h</strong>.{" "}
+                                  {executiveSummaryData.vipCount > 0 ? (
+                                    <>
+                                      O ponto mais sensível são os <strong className="text-orange-700">{executiveSummaryData.vipCount} clientes acima de 30k</strong> ({fmtCurrency(executiveSummaryData.vipProducao)} em produção parada
+                                      {executiveSummaryData.topVipStage ? `, concentrados em ${executiveSummaryData.topVipStage.label}` : ""}).
+                                    </>
+                                  ) : (
+                                    <>Nenhum acima de 30k parado no momento, mas manter leads mais de 2 dias sem toque derruba a conversão.</>
+                                  )}
+                                </>
+                              ) : (
+                                <>carteira em dia — não há atendimentos ativos parados há mais de 48h neste recorte.</>
+                              )}
+                            </p>
+
+                            <p>
+                              • <strong>Desperdício de entrada e origens:</strong>{" "}
+                              {funnelAndOriginsData.totalEmRetomadaSemContato > 0 || funnelAndOriginsData.totalPerdido > 0 ? (
+                                <>
+                                  temos <strong className="text-amber-700">{funnelAndOriginsData.totalEmRetomadaSemContato} leads sem primeiro contato</strong> em Retomada
+                                  {funnelAndOriginsData.topOriginsInRetomada[0] ? ` (maior acúmulo em ${funnelAndOriginsData.topOriginsInRetomada[0].label})` : ""} e{" "}
+                                  <strong className="text-rose-700">{funnelAndOriginsData.totalPerdido} perdas</strong>.{" "}
+                                </>
+                              ) : (
+                                <>fluxo de entrada limpo no recorte atual. </>
+                              )}
+                              {executiveSummaryData.alertOrigins.length > 0 && (
+                                <>
+                                  Vale frear ou revisar abordagem em{" "}
+                                  {executiveSummaryData.alertOrigins.slice(0, 2).map((o, idx) => (
+                                    <span key={`cons-alert-orig-${o.key}`}>
+                                      {idx > 0 ? " e " : ""}
+                                      <strong>{o.label}</strong>
                                     </span>
                                   ))}{" "}
-                                  estão colocando menos leads no funil do que a média da operação ({speedToLeadData.avgLeadsPerOp} leads/pessoa).{" "}
-                                </>
-                              )}
-                              {executiveSummaryData.bottleneckOps.length > 0 && (
-                                <>
-                                  Em velocidade/conversão, vale acompanhar de perto{" "}
-                                  {executiveSummaryData.bottleneckOps.slice(0, 2).map((op, i) => (
-                                    <span key={`bn-txt-${op.userId}`}>
-                                      {i > 0 ? " e " : ""}
-                                      <strong>{op.userName}</strong> ({op.convRate}% avanço, SLA {fmtDurationShort(op.avgMinutesToAde)})
-                                    </span>
-                                  ))}.
+                                  pelo baixo retorno frente ao esforço exigido.
                                 </>
                               )}
                             </p>
-                          )}
 
-                          {executiveSummaryData.wasteMatches.length > 0 && (
-                            <p>
-                              • <strong>Desperdício de roleta:</strong> evite direcionar{" "}
-                              {executiveSummaryData.wasteMatches.slice(0, 2).map((w, i) => (
-                                <span key={`w-txt-${w.userName}-${w.convenio}`}>
-                                  {i > 0 ? " ou " : ""}
-                                  <strong>{w.convenio}</strong> para <strong>{w.userName}</strong> ({w.rate}% em {w.total} leads)
-                                </span>
-                              ))}.
-                            </p>
-                          )}
+                            {(executiveSummaryData.lowEntryOps.length > 0 || executiveSummaryData.bottleneckOps.length > 0) && (
+                              <p>
+                                • <strong>Ritmo da equipe:</strong>{" "}
+                                {executiveSummaryData.lowEntryOps.length > 0 && (
+                                  <>
+                                    <strong>{executiveSummaryData.lowEntryOps.slice(0, 2).map(o => o.userName).join(" e ")}</strong> estão alimentando o funil bem abaixo da média da operação.{" "}
+                                  </>
+                                )}
+                                {executiveSummaryData.bottleneckOps.length > 0 && (
+                                  <>
+                                    Já <strong>{executiveSummaryData.bottleneckOps.slice(0, 2).map(o => o.userName).join(" e ")}</strong> merecem acompanhamento mais próximo na virada de negociação para ADE.
+                                  </>
+                                )}
+                              </p>
+                            )}
 
-                          {executiveSummaryData.totalDuplicateClients > 0 && (
-                            <p>
-                              • <strong>Higienização de carteira:</strong> existem{" "}
-                              <strong className="text-rose-700">{executiveSummaryData.totalDuplicateClients} CPFs duplicados</strong> em cards ativos ao mesmo tempo — risco de dois colaboradores abordarem o mesmo cliente.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* SEÇÃO 3: GRÁFICOS COMPARATIVOS (ORIGENS & EQUIPE) */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                      {/* Gráfico de Origens */}
-                      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
-                              Principais Origens de Leads
-                            </h4>
-                            <p className="text-[11px] text-slate-500">Volume no funil, % com margem viável e ADEs convertidas</p>
+                            {executiveSummaryData.wasteMatches.length > 0 && (
+                              <p>
+                                • <strong>Desperdício na roleta:</strong>{" "}
+                                evite mandar <strong>{executiveSummaryData.wasteMatches[0].convenio}</strong> para <strong>{executiveSummaryData.wasteMatches[0].userName}</strong> na roleta (histórico fraco de conversão).
+                              </p>
+                            )}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveTab("funnel")
-                              setIsExecSummaryOpen(false)
-                            }}
-                            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer flex items-center gap-1"
-                          >
-                            <span>Ver todas</span>
-                            <ArrowRight className="w-3 h-3" />
-                          </button>
                         </div>
 
-                        {topOriginsChart.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic py-4">Sem dados de origem neste filtro.</p>
-                        ) : (
-                          <div className="space-y-2.5 pt-1">
-                            {topOriginsChart.map(o => {
-                              const barWidth = Math.max(6, Math.round((o.total / maxOriginCount) * 100))
-                              const adeWidth = o.total > 0 ? Math.round((o.fechado / maxOriginCount) * 100) : 0
-                              return (
-                                <div key={`chart-orig-${o.key}`} className="space-y-1">
-                                  <div className="flex items-center justify-between text-[11px]">
-                                    <span className="font-bold text-slate-800 truncate pr-2" title={o.label}>{o.label}</span>
-                                    <span className="text-slate-600 shrink-0 tabular-nums">
-                                      <strong>{o.total}</strong> leads • <span className="text-sky-700 font-semibold">{o.marginPct}% margem</span> •{" "}
-                                      <strong className="text-emerald-700">{o.fechado} ADEs ({o.convPct}%)</strong>
-                                    </span>
-                                  </div>
-                                  <div className="w-full h-3 rounded-full bg-slate-100 overflow-hidden relative border border-slate-200/80">
-                                    <div className="h-full bg-indigo-200 rounded-full" style={{ width: `${barWidth}%` }} />
-                                    {adeWidth > 0 && (
-                                      <div className="h-full bg-emerald-500 rounded-full absolute left-0 top-0" style={{ width: `${Math.max(adeWidth, 3)}%` }} />
-                                    )}
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Gráfico de Equipe */}
-                      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-2xs space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <h4 className="text-xs font-black uppercase tracking-wide text-slate-900">
-                              Produção da Equipe
-                            </h4>
-                            <p className="text-[11px] text-slate-500">Leads colocados no funil vs propostas fechadas (ADE)</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveTab("funnel")
-                              setIsExecSummaryOpen(false)
-                            }}
-                            className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer flex items-center gap-1"
-                          >
-                            <span>Auditar equipe</span>
-                            <ArrowRight className="w-3 h-3" />
-                          </button>
-                        </div>
-
-                        {topTeamChart.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic py-4">Sem operadores atribuídos neste filtro.</p>
-                        ) : (
-                          <div className="space-y-2.5 pt-1">
-                            {topTeamChart.map(op => {
-                              const funilWidth = Math.max(6, Math.round((op.totalFunil / maxTeamFunil) * 100))
-                              const adeWidth = op.totalPropostasDigitadas > 0 ? Math.round((op.totalPropostasDigitadas / maxTeamFunil) * 100) : 0
-                              return (
-                                <div key={`chart-op-${op.userId}`} className="space-y-1">
-                                  <div className="flex items-center justify-between text-[11px]">
-                                    <span className="font-bold text-slate-800 truncate pr-2">
-                                      {op.userName} <span className="text-[10px] font-normal text-slate-500">({op.roleLabel})</span>
-                                    </span>
-                                    <span className="text-slate-600 shrink-0 tabular-nums">
-                                      <strong>{op.totalFunil}</strong> funil •{" "}
-                                      <strong className="text-emerald-700">{op.totalPropostasDigitadas} ADEs ({op.funnelConvRate}%)</strong>
-                                    </span>
-                                  </div>
-                                  <div className="w-full h-3 rounded-full bg-slate-100 overflow-hidden relative border border-slate-200/80">
-                                    <div className="h-full bg-sky-200 rounded-full" style={{ width: `${funilWidth}%` }} />
-                                    {adeWidth > 0 && (
-                                      <div className="h-full bg-emerald-500 rounded-full absolute left-0 top-0" style={{ width: `${Math.max(adeWidth, 3)}%` }} />
-                                    )}
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* SEÇÃO 4: AMOSTRAS REAIS DE VIPS EM RISCO E DUPLICIDADES + PLANO DO MENTOR */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                      {/* Amostras de Clientes VIP (>30k) parados >48h */}
-                      <div className="bg-white border border-orange-200 rounded-2xl p-5 shadow-2xs space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <h4 className="text-xs font-black uppercase tracking-wide text-orange-900 flex items-center gap-1.5">
-                              <Flame className="w-4 h-4 text-orange-600" />
-                              Leads de 30K para cima parados a mais de 48 horas
-                            </h4>
-                            <p className="text-[11px] text-slate-500">Clientes reais com maior produção parada para resgate imediato</p>
-                          </div>
-                          {executiveSummaryData.vipCount > 0 && (
+                        {stageAgingData.grandTotalStuck48hCount > 0 && (
+                          <div className="pt-2 border-t border-rose-100 flex justify-end">
                             <button
                               type="button"
                               onClick={() => {
                                 setActiveTab("risk")
-                                setRiskTierFilter("high")
+                                setRiskTierFilter("all")
                                 setRiskStageFilters([])
                                 setSearchRiskQuery("")
                                 setIsExecSummaryOpen(false)
                               }}
-                              className="px-2.5 py-1 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-[11px] font-bold cursor-pointer shrink-0"
+                              className="text-[11px] font-bold text-rose-700 hover:text-rose-900 inline-flex items-center gap-1 cursor-pointer"
                             >
-                              Ver todos ({executiveSummaryData.vipCount})
+                              <span>Ir para o Radar de Risco</span>
+                              <ArrowRight className="w-3 h-3" />
                             </button>
-                          )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* BLOCO 3: O QUE ESTÁ PUXANDO O RESULTADO */}
+                      <div className="bg-white border border-emerald-200 rounded-2xl p-5 shadow-2xs flex flex-col justify-between space-y-4">
+                        <div className="space-y-3.5">
+                          <div className="flex items-center gap-2 pb-2.5 border-b border-emerald-100">
+                            <span className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                              <TrendingUp className="w-4 h-4" />
+                            </span>
+                            <h4 className="text-xs font-black uppercase tracking-wide text-emerald-900">
+                              O que está puxando o resultado para cima
+                            </h4>
+                          </div>
+
+                          <div className="space-y-3 text-[12.5px] text-slate-700 leading-relaxed">
+                            {(executiveSummaryData.volumeLeader || executiveSummaryData.fastestOp || executiveSummaryData.topFunnelContributors[0]) ? (
+                              <p>
+                                • <strong>Referências internas para espelhar:</strong>{" "}
+                                {executiveSummaryData.volumeLeader && (
+                                  <>
+                                    <strong>{executiveSummaryData.volumeLeader.userName}</strong> puxa o resultado em volume de fechamento ({executiveSummaryData.volumeLeader.totalPropostasDigitadas} ADEs).{" "}
+                                  </>
+                                )}
+                                {executiveSummaryData.fastestOp && (
+                                  <>
+                                    Em agilidade, <strong>{executiveSummaryData.fastestOp.userName}</strong> dita o ritmo fechando em média em <strong className="text-emerald-700">{fmtDurationShort(executiveSummaryData.fastestOp.avgMinutesToAde)}</strong>.{" "}
+                                  </>
+                                )}
+                                {executiveSummaryData.topFunnelContributors[0] && executiveSummaryData.topFunnelContributors[0].userName !== executiveSummaryData.volumeLeader?.userName && (
+                                  <>
+                                    Na geração de frente, <strong>{executiveSummaryData.topFunnelContributors[0].userName}</strong> foi quem mais trouxe oportunidades novas.
+                                  </>
+                                )}
+                              </p>
+                            ) : (
+                              <p>
+                                • <strong>Construção de referência:</strong> assim que os primeiros fechamentos do recorte entrarem, você verá aqui quem está puxando a conversão e a velocidade da equipe.
+                              </p>
+                            )}
+
+                            {executiveSummaryData.bestOriginMatches.length > 0 ? (
+                              <p>
+                                • <strong>Origens que justificam escala:</strong>{" "}
+                                {executiveSummaryData.bestOriginMatches.slice(0, 2).map((o, idx) => {
+                                  const leadsPerSaleOrigin = o.fechado > 0 ? Math.max(1, Math.round(o.total / o.fechado)) : null
+                                  return (
+                                    <span key={`cons-best-orig-${o.key}`}>
+                                      {idx > 0 ? " e " : ""}
+                                      <strong>{o.label}</strong>
+                                      {leadsPerSaleOrigin !== null ? ` (~${leadsPerSaleOrigin} leads por venda)` : ` (${o.marginPct}% com margem)`}
+                                    </span>
+                                  )
+                                })}
+                                {" "}estão entregando os leads mais saudáveis para o time focar energia.
+                              </p>
+                            ) : (
+                              <p>
+                                • <strong>Maturação de origens:</strong> siga concentrando esforço nas listas com maior taxa de margem viável para acelerar os próximos fechamentos.
+                              </p>
+                            )}
+
+                            {(executiveSummaryData.bestConvenioMatches.length > 0 || executiveSummaryData.bestHighTierMatch) && (
+                              <p>
+                                • <strong>Combinações vencedoras na roleta:</strong>{" "}
+                                {executiveSummaryData.bestConvenioMatches.slice(0, 2).map((m, idx) => (
+                                  <span key={`cons-aff-${m.convenio}-${m.userName}`}>
+                                    {idx > 0 ? " e " : ""}
+                                    <strong>{m.userName}</strong> performa acima da média em <strong>{m.convenio}</strong>
+                                  </span>
+                                ))}
+                                {executiveSummaryData.bestHighTierMatch && (
+                                  <>
+                                    {executiveSummaryData.bestConvenioMatches.length > 0 ? ", enquanto " : ""}
+                                    <strong>{executiveSummaryData.bestHighTierMatch.userName}</strong> se destaca nos tickets acima de 30k
+                                  </>
+                                )}
+                                . Vale priorizar esse direcionamento na distribuição.
+                              </p>
+                            )}
+                          </div>
                         </div>
 
-                        {executiveSummaryData.vipSamples.length === 0 ? (
-                          <div className="py-4 text-xs text-emerald-700 font-medium flex items-center gap-2">
-                            <CheckCircle2 className="w-4 h-4 shrink-0" />
-                            <span>Nenhum lead VIP (&gt;30k) parado há mais de 48h neste recorte.</span>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            {executiveSummaryData.vipSamples.map(item => (
-                              <div key={`vip-sample-${item.ticket.id}`} className="p-3 rounded-xl bg-orange-50/50 border border-orange-200/80 flex items-center justify-between gap-3 text-xs">
-                                <div className="min-w-0">
-                                  <div className="font-bold text-slate-900 truncate">{item.ticket.cliente_nome || "Cliente sem Nome"}</div>
-                                  <div className="text-[11px] text-slate-600 truncate">
-                                    {item.ticket.convenio || "Convênio N/I"} • {item.ticket.user_nome || "Sem responsável"} • <strong className="text-rose-600">{Math.floor(item.hoursInactive / 24)}d parado</strong>
-                                  </div>
-                                </div>
-                                <div className="text-right shrink-0 flex items-center gap-2.5">
-                                  <div>
-                                    <div className="font-black text-emerald-700">{fmtCurrency(item.valorOperacao)}</div>
-                                    <div className="text-[10px] font-bold text-sky-600">Prod: {fmtCurrency(item.valorProducao)}</div>
-                                  </div>
-                                  {onSelectTicket && (
-                                    <button
-                                      type="button"
-                                      onClick={() => onSelectTicket(item.ticket)}
-                                      className="p-1.5 rounded-lg bg-slate-900 hover:bg-indigo-600 text-white cursor-pointer transition-colors"
-                                      title="Abrir atendimento"
-                                    >
-                                      <ExternalLink className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Recomendações Práticas do Mentor + Amostra de Duplicidades */}
-                      <div className="bg-white border border-indigo-200 rounded-2xl p-5 shadow-2xs space-y-3">
-                        <h4 className="text-xs font-black uppercase tracking-wide text-indigo-950 flex items-center gap-1.5">
-                          <Award className="w-4 h-4 text-indigo-600" />
-                          Sugestões para você agir hoje
-                        </h4>
-                        <ol className="space-y-2 text-[12px] text-slate-700 leading-relaxed list-decimal list-inside">
-                          <li>
-                            <strong>Destrave o dinheiro mais rápido:</strong>{" "}
-                            {executiveSummaryData.vipCount > 0 ? (
-                              <>cobre a equipe o resgate dos <strong>{executiveSummaryData.vipCount} VIPs</strong> no Radar de Risco antes que esfriem de vez ({fmtCurrency(executiveSummaryData.vipProducao)} em jogo).</>
-                            ) : (
-                              <>mantenha o acompanhamento diário sobre os leads em negociação ({executiveSummaryData.negStage?.count || 0} ativos) para não ultrapassarem 48h sem retorno.</>
-                            )}
-                          </li>
-                          <li>
-                            <strong>Ajuste o foco das compras de leads:</strong>{" "}
-                            {executiveSummaryData.alertOrigins[0] ? (
-                              <>revise a base <strong>{executiveSummaryData.alertOrigins[0].label}</strong> ({executiveSummaryData.alertOrigins[0].roiVerdict}) e priorize canais como <strong>{executiveSummaryData.bestOriginMatches[0]?.label || "os de maior margem"}</strong>.</>
-                            ) : (
-                              <>acompanhe na aba Funil &amp; Origens quais listas convertem melhor acima de 60% de margem viável.</>
-                            )}
-                          </li>
-                          <li>
-                            <strong>Alinhe roleta e volume individual:</strong>{" "}
-                            {executiveSummaryData.bestConvenioMatches[0] ? (
-                              <>use a Matriz de Afinidade para priorizar <strong>{executiveSummaryData.bestConvenioMatches[0].convenio}</strong> com <strong>{executiveSummaryData.bestConvenioMatches[0].userName}</strong> ({executiveSummaryData.bestConvenioMatches[0].rate}% de acerto)</>
-                            ) : (
-                              <>acompanhe a taxa de conversão individual na aba Eficiência da Equipe</>
-                            )}
-                            {executiveSummaryData.lowEntryOps[0] ? ` e cobre mais entrada no funil de ${executiveSummaryData.lowEntryOps[0].userName}.` : "."}
-                          </li>
-                        </ol>
-
-                        {executiveSummaryData.duplicateConflicts.length > 0 && (
-                          <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10.5px] font-black uppercase text-rose-700 flex items-center gap-1">
-                                <ShieldAlert className="w-3.5 h-3.5" />
-                                Amostra de CPFs Duplicados ({executiveSummaryData.totalDuplicateClients})
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const firstDup = executiveSummaryData.duplicateConflicts[0]
-                                  setActiveTab("risk")
-                                  setRiskTierFilter("all")
-                                  setRiskStageFilters([])
-                                  setSearchRiskQuery(firstDup ? firstDup.cpfDigits : "")
-                                  setIsExecSummaryOpen(false)
-                                }}
-                                className="text-[11px] font-bold text-rose-700 hover:underline cursor-pointer"
-                              >
-                                Filtrar no Radar
-                              </button>
-                            </div>
-                            {executiveSummaryData.duplicateConflicts.slice(0, 2).map(dup => (
-                              <div key={`dup-mini-${dup.cpfDigits}`} className="text-[11px] text-slate-600 flex items-center justify-between gap-2 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
-                                <span className="relative group/dup min-w-0 flex items-center">
-                                  <span className="truncate cursor-help">
-                                    <strong>{dup.clientName}</strong> ({dup.ticketCount} cards: {dup.uniqueOperators.join(", ")})
-                                  </span>
-                                  <span
-                                    role="tooltip"
-                                    className="pointer-events-none opacity-0 group-hover/dup:opacity-100 transition-opacity duration-150 absolute left-0 bottom-full mb-1.5 z-50 w-72 sm:w-80 rounded-lg bg-slate-900 text-white text-[11px] font-medium text-left leading-relaxed px-3 py-2 shadow-xl border border-slate-700 whitespace-normal"
-                                  >
-                                    <span className="block font-bold text-amber-300 mb-1">
-                                      Atuando neste CPF ({dup.ticketCount} cards):
-                                    </span>
-                                    <span className="block text-slate-100">
-                                      {dup.uniqueOperators.join(" • ")}
-                                    </span>
-                                  </span>
-                                </span>
-                                <span className="font-bold text-emerald-700 shrink-0">{fmtCurrency(dup.maxOperacao)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        <div className="pt-2 border-t border-emerald-100 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab("affinity")
+                              setIsExecSummaryOpen(false)
+                            }}
+                            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>Ver Matriz de Afinidade</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
                     </div>
+
+                    {/* BLOCO 4: PLANO DE AÇÃO PARA HOJE */}
+                    <div className="bg-white border border-indigo-200 rounded-2xl p-5 lg:p-6 shadow-2xs space-y-3.5">
+                      <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-indigo-100">
+                        <h4 className="text-xs font-black uppercase tracking-wide text-indigo-950 flex items-center gap-1.5">
+                          <Award className="w-4 h-4 text-indigo-600" />
+                          Plano de Ação para Hoje — Se eu estivesse na sua cadeira
+                        </h4>
+                        <span className="text-[11px] font-semibold text-indigo-600">
+                          Ordem sugerida por impacto no caixa
+                        </span>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        {/* Ação 1 */}
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="text-[12.5px] text-slate-700 leading-relaxed">
+                            <span className="font-black text-indigo-700 mr-1.5">1.</span>
+                            <strong>Destrave o dinheiro mais perto do fechamento:</strong>{" "}
+                            {executiveSummaryData.vipCount > 0 ? (
+                              <>
+                                comece cobrando o resgate dos <strong>{executiveSummaryData.vipCount} clientes acima de 30k</strong> parados há mais de 48h — são <strong>{fmtCurrency(executiveSummaryData.vipProducao)}</strong> em produção que podem virar ADE ainda esta semana.
+                              </>
+                            ) : (
+                              <>
+                                acompanhe de perto os <strong>{executiveSummaryData.negStage?.count || 0} leads em negociação</strong> para garantir retorno no mesmo dia e evitar perda de timing.
+                              </>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (executiveSummaryData.vipCount > 0) {
+                                setActiveTab("risk")
+                                setRiskTierFilter("high")
+                                setRiskStageFilters([])
+                                setSearchRiskQuery("")
+                              } else {
+                                setActiveTab("funnel")
+                              }
+                              setIsExecSummaryOpen(false)
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-indigo-600 text-white text-[11px] font-bold cursor-pointer transition-colors shrink-0 inline-flex items-center gap-1 self-start sm:self-center"
+                          >
+                            <span>{executiveSummaryData.vipCount > 0 ? "Ver VIPs no Radar" : "Abrir Funil"}</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {/* Ação 2 */}
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="text-[12.5px] text-slate-700 leading-relaxed">
+                            <span className="font-black text-indigo-700 mr-1.5">2.</span>
+                            <strong>Ajuste onde você está colocando verba e esforço:</strong>{" "}
+                            {worstOrigin ? (
+                              <>
+                                segure novas cargas ou revise a abordagem em <strong>{worstOrigin.label}</strong> e redirecione a energia do time para <strong>{bestOrigin ? bestOrigin.label : "as origens com melhor conversão"}</strong>.
+                              </>
+                            ) : bestOrigin ? (
+                              <>
+                                priorize abastecer o funil com <strong>{bestOrigin.label}</strong>, que vem entregando a melhor resposta comercial no recorte atual.
+                              </>
+                            ) : (
+                              <>
+                                compare na Auditoria de Origens quantos leads cada lista exige para fechar 1 venda antes de renovar novas compras.
+                              </>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab("funnel")
+                              setIsExecSummaryOpen(false)
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-[11px] font-bold cursor-pointer transition-colors shrink-0 inline-flex items-center gap-1 self-start sm:self-center"
+                          >
+                            <span>Auditar Origens</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                        {/* Ação 3 */}
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="text-[12.5px] text-slate-700 leading-relaxed">
+                            <span className="font-black text-indigo-700 mr-1.5">3.</span>
+                            <strong>Calibre a roleta e o acompanhamento individual:</strong>{" "}
+                            {executiveSummaryData.bestConvenioMatches[0] ? (
+                              <>
+                                direcione <strong>{executiveSummaryData.bestConvenioMatches[0].convenio}</strong> preferencialmente para <strong>{executiveSummaryData.bestConvenioMatches[0].userName}</strong>
+                                {executiveSummaryData.wasteMatches[0] ? ` (evitando ${executiveSummaryData.wasteMatches[0].convenio} com ${executiveSummaryData.wasteMatches[0].userName})` : ""}
+                              </>
+                            ) : (
+                              <>use a Matriz de Afinidade para alinhar cada convênio ao perfil que mais converte</>
+                            )}
+                            {executiveSummaryData.lowEntryOps[0]
+                              ? ` e alinhe meta mínima diária de entrada com ${executiveSummaryData.lowEntryOps[0].userName}.`
+                              : "."}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab("affinity")
+                              setIsExecSummaryOpen(false)
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-[11px] font-bold cursor-pointer transition-colors shrink-0 inline-flex items-center gap-1 self-start sm:self-center"
+                          >
+                            <span>Abrir Afinidade</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        </div>
+
+                      </div>
+                    </div>
+
+                    {/* BLOCO 5: CPFs EM ATENDIMENTO SIMULTÂNEO (ORIENTAÇÃO DOS GESTORES) */}
+                    {executiveSummaryData.duplicateConflicts.length > 0 && (
+                      <div className="bg-white border border-sky-200 rounded-2xl p-5 lg:p-6 shadow-2xs space-y-3.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-sky-100">
+                          <div>
+                            <h4 className="text-xs font-black uppercase tracking-wide text-sky-950 flex items-center gap-1.5">
+                              <Users className="w-4 h-4 text-sky-600" />
+                              CPFs em Atendimento Simultâneo ({executiveSummaryData.totalDuplicateClients})
+                            </h4>
+                            <p className="text-xs text-slate-700 mt-0.5">
+                              Leads trabalhados ao mesmo tempo por mais de um corretor/estagiário — acompanhe para instruir ou apoiar a negociação mais promissora.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                          {executiveSummaryData.duplicateConflicts.map(dup => (
+                            <div
+                              key={`sim-cpf-${dup.cpfDigits}`}
+                              className="p-3 rounded-xl bg-sky-50/50 border border-sky-200/80 space-y-1.5"
+                            >
+                              <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <strong className="text-slate-900 truncate">{dup.clientName}</strong>
+                                <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-[11px] font-mono font-semibold text-slate-700">
+                                  {dup.displayCpf}
+                                </span>
+                                {dup.maxOperacao > 0 && (
+                                  <span className="text-[11px] font-bold text-emerald-700">
+                                    Maior op.: {fmtCurrency(dup.maxOperacao)}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {dup.attendances.map((att, idx) => (
+                                  <button
+                                    key={`sim-att-${dup.cpfDigits}-${att.ticketId}`}
+                                    type="button"
+                                    onClick={() => onSelectTicket?.(att.ticket)}
+                                    className={cn(
+                                      "inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] transition-colors",
+                                      onSelectTicket ? "cursor-pointer hover:border-indigo-400" : "cursor-default",
+                                      idx === 0
+                                        ? "bg-white border-emerald-300 text-slate-800 shadow-2xs"
+                                        : "bg-white/80 border-slate-200 text-slate-700"
+                                    )}
+                                    title={onSelectTicket ? `Abrir atendimento de ${att.operatorName}` : undefined}
+                                  >
+                                    <strong className="text-slate-900">{att.operatorName}</strong>
+                                    <span className="text-slate-400">•</span>
+                                    <span className={cn("font-semibold", idx === 0 ? "text-emerald-700" : "text-slate-600")}>
+                                      {att.stageLabel}
+                                    </span>
+                                    {att.opVal > 0 && (
+                                      <>
+                                        <span className="text-slate-400">•</span>
+                                        <span className="font-bold text-slate-800 tabular-nums">{fmtCurrency(att.opVal)}</span>
+                                      </>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Rodapé do Modal */}
                   <div className="px-6 lg:px-8 py-3.5 bg-white border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
                     <span className="text-[11px] text-slate-500">
-                      Conversa gerada em tempo real com base nos filtros aplicados no painel.
+                      Diagnóstico atualizado em tempo real conforme os filtros do painel.
                     </span>
                     <button
                       type="button"
