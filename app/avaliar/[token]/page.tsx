@@ -523,7 +523,7 @@ export default function AvaliacaoCandidatoPage({ params }: PageProps) {
                   4. Disponibilidade
                 </span>
                 <span className="text-sm font-bold text-slate-900 block">
-                  Considerando que o estágio acontece das 9h às 15h ou das 13h às 19h, qual horário seria mais compatível com sua rotina?
+                  Considerando que o estágio acontece das 9h às 15h10min ou das 13h às 19h, qual horário seria mais compatível com sua rotina?
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

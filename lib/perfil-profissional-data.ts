@@ -1461,7 +1461,7 @@ export const PERIODO_ESTUDO_OPCOES = [
 ] as const
 
 export const DISPONIBILIDADE_ESTAGIO_OPCOES = [
-  "das 9h às 15h",
+  "das 9h às 15h10min",
   "das 13h às 19h"
 ] as const
 
