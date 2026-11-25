@@ -129,6 +129,48 @@ export const hasProposalDigitacao = (proposal: any): boolean => {
   return false
 }
 
+/**
+ * Verifica se uma proposta pertence ao ciclo atual após reativação de uma ficha que estava em FECHADO/PERDIDO.
+ */
+export function isProposalAfterReactivation(
+  proposal: { created_at?: string | null; data_digitacao?: string | null; ade?: string | null } | null | undefined,
+  meta?: Record<string, any> | null
+): boolean {
+  if (!meta || !meta.reativado_em) return true
+  if (!proposal) return false
+
+  const propAde = String(proposal.ade || "").trim()
+  const prevAde = String(meta.reativado_ade_anterior || "").trim()
+  if (propAde && prevAde && propAde === prevAde) {
+    return false
+  }
+
+  const reatTs = new Date(String(meta.reativado_em)).getTime()
+  if (isNaN(reatTs)) return true
+
+  if (proposal.created_at) {
+    const createdTs = new Date(String(proposal.created_at)).getTime()
+    if (!isNaN(createdTs)) {
+      return createdTs > reatTs
+    }
+  }
+
+  const dataDig = String(proposal.data_digitacao || "").trim()
+  if (dataDig && dataDig !== "-") {
+    const reatYmd = new Date(reatTs).toISOString().slice(0, 10)
+    const isoMatch = dataDig.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    if (isoMatch) {
+      return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}` > reatYmd
+    }
+    const brMatch = dataDig.match(/^(\d{2})\/(\d{2})\/(\d{4})/)
+    if (brMatch) {
+      return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}` > reatYmd
+    }
+  }
+
+  return false
+}
+
 import { supabase } from "@/lib/supabase"
 
 export const syncKanbanForClosedProposal = async (info: ProposalSyncInfo): Promise<void> => {
@@ -175,6 +217,15 @@ export const syncKanbanForClosedProposal = async (info: ProposalSyncInfo): Promi
       const fOpId = String(ficha.operador_id || "").trim()
       const fOpNome = String(ficha.operador_nome || "").trim()
       const meta = typeof ficha.metadata === "object" && ficha.metadata ? { ...ficha.metadata } : {}
+
+      if (
+        ficha.etapa !== "FECHADO" &&
+        ficha.etapa !== "PERDIDO" &&
+        meta.reativado_em &&
+        !isProposalAfterReactivation({ created_at: createdAt, data_digitacao: dataDigitacao, ade }, meta)
+      ) {
+        continue
+      }
 
       const isSameOp = areOperatorsEquivalent(opId, opNome, fOpId, fOpNome)
 

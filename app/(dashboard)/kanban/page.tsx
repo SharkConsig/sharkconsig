@@ -64,7 +64,7 @@ import {
   ProximaAcaoConfig, 
   calcularVencimentoComSla 
 } from "@/lib/kanban-proximas-acoes"
-import { hasProposalDigitacao, syncKanbanForClosedProposal, isDigitacaoAposDataCorte, areOperatorsEquivalent, isProposalCancelled } from "@/lib/sync-kanban-propostas"
+import { hasProposalDigitacao, syncKanbanForClosedProposal, isDigitacaoAposDataCorte, areOperatorsEquivalent, isProposalCancelled, isProposalAfterReactivation } from "@/lib/sync-kanban-propostas"
 import { loadTabelasConfigCache, resolvePercentualProducaoSync } from "@/components/chamados/coeficiente-tabela-selector"
 import ExcelJS from "exceljs"
 import { saveAs } from "file-saver"
@@ -245,6 +245,12 @@ interface TicketMetadata {
   regua_proximo_vencimento?: string
   regua_pausada?: boolean
   cliente_respondeu?: boolean
+  ade?: string
+  motivo_perda?: string | null
+  reativado_em?: string
+  reativado_de?: string
+  reativado_por?: string
+  reativado_ade_anterior?: string
 }
 
 interface TicketItem {
@@ -1485,7 +1491,16 @@ function inferKanbanStage(
   meta: TicketMetadata,
   propInfo?: { ade?: string; data_digitacao?: string; status?: string; created_at?: string }
 ): KanbanStage {
-  const prop = propInfo || ticket.proposta_info
+  const etapaExplicita = meta.kanban_stage || ((ticket as any).etapa as KanbanStage | undefined) || ticket.status
+  const isReactivatedActive = Boolean(
+    meta.reativado_em &&
+    etapaExplicita &&
+    etapaExplicita !== "FECHADO" &&
+    etapaExplicita !== "PERDIDO"
+  )
+
+  const rawProp = propInfo || ticket.proposta_info
+  const prop = isReactivatedActive && rawProp && !isProposalAfterReactivation(rawProp, meta) ? undefined : rawProp
   const pStatus = (prop?.status || "").toUpperCase().trim()
   const isPagoOuConcluido = pStatus.includes("PAGO") || pStatus.includes("CONCLU") || pStatus.includes("LIQUIDA")
 
@@ -1501,7 +1516,7 @@ function inferKanbanStage(
     isProposalCancelled(ticket.status) ||
     isProposalCancelled((ticket as any).etapa) ||
     isProposalCancelled(meta.kanban_stage) ||
-    (Boolean(ticket.motivo_perda) && (ticket.motivo_perda.toLowerCase().includes("cancelad") || ticket.motivo_perda.toLowerCase().includes("banco")))
+    (!isReactivatedActive && Boolean(ticket.motivo_perda) && (ticket.motivo_perda.toLowerCase().includes("cancelad") || ticket.motivo_perda.toLowerCase().includes("banco")))
   )
 
   // 1. Proposta cancelada no banco vai OBRIGATORIAMENTE para PERDIDO apenas se for do período ativo do Kanban
@@ -1512,7 +1527,7 @@ function inferKanbanStage(
   // 2. Proposta digitada no banco deste operador (com ADE ou status PAGO/CONCLUÍDO) entra e permanece na coluna FECHADO
   const hasAde = Boolean(
     (prop?.ade && prop.ade.trim() && prop.ade.trim() !== "-") ||
-    (meta.ade && meta.ade.trim() && meta.ade.trim() !== "-")
+    (!isReactivatedActive && meta.ade && meta.ade.trim() && meta.ade.trim() !== "-")
   )
   const hasDigitacao = Boolean(
     (hasAde || isPagoOuConcluido) &&
@@ -1538,7 +1553,6 @@ function inferKanbanStage(
     (ticket.descricao || "").toLowerCase().includes("cadência de retomada esgotada") ||
     (ticket.descricao || "").toLowerCase().includes("cadencia de retomada esgotada")
   )
-  const etapaExplicita = meta.kanban_stage || ((ticket as any).etapa as KanbanStage | undefined) || ticket.status
   const hasMovedOutOfPerdido = Boolean(
     etapaExplicita &&
     etapaExplicita !== "PERDIDO" &&
@@ -1872,6 +1886,20 @@ export default function KanbanPage() {
     userRole === "Operacional" || perfil?.role === "Operacional"
   )
 
+  // Apenas Operacional e Administrador podem mover cartões das colunas Fechado e Perdido
+  const canMoveFromClosedOrLost = Boolean(
+    !isKanbanReadOnly && (
+      isAdmin ||
+      isAdminUser ||
+      isOperational ||
+      isOperacionalUser ||
+      userRoleNorm === "administrador" ||
+      userRoleNorm === "operacional" ||
+      userFuncaoNorm === "administrador" ||
+      userFuncaoNorm === "operacional"
+    )
+  )
+
   // Apenas Administrador, Desenvolvedor, Operacional e o próprio Thiago Mello Couto podem visualizar atendimentos dele
   const canViewThiagoTickets = Boolean(
     isThiagoMelloUser ||
@@ -2055,7 +2083,7 @@ export default function KanbanPage() {
   const [isDrawerLeadModal, setIsDrawerLeadModal] = useState(false)
   const [selectedClientCpf, setSelectedClientCpf] = useState<string>("")
   const [isViewingLeadInAttendance, setIsViewingLeadInAttendance] = useState(false)
-  const [leadModalAttendanceContext, setLeadModalAttendanceContext] = useState<{ hasChamado: boolean; hasProposta: boolean } | null>(null)
+  const [leadModalAttendanceContext, setLeadModalAttendanceContext] = useState<{ hasChamado: boolean; hasProposta: boolean; reactivatedAt?: string | null } | null>(null)
 
   const handleClientSearch = async () => {
     const raw = clientSearchQuery.trim()
@@ -3304,7 +3332,17 @@ export default function KanbanPage() {
               const cCpfPadded = rawCardCpf.padStart(11, "0")
               const cCpfUnpadded = rawCardCpf.replace(/^0+/, "")
 
+              const metaCard = parseMetadata(t.descricao)
+              const etapaCardAtual = String((t as any).etapa || metaCard.kanban_stage || t.status || "").toUpperCase()
+              const isReactivatedActive = Boolean(
+                metaCard.reativado_em &&
+                etapaCardAtual &&
+                etapaCardAtual !== "FECHADO" &&
+                etapaCardAtual !== "PERDIDO"
+              )
+
               const matchingProp = propostasExistentes.find((p: any) => {
+                if (isReactivatedActive && !isProposalAfterReactivation(p, metaCard)) return false
                 const rawPropCpf = (p.cliente_cpf || "").replace(/\D/g, "")
                 const pCpfPadded = rawPropCpf.padStart(11, "0")
                 const pCpfUnpadded = rawPropCpf.replace(/^0+/, "")
@@ -3320,6 +3358,7 @@ export default function KanbanPage() {
               })
 
               const closedOtherProp = !matchingProp ? propostasExistentes.find((p: any) => {
+                if (isReactivatedActive && !isProposalAfterReactivation(p, metaCard)) return false
                 const rawPropCpf = (p.cliente_cpf || "").replace(/\D/g, "")
                 const pCpfPadded = rawPropCpf.padStart(11, "0")
                 const pCpfUnpadded = rawPropCpf.replace(/^0+/, "")
@@ -3394,37 +3433,39 @@ export default function KanbanPage() {
                 }
               } else {
                 const meta = parseMetadata(t.descricao)
-                const isCancelledTicket = (
-                  t.status === "PERDIDO" ||
-                  (t as any).etapa === "PERDIDO" ||
-                  meta.kanban_stage === "PERDIDO" ||
-                  isProposalCancelled(t.status) ||
-                  isProposalCancelled((t as any).etapa) ||
-                  isProposalCancelled(meta.kanban_stage) ||
-                  (Boolean(t.motivo_perda) && (t.motivo_perda.toLowerCase().includes("cancelad") || t.motivo_perda.toLowerCase().includes("banco")))
-                )
+                if (!isReactivatedActive) {
+                  const isCancelledTicket = (
+                    t.status === "PERDIDO" ||
+                    (t as any).etapa === "PERDIDO" ||
+                    meta.kanban_stage === "PERDIDO" ||
+                    isProposalCancelled(t.status) ||
+                    isProposalCancelled((t as any).etapa) ||
+                    isProposalCancelled(meta.kanban_stage) ||
+                    (Boolean(t.motivo_perda) && (t.motivo_perda.toLowerCase().includes("cancelad") || t.motivo_perda.toLowerCase().includes("banco")))
+                  )
 
-                if (isCancelledTicket) {
-                  return {
-                    ...t,
-                    status: "PERDIDO" as KanbanStage,
-                    motivo_perda: t.motivo_perda || "Proposta cancelada pelo banco"
+                  if (isCancelledTicket) {
+                    return {
+                      ...t,
+                      status: "PERDIDO" as KanbanStage,
+                      motivo_perda: t.motivo_perda || "Proposta cancelada pelo banco"
+                    }
                   }
-                }
 
-                const isAlreadyClosed = !isCancelledTicket && (
-                  t.status === "FECHADO" || 
-                  (t as any).etapa === "FECHADO" || 
-                  meta.kanban_stage === "FECHADO" ||
-                  (Boolean(meta.ade) && meta.ade !== "-") ||
-                  (Boolean(t.proposta_info?.ade) && t.proposta_info?.ade !== "-")
-                )
+                  const isAlreadyClosed = !isCancelledTicket && (
+                    t.status === "FECHADO" || 
+                    (t as any).etapa === "FECHADO" || 
+                    meta.kanban_stage === "FECHADO" ||
+                    (Boolean(meta.ade) && meta.ade !== "-") ||
+                    (Boolean(t.proposta_info?.ade) && t.proposta_info?.ade !== "-")
+                  )
 
-                if (isAlreadyClosed) {
-                  return {
-                    ...t,
-                    status: "FECHADO" as KanbanStage,
-                    proposta_info: t.proposta_info || (meta.ade ? { ade: meta.ade, status: "FECHADO" } : undefined)
+                  if (isAlreadyClosed) {
+                    return {
+                      ...t,
+                      status: "FECHADO" as KanbanStage,
+                      proposta_info: t.proposta_info || (meta.ade ? { ade: meta.ade, status: "FECHADO" } : undefined)
+                    }
                   }
                 }
 
@@ -3461,6 +3502,15 @@ export default function KanbanPage() {
                 if (!sameCpf && !sameLead) return false
 
                 const tStage = String((t as any).etapa || t.status || "").toUpperCase()
+                const tMeta = parseMetadata(t.descricao)
+                if (
+                  tStage !== "FECHADO" &&
+                  tStage !== "PERDIDO" &&
+                  tMeta.reativado_em &&
+                  !isProposalAfterReactivation(p, tMeta)
+                ) {
+                  return false
+                }
                 if (isCancelledProp) {
                   return tStage !== "PERDIDO"
                 }
@@ -4277,10 +4327,20 @@ export default function KanbanPage() {
       const meta = parseMetadata(ticket.descricao)
       const etapaAtual = inferKanbanStage(ticket, meta)
 
+      if ((etapaAtual === "FECHADO" || etapaAtual === "PERDIDO") && !canMoveFromClosedOrLost) {
+        toast.error("Apenas usuários Operacional ou Administrador podem mover cartões das colunas Fechado e Perdido.")
+        return
+      }
+
       if (destinoEtapa === etapaAtual) {
         toast.info("O chamado já se encontra nesta etapa.")
         return
       }
+
+      const isReopeningFromClosedOrLost =
+        (etapaAtual === "FECHADO" || etapaAtual === "PERDIDO") &&
+        destinoEtapa !== "FECHADO" &&
+        destinoEtapa !== "PERDIDO"
 
       // Próxima ação e vencimento padrão da nova etapa (obtidos dinamicamente das configurações)
       const acaoConfig = proximasAcoesConfig.find(a => a.ativo && (a.etapa_kanban === destinoEtapa || (destinoEtapa === "ENTRADA DO SITE" && a.etapa_kanban === "EM ABORDAGEM")))
@@ -4364,6 +4424,17 @@ export default function KanbanPage() {
         observacao_data: motivoTrim ? new Date().toISOString() : meta.observacao_data
       }
 
+      if (isReopeningFromClosedOrLost) {
+        updatedMeta.reativado_em = new Date().toISOString()
+        updatedMeta.reativado_de = etapaAtual
+        updatedMeta.reativado_por = perfil?.nome || user?.email || "Usuário"
+        if (meta.ade && meta.ade !== "-") {
+          updatedMeta.reativado_ade_anterior = String(meta.ade)
+        }
+        delete updatedMeta.ade
+        delete updatedMeta.motivo_perda
+      }
+
       // Ao mover para uma nova etapa, limpar explicitamente agendamentos expirados anteriores e régua
       delete (updatedMeta as any).agendamento_data
       delete (updatedMeta as any).agendamento_obs
@@ -4390,6 +4461,8 @@ export default function KanbanPage() {
         }
         if (destinoEtapa === "PERDIDO" && motivoTrim) {
           updatePayload.motivo_perda = motivoTrim
+        } else if (isReopeningFromClosedOrLost) {
+          updatePayload.motivo_perda = null
         }
 
         const { error } = await supabase
@@ -4430,7 +4503,8 @@ export default function KanbanPage() {
           status: destinoEtapa,
           observacoes: novaObservacao,
           descricao: newDesc,
-          historico_movimentacoes: novoHistorico
+          historico_movimentacoes: novoHistorico,
+          ...(isReopeningFromClosedOrLost ? { motivo_perda: undefined, proposta_info: undefined } : {})
         } : null)
       }
 
@@ -4441,13 +4515,18 @@ export default function KanbanPage() {
             status: destinoEtapa,
             observacoes: novaObservacao,
             descricao: newDesc,
-            historico_movimentacoes: novoHistorico
+            historico_movimentacoes: novoHistorico,
+            ...(isReopeningFromClosedOrLost ? { motivo_perda: undefined, proposta_info: undefined } : {})
           }
         }
         return t
       }))
 
-      toast.success(`Ficha movida para "${destinoEtapa}"!`)
+      toast.success(
+        isReopeningFromClosedOrLost
+          ? `Ficha reativada e movida para "${destinoEtapa}"!`
+          : `Ficha movida para "${destinoEtapa}"!`
+      )
       fetchChamados(true)
     } catch (err) {
       console.error("Erro ao mover etapa:", err)
@@ -4463,6 +4542,10 @@ export default function KanbanPage() {
     }
     const meta = parseMetadata(ticket.descricao)
     const current = inferKanbanStage(ticket, meta)
+    if ((current === "FECHADO" || current === "PERDIDO") && !canMoveFromClosedOrLost) {
+      toast.error("Apenas usuários Operacional ou Administrador podem mover cartões das colunas Fechado e Perdido.")
+      return
+    }
     setMoverModalTicket(ticket)
     setNovaEtapaSelecionada(etapaDestino || current)
     setMotivoMudancaEtapa("")
@@ -5478,9 +5561,27 @@ export default function KanbanPage() {
 
     // Salvar contexto isolado deste atendimento específico (chamados e propostas deste operador)
     const meta = parseMetadata(atendimentoModalTicket.descricao)
-    const hasChamado = clientTicketsHistory.length > 0
-    const hasProposta = clientProposalsHistory.length > 0 || Boolean((meta as any)?.proposta_id || (meta as any)?.proposta_numero)
-    setLeadModalAttendanceContext({ hasChamado, hasProposta })
+    const currentStage = inferKanbanStage(atendimentoModalTicket, meta)
+    const reactivatedAt =
+      meta.reativado_em && currentStage !== "FECHADO" && currentStage !== "PERDIDO"
+        ? meta.reativado_em
+        : null
+    const reactTs = reactivatedAt ? new Date(reactivatedAt).getTime() : 0
+    const hasValidReactTs = Boolean(reactivatedAt && !isNaN(reactTs))
+
+    const hasChamado = hasValidReactTs
+      ? clientTicketsHistory.some((ch: any) => {
+          const chTs = ch?.created_at ? new Date(String(ch.created_at)).getTime() : 0
+          return !isNaN(chTs) && chTs > reactTs
+        })
+      : clientTicketsHistory.length > 0
+    const hasProposta = hasValidReactTs
+      ? clientProposalsHistory.some((p: any) => {
+          const pTs = p?.created_at ? new Date(String(p.created_at)).getTime() : 0
+          return !isNaN(pTs) && pTs > reactTs
+        })
+      : (clientProposalsHistory.length > 0 || Boolean((meta as any)?.proposta_id || (meta as any)?.proposta_numero))
+    setLeadModalAttendanceContext({ hasChamado, hasProposta, reactivatedAt })
 
     setAtendimentoModalTicket(null)
     setSelectedClientCpf(cleanCpf)
@@ -6429,16 +6530,18 @@ export default function KanbanPage() {
       ))
     )
 
+    const canDragCard = isDraggable && (!isFechadoOuPerdido || canMoveFromClosedOrLost)
+
     return (
       <div
         key={ticket.id}
-        draggable={isDraggable}
-        onDragStart={isDraggable ? (e) => {
+        draggable={canDragCard}
+        onDragStart={canDragCard ? (e) => {
           e.dataTransfer.setData("text/plain", ticket.id)
           e.dataTransfer.effectAllowed = "move"
           setDraggedTicket(ticket)
         } : undefined}
-        onDragEnd={isDraggable ? () => {
+        onDragEnd={canDragCard ? () => {
           setDraggedTicket(null)
           setDragOverColumnId(null)
         } : undefined}
@@ -6448,7 +6551,7 @@ export default function KanbanPage() {
           (!isMinhaFilaAcaoEspecial && !isAcaoAtendida && (Boolean(meta.acao_especial) || meta.acao_especial_status === "pendente"))
             ? "border-2 border-amber-500 hover:border-amber-600 ring-2 ring-amber-400/30 shadow-xs"
             : (customBorderClass ? customBorderClass : "border border-slate-200 hover:border-slate-300"),
-          isDraggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+          canDragCard ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
           draggedTicket?.id === ticket.id && "opacity-40 scale-95 border-dashed border-indigo-400"
         )}
       >
@@ -6895,16 +6998,18 @@ export default function KanbanPage() {
                 <CalendarIcon className="w-3.5 h-3.5 transition-colors" />
               </Button>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleOpenMoverEtapa(ticket)}
-                className="h-7 p-0 flex items-center justify-center text-indigo-600 bg-white hover:bg-indigo-600 hover:border-indigo-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-indigo-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
-                title="Mover para outra Etapa"
-                aria-label="Mover"
-              >
-                <ArrowRight className="w-3.5 h-3.5 transition-colors" />
-              </Button>
+              {(!isFechadoOuPerdido || canMoveFromClosedOrLost) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenMoverEtapa(ticket)}
+                  className="h-7 p-0 flex items-center justify-center text-indigo-600 bg-white hover:bg-indigo-600 hover:border-indigo-600 hover:text-white [&:hover>svg]:text-white flex-1 border border-indigo-200/90 transition-all duration-150 cursor-pointer shadow-2xs hover:shadow-xs"
+                  title="Mover para outra Etapa"
+                  aria-label="Mover"
+                >
+                  <ArrowRight className="w-3.5 h-3.5 transition-colors" />
+                </Button>
+              )}
             </>
           )}
 
@@ -7474,19 +7579,17 @@ export default function KanbanPage() {
               </Button>
 
               {/* Botão Mover Etapa */}
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setMoverModalTicket(ticket)
-                  setNovaEtapaSelecionada(ticket.status || "EM ABORDAGEM")
-                  setMotivoMudancaEtapa("")
-                }}
-                className="h-8 px-2 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg text-xs font-semibold cursor-pointer"
-                title="Mover etapa do Kanban"
-              >
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Button>
+              {((etapaRow !== "FECHADO" && etapaRow !== "PERDIDO" && ticket.status !== "FECHADO" && ticket.status !== "PERDIDO") || canMoveFromClosedOrLost) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleOpenMoverEtapa(ticket)}
+                  className="h-8 px-2 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 border border-indigo-200/80 rounded-lg text-xs font-semibold cursor-pointer"
+                  title="Mover etapa do Kanban"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              )}
             </>
           )}
 
@@ -8972,8 +9075,23 @@ export default function KanbanPage() {
               const modalStage = inferKanbanStage(atendimentoModalTicket, modalMeta)
               const isEtapaPersonalizada = true
 
-              const hasChamadoNoAtendimento = clientTicketsHistory.length > 0
-              const hasPropostaNoAtendimento = clientProposalsHistory.length > 0 || Boolean((modalMeta as any)?.proposta_id || (modalMeta as any)?.proposta_numero)
+              const modalReactTs = modalMeta.reativado_em && modalStage !== "FECHADO" && modalStage !== "PERDIDO"
+                ? new Date(modalMeta.reativado_em).getTime()
+                : 0
+              const hasValidModalReactTs = Boolean(modalMeta.reativado_em && modalStage !== "FECHADO" && modalStage !== "PERDIDO" && !isNaN(modalReactTs))
+
+              const hasChamadoNoAtendimento = hasValidModalReactTs
+                ? clientTicketsHistory.some((ch: any) => {
+                    const chTs = ch?.created_at ? new Date(String(ch.created_at)).getTime() : 0
+                    return !isNaN(chTs) && chTs > modalReactTs
+                  })
+                : clientTicketsHistory.length > 0
+              const hasPropostaNoAtendimento = hasValidModalReactTs
+                ? clientProposalsHistory.some((p: any) => {
+                    const pTs = p?.created_at ? new Date(String(p.created_at)).getTime() : 0
+                    return !isNaN(pTs) && pTs > modalReactTs
+                  })
+                : (clientProposalsHistory.length > 0 || Boolean((modalMeta as any)?.proposta_id || (modalMeta as any)?.proposta_numero))
               const hasChamadoOuPropostaNoAtendimento = hasChamadoNoAtendimento || hasPropostaNoAtendimento
 
               const convenioOrigemDisplay = resolvedConvenio || formatConvenioOrigem(atendimentoModalTicket.convenio || modalMeta.convenio) || "Não informado"
@@ -10954,6 +11072,7 @@ export default function KanbanPage() {
               showPipelineActionButtons={!isKanbanReadOnly && isClientInAnyKanbanStage}
               hideAbrirChamado={isKanbanReadOnly || Boolean(leadModalAttendanceContext?.hasChamado)}
               hideDigitarProposta={isKanbanReadOnly || Boolean(leadModalAttendanceContext?.hasProposta)}
+              chamadoCheckAfter={leadModalAttendanceContext?.reactivatedAt || null}
               onTelefonesSelecionadosChange={isKanbanReadOnly ? undefined : (cpf, selected) => {
                 const cleanCpf = cpf.replace(/\D/g, "")
                 setTickets(prev => prev.map(t => {

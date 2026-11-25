@@ -43,6 +43,7 @@ import { motion, AnimatePresence } from "motion/react"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { useSidebar } from "@/context/sidebar-context"
 import { Card, CardContent } from "@/components/ui/card"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { DashboardCard, Gauge, formatCurrency } from "@/components/dashboard/dashboard-shared"
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard"
 import { HRDashboard } from "@/components/dashboard/hr-dashboard"
@@ -491,6 +492,8 @@ interface User {
   role?: string
   email?: string
   regime_contratacao?: string
+  avatar_url?: string
+  foto_campanha_url?: string
 }
 
 interface Interview {
@@ -1839,13 +1842,15 @@ export default function DashboardPage() {
               pct,
               achieved,
               remaining,
+              avatar_url: m.avatar_url || m.foto_campanha_url || undefined,
             }
           })
           .sort((a, b) => {
-            if (a.achieved !== b.achieved) return a.achieved ? -1 : 1
-            if (b.pct !== a.pct) return b.pct - a.pct
-            if (a.remaining !== b.remaining) return a.remaining - b.remaining
-            return b.produced - a.produced
+            if (a.achieved !== b.achieved) return a.achieved ? 1 : -1
+            if (a.pct !== b.pct) return a.pct - b.pct
+            if (b.remaining !== a.remaining) return b.remaining - a.remaining
+            if (a.produced !== b.produced) return a.produced - b.produced
+            return a.nome.localeCompare(b.nome, "pt-BR")
           })
         setTeamGoalProgress(teamGoalsList)
       } else {
@@ -3975,9 +3980,6 @@ export default function DashboardPage() {
                         <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none uppercase truncate">
                           EVOLUÇÃO NAS METAS
                         </p>
-                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 truncate">
-                          Top 3 Corretores no Mês
-                        </p>
                       </div>
                     </div>
 
@@ -3988,11 +3990,17 @@ export default function DashboardPage() {
                         </div>
                       ) : top3Corretores.length > 0 ? (
                         <>
-                          {top3Corretores.map((member, idx) => {
+                          {top3Corretores.map((member) => {
                             const achievedPct = member.achieved
                               ? Math.round(member.pct)
                               : Math.min(99, Math.round(member.pct))
                             const remainingPct = member.achieved ? 0 : Math.max(1, 100 - achievedPct)
+                            const formattedName = formatName(member.nome)
+                            const nameParts = formattedName.trim().split(/\s+/).filter(Boolean)
+                            const initials =
+                              nameParts.length >= 2
+                                ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+                                : formattedName.slice(0, 2).toUpperCase()
                             const progressColorClass =
                               member.achieved || member.pct >= 100
                                 ? "bg-emerald-500"
@@ -4008,21 +4016,22 @@ export default function DashboardPage() {
                                 className="flex flex-col gap-1.5 p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200"
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <span
-                                      className={cn(
-                                        "text-[8.5px] font-black px-1.5 py-0.5 rounded-md border shrink-0",
-                                        idx === 0
-                                          ? "bg-amber-100 text-amber-700 border-amber-200"
-                                          : idx === 1
-                                          ? "bg-slate-200/80 text-slate-700 border-slate-300"
-                                          : "bg-orange-100/80 text-orange-700 border-orange-200"
-                                      )}
-                                    >
-                                      {idx + 1}º
-                                    </span>
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <Avatar className="w-7 h-7 border border-white shadow-xs shrink-0">
+                                      {member.avatar_url ? (
+                                        <AvatarImage
+                                          src={member.avatar_url}
+                                          alt={formattedName}
+                                          className="object-cover"
+                                          referrerPolicy="no-referrer"
+                                        />
+                                      ) : null}
+                                      <AvatarFallback className="bg-[#1C2643]/10 text-[#1C2643] font-black text-[9px]">
+                                        {initials}
+                                      </AvatarFallback>
+                                    </Avatar>
                                     <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight truncate">
-                                      {formatName(member.nome)}
+                                      {formattedName}
                                     </span>
                                   </div>
                                   <span

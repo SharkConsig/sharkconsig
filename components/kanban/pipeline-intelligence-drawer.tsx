@@ -130,36 +130,6 @@ export function PipelineIntelligenceDrawer({
     }, 1500)
   }
 
-  // Apenas fichas que estão efetivamente no Kanban (excluindo gavetas ocultas de WhatsApp)
-  const kanbanTickets = useMemo(() => {
-    return tickets.filter(t => {
-      const s = String(t.status || "").trim().toUpperCase()
-      const motivo = String(t.motivo_perda || "").trim().toUpperCase()
-      if (
-        s === "NÃO EXISTE WHATSAPP" ||
-        s === "NAO_EXISTE_WHATSAPP" ||
-        s === "WHATSAPP DIVERGENTE" ||
-        motivo === "NÃO EXISTE WHATSAPP" ||
-        motivo === "WHATSAPP DIVERGENTE"
-      ) {
-        return false
-      }
-      return true
-    })
-  }, [tickets])
-
-  // Lista única de convênios que já possuem lead em atendimento no Kanban
-  const conveniosList = useMemo(() => {
-    const set = new Set<string>()
-    kanbanTickets.forEach(t => {
-      const c = String(t.convenio || "").trim()
-      if (c && c !== "-" && c.toLowerCase() !== "não informado" && c.toLowerCase() !== "nao informado") {
-        set.add(c)
-      }
-    })
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"))
-  }, [kanbanTickets])
-
   // Conjunto de usuários explicitamente INATIVOS para desconsiderá-los nas análises de equipe
   const inactiveOperators = useMemo(() => {
     const ids = new Set<string>()
@@ -182,17 +152,85 @@ export function PipelineIntelligenceDrawer({
     return { ids, names }
   }, [usersList, cltCollaborators])
 
-  // Lista unificada de operadores ativos (para resolução de nomes nas análises)
-  const operatorsList = useMemo(() => {
+  // Lista unificada de operadores ativos SOMENTE Corretores e Estagiários dos regimes CLT e Estágio (exclui PJ, Monitoramento e demais funções/regimes)
+  const { operatorsList, allowedIds, allowedNames, excludedIds, excludedNames } = useMemo(() => {
+    const isCltOrEstagioUser = (u: any): boolean => {
+      if (!u) return false
+      const regime = String(u.regime_contratacao || "").trim().toUpperCase()
+      const funcaoStr = String(u.funcao || "").trim().toUpperCase()
+      const roleStr = String(u.role || "").trim().toUpperCase()
+      const primaryRole = funcaoStr || roleStr
+      const equipeStr = String(u.equipe || "").trim().toUpperCase()
+
+      if (
+        regime === "PJ" ||
+        regime.includes("PJ") ||
+        primaryRole === "PJ" ||
+        primaryRole.includes("CORRETOR PJ") ||
+        equipeStr === "PJ" ||
+        equipeStr.includes("PJ")
+      ) {
+        return false
+      }
+
+      const isCorretorOrEstagioRole =
+        primaryRole === "CORRETOR" ||
+        primaryRole.includes("CORRETOR") ||
+        primaryRole === "ESTÁGIO" ||
+        primaryRole === "ESTAGIO" ||
+        primaryRole.includes("ESTÁG") ||
+        primaryRole.includes("ESTAG")
+
+      if (!isCorretorOrEstagioRole) {
+        return false
+      }
+
+      const isEstagioRole =
+        primaryRole === "ESTÁGIO" ||
+        primaryRole === "ESTAGIO" ||
+        primaryRole.includes("ESTÁG") ||
+        primaryRole.includes("ESTAG")
+
+      return (
+        regime === "CLT" ||
+        regime.includes("CLT") ||
+        regime === "ESTÁGIO" ||
+        regime === "ESTAGIO" ||
+        regime.includes("ESTÁG") ||
+        regime.includes("ESTAG") ||
+        (!regime && isEstagioRole)
+      )
+    }
+
     const map = new Map<string, { id: string; nome: string; equipe?: string; regime_contratacao?: string; funcao?: string; role?: string }>()
-    const registerActive = (u: any) => {
+    const allowedIdsSet = new Set<string>()
+    const allowedNamesSet = new Set<string>()
+    const excludedIdsSet = new Set<string>()
+    const excludedNamesSet = new Set<string>()
+
+    const processUser = (u: any) => {
       if (!u?.id) return
       const idNorm = String(u.id).trim().toLowerCase()
       const nomeNorm = String(u.nome || u.nome_completo || "").trim().toLowerCase()
       const status = String(u.status || "ATIVO").trim().toUpperCase()
-      if ((status && status !== "ATIVO") || inactiveOperators.ids.has(idNorm) || (nomeNorm && inactiveOperators.names.has(nomeNorm))) {
+      const isInactive =
+        (status && status !== "ATIVO") ||
+        inactiveOperators.ids.has(idNorm) ||
+        (nomeNorm && inactiveOperators.names.has(nomeNorm))
+
+      if (isInactive || !isCltOrEstagioUser(u)) {
+        if (idNorm) excludedIdsSet.add(idNorm)
+        if (nomeNorm) excludedNamesSet.add(nomeNorm)
         return
       }
+
+      if (excludedIdsSet.has(idNorm) || (nomeNorm && excludedNamesSet.has(nomeNorm))) {
+        return
+      }
+
+      allowedIdsSet.add(idNorm)
+      if (nomeNorm) allowedNamesSet.add(nomeNorm)
+
       if (!map.has(String(u.id))) {
         map.set(String(u.id), {
           id: String(u.id),
@@ -205,10 +243,72 @@ export function PipelineIntelligenceDrawer({
       }
     }
 
-    usersList.forEach(registerActive)
-    cltCollaborators.forEach(registerActive)
-    return Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+    usersList.forEach(processUser)
+    cltCollaborators.forEach(processUser)
+
+    return {
+      operatorsList: Array.from(map.values()).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+      allowedIds: allowedIdsSet,
+      allowedNames: allowedNamesSet,
+      excludedIds: excludedIdsSet,
+      excludedNames: excludedNamesSet
+    }
   }, [usersList, cltCollaborators, inactiveOperators])
+
+  // Apenas fichas que estão efetivamente no Kanban (excluindo gavetas ocultas de WhatsApp) e pertencentes a usuários CLT e Estágio
+  const kanbanTickets = useMemo(() => {
+    const hasUsersLoaded = usersList.length > 0
+    return tickets.filter(t => {
+      const s = String(t.status || "").trim().toUpperCase()
+      const motivo = String(t.motivo_perda || "").trim().toUpperCase()
+      if (
+        s === "NÃO EXISTE WHATSAPP" ||
+        s === "NAO_EXISTE_WHATSAPP" ||
+        s === "WHATSAPP DIVERGENTE" ||
+        motivo === "NÃO EXISTE WHATSAPP" ||
+        motivo === "WHATSAPP DIVERGENTE"
+      ) {
+        return false
+      }
+
+      const tEquipeUpper = String(t.equipe || "").trim().toUpperCase()
+      if (tEquipeUpper === "PJ" || tEquipeUpper.includes("CORRETOR PJ")) {
+        return false
+      }
+
+      const uIdNorm = String(t.user_id || "").trim().toLowerCase()
+      const uNameNorm = String(t.user_nome || "").trim().toLowerCase()
+
+      if (
+        (uIdNorm && (inactiveOperators.ids.has(uIdNorm) || excludedIds.has(uIdNorm))) ||
+        (uNameNorm && (inactiveOperators.names.has(uNameNorm) || excludedNames.has(uNameNorm)))
+      ) {
+        return false
+      }
+
+      if (hasUsersLoaded) {
+        const matchesAllowedId = Boolean(uIdNorm && allowedIds.has(uIdNorm))
+        const matchesAllowedName = Boolean(!uIdNorm && uNameNorm && allowedNames.has(uNameNorm))
+        if (!matchesAllowedId && !matchesAllowedName) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [tickets, usersList.length, inactiveOperators, allowedIds, allowedNames, excludedIds, excludedNames])
+
+  // Lista única de convênios que já possuem lead em atendimento no Kanban
+  const conveniosList = useMemo(() => {
+    const set = new Set<string>()
+    kanbanTickets.forEach(t => {
+      const c = String(t.convenio || "").trim()
+      if (c && c !== "-" && c.toLowerCase() !== "não informado" && c.toLowerCase() !== "nao informado") {
+        set.add(c)
+      }
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"))
+  }, [kanbanTickets])
 
   // Lista para o seletor de equipe: somente usuários CLT e Estágio com atendimento no Kanban
   const teamOperatorsList = useMemo(() => {
@@ -219,17 +319,7 @@ export function PipelineIntelligenceDrawer({
     })
 
     return operatorsList
-      .filter(u => {
-        const regime = String(u.regime_contratacao || "").trim().toUpperCase()
-        const roleStr = String(u.funcao || u.role || "").trim().toUpperCase()
-        const isCltOrEstagio =
-          regime === "CLT" ||
-          regime === "ESTÁGIO" ||
-          regime === "ESTAGIO" ||
-          (!regime && (roleStr === "ESTÁGIO" || roleStr === "ESTAGIO"))
-        if (!isCltOrEstagio) return false
-        return kanbanUserIds.has(u.id.trim().toLowerCase())
-      })
+      .filter(u => kanbanUserIds.has(u.id.trim().toLowerCase()))
       .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
   }, [operatorsList, kanbanTickets])
 
@@ -3577,7 +3667,8 @@ export function PipelineIntelligenceDrawer({
                         {funnelAndOriginsData.totalFechado > 0 ? (
                           <>
                             {" "}e já foram concretizados{" "}
-                            <strong className="text-emerald-700">{fmtCurrency(funnelAndOriginsData.totalProducaoFechada)}</strong> em produção fechada
+                            <strong className="text-emerald-700">{fmtCurrency(funnelAndOriginsData.totalOperacaoFechada)} em operação fechada</strong>{" "}
+                            (com <strong className="text-sky-700">{fmtCurrency(funnelAndOriginsData.totalProducaoFechada)} em produção</strong>)
                             {avgNegotiationLabel ? <> em um ciclo médio de <strong className="text-slate-900">{avgNegotiationLabel}</strong></> : null}
                           </>
                         ) : null}

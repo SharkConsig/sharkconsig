@@ -201,6 +201,7 @@ interface ClientDetailsModalProps {
   isEmAbordagem?: boolean;
   hideAbrirChamado?: boolean;
   hideDigitarProposta?: boolean;
+  chamadoCheckAfter?: string | null;
 }
 
 export function ClientDetailsModal({ 
@@ -216,7 +217,8 @@ export function ClientDetailsModal({
   showPipelineActionButtons = false,
   isEmAbordagem = false,
   hideAbrirChamado = false,
-  hideDigitarProposta = false
+  hideDigitarProposta = false,
+  chamadoCheckAfter = null
 }: ClientDetailsModalProps) {
   const [internalHasChamado, setInternalHasChamado] = useState(false)
   const [internalHasProposta, setInternalHasProposta] = useState(false)
@@ -317,10 +319,14 @@ export function ClientDetailsModal({
 
         const variants = Array.from(new Set([cleanDigits, padded, formattedClean, formattedPadded].filter(Boolean)))
 
+        const minCreatedAt = chamadoCheckAfter && !isNaN(new Date(chamadoCheckAfter).getTime())
+          ? chamadoCheckAfter
+          : "2026-10-30T00:00:00"
+
         const { data, error } = await supabase
           .from("chamados")
           .select("id, user_id, user_nome, cliente_cpf")
-          .gte("created_at", "2026-10-30T00:00:00")
+          .gte("created_at", minCreatedAt)
           .in("cliente_cpf", variants)
 
         if (!isMounted) return
@@ -379,7 +385,7 @@ export function ClientDetailsModal({
     return () => {
       isMounted = false
     }
-  }, [isOpen, cpf, client?.cpf, user?.id, perfil?.id, perfil?.nome, perfil?.email, user?.email])
+  }, [isOpen, cpf, client?.cpf, user?.id, perfil?.id, perfil?.nome, perfil?.email, user?.email, chamadoCheckAfter])
 
   const allRegs = React.useMemo(() => {
     if (!client) return []

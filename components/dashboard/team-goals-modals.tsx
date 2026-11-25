@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { cn, formatName } from "@/lib/utils"
 import { formatCurrency } from "@/components/dashboard/dashboard-shared"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export interface TeamGoalProgressItem {
   id: string
@@ -25,6 +26,7 @@ export interface TeamGoalProgressItem {
   pct: number
   achieved: boolean
   remaining: number
+  avatar_url?: string
 }
 
 export interface PipelineOppItem {
@@ -307,12 +309,17 @@ export const TeamGoalsModals = React.memo(function TeamGoalsModals({
     [pipelineComputed, visibleLimit]
   )
 
-  const renderMemberRow = (member: TeamGoalProgressItem, badgeText?: string) => {
+  const renderMemberRow = (member: TeamGoalProgressItem) => {
     const achievedPct = member.achieved ? Math.round(member.pct) : Math.min(99, Math.round(member.pct))
     const remainingPct = member.achieved ? 0 : Math.max(1, 100 - achievedPct)
     const opp = pipelineOppsByUser[member.id] || { count: 0, totalProd: 0, items: [] }
     const formattedName = formatName(member.nome)
-    const firstName = formattedName.split(/\s+/)[0] || formattedName
+    const nameParts = formattedName.trim().split(/\s+/).filter(Boolean)
+    const firstName = nameParts[0] || formattedName
+    const initials =
+      nameParts.length >= 2
+        ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+        : formattedName.slice(0, 2).toUpperCase()
 
     const progressColorClass =
       member.achieved || member.pct >= 100
@@ -329,12 +336,20 @@ export const TeamGoalsModals = React.memo(function TeamGoalsModals({
         className="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/70 hover:bg-white hover:border-slate-300 transition-colors flex flex-col gap-2"
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            {badgeText && (
-              <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 border border-amber-200 shrink-0">
-                {badgeText}
-              </span>
-            )}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Avatar className="w-9 h-9 border-2 border-white shadow-sm shrink-0">
+              {member.avatar_url ? (
+                <AvatarImage
+                  src={member.avatar_url}
+                  alt={formattedName}
+                  className="object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : null}
+              <AvatarFallback className="bg-[#1C2643]/10 text-[#1C2643] font-black text-[10px]">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
             <div className="min-w-0">
               <h4 className="text-[11.5px] font-black text-[#1C2643] uppercase tracking-tight truncate">
                 {formattedName}
@@ -466,7 +481,7 @@ export const TeamGoalsModals = React.memo(function TeamGoalsModals({
                           Corretores da Equipe ({allCorretores.length})
                         </p>
                         <div className="space-y-2.5">
-                          {allCorretores.map((member, idx) => renderMemberRow(member, `${idx + 1}º`))}
+                          {allCorretores.map((member) => renderMemberRow(member))}
                         </div>
                       </div>
                     )}
