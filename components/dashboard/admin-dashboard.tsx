@@ -34,6 +34,7 @@ import { cn, formatName, formatShortName } from "@/lib/utils"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
+import type { TeamGoalProgressItem } from "./team-goals-modals"
 import { supabase } from "@/lib/supabase"
 import { RankingContractsModal, RankingContractModalParams } from "./ranking-contracts-modal"
 import { toast } from "sonner"
@@ -206,6 +207,9 @@ interface AdminDashboardProps {
   onlyPropostasComerciais?: boolean
   onlyFinanceiro?: boolean
   filterUserId?: string
+  top3Corretores?: TeamGoalProgressItem[]
+  totalTeamGoalsCount?: number
+  onOpenTeamGoalsModal?: () => void
 }
 
 export function AdminDashboard({ 
@@ -221,7 +225,10 @@ export function AdminDashboard({
   estagioRankingGroup,
   onlyPropostasComerciais = false,
   onlyFinanceiro = false,
-  filterUserId
+  filterUserId,
+  top3Corretores = [],
+  totalTeamGoalsCount = 0,
+  onOpenTeamGoalsModal
 }: AdminDashboardProps) {
   const router = useRouter()
   const {
@@ -244,7 +251,9 @@ export function AdminDashboard({
   } = stats || {}
 
   const userRole = (perfil?.role || perfil?.funcao || "").trim().toLowerCase();
-  const isOnlyAdmin = userRole === 'administrador' || userRole === 'admin' || userRole === 'desenvolvedor';
+  const userFuncao = (perfil?.funcao || "").trim().toLowerCase();
+  const isOnlyAdmin = userRole === 'administrador' || userRole === 'admin' || userRole === 'desenvolvedor' || userRole === 'developer' || userFuncao === 'administrador' || userFuncao === 'desenvolvedor';
+  const showGoalsEvolutionCard = (isOnlyAdmin || Boolean(onOpenTeamGoalsModal)) && !onlyPropostasComerciais && !onlyFinanceiro;
   const canViewPJRanking = isOnlyAdmin || userRole === 'operacional';
   const isEstagio = userRole === 'estágio' || userRole === 'estagio';
   const isCorretor = userRole === 'corretor';
@@ -3513,10 +3522,10 @@ export function AdminDashboard({
 
         {/* 5. Total de contratos em andamento */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="lg:col-span-12">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+          <div className={cn("grid grid-cols-1 gap-6 h-full", showGoalsEvolutionCard ? "md:grid-cols-3" : "md:grid-cols-2")}>
              {/* Meta de Hoje */}
              <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm flex flex-col justify-between h-full relative overflow-hidden">
-                <div className="w-full font-sans">
+                <div className="w-full font-sans flex-1 flex flex-col">
                   <div className="flex items-center gap-2 mb-4">
                      <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0 border border-amber-100">
                         <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
@@ -3524,9 +3533,12 @@ export function AdminDashboard({
                      <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight uppercase leading-none">META DE HOJE</p>
                   </div>
 
-                  <div className="flex flex-col gap-1.5 mt-2">
-                    <p className="text-[9px] font-semibold text-[#718198] uppercase tracking-widest">VALOR DA META DE HOJE</p>
-                    <p className="text-2xl lg:text-3xl font-black text-[#1C2643] tracking-tighter leading-none">
+                  <div className="flex-1 flex flex-col items-center justify-center text-center gap-1.5">
+                    <p className="text-[11px] font-semibold text-[#718198] uppercase tracking-widest text-center">VALOR DA META DE HOJE</p>
+                    <p className={cn(
+                      "font-black text-[#1C2643] tracking-tighter leading-none text-center",
+                      showGoalsEvolutionCard ? "text-[24px] lg:text-[29px]" : "text-2xl lg:text-3xl"
+                    )}>
                       {formatCurrency(calculatedDailyGoal)}
                     </p>
                   </div>
@@ -3534,8 +3546,8 @@ export function AdminDashboard({
 
                 <div className="mt-6 pt-3 border-t border-slate-100">
                    <div className="flex justify-between items-center mb-1.5">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">PAGO HOJE: {formatCurrency(dailyProduced)}</p>
-                      <p className="text-[10px] font-black text-[#1C2643] leading-none">{dailyProgressPercent}%</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">PAGO HOJE: {formatCurrency(dailyProduced)}</p>
+                      <p className="text-[11px] font-black text-[#1C2643] leading-none">{dailyProgressPercent}%</p>
                    </div>
                    <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
                       <motion.div 
@@ -3549,7 +3561,7 @@ export function AdminDashboard({
              </div>
 
              {/* Total de contratos em andamento */}
-             <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm flex flex-col justify-between space-y-3">
+             <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm flex flex-col justify-between h-full">
                 <div className="flex items-center gap-2 mb-1.5">
                    <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shrink-0">
                       <CheckCircle2 className="w-5 h-5 text-white" />
@@ -3559,21 +3571,155 @@ export function AdminDashboard({
                    </div>
                 </div>
 
-                <div className="flex flex-col justify-center py-4 gap-1.5">
-                  <p className="text-[9px] font-semibold text-[#718198] uppercase tracking-widest text-center">Valor Total em Andamento</p>
-                  <p className="text-2xl sm:text-3xl lg:text-4xl font-black text-[#FF4A00] tracking-tighter text-center leading-none">
+                <div className="flex-1 flex flex-col items-center justify-center py-4 gap-1.5 text-center">
+                  <p className="text-[11px] font-semibold text-[#718198] uppercase tracking-widest text-center">Valor Total em Andamento</p>
+                  <p className={cn(
+                    "font-black text-[#FF4A00] tracking-tighter text-center leading-none",
+                    showGoalsEvolutionCard ? "text-[24px] lg:text-[29px]" : "text-2xl sm:text-3xl lg:text-4xl"
+                  )}>
                     {formatCurrency(inProcessValue)}
                   </p>
-                  <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col items-center gap-1.5">
+                  <div className="mt-3 pt-3 border-t border-slate-200 flex flex-col items-center gap-1.5 w-full">
                     <span className="text-[11.5px] font-bold text-[#1C2643]">
                       {inProcessCount} {inProcessCount === 1 ? 'Contrato' : 'Contratos'}
                     </span>
-                    <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 mt-2 text-center shrink-0">
+                    <p className="text-[11px] sm:text-[12px] font-bold text-slate-500 mt-2 text-center shrink-0">
                        Você tem <span className="text-[#1C2643] font-black">{formatCurrency(pendingActionsValue)}</span> pendentes de atuação
                     </p>
                   </div>
                 </div>
              </div>
+
+             {/* Evolução nas Metas (Administrador e Desenvolvedor) */}
+             {showGoalsEvolutionCard && (
+               <div className="bg-white rounded-[22px] p-4.5 border border-slate-200 shadow-sm flex flex-col gap-3 h-full justify-between">
+                 <div className="flex items-center gap-2.5 mb-0.5">
+                   <div className="w-8 h-8 bg-[#1C2643] rounded-lg flex items-center justify-center shrink-0">
+                     <Target className="w-5 h-5 text-white" />
+                   </div>
+                   <div className="min-w-0">
+                     <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none uppercase truncate">
+                       EVOLUÇÃO NAS METAS
+                     </p>
+                     <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 truncate">
+                       Top 3 Corretores no Mês
+                     </p>
+                   </div>
+                 </div>
+
+                 <div className="space-y-2 flex-1 flex flex-col justify-center">
+                   {isLoading ? (
+                     <div className="flex items-center justify-center py-8">
+                       <Loader2 className="w-5 h-5 animate-spin text-[#1C2643]" />
+                     </div>
+                   ) : top3Corretores.length > 0 ? (
+                     <>
+                       {top3Corretores.map((member, idx) => {
+                         const achievedPct = member.achieved
+                           ? Math.round(member.pct)
+                           : Math.min(99, Math.round(member.pct))
+                         const remainingPct = member.achieved ? 0 : Math.max(1, 100 - achievedPct)
+                         const progressColorClass =
+                           member.achieved || member.pct >= 100
+                             ? "bg-emerald-500"
+                             : member.pct > 66.67
+                             ? "bg-blue-500"
+                             : member.pct > 33.33
+                             ? "bg-orange-500"
+                             : "bg-red-500"
+
+                         return (
+                           <div
+                             key={member.id}
+                             className="flex flex-col gap-1.5 p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200"
+                           >
+                             <div className="flex items-center justify-between gap-2">
+                               <div className="flex items-center gap-1.5 min-w-0">
+                                 <span
+                                   className={cn(
+                                     "text-[8.5px] font-black px-1.5 py-0.5 rounded-md border shrink-0",
+                                     idx === 0
+                                       ? "bg-amber-100 text-amber-700 border-amber-200"
+                                       : idx === 1
+                                       ? "bg-slate-200/80 text-slate-700 border-slate-300"
+                                       : "bg-orange-100/80 text-orange-700 border-orange-200"
+                                   )}
+                                 >
+                                   {idx + 1}º
+                                 </span>
+                                 <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight truncate">
+                                   {formatName(member.nome)}
+                                 </span>
+                               </div>
+                               <span
+                                 className={cn(
+                                   "text-[10.5px] font-black shrink-0",
+                                   member.achieved ? "text-emerald-600" : "text-[#1C2643]"
+                                 )}
+                               >
+                                 {achievedPct}% alcançado
+                               </span>
+                             </div>
+
+                             <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                               <div
+                                 className={cn(
+                                   "h-full rounded-full transition-all duration-500",
+                                   progressColorClass
+                                 )}
+                                 style={{ width: `${Math.min(100, Math.max(0, member.pct))}%` }}
+                               />
+                             </div>
+
+                             <div className="flex items-center justify-between gap-2 text-[10px] font-bold">
+                               <span className="text-slate-700 truncate">
+                                 Meta: {formatCurrency(member.goal)}
+                               </span>
+                               {member.achieved ? (
+                                 <span className="text-emerald-600 font-black uppercase shrink-0">
+                                   Meta alcançada!
+                                 </span>
+                               ) : (
+                                 <span className="text-slate-600 font-bold shrink-0">
+                                   Falta <strong className="font-bold">{formatCurrency(member.remaining)}</strong>{" "}
+                                   <span className="font-bold">({remainingPct}%)</span>
+                                 </span>
+                               )}
+                             </div>
+                           </div>
+                         )
+                       })}
+
+                       <div className="pt-1 flex justify-center">
+                         <button
+                           type="button"
+                           onClick={() => onOpenTeamGoalsModal?.()}
+                           className="text-[11px] font-black text-[#1C2643] hover:text-amber-600 underline underline-offset-4 tracking-wide transition-colors cursor-pointer"
+                         >
+                           Ver todos
+                         </button>
+                       </div>
+                     </>
+                   ) : (
+                     <div className="flex flex-col items-center justify-center py-6 gap-2">
+                       <Target className="w-6.5 h-6.5 text-slate-300" />
+                       <p className="text-[8.5px] font-bold uppercase tracking-widest text-center text-slate-400">
+                         Nenhum corretor na equipe
+                       </p>
+                       {totalTeamGoalsCount > 0 && (
+                         <button
+                           type="button"
+                           onClick={() => onOpenTeamGoalsModal?.()}
+                           className="text-[10px] font-black text-[#1C2643] hover:text-amber-600 underline underline-offset-4 tracking-wide transition-colors cursor-pointer"
+                         >
+                           Ver todos
+                         </button>
+                       )}
+                     </div>
+                   )}
+                 </div>
+               </div>
+             )}
           </div>
         </motion.div>
 

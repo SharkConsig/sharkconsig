@@ -47,6 +47,13 @@ import { DashboardCard, Gauge, formatCurrency } from "@/components/dashboard/das
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard"
 import { HRDashboard } from "@/components/dashboard/hr-dashboard"
 import { RankingContractsModal, RankingContractModalParams } from "@/components/dashboard/ranking-contracts-modal"
+import {
+  TeamGoalsModals,
+  TeamGoalProgressItem,
+  PipelineOppItem,
+  PipelineOppsMap,
+} from "@/components/dashboard/team-goals-modals"
+import { loadTabelasConfigCache, resolvePercentualProducaoSync } from "@/components/chamados/coeficiente-tabela-selector"
 
 const parseDateSafe = (dateVal?: string | Date | null) => {
   if (!dateVal) return null
@@ -481,6 +488,9 @@ interface User {
   supervisor_nome?: string
   equipe?: string
   status?: string
+  role?: string
+  email?: string
+  regime_contratacao?: string
 }
 
 interface Interview {
@@ -627,6 +637,16 @@ export default function DashboardPage() {
   const [dashboardCampaigns, setDashboardCampaigns] = useState<Campaign[]>([])
   const [monthlyGoal, setMonthlyGoal] = useState<number>(47000)
   const [teamGoal, setTeamGoal] = useState<number>(448000)
+  const [teamGoalProgress, setTeamGoalProgress] = useState<TeamGoalProgressItem[]>([])
+  const [isTeamGoalsModalOpen, setIsTeamGoalsModalOpen] = useState(false)
+  const [pipelineOppsByUser, setPipelineOppsByUser] = useState<PipelineOppsMap>({})
+  const [isLoadingPipelineOpps, setIsLoadingPipelineOpps] = useState(false)
+  const [pipelineLoadedKey, setPipelineLoadedKey] = useState("")
+
+  const top3Corretores = useMemo(
+    () => teamGoalProgress.filter((m) => m.roleCategory === "corretor").slice(0, 3),
+    [teamGoalProgress]
+  )
   
   const fetchDashboardData = useCallback(async () => {
     if (!isSupabaseConfigured) {
@@ -635,6 +655,7 @@ export default function DashboardPage() {
       return
     }
     setIsLoading(true)
+    setPipelineLoadedKey("")
 
     // Accumulators for team/admin stats
     let teamTotal = 0
@@ -735,6 +756,8 @@ export default function DashboardPage() {
       setBanners((bannerData || []).filter(b => typeof b.image_url === 'string' && (b.image_url.startsWith('http://') || b.image_url.startsWith('https://') || b.image_url.startsWith('/'))))
 
       // Fetch dynamic goal configs from DB for the current month and year
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let fetchedGoalsConfigs: any[] = []
       try {
         const now = new Date()
         const currentYear = now.getFullYear()
@@ -753,6 +776,7 @@ export default function DashboardPage() {
         )
 
         if (!goalsError && goalsConfigs && goalsConfigs.length > 0) {
+          fetchedGoalsConfigs = goalsConfigs
           const targetSupervisorId = isSupervisor ? perfil?.id : perfil?.supervisor_id
 
           if (isUserSupervisor) {
@@ -1150,6 +1174,7 @@ export default function DashboardPage() {
         }
 
         const rawBrokerMetrics: Record<string, { totalPaid: number, countPaid: number, totalInProcess: number, countInProcess: number, totalToday: number, countToday: number }> = {}
+        const mtdPaidByUser: Record<string, number> = {}
 
         // Initialize everyone stable with 0
         allUsers.forEach((u: User) => {
@@ -1393,6 +1418,15 @@ export default function DashboardPage() {
               const fraction = getInterventionFactor(perfil?.id || '')
               userMTDTotal += (cardVal * fraction)
             }
+            beneficiaryIds.forEach((bId) => {
+              if ((isUserSupervisor || isUserMonitoramento) && !countsForTeam) return
+              const bUser = allUsers.find((u: User) => u.id === bId)
+              const bIsPJ = checkUserPJ(bUser)
+              const factor = getInterventionFactor(bId)
+              if (factor <= 0) return
+              const bRawVal = (bIsPJ ? (numericVal > 0 ? numericVal : numericValOp) : numericVal) * factor
+              mtdPaidByUser[bId] = (mtdPaidByUser[bId] || 0) + bRawVal
+            })
           }
 
           if (isPaid && isPaidInRange) {
@@ -1759,7 +1793,63 @@ export default function DashboardPage() {
         });
 
         setRankings(sortedRankings)
+
+        const excludedGoalRoles = new Set([
+          'supervisor',
+          'gerente',
+          'administrador',
+          'admin',
+          'desenvolvedor',
+          'developer',
+          'operacional',
+          'administrativo',
+          'monitoramento',
+          'recursos humanos',
+          'rh'
+        ])
+        const teamGoalsList: TeamGoalProgressItem[] = team
+          .filter((m: User) => {
+            if (m.status?.toUpperCase() === 'INATIVO') return false
+            if (isUserPJ(m) || isUserAdminRole(m)) return false
+            const func = (m.funcao || "").trim().toLowerCase()
+            const role = (m.role || "").trim().toLowerCase()
+            if (excludedGoalRoles.has(func) || excludedGoalRoles.has(role)) return false
+            if (m.id === targetSupervisorId && isUserSupervisor) return false
+            return true
+          })
+          .map((m: User) => {
+            const roleCategory: "corretor" | "estagiario" = isUserEstagio(m) ? "estagiario" : "corretor"
+            const indConfig =
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              fetchedGoalsConfigs.find((g: any) => g.tipo === 'corretor' && g.alvo_id === m.id && g.ativo !== false) ||
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              fetchedGoalsConfigs.find((g: any) => g.alvo_id === m.id && g.tipo !== 'time' && g.tipo !== 'empresa' && g.ativo !== false)
+            const goal = indConfig && Number(indConfig.valor_mensal) > 0 ? Number(indConfig.valor_mensal) : 47000
+            const produced = mtdPaidByUser[m.id] || 0
+            const pct = goal > 0 ? (produced / goal) * 100 : 0
+            const achieved = goal > 0 && produced >= goal
+            const remaining = Math.max(0, goal - produced)
+            return {
+              id: m.id,
+              nome: m.nome,
+              funcao: m.funcao || (roleCategory === "estagiario" ? "Estágio" : "Corretor"),
+              roleCategory,
+              goal,
+              produced,
+              pct,
+              achieved,
+              remaining,
+            }
+          })
+          .sort((a, b) => {
+            if (a.achieved !== b.achieved) return a.achieved ? -1 : 1
+            if (b.pct !== a.pct) return b.pct - a.pct
+            if (a.remaining !== b.remaining) return a.remaining - b.remaining
+            return b.produced - a.produced
+          })
+        setTeamGoalProgress(teamGoalsList)
       } else {
+        setTeamGoalProgress([])
         let allPaid: any[] = []
         try {
           let rankingQuery = supabase
@@ -2649,6 +2739,531 @@ export default function DashboardPage() {
     }
   }, [])
 
+  const teamPipelineKey = useMemo(
+    () => teamGoalProgress.map((m) => m.id).join(","),
+    [teamGoalProgress]
+  )
+
+  useEffect(() => {
+    if (!isTeamGoalsModalOpen || !teamPipelineKey || pipelineLoadedKey === teamPipelineKey) {
+      return
+    }
+
+    let isCancelled = false
+
+    const parseKanbanNum = (valStr: unknown): number => {
+      if (valStr === null || valStr === undefined) return 0
+      if (typeof valStr === "number") return isNaN(valStr) ? 0 : Math.round(valStr * 100) / 100
+      const str = String(valStr).trim()
+      if (!str) return 0
+      let cleaned = str.replace(/[^0-9.,-]/g, "").trim()
+      if (!cleaned) return 0
+      if (cleaned.includes(",")) {
+        cleaned = cleaned.replace(/\./g, "").replace(",", ".")
+      } else {
+        const parts = cleaned.split(".")
+        if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3 && parts[0].length >= 1)) {
+          cleaned = parts.join("")
+        }
+      }
+      const num = parseFloat(cleaned)
+      return isNaN(num) ? 0 : Math.round(num * 100) / 100
+    }
+
+    const parseCleanFloat = (val: unknown): number | null => {
+      if (val === null || val === undefined) return null
+      if (typeof val === "number") return isNaN(val) ? null : val
+      const str = String(val).trim()
+      if (!str) return null
+      let cleaned = str.replace(/[^0-9.,-]/g, "").trim()
+      if (!cleaned) return null
+      if (cleaned.includes(",")) {
+        cleaned = cleaned.replace(/\./g, "").replace(",", ".")
+      } else {
+        const parts = cleaned.split(".")
+        if (parts.length > 2) {
+          cleaned = parts.slice(0, -1).join("") + "." + parts[parts.length - 1]
+        }
+      }
+      const parsed = parseFloat(cleaned)
+      return isNaN(parsed) ? null : parsed
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const extractConsolidatedProd = (meta: any, desc = "", sumOp = 0, selectedTypes: string[] = [], convenio = ""): number => {
+      let prod = 0
+      if (selectedTypes.length > 0 && meta) {
+        selectedTypes.forEach((t) => {
+          prod += parseKanbanNum(meta?.[`valor_producao_${t}`])
+        })
+      }
+      if (prod === 0 && meta) {
+        prod =
+          parseKanbanNum(meta.valor_producao_margem) +
+          parseKanbanNum(meta.valor_producao_liquida5) +
+          parseKanbanNum(meta.valor_producao_beneficio5) +
+          parseKanbanNum(meta.valor_producao) +
+          parseKanbanNum(meta.producao) +
+          parseKanbanNum(meta.valor_producao_total)
+      }
+      if (prod === 0 && desc) {
+        const m =
+          desc.match(/(?:valor\s*(?:da|de)?\s*produç[aã]o|produç[aã]o(?:\s*\([^)]*\))?)[:\s]+(R\$\s*[\d\.,]+)/i) ||
+          desc.match(/(?:produç[aã]o|comiss[aã]o)[:\s]+(?:R\$\s*)?([\d\.,]+)/i)
+        if (m && m[1]) {
+          prod = parseKanbanNum(m[1].startsWith("R$") ? m[1] : "R$ " + m[1])
+        }
+      }
+      if (prod === 0 && sumOp > 0) {
+        const conv = convenio || meta?.convenio || ""
+        const tabelas = [meta?.tabela_margem, meta?.tabela_liquida5, meta?.tabela_beneficio5, meta?.tabela].filter(Boolean)
+        const coefs = [meta?.coeficiente_margem, meta?.coeficiente_liquida5, meta?.coeficiente_beneficio5, meta?.coeficiente].filter(Boolean)
+        for (const tab of tabelas) {
+          const matchPerc = String(tab).match(/([\d]+(?:[,\.][\d]+)?)\s*%/)
+          if (matchPerc && matchPerc[1]) {
+            const perc = parseFloat(matchPerc[1].replace(",", "."))
+            if (perc > 0) {
+              prod = (sumOp * perc) / 100
+              break
+            }
+          }
+        }
+        if (prod === 0) {
+          const perc = resolvePercentualProducaoSync(conv, String(coefs[0] || ""), String(tabelas[0] || ""))
+          if (perc > 0) {
+            prod = (sumOp * perc) / 100
+          }
+        }
+      }
+      return Math.round(prod * 100) / 100
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const resolveProdAndOp = (item: any, overrideMeta?: any) => {
+      const desc = item?.descricao || item?.observacoes || ""
+      const meta = overrideMeta || parseDescriptionMetadata(desc) || {}
+      const conv = String(item?.convenio || meta?.convenio || "").toUpperCase()
+
+      let selectedTypes: ("margem" | "liquida5" | "beneficio5")[] = []
+      if (Array.isArray(meta?.selected_operation_types) && meta.selected_operation_types.length > 0) {
+        selectedTypes = meta.selected_operation_types.filter((t: string) =>
+          ["margem", "liquida5", "beneficio5"].includes(t)
+        )
+      } else if (meta?.selected_operation_type) {
+        selectedTypes = String(meta.selected_operation_type)
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => ["margem", "liquida5", "beneficio5"].includes(s)) as ("margem" | "liquida5" | "beneficio5")[]
+      }
+
+      if (selectedTypes.length > 0) {
+        let sumOp = 0
+        let sumProd = 0
+        selectedTypes.forEach((t) => {
+          let opVal = parseKanbanNum(meta?.[`valor_operacao_${t}`])
+          if (!opVal) {
+            const mVal = parseKanbanNum(
+              meta?.[t] ||
+                (t === "margem"
+                  ? item?.margem ?? item?.margem_disponivel
+                  : t === "liquida5"
+                  ? item?.margem_liquida_5
+                  : item?.margem_beneficio_5)
+            )
+            const cVal = parseCleanFloat(meta?.[`coeficiente_${t}`]) || (t === "margem" ? 0.028 : 0.053)
+            if (mVal && cVal) opVal = mVal / cVal
+          }
+          sumOp += opVal
+          sumProd += parseKanbanNum(meta?.[`valor_producao_${t}`])
+        })
+        if (sumOp === 0 && (item?.valor_operacao || item?.valor_solicitado)) {
+          sumOp = parseKanbanNum(item.valor_operacao ?? item.valor_solicitado)
+        }
+        if (sumProd === 0) {
+          sumProd = extractConsolidatedProd(meta, desc, sumOp, selectedTypes, conv)
+        }
+        return { numOp: sumOp, numProd: Math.round(sumProd * 100) / 100 }
+      }
+
+      const rawOpField = item?.valor_operacao ?? item?.valor_solicitado
+      if (rawOpField !== null && rawOpField !== undefined && rawOpField !== 0) {
+        const sumOp = parseKanbanNum(rawOpField)
+        return { numOp: sumOp, numProd: extractConsolidatedProd(meta, desc, sumOp, [], conv) }
+      }
+
+      const descNorm = desc ? desc.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() : ""
+      let textType: "margem" | "liquida5" | "beneficio5" | null = null
+      if (descNorm.includes("MARGEM 35%") || descNorm.includes("MARGEM LIQUIDA EMPRESTIMO")) {
+        textType = "margem"
+      } else if (descNorm.includes("LIQUIDA 5%") || descNorm.includes("MARGEM LIQUIDA CARTAO")) {
+        textType = "liquida5"
+      } else if (descNorm.includes("BENEFICIO 5%") || descNorm.includes("CARTAO")) {
+        textType = "beneficio5"
+      }
+      if (textType) {
+        let opVal = parseKanbanNum(meta?.[`valor_operacao_${textType}`])
+        if (!opVal) {
+          const mVal = parseKanbanNum(
+            meta?.[textType] ||
+              (textType === "margem"
+                ? item?.margem ?? item?.margem_disponivel
+                : textType === "liquida5"
+                ? item?.margem_liquida_5
+                : item?.margem_beneficio_5)
+          )
+          const cVal = textType === "margem" ? 0.028 : 0.053
+          if (mVal && cVal) opVal = mVal / cVal
+        }
+        let prodVal = parseKanbanNum(meta?.[`valor_producao_${textType}`])
+        if (prodVal === 0) prodVal = extractConsolidatedProd(meta, desc, opVal, [textType], conv)
+        return { numOp: opVal, numProd: Math.round(prodVal * 100) / 100 }
+      }
+
+      if (meta) {
+        for (const t of ["margem", "liquida5", "beneficio5"] as const) {
+          if (
+            (meta[t] && meta[t] !== "" && meta[t] !== "R$ 0,00") ||
+            (meta[`valor_operacao_${t}`] && meta[`valor_operacao_${t}`] !== "R$ 0,00")
+          ) {
+            let opVal = parseKanbanNum(meta[`valor_operacao_${t}`])
+            if (!opVal) {
+              const mVal = parseKanbanNum(
+                meta[t] ||
+                  (t === "margem"
+                    ? item?.margem ?? item?.margem_disponivel
+                    : t === "liquida5"
+                    ? item?.margem_liquida_5
+                    : item?.margem_beneficio_5)
+              )
+              const cVal = parseCleanFloat(meta[`coeficiente_${t}`]) || (t === "margem" ? 0.028 : 0.053)
+              if (mVal && cVal) opVal = Math.round((mVal / cVal) * 100) / 100
+            }
+            let prodVal = parseKanbanNum(meta[`valor_producao_${t}`])
+            if (!prodVal) prodVal = extractConsolidatedProd(meta, desc, opVal, [t], conv)
+            return { numOp: opVal, numProd: Math.round(prodVal * 100) / 100 }
+          }
+        }
+      }
+
+      const mMargem = parseKanbanNum(item?.margem ?? item?.margem_disponivel)
+      if (mMargem > 0) {
+        const opVal = Math.round((mMargem / 0.028) * 100) / 100
+        return { numOp: opVal, numProd: extractConsolidatedProd(meta, desc, opVal, ["margem"], conv) }
+      }
+      const mLiq5 = parseKanbanNum(item?.margem_liquida_5)
+      if (mLiq5 > 0) {
+        const opVal = Math.round((mLiq5 / 0.053) * 100) / 100
+        return { numOp: opVal, numProd: extractConsolidatedProd(meta, desc, opVal, ["liquida5"], conv) }
+      }
+      const mBen5 = parseKanbanNum(item?.margem_beneficio_5)
+      if (mBen5 > 0) {
+        const opVal = Math.round((mBen5 / 0.053) * 100) / 100
+        return { numOp: opVal, numProd: extractConsolidatedProd(meta, desc, opVal, ["beneficio5"], conv) }
+      }
+
+      return { numOp: 0, numProd: extractConsolidatedProd(meta, desc, 0, [], conv) }
+    }
+
+    const loadPipelineOpps = async () => {
+      setIsLoadingPipelineOpps(true)
+      try {
+        const teamIds = teamPipelineKey.split(",").filter(Boolean)
+        if (teamIds.length === 0) return
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const allFichas: any[] = []
+        const PAGE_SIZE = 1000
+        let from = 0
+        let hasMore = true
+
+        // Carrega cache de tabelas em paralelo com a primeira página de kanban_fichas
+        const tabelasPromise = loadTabelasConfigCache()
+
+        while (hasMore && !isCancelled) {
+          const { data, error } = await withRetry(() =>
+            supabase
+              .from("kanban_fichas")
+              .select(
+                "id, cliente_nome, cliente_cpf, cliente_telefone, etapa, motivo_perda, operador_id, operador_nome, margem_disponivel, valor_solicitado, convenio, observacoes, metadata, created_at, updated_at"
+              )
+              .in("operador_id", teamIds)
+              .in("etapa", ["EM RETOMADA", "EM ABORDAGEM", "EM NEGOCIAÇÃO", "EM REATIVAÇÃO"])
+              .range(from, from + PAGE_SIZE - 1)
+          )
+          if (error) throw error
+          if (data && data.length > 0) {
+            allFichas.push(...data)
+            if (data.length < PAGE_SIZE) {
+              hasMore = false
+            } else {
+              from += PAGE_SIZE
+            }
+          } else {
+            hasMore = false
+          }
+        }
+
+        await tabelasPromise
+        if (isCancelled) return
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const activeFichas: { f: any; fMeta: any; rawCpf: string; baseProd: number; baseOp: number; baseConvenio: string }[] = []
+        const cpfsNeedingChamados = new Set<string>()
+
+        for (let i = 0; i < allFichas.length; i++) {
+          const f = allFichas[i]
+          const fMeta = f.metadata && typeof f.metadata === "object" ? f.metadata : {}
+          const motivo = String(f.motivo_perda || "").trim().toLowerCase()
+          if (
+            motivo === "não existe whatsapp" ||
+            motivo === "whatsapp divergente" ||
+            Boolean(fMeta.tabulacao_whatsapp)
+          ) {
+            continue
+          }
+
+          const rawCpf = (f.cliente_cpf || "").replace(/\D/g, "")
+          const baseConvenio = String(f.convenio || fMeta.convenio || "").trim()
+          const baseRes = resolveProdAndOp(
+            {
+              observacoes: f.observacoes,
+              convenio: baseConvenio,
+              margem_disponivel: f.margem_disponivel,
+              valor_solicitado: f.valor_solicitado,
+            },
+            fMeta
+          )
+
+          activeFichas.push({
+            f,
+            fMeta,
+            rawCpf,
+            baseProd: baseRes.numProd,
+            baseOp: baseRes.numOp,
+            baseConvenio,
+          })
+
+          // Só consulta chamados para CPFs onde a própria ficha ainda não possui produção e operação completas
+          if (rawCpf && (baseRes.numProd === 0 || baseRes.numOp === 0)) {
+            cpfsNeedingChamados.add(rawCpf)
+          }
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const chamadosBatches: any[] = []
+        if (cpfsNeedingChamados.size > 0) {
+          const distinctCpfs = Array.from(cpfsNeedingChamados)
+          const cpfChunks: string[][] = []
+          for (let i = 0; i < distinctCpfs.length; i += 150) {
+            cpfChunks.push(distinctCpfs.slice(i, i + 150))
+          }
+
+          for (let i = 0; i < cpfChunks.length; i += 3) {
+            if (isCancelled) return
+            const slice = cpfChunks.slice(i, i + 3)
+            const resps = await Promise.all(
+              slice.map((chunk) =>
+                withRetry(() =>
+                  supabase
+                    .from("chamados")
+                    .select(
+                      "id, cliente_cpf, user_id, user_nome, margem, margem_liquida_5, margem_beneficio_5, valor_operacao, descricao, convenio, created_at"
+                    )
+                    .in("cliente_cpf", chunk)
+                    .gte("created_at", "2026-10-30T00:00:00")
+                    .order("created_at", { ascending: false })
+                )
+              )
+            )
+            resps.forEach((r) => {
+              if (r.data) chamadosBatches.push(...r.data)
+            })
+          }
+        }
+
+        if (isCancelled) return
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mapaPorId = new Map<string, any[]>()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mapaPorNome = new Map<string, any[]>()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mapaPorCpf = new Map<string, any[]>()
+        // Cache para parsear cada chamado no máximo 1 vez
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const chamadoResCache = new Map<any, { numOp: number; numProd: number }>()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const getChamadoRes = (ch: any) => {
+          let cached = chamadoResCache.get(ch)
+          if (!cached) {
+            cached = resolveProdAndOp(ch)
+            chamadoResCache.set(ch, cached)
+          }
+          return cached
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const addCandidate = (map: Map<string, any[]>, key: string, ch: any) => {
+          if (!key) return
+          let arr = map.get(key)
+          if (!arr) {
+            arr = []
+            map.set(key, arr)
+          }
+          arr.push(ch)
+        }
+
+        chamadosBatches.forEach((ch) => {
+          const rawCpf = (ch.cliente_cpf || "").replace(/\D/g, "")
+          if (!rawCpf) return
+          const padded = rawCpf.padStart(11, "0")
+          const unpadded = rawCpf.replace(/^0+/, "")
+          const uId = ch.user_id ? String(ch.user_id).trim() : ""
+          const uNome = (ch.user_nome || "").trim().toLowerCase()
+          const keys = Array.from(new Set([rawCpf, padded, unpadded].filter(Boolean)))
+          for (let k = 0; k < keys.length; k++) {
+            const c = keys[k]
+            if (uId) addCandidate(mapaPorId, `${c}_${uId}`, ch)
+            if (uNome) addCandidate(mapaPorNome, `${c}_${uNome}`, ch)
+            addCandidate(mapaPorCpf, c, ch)
+          }
+        })
+
+        const nowMs = Date.now()
+        const oppMap: PipelineOppsMap = {}
+
+        for (let i = 0; i < activeFichas.length; i++) {
+          const { f, fMeta, rawCpf, baseProd, baseOp, baseConvenio } = activeFichas[i]
+          const opId = String(f.operador_id || "").trim()
+          if (!opId) continue
+          if (!oppMap[opId]) oppMap[opId] = { count: 0, totalProd: 0, items: [] }
+          oppMap[opId].count += 1
+
+          let prod = baseProd
+          let opVal = baseOp
+          let resolvedConvenio = baseConvenio
+
+          if (rawCpf && (prod === 0 || opVal === 0)) {
+            const padded = rawCpf.padStart(11, "0")
+            const unpadded = rawCpf.replace(/^0+/, "")
+            const uNome = String(f.operador_nome || "").trim().toLowerCase()
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const candidates: any[] = []
+            const cpfKeys = Array.from(new Set([rawCpf, padded, unpadded].filter(Boolean)))
+            for (let k = 0; k < cpfKeys.length; k++) {
+              const c = cpfKeys[k]
+              const byId = mapaPorId.get(`${c}_${opId}`)
+              if (byId) candidates.push(...byId)
+              if (uNome) {
+                const byNome = mapaPorNome.get(`${c}_${uNome}`)
+                if (byNome) candidates.push(...byNome)
+              }
+              const byCpf = mapaPorCpf.get(c)
+              if (byCpf) candidates.push(...byCpf)
+            }
+            if (candidates.length > 0) {
+              const unique = Array.from(new Set(candidates))
+              const bestCh =
+                unique.find((c) => {
+                  const r = getChamadoRes(c)
+                  return r.numProd > 0 && r.numOp > 0
+                }) ||
+                unique.find((c) => getChamadoRes(c).numProd > 0) ||
+                unique.find((c) => getChamadoRes(c).numOp > 0 || c.valor_operacao) ||
+                unique[0]
+              if (bestCh) {
+                const bestRes = getChamadoRes(bestCh)
+                if (prod === 0) prod = bestRes.numProd
+                if (opVal === 0) opVal = bestRes.numOp
+                if (!resolvedConvenio && bestCh.convenio) {
+                  resolvedConvenio = String(bestCh.convenio).trim()
+                }
+              }
+            }
+          }
+
+          const rawEtapa = String(f.etapa || "").trim().toUpperCase()
+          const normalizedEtapa = rawEtapa.includes("NEGOCIA")
+            ? "EM NEGOCIAÇÃO"
+            : rawEtapa.includes("REATIVA")
+            ? "EM REATIVAÇÃO"
+            : !rawEtapa.includes("SEM INTERA") && (rawEtapa.includes("INTERA") || Boolean(fMeta.em_interacao))
+            ? "EM INTERAÇÃO"
+            : "EM RETOMADA"
+
+          const dateMs = new Date(f.updated_at || f.created_at || nowMs).getTime()
+          const exactHoursInactive = Math.max(0, (nowMs - dateMs) / (1000 * 60 * 60))
+          const hoursInactive = Math.floor(exactHoursInactive)
+          const days = Math.floor(hoursInactive / 24)
+          const remHours = hoursInactive % 24
+          const timeLabel =
+            days <= 0
+              ? `${hoursInactive} ${hoursInactive === 1 ? "hora" : "horas"}`
+              : `${days} ${days === 1 ? "dia" : "dias"}${
+                  remHours > 0 ? ` e ${remHours} ${remHours === 1 ? "hora" : "horas"}` : ""
+                }`
+
+          const rawPhone =
+            f.cliente_telefone ||
+            fMeta.cliente_telefone ||
+            fMeta.cliente_telefone_2 ||
+            (Array.isArray(fMeta.telefones) && fMeta.telefones.length > 0
+              ? typeof fMeta.telefones[0] === "string"
+                ? fMeta.telefones[0]
+                : fMeta.telefones[0]?.numero
+              : "") ||
+            ""
+
+          const clienteNome = String(f.cliente_nome || "Cliente sem Nome")
+          const clienteCpf = String(f.cliente_cpf || "")
+          const convenioLabel = resolvedConvenio || "Não informado"
+          const operadorNome = String(f.operador_nome || "")
+
+          oppMap[opId].totalProd += prod
+          oppMap[opId].items.push({
+            id: String(f.id),
+            cliente_nome: clienteNome,
+            cliente_cpf: clienteCpf,
+            cliente_cpf_digits: rawCpf,
+            cliente_telefone: String(rawPhone || ""),
+            convenio: convenioLabel,
+            operador_nome: operadorNome,
+            operadorFormatted: operadorNome ? formatName(operadorNome) : "",
+            etapa: normalizedEtapa,
+            valorOperacao: opVal,
+            valorProducao: prod,
+            hoursInactive,
+            timeLabel,
+            isHighRisk: opVal >= 25000 && exactHoursInactive > 48,
+            searchText: `${clienteNome} ${clienteCpf} ${convenioLabel}`.toLowerCase(),
+          })
+        }
+
+        Object.values(oppMap).forEach((entry) => {
+          entry.items.sort(
+            (a, b) => b.valorProducao - a.valorProducao || b.valorOperacao - a.valorOperacao
+          )
+        })
+
+        if (!isCancelled) {
+          setPipelineOppsByUser(oppMap)
+          setPipelineLoadedKey(teamPipelineKey)
+        }
+      } catch (err) {
+        console.warn("Erro ao calcular oportunidades do Kanban no modal de metas:", err)
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingPipelineOpps(false)
+        }
+      }
+    }
+
+    loadPipelineOpps()
+    return () => {
+      isCancelled = true
+    }
+  }, [isTeamGoalsModalOpen, teamPipelineKey, pipelineLoadedKey])
+
   const headerContent = useMemo(() => {
     if (typeof window === 'undefined') return { greeting: "Olá", phrase: "Sua jornada para o topo começa agora", isCelebration: false }
     
@@ -2719,6 +3334,9 @@ export default function DashboardPage() {
             setStartDate={setStartDate}
             setEndDate={setEndDate}
             estagioRankingGroup={estagioRankingGroup}
+            top3Corretores={top3Corretores}
+            totalTeamGoalsCount={teamGoalProgress.length}
+            onOpenTeamGoalsModal={() => setIsTeamGoalsModalOpen(true)}
           />
         )}
         
@@ -3349,49 +3967,131 @@ export default function DashboardPage() {
               {isSupervisor ? (
                 <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}>
                   <div className="bg-white rounded-[24px] p-5 border border-slate-200 shadow-lg shadow-[#1C2643]/5 flex flex-col gap-3 h-full min-h-[290px] justify-between">
-                     <div className="flex items-center gap-2.5 mb-1.5">
-                        <div className="w-8 h-8 bg-[#1C2643] rounded-lg flex items-center justify-center">
-                           <Target className="w-5 h-5 text-white" />
+                    <div className="flex items-center gap-2.5 mb-0.5">
+                      <div className="w-8 h-8 bg-[#1C2643] rounded-lg flex items-center justify-center shrink-0">
+                        <Target className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none uppercase truncate">
+                          EVOLUÇÃO NAS METAS
+                        </p>
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-0.5 truncate">
+                          Top 3 Corretores no Mês
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 flex-1 flex flex-col justify-center">
+                      {isLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="w-5 h-5 animate-spin text-[#1C2643]" />
                         </div>
-                        <div>
-                           <p className="text-[11.5px] font-black text-[#1C2643] tracking-tight leading-none">
-                             ACESSAR CAMPANHA
-                           </p>
-                        </div>
-                     </div>
-                     <div className="space-y-2.5 flex-1 flex flex-col justify-center">
-                        {dashboardCampaigns.length > 0 ? (
-                          dashboardCampaigns.map((campaign) => (
-                            <div 
-                              key={campaign.id} 
-                              onClick={() => router.push(`/campanhas/atendimento/${campaign.id}`)}
-                              className="flex items-center justify-between p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200 hover:border-primary/30 hover:bg-white transition-all cursor-pointer group"
+                      ) : top3Corretores.length > 0 ? (
+                        <>
+                          {top3Corretores.map((member, idx) => {
+                            const achievedPct = member.achieved
+                              ? Math.round(member.pct)
+                              : Math.min(99, Math.round(member.pct))
+                            const remainingPct = member.achieved ? 0 : Math.max(1, 100 - achievedPct)
+                            const progressColorClass =
+                              member.achieved || member.pct >= 100
+                                ? "bg-emerald-500"
+                                : member.pct > 66.67
+                                ? "bg-blue-500"
+                                : member.pct > 33.33
+                                ? "bg-orange-500"
+                                : "bg-red-500"
+
+                            return (
+                              <div
+                                key={member.id}
+                                className="flex flex-col gap-1.5 p-2 px-2.5 bg-slate-50 rounded-xl border border-slate-200"
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span
+                                      className={cn(
+                                        "text-[8.5px] font-black px-1.5 py-0.5 rounded-md border shrink-0",
+                                        idx === 0
+                                          ? "bg-amber-100 text-amber-700 border-amber-200"
+                                          : idx === 1
+                                          ? "bg-slate-200/80 text-slate-700 border-slate-300"
+                                          : "bg-orange-100/80 text-orange-700 border-orange-200"
+                                      )}
+                                    >
+                                      {idx + 1}º
+                                    </span>
+                                    <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight truncate">
+                                      {formatName(member.nome)}
+                                    </span>
+                                  </div>
+                                  <span
+                                    className={cn(
+                                      "text-[10.5px] font-black shrink-0",
+                                      member.achieved ? "text-emerald-600" : "text-[#1C2643]"
+                                    )}
+                                  >
+                                    {achievedPct}% alcançado
+                                  </span>
+                                </div>
+
+                                <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                  <div
+                                    className={cn(
+                                      "h-full rounded-full transition-all duration-500",
+                                      progressColorClass
+                                    )}
+                                    style={{ width: `${Math.min(100, Math.max(0, member.pct))}%` }}
+                                  />
+                                </div>
+
+                                <div className="flex items-center justify-between gap-2 text-[10px] font-bold">
+                                  <span className="text-slate-700 truncate">
+                                    Meta: {formatCurrency(member.goal)}
+                                  </span>
+                                  {member.achieved ? (
+                                    <span className="text-emerald-600 font-black uppercase shrink-0">
+                                      Meta alcançada!
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-600 font-bold shrink-0">
+                                      Falta <strong className="font-bold">{formatCurrency(member.remaining)}</strong>{" "}
+                                      <span className="font-bold">({remainingPct}%)</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+
+                          <div className="pt-1 flex justify-center">
+                            <button
+                              type="button"
+                              onClick={() => setIsTeamGoalsModalOpen(true)}
+                              className="text-[11px] font-black text-[#1C2643] hover:text-amber-600 underline underline-offset-4 tracking-wide transition-colors cursor-pointer"
                             >
-                              <div className="flex flex-col">
-                                <span className="text-[9.5px] font-black text-[#1C2643] uppercase tracking-tight group-hover:text-primary transition-colors">
-                                  {campaign.nome}
-                                </span>
-                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
-                                  {campaign.filtros?.convenio || 'Geral'}
-                                </span>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-[9.5px] font-black text-[#1C2643]">
-                                  {campaign.publico_estimado?.toLocaleString('pt-BR')} Leads
-                                </p>
-                                <p className="text-[8px] font-bold text-slate-400">
-                                  {new Date(campaign.created_at).toLocaleDateString('pt-BR')}
-                                </p>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="flex flex-col items-center justify-center py-6 opacity-40">
-                            <Target className="w-6.5 h-6.5 mb-1.5" />
-                            <p className="text-[8.5px] font-bold uppercase tracking-widest text-center">Nenhuma campanha disponível</p>
+                              Ver todos
+                            </button>
                           </div>
-                        )}
-                     </div>
+                        </>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-6 gap-2">
+                          <Target className="w-6.5 h-6.5 text-slate-300" />
+                          <p className="text-[8.5px] font-bold uppercase tracking-widest text-center text-slate-400">
+                            Nenhum corretor na equipe
+                          </p>
+                          {teamGoalProgress.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setIsTeamGoalsModalOpen(true)}
+                              className="text-[10px] font-black text-[#1C2643] hover:text-amber-600 underline underline-offset-4 tracking-wide transition-colors cursor-pointer"
+                            >
+                              Ver todos
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </motion.div>
               ) : (
@@ -5504,6 +6204,16 @@ export default function DashboardPage() {
         </div>
       )}
     </AnimatePresence>
+
+    <TeamGoalsModals
+      isOpen={isTeamGoalsModalOpen}
+      onClose={() => setIsTeamGoalsModalOpen(false)}
+      teamGoalProgress={teamGoalProgress}
+      pipelineOppsByUser={pipelineOppsByUser}
+      isLoadingPipelineOpps={isLoadingPipelineOpps}
+      pipelineLoadedKey={pipelineLoadedKey}
+      teamPipelineKey={teamPipelineKey}
+    />
 
     <RankingContractsModal
       isOpen={!!rankingModalParams}
