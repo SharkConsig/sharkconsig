@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase"
 import { X, Printer, Search, Loader2, FileText } from "lucide-react"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
+import { isSupervisorLikeUser, resolveProposalInterventionSplit } from "@/lib/intervencao-split"
 
 export interface RankingContractModalParams {
   personId: string
@@ -137,10 +138,23 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
     const fetchContracts = async () => {
       setIsLoading(true)
       try {
-        // Fetch users to accurately distinguish Corretores PJ vs CLT/Supervisor/Estágio
-        const { data: usersData } = await supabase
-          .from("usuarios")
-          .select("id, regime_contratacao, funcao, role, nome")
+        // Fetch users from /api/usuarios (public.perfis) to accurately distinguish Supervisor, Corretores PJ/CLT, and Estágio
+        let usersData: any[] = []
+        try {
+          const usersRes = await fetch("/api/usuarios")
+          if (usersRes.ok) {
+            const json = await usersRes.json()
+            if (Array.isArray(json)) usersData = json
+          }
+        } catch {
+          // Fallback to perfis table if API route fails
+        }
+        if (usersData.length === 0) {
+          const { data: perfisData } = await supabase
+            .from("perfis")
+            .select("id, regime_contratacao, funcao, role, nome")
+          if (perfisData) usersData = perfisData
+        }
 
         const newUsersMap = new Map<string, any>()
         if (usersData) {
@@ -182,7 +196,7 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
           )
         )
 
-        const internIds = Array.from(usersMap.values())
+        const internIds = Array.from(newUsersMap.values())
           .filter((u) => {
             const func = (u.funcao || u.role || "").trim().toLowerCase()
             const regime = (u.regime_contratacao || "").trim().toLowerCase()
@@ -193,9 +207,9 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
 
         if (isSupervisorPerson && internIds.length > 0) {
           const allTargetIds = Array.from(new Set([cleanId, ...internIds])).filter(Boolean)
-          query = query.or(`corretor_id.in.(${allTargetIds.join(",")}),estagiario_colaborador_id.in.(${internIds.join(",")})`)
+          query = query.or(`corretor_id.in.(${allTargetIds.join(",")}),estagiario_colaborador_id.in.(${internIds.join(",")}),intervencao_operacional_id.in.(${internIds.join(",")}),intervencao_operacional.eq.true`)
         } else if (cleanId && cleanId !== "ESTAGIL_AND_PJ") {
-          query = query.or(`corretor_id.eq.${cleanId},estagiario_colaborador_id.eq.${cleanId},intervencao_operacional_id.eq.${cleanId}`)
+          query = query.or(`corretor_id.eq.${cleanId},estagiario_colaborador_id.eq.${cleanId},intervencao_operacional_id.eq.${cleanId},intervencao_motivo.ilike.%${cleanId}%`)
         } else if (cleanName) {
           query = query.or(`nome_corretor.ilike.%${cleanName}%,estagiario_colaborador_nome.ilike.%${cleanName}%,intervencao_operacional_nome.ilike.%${cleanName}%`)
         }
@@ -272,11 +286,23 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
             const isDigitadaHoje = isTodayCreated && !isCancelled && !isRetroactivePayment && !isPaid
 
             if (params.category === "paid") {
-              return isPaid && (effectivePaymentDate >= rangeStart && effectivePaymentDate <= rangeEnd)
+              if (!(isPaid && (effectivePaymentDate >= rangeStart && effectivePaymentDate <= rangeEnd))) return false
             } else if (params.category === "in_process") {
-              return isInProcess || isDigitadaHoje
+              if (!(isInProcess || isDigitadaHoje)) return false
             } else if (params.category === "today") {
-              return isTodayCreated && !isCancelled && !isRetroactivePayment
+              if (!(isTodayCreated && !isCancelled && !isRetroactivePayment)) return false
+            }
+
+            if (cleanId && cleanId !== "ESTAGIL_AND_PJ") {
+              const split = resolveProposalInterventionSplit(p, (id) => newUsersMap.get(id))
+              if (split.isActive) {
+                if (isSupervisorPerson) {
+                  const internFactor = internIds.reduce((sum, iId) => sum + (split.factorMap[iId] || 0), 0)
+                  if (internFactor <= 0) return false
+                } else {
+                  if ((split.factorMap[cleanId] || 0) <= 0) return false
+                }
+              }
             }
 
             return true
@@ -319,41 +345,28 @@ export function RankingContractsModal({ isOpen, onClose, params }: RankingContra
       baseVal = prodVal > 0 ? prodVal : (parseVal(p.valor_operacao) || parseVal(p.valor_cliente) || parseVal(p.valor_cliente_operacional) || parseVal(p.valor_base) || 0)
     }
 
-    // Se a proposta possui intervenção operacional ativa, aplica a proporção do colaborador no ranking
-    if (p.intervencao_operacional && p.intervencao_operacional_id) {
-      const pctMatch = p.intervencao_motivo ? String(p.intervencao_motivo).match(/PCT:\[([0-9.]+),([0-9.]+)(?:,([0-9.]+))?\]/) : null
-      let pC = 0.5
-      let pOp1 = 0.5
-      let pOp2 = 0
-      let op2Id: string | null = null
-
-      if (p.estagiario_colaborador_id && p.estagiario_colaborador_id.trim() !== "" && p.estagiario_colaborador_id.trim() !== p.corretor_id && p.estagiario_colaborador_id.trim() !== p.intervencao_operacional_id?.trim()) {
-        op2Id = p.estagiario_colaborador_id.trim()
-      } else if (p.intervencao_motivo && p.intervencao_motivo.includes("2º")) {
-        const match = p.intervencao_motivo.match(/2º [^()]+\(([^)]+)\)/)
-        if (match && match[1]) op2Id = match[1].trim()
+    // Se a proposta possui intervenção operacional ativa, aplica a proporção definida na intervenção
+    const split = resolveProposalInterventionSplit(p, (id) => usersMap.get(id))
+    if (split.isActive) {
+      const isSupervisorPerson = isSupervisorLikeUser(selectedPersonUser)
+      if (isSupervisorPerson) {
+        let internFactorSum = 0
+        split.participants.forEach((part) => {
+          const u = usersMap.get(part.userId)
+          const func = (u?.funcao || u?.role || "").trim().toLowerCase()
+          const regime = (u?.regime_contratacao || "").trim().toLowerCase()
+          const isInternUser =
+            !(regime === "clt" || regime.includes("clt")) &&
+            (func === "estágio" || func === "estagio" || func === "processo seletivo" || regime === "estágio" || regime === "estagio")
+          if (isInternUser) internFactorSum += part.factor
+        })
+        return baseVal * internFactorSum
       }
 
-      if (pctMatch) {
-        pC = (parseFloat(pctMatch[1]) || 50) / 100
-        pOp1 = (parseFloat(pctMatch[2]) || 50) / 100
-        pOp2 = (parseFloat(pctMatch[3] || "0") || 0) / 100
-      } else if (op2Id) {
-        pC = 0.34
-        pOp1 = 0.33
-        pOp2 = 0.33
+      const activeUserId = (params?.personId || "").trim()
+      if (activeUserId && activeUserId !== "ESTAGIL_AND_PJ") {
+        return baseVal * (split.factorMap[activeUserId] || 0)
       }
-
-      const isSupervisorPerson = selectedPersonUser && (
-        (selectedPersonUser.funcao || "").trim().toLowerCase() === "supervisor" ||
-        (selectedPersonUser.role || "").trim().toLowerCase() === "supervisor"
-      )
-
-      const activeUserId = params?.personId || ""
-      if (isSupervisorPerson) return baseVal * pC
-      if (activeUserId === p.corretor_id) return baseVal * pC
-      if (activeUserId === p.intervencao_operacional_id?.trim()) return baseVal * pOp1
-      if (op2Id && activeUserId === op2Id) return baseVal * pOp2
     }
 
     return baseVal

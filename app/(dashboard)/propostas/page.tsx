@@ -41,6 +41,7 @@ import { toast } from "sonner"
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import { syncKanbanForClosedProposal } from "@/lib/sync-kanban-propostas"
+import { resolveProposalInterventionSplit } from "@/lib/intervencao-split"
 
 const TABS_CONFIG = [
   {
@@ -260,6 +261,7 @@ export default function ProposalsPage() {
   const [selectedProposalForIntervention, setSelectedProposalForIntervention] = useState<Proposal | null>(null)
   const [isCloning, setIsCloning] = useState<string | null>(null)
   const [dbEstagiarios, setDbEstagiarios] = useState<{ id: string; nome: string }[]>([])
+  const [allUsersMap, setAllUsersMap] = useState<Map<string, any>>(new Map())
 
   useEffect(() => {
     async function loadEstagiarios() {
@@ -268,6 +270,12 @@ export default function ProposalsPage() {
         if (res.ok) {
           const data = await res.json()
           if (Array.isArray(data)) {
+            const nextMap = new Map<string, any>()
+            data.forEach((u: any) => {
+              if (u?.id) nextMap.set(u.id, u)
+            })
+            setAllUsersMap(nextMap)
+
             const activeEst = data
               .filter((u: any) => {
                 const funcao = (u.funcao || '').toLowerCase()
@@ -335,10 +343,44 @@ export default function ProposalsPage() {
   const [filterValorMin, setFilterValorMin] = useState("")
   const [filterValorMax, setFilterValorMax] = useState("")
 
-  // Listas de valores únicos para os filtros avançados baseados nas propostas atuais
-  const uniqueCorretores = useMemo(() => Array.from(new Set(proposals.map(p => p.nome_corretor || p.corretor).filter(Boolean))).sort() as string[], [proposals])
+  const getUserById = useCallback((id: string) => allUsersMap.get(id), [allUsersMap])
+
+  // Listas de valores únicos para os filtros avançados baseados nas propostas atuais (incluindo participantes de intervenção)
+  const { uniqueCorretores, uniqueEstagiarios } = useMemo(() => {
+    const corretorSet = new Set<string>()
+    const estagiarioSet = new Set<string>()
+
+    proposals.forEach((p) => {
+      const corrName = p.nome_corretor || p.corretor
+      if (corrName) corretorSet.add(corrName)
+      if (p.estagiario_colaborador_nome) estagiarioSet.add(p.estagiario_colaborador_nome)
+
+      if (p.intervencao_operacional) {
+        const split = resolveProposalInterventionSplit(p, (id) => allUsersMap.get(id))
+        split.participants.forEach((part) => {
+          if (part.factor <= 0) return
+          const u = allUsersMap.get(part.userId)
+          if (!u?.nome) return
+          const func = (u.funcao || u.role || "").trim().toLowerCase()
+          const regime = (u.regime_contratacao || "").trim().toLowerCase()
+          const isIntern =
+            !(regime === "clt" || regime.includes("clt")) &&
+            (func === "estágio" || func === "estagio" || func === "processo seletivo" || regime === "estágio" || regime === "estagio")
+          if (isIntern) {
+            estagiarioSet.add(u.nome)
+          } else {
+            corretorSet.add(u.nome)
+          }
+        })
+      }
+    })
+
+    return {
+      uniqueCorretores: Array.from(corretorSet).sort(),
+      uniqueEstagiarios: Array.from(estagiarioSet).sort(),
+    }
+  }, [proposals, allUsersMap])
   const uniqueEquipes = useMemo(() => Array.from(new Set(proposals.map(p => p.equipe).filter(Boolean))).sort() as string[], [proposals])
-  const uniqueEstagiarios = useMemo(() => Array.from(new Set(proposals.map(p => p.estagiario_colaborador_nome).filter(Boolean))).sort() as string[], [proposals])
   const uniqueBancos = useMemo(() => Array.from(new Set(proposals.map(p => p.banco).filter(Boolean))).sort() as string[], [proposals])
   const uniqueConvenios = useMemo(() => Array.from(new Set(proposals.map(p => p.convenio).filter(Boolean))).sort() as string[], [proposals])
   const uniqueOperacoes = useMemo(() => Array.from(new Set(proposals.map(p => p.tipo_operacao).filter(Boolean))).sort() as string[], [proposals])
@@ -689,14 +731,15 @@ export default function ProposalsPage() {
       const isUserSupervisorOnly = (isSupervisor || perfil.role === 'Supervisor') && !isAdmin && !isDeveloper && !isOperational;
 
       if (isCorretor) {
-        // Se corretor tiver estagiários vinculados (padrinho), inclui também
+        // Se corretor tiver estagiários vinculados (padrinho), inclui também + intervenções em que participa
         const myEstagiarios = usersList
           .filter((u) => u.padrinho_id === perfil.id)
           .map((u) => u.id)
         if (myEstagiarios.length > 0) {
-          query = query.in('corretor_id', [perfil.id, ...myEstagiarios])
+          const ids = [perfil.id, ...myEstagiarios]
+          query = query.or(`corretor_id.in.(${ids.join(",")}),intervencao_operacional_id.eq.${perfil.id},intervencao_motivo.ilike.%${perfil.id}%`)
         } else {
-          query = query.eq('corretor_id', perfil.id)
+          query = query.or(`corretor_id.eq.${perfil.id},intervencao_operacional_id.eq.${perfil.id},intervencao_motivo.ilike.%${perfil.id}%`)
         }
       } else if (isUserSupervisorOnly) {
         // Supervisor vê apenas as suas propostas e as propostas dos corretores/estagiários da sua equipe
@@ -946,9 +989,35 @@ export default function ProposalsPage() {
         return false;
       })();
 
-      const matchesCorretor = filterCorretores.length === 0 || filterCorretores.includes(proposal.nome_corretor || proposal.corretor || "")
+      const split = proposal.intervencao_operacional
+        ? resolveProposalInterventionSplit(proposal, getUserById)
+        : null
+
+      const matchesCorretor = (() => {
+        if (filterCorretores.length === 0) return true
+        if (split?.isActive) {
+          const selectedSet = new Set(filterCorretores.map((n) => n.trim().toLowerCase()))
+          return split.participants.some((part) => {
+            if (part.factor <= 0) return false
+            const uName = (allUsersMap.get(part.userId)?.nome || "").trim().toLowerCase()
+            return uName !== "" && selectedSet.has(uName)
+          })
+        }
+        return filterCorretores.includes(proposal.nome_corretor || proposal.corretor || "")
+      })()
       const matchesEquipe = filterEquipes.length === 0 || filterEquipes.includes(proposal.equipe || "")
-      const matchesEstagiario = filterEstagiarios.length === 0 || filterEstagiarios.includes(proposal.estagiario_colaborador_nome || "")
+      const matchesEstagiario = (() => {
+        if (filterEstagiarios.length === 0) return true
+        if (split?.isActive) {
+          const selectedSet = new Set(filterEstagiarios.map((n) => n.trim().toLowerCase()))
+          return split.participants.some((part) => {
+            if (part.factor <= 0) return false
+            const uName = (allUsersMap.get(part.userId)?.nome || "").trim().toLowerCase()
+            return uName !== "" && selectedSet.has(uName)
+          })
+        }
+        return filterEstagiarios.includes(proposal.estagiario_colaborador_nome || "")
+      })()
       const matchesBanco = filterBancos.length === 0 || filterBancos.includes(proposal.banco || "")
       const matchesConvenio = filterConvenios.length === 0 || filterConvenios.includes(proposal.convenio || "")
       const matchesOperacao = filterOperacoes.length === 0 || filterOperacoes.includes(proposal.tipo_operacao || "")
@@ -968,7 +1037,7 @@ export default function ProposalsPage() {
       }
     })
     return newCounts
-  }, [proposals, searchTerm, startDate, endDate, dateFilterType, filterCorretores, filterEquipes, filterEstagiarios, filterBancos, filterConvenios, filterOperacoes, filterValorMin, filterValorMax])
+  }, [proposals, searchTerm, startDate, endDate, dateFilterType, filterCorretores, filterEquipes, filterEstagiarios, filterBancos, filterConvenios, filterOperacoes, filterValorMin, filterValorMax, allUsersMap, getUserById])
 
   const statusCards = useMemo(() => {
     return TABS_CONFIG.map(tab => {
@@ -1065,9 +1134,35 @@ export default function ProposalsPage() {
       return false;
     })();
 
-    const matchesCorretor = filterCorretores.length === 0 || filterCorretores.includes(proposal.nome_corretor || proposal.corretor || "")
+    const split = proposal.intervencao_operacional
+      ? resolveProposalInterventionSplit(proposal, getUserById)
+      : null
+
+    const matchesCorretor = (() => {
+      if (filterCorretores.length === 0) return true
+      if (split?.isActive) {
+        const selectedSet = new Set(filterCorretores.map((n) => n.trim().toLowerCase()))
+        return split.participants.some((part) => {
+          if (part.factor <= 0) return false
+          const uName = (allUsersMap.get(part.userId)?.nome || "").trim().toLowerCase()
+          return uName !== "" && selectedSet.has(uName)
+        })
+      }
+      return filterCorretores.includes(proposal.nome_corretor || proposal.corretor || "")
+    })()
     const matchesEquipe = filterEquipes.length === 0 || filterEquipes.includes(proposal.equipe || "")
-    const matchesEstagiario = filterEstagiarios.length === 0 || filterEstagiarios.includes(proposal.estagiario_colaborador_nome || "")
+    const matchesEstagiario = (() => {
+      if (filterEstagiarios.length === 0) return true
+      if (split?.isActive) {
+        const selectedSet = new Set(filterEstagiarios.map((n) => n.trim().toLowerCase()))
+        return split.participants.some((part) => {
+          if (part.factor <= 0) return false
+          const uName = (allUsersMap.get(part.userId)?.nome || "").trim().toLowerCase()
+          return uName !== "" && selectedSet.has(uName)
+        })
+      }
+      return filterEstagiarios.includes(proposal.estagiario_colaborador_nome || "")
+    })()
     const matchesBanco = filterBancos.length === 0 || filterBancos.includes(proposal.banco || "")
     const matchesConvenio = filterConvenios.length === 0 || filterConvenios.includes(proposal.convenio || "")
     const matchesOperacao = filterOperacoes.length === 0 || filterOperacoes.includes(proposal.tipo_operacao || "")
@@ -1096,9 +1191,53 @@ export default function ProposalsPage() {
     return timeA - timeB
   })
 
-  const totalValorProducao = useMemo(() => {
-    return filteredProposals.reduce((acc, p) => acc + (Number(p.valor_producao) || 0), 0)
-  }, [filteredProposals])
+  const { totalValorProducao, hasSplitInTotal } = useMemo(() => {
+    const hasPersonFilter = filterEstagiarios.length > 0 || filterCorretores.length > 0
+    const selectedNameSet = new Set(
+      [...filterEstagiarios, ...filterCorretores].map((n) => n.trim().toLowerCase()).filter(Boolean)
+    )
+    const selectedUserIds = new Set<string>()
+    if (hasPersonFilter) {
+      allUsersMap.forEach((u, id) => {
+        const uName = (u?.nome || "").trim().toLowerCase()
+        if (uName && selectedNameSet.has(uName)) {
+          selectedUserIds.add(id)
+        }
+      })
+    }
+
+    let splitApplied = false
+    const sum = filteredProposals.reduce((acc, p) => {
+      const baseProd = Number(p.valor_producao) || 0
+      if (!p.intervencao_operacional) {
+        return acc + baseProd
+      }
+
+      const split = resolveProposalInterventionSplit(p, getUserById)
+      if (!split.isActive) {
+        return acc + baseProd
+      }
+
+      if (hasPersonFilter) {
+        let factorSum = 0
+        selectedUserIds.forEach((uId) => {
+          factorSum += split.factorMap[uId] || 0
+        })
+        if (factorSum < 0.999) splitApplied = true
+        return acc + baseProd * factorSum
+      }
+
+      if (isCorretor && !isAdmin && !isDeveloper && !isOperational && !isSupervisor && perfil?.id) {
+        const myFactor = split.factorMap[perfil.id] || 0
+        if (myFactor < 0.999) splitApplied = true
+        return acc + baseProd * myFactor
+      }
+
+      return acc + baseProd
+    }, 0)
+
+    return { totalValorProducao: sum, hasSplitInTotal: splitApplied }
+  }, [filteredProposals, filterEstagiarios, filterCorretores, allUsersMap, getUserById, isCorretor, isAdmin, isDeveloper, isOperational, isSupervisor, perfil?.id])
 
   // Pagination Logic
   const totalPages = Math.ceil(filteredProposals.length / itemsPerPage)
@@ -1584,11 +1723,19 @@ export default function ProposalsPage() {
         {/* Export Button & Total Produção Row */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pt-4">
           {/* Total Produção on the left */}
-          <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-100 px-4 py-2 rounded-lg shadow-sm">
+          <div
+            className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-100 px-4 py-2 rounded-lg shadow-sm"
+            title={hasSplitInTotal ? "Valor calculado considerando os percentuais das intervenções ativas para os filtros selecionados" : undefined}
+          >
             <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Total Produção:</span>
             <span className="text-[14px] font-black font-sans">
               R$ {totalValorProducao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
+            {hasSplitInTotal && (
+              <span className="text-[10px] font-bold text-emerald-700/80">
+                (c/ rateio)
+              </span>
+            )}
           </div>
 
           {/* Export Button on the right */}

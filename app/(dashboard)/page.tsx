@@ -41,6 +41,7 @@ import { useAuth } from "@/context/auth-context"
 import { cn, withRetry, formatName } from "@/lib/utils"
 import { motion, AnimatePresence } from "motion/react"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
+import { resolveProposalInterventionSplit } from "@/lib/intervencao-split"
 import { useSidebar } from "@/context/sidebar-context"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -1133,6 +1134,11 @@ export default function DashboardPage() {
         return res.json()
       })
       const allUsers: User[] = usersRes || []
+      const allUsersByIdMap = new Map<string, User>()
+      allUsers.forEach((u: User) => {
+        if (u.id) allUsersByIdMap.set(u.id, u)
+      })
+      const getUserById = (id: string) => allUsersByIdMap.get(id)
 
       const targetCorretorId = perfil?.id
 
@@ -1167,20 +1173,23 @@ export default function DashboardPage() {
       if (isEstagio) {
         try {
           const targetInternId = perfil?.id
-          const { data: internProposals, error: internPropsError } = await withRetry(() =>
-            supabase
+          let internProposals: any[] = []
+          if (targetInternId && typeof targetInternId === "string" && targetInternId.trim() !== "") {
+            const internQuery = supabase
               .from("propostas")
-              .select("id, status, valor_producao, estagiario_colaborador_id, corretor_id, nome_cliente, banco, convenio, tipo_operacao, created_at, updated_at, data_pago_cliente")
-              .or(`estagiario_colaborador_id.eq.${targetInternId},corretor_id.eq.${targetInternId}`)
-          )
+              .select("id, status, valor_producao, estagiario_colaborador_id, corretor_id, nome_cliente, banco, convenio, tipo_operacao, created_at, updated_at, data_pago_cliente, intervencao_operacional, intervencao_operacional_id, intervencao_motivo")
+              .in("status", paidStatuses)
+              .or(`estagiario_colaborador_id.eq.${targetInternId},corretor_id.eq.${targetInternId},intervencao_operacional_id.eq.${targetInternId},intervencao_motivo.ilike.%${targetInternId}%`)
+            internProposals = await fetchAll(internQuery)
+          }
 
-          if (internProposals && !internPropsError) {
+          if (internProposals) {
             let paidCount = 0
             let totalMoved = 0
             const matchedProps: InternProposalDetail[] = []
 
             internProposals.forEach(p => {
-              const updatedDate = new Date(p.updated_at)
+              const updatedDate = parseDateSafe(p.updated_at) || new Date(p.updated_at)
               const effectivePaymentDate = p.data_pago_cliente ? (parseDateSafe(p.data_pago_cliente) || updatedDate) : updatedDate
 
               let isPaidInRange = true
@@ -1192,10 +1201,14 @@ export default function DashboardPage() {
               }
 
               if ((p.status === "PAGO AO CLIENTE - AGUARDANDO PÓS-VENDA" || p.status === "PÓS-VENDA REALIZADA") && isPaidInRange) {
+                const split = resolveProposalInterventionSplit(p, getUserById)
+                const factor = split.isActive ? (split.factorMap[targetInternId || ""] || 0) : 1.0
+                if (factor <= 0) return
+
                 paidCount++
                 const moneyVal = parseCurrency(p.valor_producao)
                 if (!isNaN(moneyVal)) {
-                  totalMoved += moneyVal
+                  totalMoved += moneyVal * factor
                 }
                 matchedProps.push(p)
               }
@@ -1308,10 +1321,10 @@ export default function DashboardPage() {
               .select("corretor_id, valor_producao, valor_operacao, tipo_operacao, status, updated_at, created_at, data_pago_cliente, estagiario_colaborador_id, estagiario_colaborador_nome, intervencao_operacional, intervencao_operacional_id, intervencao_operacional_nome, intervencao_motivo")
 
             if (!isPrivilegedStatsUser && !isUserMonitoramento && validTeamIds.length > 0) {
-              teamProposalsQuery = teamProposalsQuery.or(`corretor_id.in.(${validTeamIds.join(",")}),estagiario_colaborador_id.in.(${validTeamIds.join(",")}),intervencao_operacional_id.in.(${validTeamIds.join(",")})`)
+              teamProposalsQuery = teamProposalsQuery.or(`corretor_id.in.(${validTeamIds.join(",")}),estagiario_colaborador_id.in.(${validTeamIds.join(",")}),intervencao_operacional_id.in.(${validTeamIds.join(",")}),intervencao_operacional.eq.true`)
             }
 
-            teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte.${queryStart},created_at.gte.${queryStart},status.in.(${activeStatusList})`)
+            teamProposalsQuery = teamProposalsQuery.or(`updated_at.gte.${queryStart},created_at.gte.${queryStart},data_pago_cliente.gte.${queryStart},status.in.(${activeStatusList})`)
             teamProposals = await fetchAll(teamProposalsQuery)
           } catch (colErr: any) {
             console.warn("Error fetching team proposals with interventions, trying fallback:", colErr?.message || colErr)
@@ -1472,64 +1485,16 @@ export default function DashboardPage() {
                            brokerUser?.funcao === 'Estagio' || 
                            brokerUser?.funcao === 'Processo Seletivo' || 
                            brokerUser?.funcao === 'PROCESSO SELETIVO'
-          // Lista de beneficiários e divisão percentual da proposta
-          const beneficiaryIds: string[] = []
-          if (brokerId) beneficiaryIds.push(brokerId)
-
-          const hasIntervention = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id && curr.intervencao_operacional_id.trim() !== "")
-          let pctCorretor = 0.5
-          let pctOp1 = 0.5
-          let pctOp2 = 0
-          let op2IntervId: string | null = null
-
-          if (hasIntervention) {
-            const op1Id = curr.intervencao_operacional_id.trim()
-            if (!beneficiaryIds.includes(op1Id)) {
-              beneficiaryIds.push(op1Id)
-            }
-
-            // Identifica se há 2º operador associado à intervenção
-            if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== brokerId && curr.estagiario_colaborador_id.trim() !== op1Id) {
-              op2IntervId = curr.estagiario_colaborador_id.trim()
-            } else if (curr.intervencao_motivo && curr.intervencao_motivo.includes("2º")) {
-              const match = curr.intervencao_motivo.match(/2º [^()]+\(([^)]+)\)/)
-              if (match && match[1]) op2IntervId = match[1].trim()
-            }
-
-            if (op2IntervId && !beneficiaryIds.includes(op2IntervId)) {
-              beneficiaryIds.push(op2IntervId)
-            }
-
-            // Extrai as porcentagens definidas na intervenção: PCT:[c,op1,op2]
-            const pctMatch = curr.intervencao_motivo ? String(curr.intervencao_motivo).match(/PCT:\[([0-9.]+),([0-9.]+)(?:,([0-9.]+))?\]/) : null
-            if (pctMatch) {
-              pctCorretor = (parseFloat(pctMatch[1]) || 50) / 100
-              pctOp1 = (parseFloat(pctMatch[2]) || 50) / 100
-              pctOp2 = (parseFloat(pctMatch[3] || "0") || 0) / 100
-            } else if (op2IntervId) {
-              pctCorretor = 0.34
-              pctOp1 = 0.33
-              pctOp2 = 0.33
-            } else {
-              pctCorretor = 0.5
-              pctOp1 = 0.5
-              pctOp2 = 0
-            }
-          } else {
-            // Com intervenção desativada: proposta pontua 100% exclusivamente para o Corretor Titular.
-            // Se houver estagiário regular da proposta cadastrado fora de intervenção, inclui para acompanhamento
-            if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== brokerId) {
-              beneficiaryIds.push(curr.estagiario_colaborador_id.trim())
-            }
-          }
+          // Lista de beneficiários e divisão percentual da proposta (exclui supervisor automaticamente quando aplicável ou usa participantes definidos)
+          const split = resolveProposalInterventionSplit(curr, getUserById)
+          const hasIntervention = split.isActive
+          const beneficiaryIds: string[] = split.participants
+            .filter((p) => p.factor > 0)
+            .map((p) => p.userId)
 
           const getInterventionFactor = (userId: string): number => {
             if (!hasIntervention) return 1.0
-            const op1Id = curr.intervencao_operacional_id?.trim()
-            if (userId === brokerId) return pctCorretor
-            if (op1Id && userId === op1Id) return pctOp1
-            if (op2IntervId && userId === op2IntervId) return pctOp2
-            return 0
+            return split.factorMap[userId] || 0
           }
           const targetBrokerIdForColabs = brokerId
           
@@ -1605,7 +1570,7 @@ export default function DashboardPage() {
             // - Contratos digitados pelo Administrador NÃO.
             // - Corretores PJ NÃO.
             if (!isBrokerAdmin && !isPJBrokerCard) {
-              const belongsToTeam = teamIds.includes(brokerId) || (curr.estagiario_colaborador_id && teamIds.includes(curr.estagiario_colaborador_id))
+              const belongsToTeam = teamIds.includes(brokerId) || (curr.estagiario_colaborador_id && teamIds.includes(curr.estagiario_colaborador_id)) || beneficiaryIds.some((bId) => teamIds.includes(bId))
               if (belongsToTeam) {
                 countsForTeam = true
               }
@@ -2168,39 +2133,7 @@ export default function DashboardPage() {
         const aggregated = allPaid.reduce((acc: Record<string, number>, curr) => {
           const val = parseCurrency(curr.valor_producao)
           const id = curr.corretor_id || "unknown"
-          const hasInterv = Boolean(curr.intervencao_operacional && curr.intervencao_operacional_id)
-
-          let pC = 0.5
-          let pOp1 = 0.5
-          let pOp2 = 0
-          let op2IntervId: string | null = null
-
-          if (hasInterv) {
-            const op1Id = curr.intervencao_operacional_id?.trim() || ""
-            if (curr.estagiario_colaborador_id && curr.estagiario_colaborador_id.trim() !== "" && curr.estagiario_colaborador_id.trim() !== id && curr.estagiario_colaborador_id.trim() !== op1Id) {
-              op2IntervId = curr.estagiario_colaborador_id.trim()
-            } else if (curr.intervencao_motivo && curr.intervencao_motivo.includes("2º")) {
-              const match = curr.intervencao_motivo.match(/2º [^()]+\(([^)]+)\)/)
-              if (match && match[1]) op2IntervId = match[1].trim()
-            }
-
-            const pctMatch = curr.intervencao_motivo ? String(curr.intervencao_motivo).match(/PCT:\[([0-9.]+),([0-9.]+)(?:,([0-9.]+))?\]/) : null
-            if (pctMatch) {
-              pC = (parseFloat(pctMatch[1]) || 50) / 100
-              pOp1 = (parseFloat(pctMatch[2]) || 50) / 100
-              pOp2 = (parseFloat(pctMatch[3] || "0") || 0) / 100
-            } else if (op2IntervId) {
-              pC = 0.34
-              pOp1 = 0.33
-              pOp2 = 0.33
-            } else {
-              pC = 0.5
-              pOp1 = 0.5
-              pOp2 = 0
-            }
-          }
-
-          const factor = hasInterv ? pC : 1.0
+          const split = resolveProposalInterventionSplit(curr, getUserById)
 
           const userInList = allUsers.find((u: User) => u.id === id)
           if (userInList?.status?.toUpperCase() === 'INATIVO') {
@@ -2212,8 +2145,6 @@ export default function DashboardPage() {
                                userInList?.funcao === 'Processo Seletivo' ||
                                userInList?.funcao === 'PROCESSO SELETIVO'
 
-          // For Corretor ranking (when not admin/supervisor), check range here too if needed
-          // but normally the query handles it. Let's respect data_pago_cliente if it ever gets used here.
           const effectiveDate = curr.data_pago_cliente ? (parseDateSafe(curr.data_pago_cliente) || new Date(curr.updated_at)) : new Date(curr.updated_at)
           
           let inRange = true
@@ -2223,17 +2154,22 @@ export default function DashboardPage() {
 
           if (inRange) {
             const numVal = isNaN(val) ? 0 : val
-            if (!isUserIntern) {
-              acc[id] = (acc[id] || 0) + (numVal * factor)
-            }
-            // Se houve intervenção operacional, atribui a porcentagem ao 1º operador
-            if (hasInterv && curr.intervencao_operacional_id && pOp1 > 0) {
-              const opId = curr.intervencao_operacional_id.trim()
-              acc[opId] = (acc[opId] || 0) + (numVal * pOp1)
-            }
-            // Se houver 2º operador na intervenção, atribui a porcentagem ao 2º operador
-            if (hasInterv && pOp2 > 0 && op2IntervId) {
-              acc[op2IntervId] = (acc[op2IntervId] || 0) + (numVal * pOp2)
+            if (split.isActive) {
+              split.participants.forEach((p) => {
+                if (p.factor <= 0) return
+                const pUser = allUsersByIdMap.get(p.userId)
+                if (pUser?.status?.toUpperCase() === "INATIVO") return
+                const pIsIntern =
+                  pUser?.funcao === "Estágio" ||
+                  pUser?.funcao === "Estagio" ||
+                  pUser?.funcao === "Processo Seletivo" ||
+                  pUser?.funcao === "PROCESSO SELETIVO"
+                if (!pIsIntern) {
+                  acc[p.userId] = (acc[p.userId] || 0) + numVal * p.factor
+                }
+              })
+            } else if (!isUserIntern) {
+              acc[id] = (acc[id] || 0) + numVal
             }
           }
           return acc

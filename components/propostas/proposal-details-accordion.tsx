@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/context/auth-context"
 import { isProposalFromKanban } from "@/app/(dashboard)/propostas/page"
 import { syncKanbanForClosedProposal } from "@/lib/sync-kanban-propostas"
+import { getInterventionBadgeLabel } from "@/lib/intervencao-split"
 interface HistoryItem {
   id: string;
   created_at: string;
@@ -1458,7 +1459,7 @@ export function ProposalDetailsAccordion({ proposal, onRefresh: _onRefresh }: { 
                 title="Redistribuir 50% da produção meta com o Operacional"
               >
                 <GitFork className="w-3.5 h-3.5 mr-1 text-amber-300" />
-                {proposal.intervencao_operacional ? "INTERVENÇÃO (50/50 ATIVA)" : "INTERVENÇÃO OPERACIONAL"}
+                {getInterventionBadgeLabel(proposal)}
               </Button>
             )}
 
