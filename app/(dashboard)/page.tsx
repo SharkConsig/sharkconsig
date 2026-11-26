@@ -3619,6 +3619,9 @@ export default function DashboardPage() {
             setStartDate={setStartDate}
             setEndDate={setEndDate}
             estagioRankingGroup={estagioRankingGroup}
+            userGoalStatsMap={userGoalStatsMap}
+            kanbanStatsByUser={mergedKanbanStatsByUser}
+            onRequestUserKanbanStats={fetchUserKanbanStats}
           />
         </div>
       </div>

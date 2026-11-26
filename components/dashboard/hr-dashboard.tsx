@@ -27,7 +27,15 @@ import { useAuth } from "@/context/auth-context"
 import { supabase } from "@/lib/supabase"
 import { cn, formatName } from "@/lib/utils"
 import Image from "next/image"
-import { DashboardCard, Gauge, formatCurrency } from "./dashboard-shared"
+import {
+  DashboardCard,
+  Gauge,
+  formatCurrency,
+  RankingNameHoverCard,
+  RankingUserAvatar,
+  UserRankingGoalStats,
+  UserKanbanSummary,
+} from "./dashboard-shared"
 import { format } from "date-fns"
 import { RankingContractsModal, RankingContractModalParams } from "./ranking-contracts-modal"
 import { RHMessagingModal } from "@/components/rh/rh-messaging-modal"
@@ -78,6 +86,7 @@ export interface BirthdayPerson {
 interface InternCollaboration {
   estagiario_id: string
   nome: string
+  avatar_url?: string
   supervisor?: string
   totalPaid: number
   countPaid: number
@@ -95,6 +104,7 @@ interface InternCollaboration {
 interface RankingItem {
   corretor_id: string
   name: string
+  avatar_url?: string
   team: string
   supervisor: string
   totalPaid: number
@@ -103,6 +113,7 @@ interface RankingItem {
   countPaid: number
   countInProcess: number
   countToday: number
+  approvedTicketsCount?: number
   funcao?: string
   colaboracoes?: {
     propria: {
@@ -160,6 +171,9 @@ interface HRDashboardProps {
   setStartDate?: (d: string) => void
   setEndDate?: (d: string) => void
   estagioRankingGroup?: RankingItem | null
+  userGoalStatsMap?: Record<string, UserRankingGoalStats>
+  kanbanStatsByUser?: Record<string, UserKanbanSummary>
+  onRequestUserKanbanStats?: (userId: string) => void
 }
 
 interface DBCollaborator {
@@ -258,7 +272,10 @@ export function HRDashboard({
   endDate = "",
   setStartDate,
   setEndDate,
-  estagioRankingGroup
+  estagioRankingGroup,
+  userGoalStatsMap = {},
+  kanbanStatsByUser = {},
+  onRequestUserKanbanStats,
 }: HRDashboardProps) {
   const { perfil } = useAuth()
   const isOnlyAdmin = perfil?.role?.toLowerCase() === 'administrador' || perfil?.role?.toLowerCase() === 'desenvolvedor'
@@ -1099,35 +1116,84 @@ export function HRDashboard({
                             )}
                           >
                             <td className="px-4 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className={cn(
-                                  "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
-                                  position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
-                                  position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
-                                  position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
-                                  "bg-white text-slate-400 border-slate-100"
-                                )}>
-                                  {position}º
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-1.5 min-w-[120px]">
-                                    <p className={cn(
-                                      "text-[14px] font-black tracking-tight",
-                                      isUser ? "text-[#1C2643]" : "text-slate-700"
+                              {!isGroupRow ? (
+                                <RankingNameHoverCard
+                                  userId={rank.corretor_id}
+                                  name={rank.name}
+                                  avatarUrl={rank.avatar_url || userGoalStatsMap[rank.corretor_id]?.avatar_url}
+                                  funcao={rank.funcao || userGoalStatsMap[rank.corretor_id]?.funcao}
+                                  goalStats={userGoalStatsMap[rank.corretor_id] || {
+                                    goal: isSupervisorRow ? 448000 : 47000,
+                                    produced: rank.totalPaid || 0,
+                                    remaining: Math.max(0, (isSupervisorRow ? 448000 : 47000) - (rank.totalPaid || 0)),
+                                    avatar_url: rank.avatar_url,
+                                    funcao: rank.funcao,
+                                  }}
+                                  kanbanStats={kanbanStatsByUser[rank.corretor_id]}
+                                  onRequestKanbanStats={onRequestUserKanbanStats}
+                                  className="w-full group"
+                                >
+                                  <div className="flex items-center gap-3 w-full">
+                                    <div className={cn(
+                                      "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                                      position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                                      position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
+                                      position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                                      "bg-white text-slate-400 border-slate-100"
                                     )}>
-                                      {formatName(rank.name)} {isUser && !isSupervisorRow && !isGroupRow && "(Você)"}
-                                    </p>
-                                    {isGroupRow && (
-                                      isExpanded ? (
+                                      {position}º
+                                    </div>
+                                    <RankingUserAvatar
+                                      name={rank.name}
+                                      avatarUrl={rank.avatar_url || userGoalStatsMap[rank.corretor_id]?.avatar_url}
+                                      sizeClass="w-8 h-8"
+                                      textClass="text-[10px]"
+                                    />
+                                    <div>
+                                      <div className="flex items-center gap-1.5 min-w-[120px]">
+                                        <p className={cn(
+                                          "text-[14px] font-black tracking-tight group-hover:text-indigo-700 transition-colors",
+                                          isUser ? "text-[#1C2643]" : "text-slate-700"
+                                        )}>
+                                          {formatName(rank.name)} {isUser && !isSupervisorRow && "(Você)"}
+                                        </p>
+                                      </div>
+                                      <p className="text-[10px] font-bold text-slate-400 tracking-tighter">SUP: {formatName(rank.supervisor)}</p>
+                                    </div>
+                                  </div>
+                                </RankingNameHoverCard>
+                              ) : (
+                                <div className="flex items-center gap-3">
+                                  <div className={cn(
+                                    "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                                    position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                                    position === 2 ? "bg-slate-100 text-slate-500 border-slate-200" :
+                                    position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                                    "bg-white text-slate-400 border-slate-100"
+                                  )}>
+                                    {position}º
+                                  </div>
+                                  <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                                    <Users className="w-4 h-4 text-[#1C2643]" />
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-1.5 min-w-[120px]">
+                                      <p className={cn(
+                                        "text-[14px] font-black tracking-tight",
+                                        isUser ? "text-[#1C2643]" : "text-slate-700"
+                                      )}>
+                                        {formatName(rank.name)}
+                                      </p>
+                                      {isExpanded ? (
                                         <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" />
                                       ) : (
                                         <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />
-                                      )
-                                    )}
+                                      )}
+                                    </div>
+                                    <p className="text-[10px] font-bold text-slate-400 tracking-tighter">SUP: {formatName(rank.supervisor)}</p>
                                   </div>
-                                  <p className="text-[10px] font-bold text-slate-400 tracking-tighter">SUP: {formatName(rank.supervisor)}</p>
                                 </div>
-                              </div>
+                              )}
                             </td>
                             <td className="px-4 py-4 text-right bg-slate-50/50">
                               <div className="flex flex-col items-end">
@@ -1334,33 +1400,56 @@ export function HRDashboard({
                             return (
                               <tr key={est.estagiario_id} className="hover:bg-slate-50/80 transition-colors">
                                 <td className="px-4 py-4">
-                                  <div className="flex items-center gap-3">
-                                    <div className={cn(
-                                      "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
-                                      position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
-                                      position === 2 ? "bg-slate-500 text-white border-slate-500" :
-                                      position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
-                                      "bg-slate-50 text-slate-400 border-slate-100"
-                                    )}>
-                                      {position}º
-                                    </div>
-                                    <div className="flex flex-col">
-                                      <div className="flex items-center gap-1.5">
-                                        <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                        <span className="text-[14px] font-black tracking-tight text-[#1C2643]">
-                                          {formatName(est.nome)}
-                                        </span>
-                                        <span className="text-[10px] font-black text-slate-400 ml-1">
-                                          (ESTÁGIO)
-                                        </span>
+                                  <RankingNameHoverCard
+                                    userId={est.estagiario_id}
+                                    name={est.nome}
+                                    avatarUrl={est.avatar_url || userGoalStatsMap[est.estagiario_id]?.avatar_url}
+                                    funcao={userGoalStatsMap[est.estagiario_id]?.funcao || "Estágio"}
+                                    goalStats={userGoalStatsMap[est.estagiario_id] || {
+                                      goal: 47000,
+                                      produced: est.totalPaid || 0,
+                                      remaining: Math.max(0, 47000 - (est.totalPaid || 0)),
+                                      avatar_url: est.avatar_url,
+                                      funcao: "Estágio",
+                                    }}
+                                    kanbanStats={kanbanStatsByUser[est.estagiario_id]}
+                                    onRequestKanbanStats={onRequestUserKanbanStats}
+                                    className="w-full group"
+                                  >
+                                    <div className="flex items-center gap-3 w-full">
+                                      <div className={cn(
+                                        "w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 border",
+                                        position === 1 ? "bg-amber-100 text-amber-600 border-amber-200" : 
+                                        position === 2 ? "bg-slate-500 text-white border-slate-500" :
+                                        position === 3 ? "bg-orange-100 text-orange-600 border-orange-200" :
+                                        "bg-slate-50 text-slate-400 border-slate-100"
+                                      )}>
+                                        {position}º
                                       </div>
-                                      {est.supervisor && (
-                                        <p className="text-[10px] font-bold text-slate-400 tracking-tighter mt-0.5">
-                                          SUP: {formatName(est.supervisor)}
-                                        </p>
-                                      )}
+                                      <RankingUserAvatar
+                                        name={est.nome}
+                                        avatarUrl={est.avatar_url || userGoalStatsMap[est.estagiario_id]?.avatar_url}
+                                        sizeClass="w-8 h-8"
+                                        textClass="text-[10px]"
+                                      />
+                                      <div className="flex flex-col">
+                                        <div className="flex items-center gap-1.5">
+                                          <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                          <span className="text-[14px] font-black tracking-tight text-[#1C2643] group-hover:text-indigo-700 transition-colors">
+                                            {formatName(est.nome)}
+                                          </span>
+                                          <span className="text-[10px] font-black text-slate-400 ml-1">
+                                            (ESTÁGIO)
+                                          </span>
+                                        </div>
+                                        {est.supervisor && (
+                                          <p className="text-[10px] font-bold text-slate-400 tracking-tighter mt-0.5">
+                                            SUP: {formatName(est.supervisor)}
+                                          </p>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
+                                  </RankingNameHoverCard>
                                 </td>
                                 <td className="px-4 py-4 text-right bg-slate-50/50">
                                   <div className="flex flex-col items-end">
