@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo, useCallback, Fragment } from "react"
+import { useEffect, useState, useMemo, useCallback, useRef, Fragment } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { format } from "date-fns"
@@ -44,7 +44,15 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { useSidebar } from "@/context/sidebar-context"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { DashboardCard, Gauge, formatCurrency } from "@/components/dashboard/dashboard-shared"
+import {
+  DashboardCard,
+  Gauge,
+  formatCurrency,
+  RankingUserAvatar,
+  RankingNameHoverCard,
+  UserRankingGoalStats,
+  UserKanbanSummary,
+} from "@/components/dashboard/dashboard-shared"
 import { AdminDashboard } from "@/components/dashboard/admin-dashboard"
 import { HRDashboard } from "@/components/dashboard/hr-dashboard"
 import { RankingContractsModal, RankingContractModalParams } from "@/components/dashboard/ranking-contracts-modal"
@@ -96,6 +104,7 @@ interface InternProposalDetail {
 interface InternCollaboration {
   estagiario_id: string
   nome: string
+  avatar_url?: string
   supervisor?: string
   totalPaid: number
   countPaid: number
@@ -113,6 +122,7 @@ interface InternCollaboration {
 interface RankingItem {
   corretor_id: string
   nome: string
+  avatar_url?: string
   totalPaid: number
   totalInProcess: number
   totalToday: number
@@ -241,6 +251,219 @@ const parseDescriptionMetadata = (desc: string) => {
     console.error("Error parsing metadata in list:", e);
   }
   return null;
+};
+
+const parseKanbanNum = (valStr: unknown): number => {
+  if (valStr === null || valStr === undefined) return 0
+  if (typeof valStr === "number") return isNaN(valStr) ? 0 : Math.round(valStr * 100) / 100
+  const str = String(valStr).trim()
+  if (!str) return 0
+  let cleaned = str.replace(/[^0-9.,-]/g, "").trim()
+  if (!cleaned) return 0
+  if (cleaned.includes(",")) {
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".")
+  } else {
+    const parts = cleaned.split(".")
+    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3 && parts[0].length >= 1)) {
+      cleaned = parts.join("")
+    }
+  }
+  const num = parseFloat(cleaned)
+  return isNaN(num) ? 0 : Math.round(num * 100) / 100
+}
+
+const parseCleanFloat = (val: unknown): number | null => {
+  if (val === null || val === undefined) return null
+  if (typeof val === "number") return isNaN(val) ? null : val
+  const str = String(val).trim()
+  if (!str) return null
+  let cleaned = str.replace(/[^0-9.,-]/g, "").trim()
+  if (!cleaned) return null
+  if (cleaned.includes(",")) {
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".")
+  } else {
+    const parts = cleaned.split(".")
+    if (parts.length > 2) {
+      cleaned = parts.slice(0, -1).join("") + "." + parts[parts.length - 1]
+    }
+  }
+  const parsed = parseFloat(cleaned)
+  return isNaN(parsed) ? null : parsed
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const extractConsolidatedProd = (meta: any, desc = "", sumOp = 0, selectedTypes: string[] = [], convenio = ""): number => {
+  let prod = 0
+  if (selectedTypes.length > 0 && meta) {
+    selectedTypes.forEach((t) => {
+      prod += parseKanbanNum(meta?.[`valor_producao_${t}`])
+    })
+  }
+  if (prod === 0 && meta) {
+    prod =
+      parseKanbanNum(meta.valor_producao_margem) +
+      parseKanbanNum(meta.valor_producao_liquida5) +
+      parseKanbanNum(meta.valor_producao_beneficio5) +
+      parseKanbanNum(meta.valor_producao) +
+      parseKanbanNum(meta.producao) +
+      parseKanbanNum(meta.valor_producao_total)
+  }
+  if (prod === 0 && desc) {
+    const m =
+      desc.match(/(?:valor\s*(?:da|de)?\s*produç[aã]o|produç[aã]o(?:\s*\([^)]*\))?)[:\s]+(R\$\s*[\d\.,]+)/i) ||
+      desc.match(/(?:produç[aã]o|comiss[aã]o)[:\s]+(?:R\$\s*)?([\d\.,]+)/i)
+    if (m && m[1]) {
+      prod = parseKanbanNum(m[1].startsWith("R$") ? m[1] : "R$ " + m[1])
+    }
+  }
+  if (prod === 0 && sumOp > 0) {
+    const conv = convenio || meta?.convenio || ""
+    const tabelas = [meta?.tabela_margem, meta?.tabela_liquida5, meta?.tabela_beneficio5, meta?.tabela].filter(Boolean)
+    const coefs = [meta?.coeficiente_margem, meta?.coeficiente_liquida5, meta?.coeficiente_beneficio5, meta?.coeficiente].filter(Boolean)
+    for (const tab of tabelas) {
+      const matchPerc = String(tab).match(/([\d]+(?:[,\.][\d]+)?)\s*%/)
+      if (matchPerc && matchPerc[1]) {
+        const perc = parseFloat(matchPerc[1].replace(",", "."))
+        if (perc > 0) {
+          prod = (sumOp * perc) / 100
+          break
+        }
+      }
+    }
+    if (prod === 0) {
+      const perc = resolvePercentualProducaoSync(conv, String(coefs[0] || ""), String(tabelas[0] || ""))
+      if (perc > 0) {
+        prod = (sumOp * perc) / 100
+      }
+    }
+  }
+  return Math.round(prod * 100) / 100
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const resolveProdAndOp = (item: any, overrideMeta?: any) => {
+  const desc = item?.descricao || item?.observacoes || ""
+  const meta = overrideMeta || parseDescriptionMetadata(desc) || {}
+  const conv = String(item?.convenio || meta?.convenio || "").toUpperCase()
+
+  let selectedTypes: ("margem" | "liquida5" | "beneficio5")[] = []
+  if (Array.isArray(meta?.selected_operation_types) && meta.selected_operation_types.length > 0) {
+    selectedTypes = meta.selected_operation_types.filter((t: string) =>
+      ["margem", "liquida5", "beneficio5"].includes(t)
+    )
+  } else if (meta?.selected_operation_type) {
+    selectedTypes = String(meta.selected_operation_type)
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => ["margem", "liquida5", "beneficio5"].includes(s)) as ("margem" | "liquida5" | "beneficio5")[]
+  }
+
+  if (selectedTypes.length > 0) {
+    let sumOp = 0
+    let sumProd = 0
+    selectedTypes.forEach((t) => {
+      let opVal = parseKanbanNum(meta?.[`valor_operacao_${t}`])
+      if (!opVal) {
+        const mVal = parseKanbanNum(
+          meta?.[t] ||
+            (t === "margem"
+              ? item?.margem ?? item?.margem_disponivel
+              : t === "liquida5"
+              ? item?.margem_liquida_5
+              : item?.margem_beneficio_5)
+        )
+        const cVal = parseCleanFloat(meta?.[`coeficiente_${t}`]) || (t === "margem" ? 0.028 : 0.053)
+        if (mVal && cVal) opVal = mVal / cVal
+      }
+      sumOp += opVal
+      sumProd += parseKanbanNum(meta?.[`valor_producao_${t}`])
+    })
+    if (sumOp === 0 && (item?.valor_operacao || item?.valor_solicitado)) {
+      sumOp = parseKanbanNum(item.valor_operacao ?? item.valor_solicitado)
+    }
+    if (sumProd === 0) {
+      sumProd = extractConsolidatedProd(meta, desc, sumOp, selectedTypes, conv)
+    }
+    return { numOp: sumOp, numProd: Math.round(sumProd * 100) / 100 }
+  }
+
+  const rawOpField = item?.valor_operacao ?? item?.valor_solicitado
+  if (rawOpField !== null && rawOpField !== undefined && rawOpField !== 0) {
+    const sumOp = parseKanbanNum(rawOpField)
+    return { numOp: sumOp, numProd: extractConsolidatedProd(meta, desc, sumOp, [], conv) }
+  }
+
+  const descNorm = desc ? desc.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() : ""
+  let textType: "margem" | "liquida5" | "beneficio5" | null = null
+  if (descNorm.includes("MARGEM 35%") || descNorm.includes("MARGEM LIQUIDA EMPRESTIMO")) {
+    textType = "margem"
+  } else if (descNorm.includes("LIQUIDA 5%") || descNorm.includes("MARGEM LIQUIDA CARTAO")) {
+    textType = "liquida5"
+  } else if (descNorm.includes("BENEFICIO 5%") || descNorm.includes("CARTAO")) {
+    textType = "beneficio5"
+  }
+  if (textType) {
+    let opVal = parseKanbanNum(meta?.[`valor_operacao_${textType}`])
+    if (!opVal) {
+      const mVal = parseKanbanNum(
+        meta?.[textType] ||
+          (textType === "margem"
+            ? item?.margem ?? item?.margem_disponivel
+            : textType === "liquida5"
+            ? item?.margem_liquida_5
+            : item?.margem_beneficio_5)
+      )
+      const cVal = textType === "margem" ? 0.028 : 0.053
+      if (mVal && cVal) opVal = mVal / cVal
+    }
+    let prodVal = parseKanbanNum(meta?.[`valor_producao_${textType}`])
+    if (prodVal === 0) prodVal = extractConsolidatedProd(meta, desc, opVal, [textType], conv)
+    return { numOp: opVal, numProd: Math.round(prodVal * 100) / 100 }
+  }
+
+  if (meta) {
+    for (const t of ["margem", "liquida5", "beneficio5"] as const) {
+      if (
+        (meta[t] && meta[t] !== "" && meta[t] !== "R$ 0,00") ||
+        (meta[`valor_operacao_${t}`] && meta[`valor_operacao_${t}`] !== "R$ 0,00")
+      ) {
+        let opVal = parseKanbanNum(meta[`valor_operacao_${t}`])
+        if (!opVal) {
+          const mVal = parseKanbanNum(
+            meta[t] ||
+              (t === "margem"
+                ? item?.margem ?? item?.margem_disponivel
+                : t === "liquida5"
+                ? item?.margem_liquida_5
+                : item?.margem_beneficio_5)
+          )
+          const cVal = parseCleanFloat(meta[`coeficiente_${t}`]) || (t === "margem" ? 0.028 : 0.053)
+          if (mVal && cVal) opVal = Math.round((mVal / cVal) * 100) / 100
+        }
+        let prodVal = parseKanbanNum(meta[`valor_producao_${t}`])
+        if (!prodVal) prodVal = extractConsolidatedProd(meta, desc, opVal, [t], conv)
+        return { numOp: opVal, numProd: Math.round(prodVal * 100) / 100 }
+      }
+    }
+  }
+
+  const mMargem = parseKanbanNum(item?.margem ?? item?.margem_disponivel)
+  if (mMargem > 0) {
+    const opVal = Math.round((mMargem / 0.028) * 100) / 100
+    return { numOp: opVal, numProd: extractConsolidatedProd(meta, desc, opVal, ["margem"], conv) }
+  }
+  const mLiq5 = parseKanbanNum(item?.margem_liquida_5)
+  if (mLiq5 > 0) {
+    const opVal = Math.round((mLiq5 / 0.053) * 100) / 100
+    return { numOp: opVal, numProd: extractConsolidatedProd(meta, desc, opVal, ["liquida5"], conv) }
+  }
+  const mBen5 = parseKanbanNum(item?.margem_beneficio_5)
+  if (mBen5 > 0) {
+    const opVal = Math.round((mBen5 / 0.053) * 100) / 100
+    return { numOp: opVal, numProd: extractConsolidatedProd(meta, desc, opVal, ["beneficio5"], conv) }
+  }
+
+  return { numOp: 0, numProd: extractConsolidatedProd(meta, desc, 0, [], conv) }
 };
 
 const getValorOperacaoDeAbertura = (ticket: any) => {
@@ -645,6 +868,10 @@ export default function DashboardPage() {
   const [pipelineOppsByUser, setPipelineOppsByUser] = useState<PipelineOppsMap>({})
   const [isLoadingPipelineOpps, setIsLoadingPipelineOpps] = useState(false)
   const [pipelineLoadedKey, setPipelineLoadedKey] = useState("")
+  const [userGoalStatsMap, setUserGoalStatsMap] = useState<Record<string, UserRankingGoalStats>>({})
+  const [kanbanHoverStatsByUser, setKanbanHoverStatsByUser] = useState<Record<string, UserKanbanSummary>>({})
+  const kanbanHoverCacheRef = useRef<Record<string, UserKanbanSummary>>({})
+  const kanbanHoverInFlightRef = useRef<Set<string>>(new Set())
 
   const top3Corretores = useMemo(
     () => teamGoalProgress.filter((m) => m.roleCategory === "corretor").slice(0, 3),
@@ -659,6 +886,9 @@ export default function DashboardPage() {
     }
     setIsLoading(true)
     setPipelineLoadedKey("")
+    kanbanHoverCacheRef.current = {}
+    kanbanHoverInFlightRef.current.clear()
+    setKanbanHoverStatsByUser({})
 
     // Accumulators for team/admin stats
     let teamTotal = 0
@@ -761,6 +991,7 @@ export default function DashboardPage() {
       // Fetch dynamic goal configs from DB for the current month and year
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let fetchedGoalsConfigs: any[] = []
+      let resolvedUserMonthlyGoal = (isSupervisor || isOperational || isAdmin || isDeveloper) ? 448000 : 47000
       try {
         const now = new Date()
         const currentYear = now.getFullYear()
@@ -830,6 +1061,7 @@ export default function DashboardPage() {
           }
         }
 
+        resolvedUserMonthlyGoal = calculatedMonthlyGoal
         setMonthlyGoal(calculatedMonthlyGoal)
         setTeamGoal(calculatedTeamGoal)
       } catch (metaErr) {
@@ -1669,6 +1901,7 @@ export default function DashboardPage() {
           return {
             estagiario_id: m.id,
             nome: m.nome,
+            avatar_url: m.avatar_url || m.foto_campanha_url || undefined,
             supervisor: supervisorName,
             totalPaid: metrics.totalPaid,
             countPaid: metrics.countPaid,
@@ -1746,6 +1979,7 @@ export default function DashboardPage() {
             return {
               corretor_id: m.id,
               nome: m.nome,
+              avatar_url: m.avatar_url || m.foto_campanha_url || undefined,
               funcao: m.funcao || "Supervisor",
               totalPaid: estagiariosTotalPaid,
               countPaid: estagiariosCountPaid,
@@ -1764,6 +1998,7 @@ export default function DashboardPage() {
           return {
             corretor_id: m.id,
             nome: m.nome,
+            avatar_url: m.avatar_url || m.foto_campanha_url || undefined,
             funcao: m.funcao || "",
             totalPaid: rawBrokerMetrics[m.id]?.totalPaid || 0,
             countPaid: rawBrokerMetrics[m.id]?.countPaid || 0,
@@ -1853,6 +2088,49 @@ export default function DashboardPage() {
             return a.nome.localeCompare(b.nome, "pt-BR")
           })
         setTeamGoalProgress(teamGoalsList)
+
+        const nextGoalStatsMap: Record<string, UserRankingGoalStats> = {}
+        allUsers.forEach((u: User) => {
+          const uFunc = (u.funcao || "").trim().toLowerCase()
+          const uRole = (u.role || "").trim().toLowerCase()
+          const isSup = uFunc === 'supervisor' || uRole === 'supervisor'
+          const indCfg =
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            fetchedGoalsConfigs.find((g: any) => g.tipo === 'corretor' && g.alvo_id === u.id && g.ativo !== false) ||
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            fetchedGoalsConfigs.find((g: any) => g.alvo_id === u.id && g.tipo !== 'time' && g.tipo !== 'empresa' && g.ativo !== false)
+          const timeCfg = isSup
+            ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              fetchedGoalsConfigs.find((g: any) => g.tipo === 'time' && g.alvo_id === u.id && g.ativo !== false) ||
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              fetchedGoalsConfigs.find((g: any) => g.tipo === 'time' && g.ativo !== false)
+            : null
+
+          const goalVal = isSup && !indCfg
+            ? (timeCfg && Number(timeCfg.valor_mensal) > 0 ? Number(timeCfg.valor_mensal) : 448000)
+            : (indCfg && Number(indCfg.valor_mensal) > 0 ? Number(indCfg.valor_mensal) : 47000)
+
+          let prodVal = mtdPaidByUser[u.id] || 0
+          if (isSup && !indCfg) {
+            prodVal = allUsers.reduce((sum: number, sub: User) => {
+              if (sub.status?.toUpperCase() === 'INATIVO') return sum
+              if (isUserPJ(sub) || isUserAdminRole(sub)) return sum
+              if (sub.id === u.id || sub.supervisor_id === u.id) {
+                return sum + (mtdPaidByUser[sub.id] || 0)
+              }
+              return sum
+            }, 0)
+          }
+
+          nextGoalStatsMap[u.id] = {
+            goal: goalVal,
+            produced: prodVal,
+            remaining: Math.max(0, goalVal - prodVal),
+            avatar_url: u.avatar_url || u.foto_campanha_url || undefined,
+            funcao: u.funcao || (isUserPJ(u) ? "Colaborador PJ" : isUserEstagio(u) ? "Estágio" : u.role || "Corretor"),
+          }
+        })
+        setUserGoalStatsMap(nextGoalStatsMap)
       } else {
         setTeamGoalProgress([])
         let allPaid: any[] = []
@@ -1967,6 +2245,7 @@ export default function DashboardPage() {
             return { 
               corretor_id, 
               nome: userInList?.nome || `Ranking ${corretor_id.substring(0, 4)}`, 
+              avatar_url: userInList?.avatar_url || userInList?.foto_campanha_url || undefined,
               totalPaid: total as number,
               countPaid: 0,
               totalInProcess: 0,
@@ -1978,6 +2257,19 @@ export default function DashboardPage() {
           .sort((a, b) => b.totalPaid - a.totalPaid)
         
         setRankings(sortedRankings)
+        if (perfil?.id) {
+          setUserGoalStatsMap({
+            [perfil.id]: {
+              goal: resolvedUserMonthlyGoal,
+              produced: userMTDTotal,
+              remaining: Math.max(0, resolvedUserMonthlyGoal - userMTDTotal),
+              avatar_url: perfil.avatar_url || undefined,
+              funcao: perfil.funcao || perfil.role || "Corretor",
+            },
+          })
+        } else {
+          setUserGoalStatsMap({})
+        }
       }
 
       // 3. Ticket Stats (Chamados) - FETCH FOR EVERYONE
@@ -2419,6 +2711,7 @@ export default function DashboardPage() {
               return {
                 corretor_id: r.corretor_id,
                 name: userData?.nome || r.nome,
+                avatar_url: userData?.avatar_url || userData?.foto_campanha_url || r.avatar_url || undefined,
                 team: userData?.equipe || "Shark",
                 supervisor: supervisorName,
                 funcao: userData?.funcao || r.funcao || "",
@@ -2756,219 +3049,6 @@ export default function DashboardPage() {
 
     let isCancelled = false
 
-    const parseKanbanNum = (valStr: unknown): number => {
-      if (valStr === null || valStr === undefined) return 0
-      if (typeof valStr === "number") return isNaN(valStr) ? 0 : Math.round(valStr * 100) / 100
-      const str = String(valStr).trim()
-      if (!str) return 0
-      let cleaned = str.replace(/[^0-9.,-]/g, "").trim()
-      if (!cleaned) return 0
-      if (cleaned.includes(",")) {
-        cleaned = cleaned.replace(/\./g, "").replace(",", ".")
-      } else {
-        const parts = cleaned.split(".")
-        if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3 && parts[0].length >= 1)) {
-          cleaned = parts.join("")
-        }
-      }
-      const num = parseFloat(cleaned)
-      return isNaN(num) ? 0 : Math.round(num * 100) / 100
-    }
-
-    const parseCleanFloat = (val: unknown): number | null => {
-      if (val === null || val === undefined) return null
-      if (typeof val === "number") return isNaN(val) ? null : val
-      const str = String(val).trim()
-      if (!str) return null
-      let cleaned = str.replace(/[^0-9.,-]/g, "").trim()
-      if (!cleaned) return null
-      if (cleaned.includes(",")) {
-        cleaned = cleaned.replace(/\./g, "").replace(",", ".")
-      } else {
-        const parts = cleaned.split(".")
-        if (parts.length > 2) {
-          cleaned = parts.slice(0, -1).join("") + "." + parts[parts.length - 1]
-        }
-      }
-      const parsed = parseFloat(cleaned)
-      return isNaN(parsed) ? null : parsed
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const extractConsolidatedProd = (meta: any, desc = "", sumOp = 0, selectedTypes: string[] = [], convenio = ""): number => {
-      let prod = 0
-      if (selectedTypes.length > 0 && meta) {
-        selectedTypes.forEach((t) => {
-          prod += parseKanbanNum(meta?.[`valor_producao_${t}`])
-        })
-      }
-      if (prod === 0 && meta) {
-        prod =
-          parseKanbanNum(meta.valor_producao_margem) +
-          parseKanbanNum(meta.valor_producao_liquida5) +
-          parseKanbanNum(meta.valor_producao_beneficio5) +
-          parseKanbanNum(meta.valor_producao) +
-          parseKanbanNum(meta.producao) +
-          parseKanbanNum(meta.valor_producao_total)
-      }
-      if (prod === 0 && desc) {
-        const m =
-          desc.match(/(?:valor\s*(?:da|de)?\s*produç[aã]o|produç[aã]o(?:\s*\([^)]*\))?)[:\s]+(R\$\s*[\d\.,]+)/i) ||
-          desc.match(/(?:produç[aã]o|comiss[aã]o)[:\s]+(?:R\$\s*)?([\d\.,]+)/i)
-        if (m && m[1]) {
-          prod = parseKanbanNum(m[1].startsWith("R$") ? m[1] : "R$ " + m[1])
-        }
-      }
-      if (prod === 0 && sumOp > 0) {
-        const conv = convenio || meta?.convenio || ""
-        const tabelas = [meta?.tabela_margem, meta?.tabela_liquida5, meta?.tabela_beneficio5, meta?.tabela].filter(Boolean)
-        const coefs = [meta?.coeficiente_margem, meta?.coeficiente_liquida5, meta?.coeficiente_beneficio5, meta?.coeficiente].filter(Boolean)
-        for (const tab of tabelas) {
-          const matchPerc = String(tab).match(/([\d]+(?:[,\.][\d]+)?)\s*%/)
-          if (matchPerc && matchPerc[1]) {
-            const perc = parseFloat(matchPerc[1].replace(",", "."))
-            if (perc > 0) {
-              prod = (sumOp * perc) / 100
-              break
-            }
-          }
-        }
-        if (prod === 0) {
-          const perc = resolvePercentualProducaoSync(conv, String(coefs[0] || ""), String(tabelas[0] || ""))
-          if (perc > 0) {
-            prod = (sumOp * perc) / 100
-          }
-        }
-      }
-      return Math.round(prod * 100) / 100
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const resolveProdAndOp = (item: any, overrideMeta?: any) => {
-      const desc = item?.descricao || item?.observacoes || ""
-      const meta = overrideMeta || parseDescriptionMetadata(desc) || {}
-      const conv = String(item?.convenio || meta?.convenio || "").toUpperCase()
-
-      let selectedTypes: ("margem" | "liquida5" | "beneficio5")[] = []
-      if (Array.isArray(meta?.selected_operation_types) && meta.selected_operation_types.length > 0) {
-        selectedTypes = meta.selected_operation_types.filter((t: string) =>
-          ["margem", "liquida5", "beneficio5"].includes(t)
-        )
-      } else if (meta?.selected_operation_type) {
-        selectedTypes = String(meta.selected_operation_type)
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => ["margem", "liquida5", "beneficio5"].includes(s)) as ("margem" | "liquida5" | "beneficio5")[]
-      }
-
-      if (selectedTypes.length > 0) {
-        let sumOp = 0
-        let sumProd = 0
-        selectedTypes.forEach((t) => {
-          let opVal = parseKanbanNum(meta?.[`valor_operacao_${t}`])
-          if (!opVal) {
-            const mVal = parseKanbanNum(
-              meta?.[t] ||
-                (t === "margem"
-                  ? item?.margem ?? item?.margem_disponivel
-                  : t === "liquida5"
-                  ? item?.margem_liquida_5
-                  : item?.margem_beneficio_5)
-            )
-            const cVal = parseCleanFloat(meta?.[`coeficiente_${t}`]) || (t === "margem" ? 0.028 : 0.053)
-            if (mVal && cVal) opVal = mVal / cVal
-          }
-          sumOp += opVal
-          sumProd += parseKanbanNum(meta?.[`valor_producao_${t}`])
-        })
-        if (sumOp === 0 && (item?.valor_operacao || item?.valor_solicitado)) {
-          sumOp = parseKanbanNum(item.valor_operacao ?? item.valor_solicitado)
-        }
-        if (sumProd === 0) {
-          sumProd = extractConsolidatedProd(meta, desc, sumOp, selectedTypes, conv)
-        }
-        return { numOp: sumOp, numProd: Math.round(sumProd * 100) / 100 }
-      }
-
-      const rawOpField = item?.valor_operacao ?? item?.valor_solicitado
-      if (rawOpField !== null && rawOpField !== undefined && rawOpField !== 0) {
-        const sumOp = parseKanbanNum(rawOpField)
-        return { numOp: sumOp, numProd: extractConsolidatedProd(meta, desc, sumOp, [], conv) }
-      }
-
-      const descNorm = desc ? desc.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase() : ""
-      let textType: "margem" | "liquida5" | "beneficio5" | null = null
-      if (descNorm.includes("MARGEM 35%") || descNorm.includes("MARGEM LIQUIDA EMPRESTIMO")) {
-        textType = "margem"
-      } else if (descNorm.includes("LIQUIDA 5%") || descNorm.includes("MARGEM LIQUIDA CARTAO")) {
-        textType = "liquida5"
-      } else if (descNorm.includes("BENEFICIO 5%") || descNorm.includes("CARTAO")) {
-        textType = "beneficio5"
-      }
-      if (textType) {
-        let opVal = parseKanbanNum(meta?.[`valor_operacao_${textType}`])
-        if (!opVal) {
-          const mVal = parseKanbanNum(
-            meta?.[textType] ||
-              (textType === "margem"
-                ? item?.margem ?? item?.margem_disponivel
-                : textType === "liquida5"
-                ? item?.margem_liquida_5
-                : item?.margem_beneficio_5)
-          )
-          const cVal = textType === "margem" ? 0.028 : 0.053
-          if (mVal && cVal) opVal = mVal / cVal
-        }
-        let prodVal = parseKanbanNum(meta?.[`valor_producao_${textType}`])
-        if (prodVal === 0) prodVal = extractConsolidatedProd(meta, desc, opVal, [textType], conv)
-        return { numOp: opVal, numProd: Math.round(prodVal * 100) / 100 }
-      }
-
-      if (meta) {
-        for (const t of ["margem", "liquida5", "beneficio5"] as const) {
-          if (
-            (meta[t] && meta[t] !== "" && meta[t] !== "R$ 0,00") ||
-            (meta[`valor_operacao_${t}`] && meta[`valor_operacao_${t}`] !== "R$ 0,00")
-          ) {
-            let opVal = parseKanbanNum(meta[`valor_operacao_${t}`])
-            if (!opVal) {
-              const mVal = parseKanbanNum(
-                meta[t] ||
-                  (t === "margem"
-                    ? item?.margem ?? item?.margem_disponivel
-                    : t === "liquida5"
-                    ? item?.margem_liquida_5
-                    : item?.margem_beneficio_5)
-              )
-              const cVal = parseCleanFloat(meta[`coeficiente_${t}`]) || (t === "margem" ? 0.028 : 0.053)
-              if (mVal && cVal) opVal = Math.round((mVal / cVal) * 100) / 100
-            }
-            let prodVal = parseKanbanNum(meta[`valor_producao_${t}`])
-            if (!prodVal) prodVal = extractConsolidatedProd(meta, desc, opVal, [t], conv)
-            return { numOp: opVal, numProd: Math.round(prodVal * 100) / 100 }
-          }
-        }
-      }
-
-      const mMargem = parseKanbanNum(item?.margem ?? item?.margem_disponivel)
-      if (mMargem > 0) {
-        const opVal = Math.round((mMargem / 0.028) * 100) / 100
-        return { numOp: opVal, numProd: extractConsolidatedProd(meta, desc, opVal, ["margem"], conv) }
-      }
-      const mLiq5 = parseKanbanNum(item?.margem_liquida_5)
-      if (mLiq5 > 0) {
-        const opVal = Math.round((mLiq5 / 0.053) * 100) / 100
-        return { numOp: opVal, numProd: extractConsolidatedProd(meta, desc, opVal, ["liquida5"], conv) }
-      }
-      const mBen5 = parseKanbanNum(item?.margem_beneficio_5)
-      if (mBen5 > 0) {
-        const opVal = Math.round((mBen5 / 0.053) * 100) / 100
-        return { numOp: opVal, numProd: extractConsolidatedProd(meta, desc, opVal, ["beneficio5"], conv) }
-      }
-
-      return { numOp: 0, numProd: extractConsolidatedProd(meta, desc, 0, [], conv) }
-    }
-
     const loadPipelineOpps = async () => {
       setIsLoadingPipelineOpps(true)
       try {
@@ -3269,6 +3349,232 @@ export default function DashboardPage() {
     }
   }, [isTeamGoalsModalOpen, teamPipelineKey, pipelineLoadedKey])
 
+  const mergedKanbanStatsByUser = useMemo(() => {
+    const merged: Record<string, UserKanbanSummary> = { ...kanbanHoverStatsByUser }
+    Object.entries(pipelineOppsByUser).forEach(([uid, entry]) => {
+      merged[uid] = {
+        count: entry.count,
+        totalProd: entry.totalProd,
+        loading: false,
+      }
+    })
+    return merged
+  }, [kanbanHoverStatsByUser, pipelineOppsByUser])
+
+  const fetchUserKanbanStats = useCallback(async (userId: string) => {
+    const cleanId = String(userId || "").trim()
+    if (!cleanId || cleanId === "ESTAGIL_AND_PJ") return
+    if (pipelineOppsByUser[cleanId]) return
+    if (kanbanHoverCacheRef.current[cleanId]) {
+      setKanbanHoverStatsByUser((prev) =>
+        prev[cleanId] ? prev : { ...prev, [cleanId]: kanbanHoverCacheRef.current[cleanId] }
+      )
+      return
+    }
+    if (kanbanHoverInFlightRef.current.has(cleanId)) return
+
+    kanbanHoverInFlightRef.current.add(cleanId)
+    setKanbanHoverStatsByUser((prev) => ({
+      ...prev,
+      [cleanId]: { count: 0, totalProd: 0, loading: true },
+    }))
+
+    try {
+      const tabelasPromise = loadTabelasConfigCache()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const allFichas: any[] = []
+      const PAGE_SIZE = 1000
+      let from = 0
+      let hasMore = true
+
+      while (hasMore) {
+        const { data, error } = await withRetry(() =>
+          supabase
+            .from("kanban_fichas")
+            .select(
+              "id, cliente_cpf, etapa, motivo_perda, operador_nome, convenio, margem_disponivel, valor_solicitado, observacoes, metadata"
+            )
+            .eq("operador_id", cleanId)
+            .in("etapa", ["EM RETOMADA", "EM ABORDAGEM", "EM NEGOCIAÇÃO", "EM REATIVAÇÃO"])
+            .range(from, from + PAGE_SIZE - 1)
+        )
+        if (error) throw error
+        if (data && data.length > 0) {
+          allFichas.push(...data)
+          if (data.length < PAGE_SIZE) {
+            hasMore = false
+          } else {
+            from += PAGE_SIZE
+          }
+        } else {
+          hasMore = false
+        }
+      }
+
+      await tabelasPromise
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const activeFichas: { f: any; rawCpf: string; baseProd: number }[] = []
+      const cpfsNeedingChamados = new Set<string>()
+
+      for (let i = 0; i < allFichas.length; i++) {
+        const f = allFichas[i]
+        const fMeta = f.metadata && typeof f.metadata === "object" ? f.metadata : {}
+        const motivo = String(f.motivo_perda || "").trim().toLowerCase()
+        if (
+          motivo === "não existe whatsapp" ||
+          motivo === "whatsapp divergente" ||
+          Boolean(fMeta.tabulacao_whatsapp)
+        ) {
+          continue
+        }
+
+        const rawCpf = (f.cliente_cpf || "").replace(/\D/g, "")
+        const baseConvenio = String(f.convenio || fMeta.convenio || "").trim()
+        const baseRes = resolveProdAndOp(
+          {
+            observacoes: f.observacoes,
+            convenio: baseConvenio,
+            margem_disponivel: f.margem_disponivel,
+            valor_solicitado: f.valor_solicitado,
+          },
+          fMeta
+        )
+
+        activeFichas.push({ f, rawCpf, baseProd: baseRes.numProd })
+        if (rawCpf && baseRes.numProd === 0) {
+          cpfsNeedingChamados.add(rawCpf)
+        }
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const chamadosBatches: any[] = []
+      if (cpfsNeedingChamados.size > 0) {
+        const distinctCpfs = Array.from(cpfsNeedingChamados)
+        const cpfChunks: string[][] = []
+        for (let i = 0; i < distinctCpfs.length; i += 150) {
+          cpfChunks.push(distinctCpfs.slice(i, i + 150))
+        }
+        for (let i = 0; i < cpfChunks.length; i += 3) {
+          const slice = cpfChunks.slice(i, i + 3)
+          const resps = await Promise.all(
+            slice.map((chunk) =>
+              withRetry(() =>
+                supabase
+                  .from("chamados")
+                  .select(
+                    "id, cliente_cpf, user_id, user_nome, margem, margem_liquida_5, margem_beneficio_5, valor_operacao, descricao, convenio, created_at"
+                  )
+                  .in("cliente_cpf", chunk)
+                  .gte("created_at", "2026-10-30T00:00:00")
+                  .order("created_at", { ascending: false })
+              )
+            )
+          )
+          resps.forEach((r) => {
+            if (r.data) chamadosBatches.push(...r.data)
+          })
+        }
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mapaPorId = new Map<string, any[]>()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mapaPorNome = new Map<string, any[]>()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mapaPorCpf = new Map<string, any[]>()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const chamadoResCache = new Map<any, { numOp: number; numProd: number }>()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const getChamadoRes = (ch: any) => {
+        let cached = chamadoResCache.get(ch)
+        if (!cached) {
+          cached = resolveProdAndOp(ch)
+          chamadoResCache.set(ch, cached)
+        }
+        return cached
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const addCandidate = (map: Map<string, any[]>, key: string, ch: any) => {
+        if (!key) return
+        let arr = map.get(key)
+        if (!arr) {
+          arr = []
+          map.set(key, arr)
+        }
+        arr.push(ch)
+      }
+
+      chamadosBatches.forEach((ch) => {
+        const rawCpf = (ch.cliente_cpf || "").replace(/\D/g, "")
+        if (!rawCpf) return
+        const padded = rawCpf.padStart(11, "0")
+        const unpadded = rawCpf.replace(/^0+/, "")
+        const uId = ch.user_id ? String(ch.user_id).trim() : ""
+        const uNome = (ch.user_nome || "").trim().toLowerCase()
+        const keys = Array.from(new Set([rawCpf, padded, unpadded].filter(Boolean)))
+        for (let k = 0; k < keys.length; k++) {
+          const c = keys[k]
+          if (uId) addCandidate(mapaPorId, `${c}_${uId}`, ch)
+          if (uNome) addCandidate(mapaPorNome, `${c}_${uNome}`, ch)
+          addCandidate(mapaPorCpf, c, ch)
+        }
+      })
+
+      let totalProd = 0
+      for (let i = 0; i < activeFichas.length; i++) {
+        const { f, rawCpf, baseProd } = activeFichas[i]
+        let prod = baseProd
+        if (rawCpf && prod === 0) {
+          const padded = rawCpf.padStart(11, "0")
+          const unpadded = rawCpf.replace(/^0+/, "")
+          const uNome = String(f.operador_nome || "").trim().toLowerCase()
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const candidates: any[] = []
+          const cpfKeys = Array.from(new Set([rawCpf, padded, unpadded].filter(Boolean)))
+          for (let k = 0; k < cpfKeys.length; k++) {
+            const c = cpfKeys[k]
+            const byId = mapaPorId.get(`${c}_${cleanId}`)
+            if (byId) candidates.push(...byId)
+            if (uNome) {
+              const byNome = mapaPorNome.get(`${c}_${uNome}`)
+              if (byNome) candidates.push(...byNome)
+            }
+            const byCpf = mapaPorCpf.get(c)
+            if (byCpf) candidates.push(...byCpf)
+          }
+          if (candidates.length > 0) {
+            const unique = Array.from(new Set(candidates))
+            const bestCh = unique.find((c) => getChamadoRes(c).numProd > 0) || unique[0]
+            if (bestCh) {
+              prod = getChamadoRes(bestCh).numProd
+            }
+          }
+        }
+        totalProd += prod
+      }
+
+      const summary: UserKanbanSummary = {
+        count: activeFichas.length,
+        totalProd: Math.round(totalProd * 100) / 100,
+        loading: false,
+      }
+      kanbanHoverCacheRef.current[cleanId] = summary
+      setKanbanHoverStatsByUser((prev) => ({
+        ...prev,
+        [cleanId]: summary,
+      }))
+    } catch (err) {
+      console.warn("Erro ao consultar leads do Kanban no hover:", err)
+      setKanbanHoverStatsByUser((prev) => ({
+        ...prev,
+        [cleanId]: { count: 0, totalProd: 0, loading: false },
+      }))
+    } finally {
+      kanbanHoverInFlightRef.current.delete(cleanId)
+    }
+  }, [pipelineOppsByUser])
+
   const headerContent = useMemo(() => {
     if (typeof window === 'undefined') return { greeting: "Olá", phrase: "Sua jornada para o topo começa agora", isCelebration: false }
     
@@ -3342,6 +3648,9 @@ export default function DashboardPage() {
             top3Corretores={top3Corretores}
             totalTeamGoalsCount={teamGoalProgress.length}
             onOpenTeamGoalsModal={() => setIsTeamGoalsModalOpen(true)}
+            userGoalStatsMap={userGoalStatsMap}
+            kanbanStatsByUser={mergedKanbanStatsByUser}
+            onRequestUserKanbanStats={fetchUserKanbanStats}
           />
         )}
         
@@ -4586,32 +4895,78 @@ export default function DashboardPage() {
                                     )}
                                   >
                                     <td className="px-3 py-3">
-                                      <div className="flex items-center gap-2.5">
-                                        <div className={cn(
-                                          "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
-                                          position === 1 ? "bg-amber-100 text-amber-600" : 
-                                          position === 2 ? "bg-slate-100 text-slate-600" :
-                                          position === 3 ? "bg-orange-100 text-orange-600" :
-                                          "bg-slate-50 text-slate-400"
-                                        )}>
-                                          {position}º
-                                        </div>
-                                        <div className="flex items-center gap-1.5 min-w-[100px]">
-                                          <span className={cn(
-                                            "text-[12.5px] font-black tracking-tight",
-                                            isUser ? "text-[#1C2643]" : "text-slate-600"
+                                      {!isGroupRow ? (
+                                        <RankingNameHoverCard
+                                          userId={rank.corretor_id}
+                                          name={rank.nome}
+                                          avatarUrl={rank.avatar_url || userGoalStatsMap[rank.corretor_id]?.avatar_url}
+                                          funcao={rank.funcao || userGoalStatsMap[rank.corretor_id]?.funcao}
+                                          goalStats={userGoalStatsMap[rank.corretor_id] || {
+                                            goal: isSupervisorRow ? 448000 : 47000,
+                                            produced: rank.totalPaid || 0,
+                                            remaining: Math.max(0, (isSupervisorRow ? 448000 : 47000) - (rank.totalPaid || 0)),
+                                            avatar_url: rank.avatar_url,
+                                            funcao: rank.funcao,
+                                          }}
+                                          kanbanStats={mergedKanbanStatsByUser[rank.corretor_id]}
+                                          onRequestKanbanStats={fetchUserKanbanStats}
+                                          className="w-full group"
+                                        >
+                                          <div className="flex items-center gap-2.5 w-full">
+                                            <div className={cn(
+                                              "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
+                                              position === 1 ? "bg-amber-100 text-amber-600" : 
+                                              position === 2 ? "bg-slate-100 text-slate-600" :
+                                              position === 3 ? "bg-orange-100 text-orange-600" :
+                                              "bg-slate-50 text-slate-400"
+                                            )}>
+                                              {position}º
+                                            </div>
+                                            <RankingUserAvatar
+                                              name={rank.nome}
+                                              avatarUrl={rank.avatar_url || userGoalStatsMap[rank.corretor_id]?.avatar_url}
+                                              sizeClass="w-7 h-7"
+                                              textClass="text-[9.5px]"
+                                            />
+                                            <div className="flex items-center gap-1.5 min-w-[100px]">
+                                              <span className={cn(
+                                                "text-[12.5px] font-black tracking-tight group-hover:text-indigo-700 transition-colors",
+                                                isUser ? "text-[#1C2643]" : "text-slate-600"
+                                              )}>
+                                                {formatName(rank.nome)} {isUser && !isSupervisorRow && "(Você)"}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </RankingNameHoverCard>
+                                      ) : (
+                                        <div className="flex items-center gap-2.5">
+                                          <div className={cn(
+                                            "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
+                                            position === 1 ? "bg-amber-100 text-amber-600" : 
+                                            position === 2 ? "bg-slate-100 text-slate-600" :
+                                            position === 3 ? "bg-orange-100 text-orange-600" :
+                                            "bg-slate-50 text-slate-400"
                                           )}>
-                                            {formatName(rank.nome)} {isUser && !isSupervisorRow && "(Você)"}
-                                          </span>
-                                          {isGroupRow && (
-                                            isExpanded ? (
+                                            {position}º
+                                          </div>
+                                          <div className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                                            <Users className="w-3.5 h-3.5 text-[#1C2643]" />
+                                          </div>
+                                          <div className="flex items-center gap-1.5 min-w-[100px]">
+                                            <span className={cn(
+                                              "text-[12.5px] font-black tracking-tight",
+                                              isUser ? "text-[#1C2643]" : "text-slate-600"
+                                            )}>
+                                              {formatName(rank.nome)}
+                                            </span>
+                                            {isExpanded ? (
                                               <ChevronUp className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                             ) : (
                                               <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                            )
-                                          )}
+                                            )}
+                                          </div>
                                         </div>
-                                      </div>
+                                      )}
                                     </td>
                                     <td className="px-3 py-3 text-right bg-slate-50/50">
                                       <div className="flex flex-col items-end">
@@ -4834,35 +5189,59 @@ export default function DashboardPage() {
                                     : "bg-slate-50 border-slate-200 text-[#1C2643] p-3"
                                 )}
                               >
-                                <div className="flex items-center gap-3 sm:gap-4.5 min-w-0 w-full">
-                                  <div className={cn(
-                                    "rounded-full flex items-center justify-center font-black shrink-0 shadow-sm",
-                                    isUser 
-                                      ? "w-11 h-11 text-base sm:w-16 sm:h-16 sm:text-xl bg-white text-[#1C2643]" 
-                                      : "w-6.5 h-6.5 text-[10px] bg-white border border-slate-200 text-[#718198]"
-                                  )}>
-                                    {position}º
-                                  </div>
-                                  <div className="flex flex-col min-w-0">
-                                    <p className={cn(
-                                      "font-black tracking-tight line-clamp-1 leading-tight",
-                                      isUser ? "text-[16px] sm:text-[21px] text-white" : "text-[11px] text-[#1C2643]"
-                                    )}>
-                                      {isUser ? (rank.nome?.split(" ")[0] || "") : `Ranking ${position}º`}
-                                    </p>
-                                    
-                                    {isUser && (
-                                      <>
+                                {isUser ? (
+                                  <RankingNameHoverCard
+                                    userId={rank.corretor_id}
+                                    name={rank.nome || perfil?.nome || ""}
+                                    avatarUrl={rank.avatar_url || userGoalStatsMap[rank.corretor_id]?.avatar_url || perfil?.avatar_url || undefined}
+                                    funcao={userGoalStatsMap[rank.corretor_id]?.funcao || perfil?.funcao || "Corretor"}
+                                    goalStats={userGoalStatsMap[rank.corretor_id] || {
+                                      goal: monthlyGoal,
+                                      produced: rank.totalPaid || 0,
+                                      remaining: Math.max(0, monthlyGoal - (rank.totalPaid || 0)),
+                                      avatar_url: rank.avatar_url || perfil?.avatar_url || undefined,
+                                      funcao: perfil?.funcao || "Corretor",
+                                    }}
+                                    kanbanStats={mergedKanbanStatsByUser[rank.corretor_id]}
+                                    onRequestKanbanStats={fetchUserKanbanStats}
+                                    className="w-full group"
+                                  >
+                                    <div className="flex items-center gap-3 sm:gap-4.5 min-w-0 w-full">
+                                      <div className="rounded-full flex items-center justify-center font-black shrink-0 shadow-sm w-11 h-11 text-base sm:w-16 sm:h-16 sm:text-xl bg-white text-[#1C2643]">
+                                        {position}º
+                                      </div>
+                                      <RankingUserAvatar
+                                        name={rank.nome || perfil?.nome || ""}
+                                        avatarUrl={rank.avatar_url || userGoalStatsMap[rank.corretor_id]?.avatar_url || perfil?.avatar_url || undefined}
+                                        sizeClass="w-10 h-10 sm:w-12 sm:h-12"
+                                        textClass="text-xs sm:text-sm"
+                                        className="border-white/30"
+                                      />
+                                      <div className="flex flex-col min-w-0">
+                                        <p className="font-black tracking-tight line-clamp-1 leading-tight text-[16px] sm:text-[21px] text-white group-hover:text-amber-300 transition-colors">
+                                          {rank.nome?.split(" ")[0] || ""}
+                                        </p>
                                         <p className="text-[9px] sm:text-[11px] uppercase font-black tracking-widest text-slate-300 mt-0.5 leading-tight">
                                           Sua Produção
                                         </p>
                                         <p className="font-black text-amber-400 text-[18px] sm:text-[26px] leading-tight font-sans tracking-tight mt-0.5 sm:mt-1">
                                           {formatCurrency(rank.totalPaid)}
                                         </p>
-                                      </>
-                                    )}
+                                      </div>
+                                    </div>
+                                  </RankingNameHoverCard>
+                                ) : (
+                                  <div className="flex items-center gap-3 sm:gap-4.5 min-w-0 w-full">
+                                    <div className="rounded-full flex items-center justify-center font-black shrink-0 shadow-sm w-6.5 h-6.5 text-[10px] bg-white border border-slate-200 text-[#718198]">
+                                      {position}º
+                                    </div>
+                                    <div className="flex flex-col min-w-0">
+                                      <p className="font-black tracking-tight line-clamp-1 leading-tight text-[11px] text-[#1C2643]">
+                                        {`Ranking ${position}º`}
+                                      </p>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
                             )
                           })}
@@ -4932,33 +5311,56 @@ export default function DashboardPage() {
                                 return (
                                   <tr key={est.estagiario_id} className="hover:bg-slate-50/80 transition-colors">
                                     <td className="px-3 py-3">
-                                      <div className="flex items-center gap-2.5">
-                                        <div className={cn(
-                                          "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
-                                          position === 1 ? "bg-amber-100 text-amber-600" : 
-                                          position === 2 ? "bg-slate-100 text-slate-600" :
-                                          position === 3 ? "bg-orange-100 text-orange-600" :
-                                          "bg-slate-50 text-slate-400"
-                                        )}>
-                                          {position}º
-                                        </div>
-                                        <div className="flex flex-col min-w-[100px]">
-                                          <div className="flex items-center gap-1.5">
-                                            <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                            <span className="text-[12.5px] font-black tracking-tight text-[#1C2643]">
-                                              {formatName(est.nome)}
-                                            </span>
-                                            <span className="text-[9px] font-black text-slate-400">
-                                              (ESTÁGIO)
-                                            </span>
+                                      <RankingNameHoverCard
+                                        userId={est.estagiario_id}
+                                        name={est.nome}
+                                        avatarUrl={est.avatar_url || userGoalStatsMap[est.estagiario_id]?.avatar_url}
+                                        funcao={userGoalStatsMap[est.estagiario_id]?.funcao || "Estágio"}
+                                        goalStats={userGoalStatsMap[est.estagiario_id] || {
+                                          goal: 47000,
+                                          produced: est.totalPaid || 0,
+                                          remaining: Math.max(0, 47000 - (est.totalPaid || 0)),
+                                          avatar_url: est.avatar_url,
+                                          funcao: "Estágio",
+                                        }}
+                                        kanbanStats={mergedKanbanStatsByUser[est.estagiario_id]}
+                                        onRequestKanbanStats={fetchUserKanbanStats}
+                                        className="w-full group"
+                                      >
+                                        <div className="flex items-center gap-2.5 w-full">
+                                          <div className={cn(
+                                            "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
+                                            position === 1 ? "bg-amber-100 text-amber-600" : 
+                                            position === 2 ? "bg-slate-100 text-slate-600" :
+                                            position === 3 ? "bg-orange-100 text-orange-600" :
+                                            "bg-slate-50 text-slate-400"
+                                          )}>
+                                            {position}º
                                           </div>
-                                          {est.supervisor && (
-                                            <span className="text-[9px] font-bold text-slate-400 mt-0.5">
-                                              SUPERVISOR: {formatName(est.supervisor)}
-                                            </span>
-                                          )}
+                                          <RankingUserAvatar
+                                            name={est.nome}
+                                            avatarUrl={est.avatar_url || userGoalStatsMap[est.estagiario_id]?.avatar_url}
+                                            sizeClass="w-7 h-7"
+                                            textClass="text-[9.5px]"
+                                          />
+                                          <div className="flex flex-col min-w-[100px]">
+                                            <div className="flex items-center gap-1.5">
+                                              <GraduationCap className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                              <span className="text-[12.5px] font-black tracking-tight text-[#1C2643] group-hover:text-indigo-700 transition-colors">
+                                                {formatName(est.nome)}
+                                              </span>
+                                              <span className="text-[9px] font-black text-slate-400">
+                                                (ESTÁGIO)
+                                              </span>
+                                            </div>
+                                            {est.supervisor && (
+                                              <span className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                                SUPERVISOR: {formatName(est.supervisor)}
+                                              </span>
+                                            )}
+                                          </div>
                                         </div>
-                                      </div>
+                                      </RankingNameHoverCard>
                                     </td>
                                     <td className="px-3 py-3 text-right bg-slate-50/50">
                                       <div className="flex flex-col items-end">
@@ -5077,33 +5479,56 @@ export default function DashboardPage() {
                                 return (
                                   <tr key={est.estagiario_id} className="hover:bg-slate-50/80 transition-colors">
                                     <td className="px-3 py-3">
-                                      <div className="flex items-center gap-2.5">
-                                        <div className={cn(
-                                          "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
-                                          position === 1 ? "bg-amber-100 text-amber-600" : 
-                                          position === 2 ? "bg-slate-100 text-slate-600" :
-                                          position === 3 ? "bg-orange-100 text-orange-600" :
-                                          "bg-slate-50 text-slate-400"
-                                        )}>
-                                          {position}º
-                                        </div>
-                                        <div className="flex flex-col min-w-[100px]">
-                                          <div className="flex items-center gap-1.5">
-                                            <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                                            <span className="text-[12.5px] font-black tracking-tight text-[#1C2643]">
-                                              {formatName(est.nome)}
-                                            </span>
-                                            <span className="text-[9px] font-black text-slate-400">
-                                              (PJ)
-                                            </span>
+                                      <RankingNameHoverCard
+                                        userId={est.estagiario_id}
+                                        name={est.nome}
+                                        avatarUrl={est.avatar_url || userGoalStatsMap[est.estagiario_id]?.avatar_url}
+                                        funcao={userGoalStatsMap[est.estagiario_id]?.funcao || "PJ"}
+                                        goalStats={userGoalStatsMap[est.estagiario_id] || {
+                                          goal: 47000,
+                                          produced: est.totalPaid || 0,
+                                          remaining: Math.max(0, 47000 - (est.totalPaid || 0)),
+                                          avatar_url: est.avatar_url,
+                                          funcao: "PJ",
+                                        }}
+                                        kanbanStats={mergedKanbanStatsByUser[est.estagiario_id]}
+                                        onRequestKanbanStats={fetchUserKanbanStats}
+                                        className="w-full group"
+                                      >
+                                        <div className="flex items-center gap-2.5 w-full">
+                                          <div className={cn(
+                                            "w-5 h-5 rounded-full flex items-center justify-center text-[9.5px] font-black shrink-0",
+                                            position === 1 ? "bg-amber-100 text-amber-600" : 
+                                            position === 2 ? "bg-slate-100 text-slate-600" :
+                                            position === 3 ? "bg-orange-100 text-orange-600" :
+                                            "bg-slate-50 text-slate-400"
+                                          )}>
+                                            {position}º
                                           </div>
-                                          {est.supervisor && (
-                                            <span className="text-[9px] font-bold text-slate-400 mt-0.5">
-                                              SUPERVISOR: {formatName(est.supervisor)}
-                                            </span>
-                                          )}
+                                          <RankingUserAvatar
+                                            name={est.nome}
+                                            avatarUrl={est.avatar_url || userGoalStatsMap[est.estagiario_id]?.avatar_url}
+                                            sizeClass="w-7 h-7"
+                                            textClass="text-[9.5px]"
+                                          />
+                                          <div className="flex flex-col min-w-[100px]">
+                                            <div className="flex items-center gap-1.5">
+                                              <Briefcase className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                              <span className="text-[12.5px] font-black tracking-tight text-[#1C2643] group-hover:text-indigo-700 transition-colors">
+                                                {formatName(est.nome)}
+                                              </span>
+                                              <span className="text-[9px] font-black text-slate-400">
+                                                (PJ)
+                                              </span>
+                                            </div>
+                                            {est.supervisor && (
+                                              <span className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                                SUPERVISOR: {formatName(est.supervisor)}
+                                              </span>
+                                            )}
+                                          </div>
                                         </div>
-                                      </div>
+                                      </RankingNameHoverCard>
                                     </td>
                                     <td className="px-3 py-3 text-right bg-slate-50/50">
                                       <div className="flex flex-col items-end">
