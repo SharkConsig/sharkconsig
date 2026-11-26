@@ -160,6 +160,7 @@ export default function ImportBatchPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const missingLoteTrackingTablesRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!authLoading && !canAccessAdminAreas) {
@@ -559,6 +560,141 @@ export default function ImportBatchPage() {
     }
   }
 
+  const isMissingLoteTrackingColumnError = (err: unknown): boolean => {
+    const msg = ((err as { message?: string })?.message || String(err || "")).toLowerCase();
+    if (!msg.includes("ultima_atualizacao_lote")) return false;
+    return msg.includes("schema cache") || msg.includes("does not exist") || msg.includes("column");
+  };
+
+  const hasClientPhoneChanged = (
+    dbClient: Record<string, unknown> | undefined,
+    nextRow: Record<string, unknown>
+  ): boolean => {
+    if (!dbClient) return false;
+    const normDigits = (v: unknown) => (v ? String(v).replace(/\D/g, "") : "");
+    const fields = ["telefone_1", "telefone_2", "telefone_3"] as const;
+    return fields.some((f) => {
+      const nextVal = normDigits(nextRow[f]);
+      if (!nextVal) return false;
+      return nextVal !== normDigits(dbClient[f]);
+    });
+  };
+
+  const hasMarginValuesChanged = (
+    existingRecord: Record<string, unknown> | undefined,
+    nextRecord: Record<string, unknown>,
+    keys: string[]
+  ): boolean => {
+    const normNum = (v: unknown): number => {
+      if (v === null || v === undefined || String(v).trim() === "") return 0;
+      const n = Number(v);
+      return Number.isFinite(n) ? Number(n.toFixed(2)) : 0;
+    };
+    if (!existingRecord) {
+      return keys.some((k) => normNum(nextRecord[k]) !== 0);
+    }
+    return keys.some((k) => normNum(existingRecord[k]) !== normNum(nextRecord[k]));
+  };
+
+  const applyClientLoteTracking = (
+    clientTable: string,
+    row: Record<string, unknown>,
+    dbClient: Record<string, unknown> | undefined,
+    nowIso: string
+  ): "NOVO_CLIENTE" | "TELEFONE" | null => {
+    if (missingLoteTrackingTablesRef.current.has(clientTable)) return null;
+    if (!dbClient) {
+      row.ultima_atualizacao_lote_em = nowIso;
+      row.ultima_atualizacao_lote_tipo = "NOVO_CLIENTE";
+      return "NOVO_CLIENTE";
+    }
+    if (hasClientPhoneChanged(dbClient, row)) {
+      row.ultima_atualizacao_lote_em = nowIso;
+      row.ultima_atualizacao_lote_tipo = "TELEFONE";
+      return "TELEFONE";
+    }
+    row.ultima_atualizacao_lote_em = (dbClient.ultima_atualizacao_lote_em as string | null | undefined) ?? null;
+    row.ultima_atualizacao_lote_tipo = (dbClient.ultima_atualizacao_lote_tipo as string | null | undefined) ?? null;
+    return null;
+  };
+
+  const stripLoteTrackingCols = (rows: Record<string, unknown>[]) =>
+    rows.map(({ ultima_atualizacao_lote_em: _e, ultima_atualizacao_lote_tipo: _t, ...rest }) => rest);
+
+  const upsertClientsWithTracking = async (
+    clientTable: string,
+    rows: Record<string, unknown>[],
+    onConflict: string,
+    selectCols?: string
+  ) => {
+    const sendRows = missingLoteTrackingTablesRef.current.has(clientTable)
+      ? stripLoteTrackingCols(rows)
+      : rows;
+
+    const execUpsert = async (payload: Record<string, unknown>[]) =>
+      await withRetry(async () => {
+        const query = supabase.from(clientTable).upsert(payload, { onConflict });
+        return selectCols ? await query.select(selectCols) : await query;
+      });
+
+    const res = await execUpsert(sendRows);
+    if (res.error && isMissingLoteTrackingColumnError(res.error)) {
+      missingLoteTrackingTablesRef.current.add(clientTable);
+      return await execUpsert(stripLoteTrackingCols(rows));
+    }
+    return res;
+  };
+
+  const markMarginUpdatesBatch = async (
+    clientTable: string,
+    idColumn: "id" | "cpf",
+    marginChangedKeys: Set<string>,
+    phoneChangedKeys: Set<string>,
+    newClientKeys: Set<string>,
+    nowIso: string
+  ) => {
+    if (missingLoteTrackingTablesRef.current.has(clientTable) || marginChangedKeys.size === 0) return;
+
+    const bothKeys: string[] = [];
+    const marginOnlyKeys: string[] = [];
+
+    for (const key of marginChangedKeys) {
+      if (newClientKeys.has(key)) continue;
+      if (phoneChangedKeys.has(key)) {
+        bothKeys.push(key);
+      } else {
+        marginOnlyKeys.push(key);
+      }
+    }
+
+    const updateGroup = async (keys: string[], tipo: "MARGEM" | "MARGEM_TELEFONE") => {
+      for (let i = 0; i < keys.length; i += 100) {
+        const batch = keys.slice(i, i + 100);
+        const { error } = await withRetry(async () =>
+          await supabase
+            .from(clientTable)
+            .update({
+              ultima_atualizacao_lote_em: nowIso,
+              ultima_atualizacao_lote_tipo: tipo,
+            })
+            .in(idColumn, batch)
+        );
+        if (error) {
+          if (isMissingLoteTrackingColumnError(error)) {
+            missingLoteTrackingTablesRef.current.add(clientTable);
+            return;
+          }
+          console.warn(`[LOTE TRACKING] Aviso ao atualizar margem em ${clientTable}:`, error.message);
+        }
+      }
+    };
+
+    if (bothKeys.length > 0) await updateGroup(bothKeys, "MARGEM_TELEFONE");
+    if (marginOnlyKeys.length > 0 && !missingLoteTrackingTablesRef.current.has(clientTable)) {
+      await updateGroup(marginOnlyKeys, "MARGEM");
+    }
+  };
+
   const processSiapeChunk = async (results: Record<string, string | undefined>[]) => {
     const cpfs = results.map(r => normalizeCPF(r.cpf || "")).filter(Boolean);
     if (cpfs.length === 0) return;
@@ -643,17 +779,30 @@ export default function ImportBatchPage() {
       }
     }
 
-    const clientsToUpsert = Array.from(clientsToUpsertMap.values());
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientsToUpsert = Array.from(clientsToUpsertMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('clientes', row, existingClients.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
+    });
     const registrationsToUpsert = Array.from(registrationsToUpsertMap.values());
 
     if (clientsToUpsert.length > 0) {
-      const { error: clientError } = await withRetry(async () => {
-        return await supabase.from('clientes').upsert(clientsToUpsert, { onConflict: 'cpf' });
-      });
+      const { error: clientError } = await upsertClientsWithTracking('clientes', clientsToUpsert, 'cpf');
       if (clientError) throw new Error(`Erro ao salvar clientes: ${clientError.message}`);
     }
 
     if (registrationsToUpsert.length > 0) {
+      const existingRegIds = existingRegsRaw.map(r => r.id as string).filter(Boolean);
+      const existingInstRaw = (!missingLoteTrackingTablesRef.current.has('clientes') && existingRegIds.length > 0)
+        ? await fetchInBatches<Record<string, unknown>>('instituidores', 'matricula_id', existingRegIds)
+        : [];
+      const existingInstMap = new Map(existingInstRaw.map(i => [`${i.matricula_id}_${normalizeText((i.nome as string) || "")}`, i]));
+
       const { data: regData, error: regError } = await withRetry(async () => {
         return await supabase
           .from('matriculas')
@@ -665,6 +814,7 @@ export default function ImportBatchPage() {
 
       // Rule 1.2: Handle Instituidores and Margins
       const instituidoresToUpsertMap = new Map<string, Record<string, unknown>>();
+      const instToClientCpf = new Map<string, string>();
       
       for (const reg of regData || []) {
         const matchingRows = results.filter(r => 
@@ -699,7 +849,9 @@ export default function ImportBatchPage() {
           instUpdate.beneficio_utilizada_5 = normalizeMoney(row["beneficio_utilizada_5%"] ?? row.beneficio_utilizada_5);
           instUpdate.beneficio_liquida_5 = normalizeMoney(row["beneficio_liquida_5%"] ?? row.beneficio_liquida_5);
 
-          instituidoresToUpsertMap.set(`${reg.id}_${instName}`, instUpdate);
+          const instKey = `${reg.id}_${instName}`;
+          instituidoresToUpsertMap.set(instKey, instUpdate);
+          instToClientCpf.set(instKey, reg.cliente_cpf);
         }
       }
 
@@ -709,6 +861,17 @@ export default function ImportBatchPage() {
           return await supabase.from('instituidores').upsert(instituidoresToUpsert, { onConflict: 'matricula_id, nome' });
         });
         if (instError) throw new Error(`Erro ao salvar instituidores: ${instError.message}`);
+
+        const marginChangedCpfs = new Set<string>();
+        const siapeMarginKeys = ['saldo_70', 'margem_35', 'bruta_5', 'utilizada_5', 'liquida_5', 'beneficio_bruta_5', 'beneficio_utilizada_5', 'beneficio_liquida_5'];
+        for (const [instKey, instUpdate] of instituidoresToUpsertMap.entries()) {
+          const clientCpf = instToClientCpf.get(instKey);
+          if (!clientCpf || newClientCpfs.has(clientCpf)) continue;
+          if (hasMarginValuesChanged(existingInstMap.get(instKey), instUpdate, siapeMarginKeys)) {
+            marginChangedCpfs.add(clientCpf);
+          }
+        }
+        await markMarginUpdatesBatch('clientes', 'cpf', marginChangedCpfs, phoneChangedCpfs, newClientCpfs, loteNowIso);
       }
     }
   };
@@ -838,14 +1001,16 @@ export default function ImportBatchPage() {
       }
     }
 
-    const clientsToUpsert = Array.from(clientsToUpsertMap.values());
+    const loteNowIso = new Date().toISOString();
+    const clientsToUpsert = Array.from(clientsToUpsertMap.values()).map((row) => {
+      applyClientLoteTracking('clientes', row, existingClients.get(row.cpf as string), loteNowIso);
+      return row;
+    });
     const registrationsToUpsert = Array.from(registrationsToUpsertMap.values());
 
     if (clientsToUpsert.length > 0) {
       console.log(`[CONTRATOS] Upserting ${clientsToUpsert.length} clients...`);
-      const { error: clientError } = await withRetry(async () => {
-        return await supabase.from('clientes').upsert(clientsToUpsert, { onConflict: 'cpf' });
-      });
+      const { error: clientError } = await upsertClientsWithTracking('clientes', clientsToUpsert, 'cpf');
       if (clientError) console.error("[CONTRATOS] Erro clientes:", clientError);
     }
 
@@ -1083,16 +1248,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_sp_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('governo_sp_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('governo_sp_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Governo SP: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     // --- PASSO 2: Processar Identificações (N:1 com Cliente) com Regra de Preservação ---
     const clientIds = Array.from(cpfToClientId.values());
@@ -1138,11 +1308,13 @@ export default function ImportBatchPage() {
     const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
 
     const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+    const identIdToClientId = new Map<string, string>();
 
     normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.identificacao_val}`);
-      if (!identId) return;
+      if (!identId || !clientId) return;
+      identIdToClientId.set(identId, clientId);
 
       const existingLot = existingLotacoesMap.get(identId);
       const currentInMap = lotacoesToUpsertMap.get(identId);
@@ -1190,6 +1362,19 @@ export default function ImportBatchPage() {
         return await supabase.from('governo_sp_lotacoes').insert(lotacaoRows);
       });
       if (lotErr) throw new Error(`Erro ao salvar lotações Governo SP: ${lotErr.message}`);
+
+      const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const marginChangedIds = new Set<string>();
+      const govSpMarginKeys = ['mb_consignacoes', 'md_consignacoes', 'mb_cartao_credito', 'md_cartao_credito', 'mb_cartao_beneficio', 'md_cartao_beneficio'];
+      for (const lot of lotacaoRows) {
+        const cid = identIdToClientId.get(lot.identificacao_id as string);
+        if (!cid || newClientIds.has(cid)) continue;
+        if (hasMarginValuesChanged(existingLotacoesMap.get(lot.identificacao_id as string), lot, govSpMarginKeys)) {
+          marginChangedIds.add(cid);
+        }
+      }
+      await markMarginUpdatesBatch('governo_sp_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
     }
   };
 
@@ -1265,16 +1450,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('prefeitura_sp_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('prefeitura_sp_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('prefeitura_sp_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Prefeitura SP: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     // --- PASSO 2: Processar Identificações (N:1 com Cliente) com Regra de Preservação ---
     const clientIds = Array.from(cpfToClientId.values());
@@ -1320,11 +1510,13 @@ export default function ImportBatchPage() {
     const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
 
     const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+    const identIdToClientId = new Map<string, string>();
 
     normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.identificacao_val}`);
-      if (!identId) return;
+      if (!identId || !clientId) return;
+      identIdToClientId.set(identId, clientId);
 
       const existingLot = existingLotacoesMap.get(identId);
       const currentInMap = lotacoesToUpsertMap.get(identId);
@@ -1368,6 +1560,19 @@ export default function ImportBatchPage() {
         return await supabase.from('prefeitura_sp_lotacoes').insert(lotacaoRows);
       });
       if (lotErr) throw new Error(`Erro ao salvar lotações Prefeitura SP: ${lotErr.message}`);
+
+      const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const marginChangedIds = new Set<string>();
+      const pmspMarginKeys = ['mb_consignacoes', 'md_consignacoes', 'mb_cartao_beneficio', 'md_cartao_beneficio'];
+      for (const lot of lotacaoRows) {
+        const cid = identIdToClientId.get(lot.identificacao_id as string);
+        if (!cid || newClientIds.has(cid)) continue;
+        if (hasMarginValuesChanged(existingLotacoesMap.get(lot.identificacao_id as string), lot, pmspMarginKeys)) {
+          marginChangedIds.add(cid);
+        }
+      }
+      await markMarginUpdatesBatch('prefeitura_sp_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
     }
   };
 
@@ -1448,16 +1653,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_pi_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('governo_pi_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('governo_pi_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Governo Piauí: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     // --- PASSO 2: Processar Identificações (Matriculas) ---
     const clientIds = Array.from(cpfToClientId.values());
@@ -1500,11 +1710,13 @@ export default function ImportBatchPage() {
     const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
 
     const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+    const identIdToClientId = new Map<string, string>();
 
     normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
-      if (!identId) return;
+      if (!identId || !clientId) return;
+      identIdToClientId.set(identId, clientId);
 
       const existingLot = existingLotacoesMap.get(identId);
       const currentInMap = lotacoesToUpsertMap.get(identId);
@@ -1544,6 +1756,19 @@ export default function ImportBatchPage() {
         return await supabase.from('governo_pi_lotacoes').insert(lotacaoRows);
       });
       if (lotErr) throw new Error(`Erro ao salvar lotações Governo Piauí: ${lotErr.message}`);
+
+      const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const marginChangedIds = new Set<string>();
+      const govPiMarginKeys = ['margem_disponivel_emprestimo', 'margem_cartao_consignado', 'margem_cartao_beneficio'];
+      for (const lot of lotacaoRows) {
+        const cid = identIdToClientId.get(lot.identificacao_id as string);
+        if (!cid || newClientIds.has(cid)) continue;
+        if (hasMarginValuesChanged(existingLotacoesMap.get(lot.identificacao_id as string), lot, govPiMarginKeys)) {
+          marginChangedIds.add(cid);
+        }
+      }
+      await markMarginUpdatesBatch('governo_pi_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
     }
   };
 
@@ -1616,16 +1841,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_ma_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('governo_ma_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('governo_ma_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Governo Maranhão: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     // --- PASSO 2: Processar Identificações (Matriculas) ---
     const clientIds = Array.from(cpfToClientId.values());
@@ -1668,11 +1898,13 @@ export default function ImportBatchPage() {
     const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
 
     const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+    const identIdToClientId = new Map<string, string>();
 
     normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
-      if (!identId) return;
+      if (!identId || !clientId) return;
+      identIdToClientId.set(identId, clientId);
 
       const existingLot = existingLotacoesMap.get(identId);
       const currentInMap = lotacoesToUpsertMap.get(identId);
@@ -1712,6 +1944,19 @@ export default function ImportBatchPage() {
         return await supabase.from('governo_ma_lotacoes').insert(lotacaoRows);
       });
       if (lotErr) throw new Error(`Erro ao salvar lotações Governo Maranhão: ${lotErr.message}`);
+
+      const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const marginChangedIds = new Set<string>();
+      const govMaMarginKeys = ['margem_emprestimo_consignado', 'margem_cartao_consignado', 'margem_cartao_beneficio'];
+      for (const lot of lotacaoRows) {
+        const cid = identIdToClientId.get(lot.identificacao_id as string);
+        if (!cid || newClientIds.has(cid)) continue;
+        if (hasMarginValuesChanged(existingLotacoesMap.get(lot.identificacao_id as string), lot, govMaMarginKeys)) {
+          marginChangedIds.add(cid);
+        }
+      }
+      await markMarginUpdatesBatch('governo_ma_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
     }
   };
 
@@ -1783,16 +2028,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_rr_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('governo_rr_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('governo_rr_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes GOV RR: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_rr_matriculas', 'cliente_id', clientIds);
@@ -1834,11 +2084,13 @@ export default function ImportBatchPage() {
     const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.matricula_id as string, l]));
 
     const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+    const identIdToClientId = new Map<string, string>();
 
     normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
-      if (!identId) return;
+      if (!identId || !clientId) return;
+      identIdToClientId.set(identId, clientId);
 
       const existingLot = existingLotacoesMap.get(identId);
       const currentInMap = lotacoesToUpsertMap.get(identId);
@@ -1878,6 +2130,19 @@ export default function ImportBatchPage() {
         return await supabase.from('governo_rr_instituidores').insert(lotacaoRows);
       });
       if (lotErr) throw new Error(`Erro ao salvar instituidores GOV RR: ${lotErr.message}`);
+
+      const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const marginChangedIds = new Set<string>();
+      const govRrMarginKeys = ['margem_emprestimo', 'margem_cartao', 'margem_cartao_beneficio'];
+      for (const lot of lotacaoRows) {
+        const cid = identIdToClientId.get(lot.matricula_id as string);
+        if (!cid || newClientIds.has(cid)) continue;
+        if (hasMarginValuesChanged(existingLotacoesMap.get(lot.matricula_id as string), lot, govRrMarginKeys)) {
+          marginChangedIds.add(cid);
+        }
+      }
+      await markMarginUpdatesBatch('governo_rr_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
     }
   };
 
@@ -1948,16 +2213,16 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_rj_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      applyClientLoteTracking('governo_rj_clientes', row, existingClientsMap.get(row.cpf as string), loteNowIso);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('governo_rj_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes GOV RJ: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_rj_matriculas', 'cliente_id', clientIds);
@@ -2061,16 +2326,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('prefeitura_santo_andre_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('prefeitura_santo_andre_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('prefeitura_santo_andre_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes PSA: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_santo_andre_matriculas', 'cliente_id', clientIds);
@@ -2108,6 +2378,19 @@ export default function ImportBatchPage() {
     });
 
     if (identErr) throw new Error(`Erro ao salvar matrículas PSA: ${identErr?.message}`);
+
+    const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const marginChangedIds = new Set<string>();
+    const psaMarginKeys = ['margem_bruta_cartao', 'margem_liquida_cartao'];
+    for (const [key, identRow] of identMap.entries()) {
+      const cid = identRow.cliente_id as string;
+      if (!cid || newClientIds.has(cid)) continue;
+      if (hasMarginValuesChanged(existingIdentsMap.get(key), identRow, psaMarginKeys)) {
+        marginChangedIds.add(cid);
+      }
+    }
+    await markMarginUpdatesBatch('prefeitura_santo_andre_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
   };
 
   const processPrefeituraPontaGrossaChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
@@ -2179,16 +2462,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('prefeitura_ponta_grossa_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('prefeitura_ponta_grossa_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('prefeitura_ponta_grossa_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Ponta Grossa: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_ponta_grossa_matriculas', 'cliente_id', clientIds);
@@ -2228,6 +2516,19 @@ export default function ImportBatchPage() {
     });
 
     if (identErr) throw new Error(`Erro ao salvar matrículas Ponta Grossa: ${identErr?.message}`);
+
+    const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const marginChangedIds = new Set<string>();
+    const pgMarginKeys = ['margem_total', 'margem_disponivel'];
+    for (const [key, identRow] of identMap.entries()) {
+      const cid = identRow.cliente_id as string;
+      if (!cid || newClientIds.has(cid)) continue;
+      if (hasMarginValuesChanged(existingIdentsMap.get(key), identRow, pgMarginKeys)) {
+        marginChangedIds.add(cid);
+      }
+    }
+    await markMarginUpdatesBatch('prefeitura_ponta_grossa_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
   };
 
   const processAmazonPrevChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
@@ -2296,16 +2597,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('amazon_prev_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('amazon_prev_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('amazon_prev_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Amazon Prev: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
     const clientIds = Array.from(cpfToClientId.values());
 
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('amazon_prev_matriculas', 'cliente_id', clientIds);
@@ -2345,6 +2651,19 @@ export default function ImportBatchPage() {
     });
 
     if (identErr) throw new Error(`Erro ao salvar matrículas Amazon Prev: ${identErr?.message}`);
+
+    const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const marginChangedIds = new Set<string>();
+    const amazonMarginKeys = ['margem'];
+    for (const [key, identRow] of identMap.entries()) {
+      const cid = identRow.cliente_id as string;
+      if (!cid || newClientIds.has(cid)) continue;
+      if (hasMarginValuesChanged(existingIdentsMap.get(key), identRow, amazonMarginKeys)) {
+        marginChangedIds.add(cid);
+      }
+    }
+    await markMarginUpdatesBatch('amazon_prev_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
   };
 
   const processPrefeituraContagemChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
@@ -2420,16 +2739,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('prefeitura_contagem_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('prefeitura_contagem_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('prefeitura_contagem_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes PC: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_contagem_matriculas', 'cliente_id', clientIds);
@@ -2473,6 +2797,19 @@ export default function ImportBatchPage() {
     });
 
     if (identErr) throw new Error(`Erro ao salvar matrículas PC: ${identErr?.message}`);
+
+    const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const marginChangedIds = new Set<string>();
+    const pcMarginKeys = ['margem_emprestimo_bruta', 'margem_emprestimo_liquida', 'margem_cartao_bruta', 'margem_cartao_liquida'];
+    for (const [key, identRow] of identMap.entries()) {
+      const cid = identRow.cliente_id as string;
+      if (!cid || newClientIds.has(cid)) continue;
+      if (hasMarginValuesChanged(existingIdentsMap.get(key), identRow, pcMarginKeys)) {
+        marginChangedIds.add(cid);
+      }
+    }
+    await markMarginUpdatesBatch('prefeitura_contagem_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
   };
 
   const processGovernoMgChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
@@ -2546,16 +2883,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_mg_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('governo_mg_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('governo_mg_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes MG: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_mg_matriculas', 'cliente_id', clientIds);
@@ -2630,6 +2972,19 @@ export default function ImportBatchPage() {
     });
 
     if (identErr) throw new Error(`Erro ao salvar matrículas MG: ${identErr?.message}`);
+
+    const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const marginChangedIds = new Set<string>();
+    const mgMarginKeys = ['margem_70', 'margem_emprestimo', 'cartao_credito', 'cartao_beneficio'];
+    for (const [key, identRow] of identMap.entries()) {
+      const cid = identRow.cliente_id as string;
+      if (!cid || newClientIds.has(cid)) continue;
+      if (hasMarginValuesChanged(existingIdentsMap.get(key), identRow, mgMarginKeys)) {
+        marginChangedIds.add(cid);
+      }
+    }
+    await markMarginUpdatesBatch('governo_mg_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
   };
 
   const processGovernoMsChunk = async (results: Record<string, string | undefined>[], loteId: string) => {
@@ -2696,16 +3051,16 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_ms_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      applyClientLoteTracking('governo_ms_clientes', row, existingClientsMap.get(row.cpf as string), loteNowIso);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('governo_ms_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes MS: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_ms_matriculas', 'cliente_id', clientIds);
@@ -2807,16 +3162,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('prefeitura_natal_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('prefeitura_natal_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('prefeitura_natal_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Prefeitura de Natal: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_natal_identificacoes', 'cliente_id', clientIds);
@@ -2857,11 +3217,13 @@ export default function ImportBatchPage() {
     const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
 
     const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+    const identIdToClientId = new Map<string, string>();
 
     normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
-      if (!identId) return;
+      if (!identId || !clientId) return;
+      identIdToClientId.set(identId, clientId);
 
       const existingLot = existingLotacoesMap.get(identId);
       const currentInMap = lotacoesToUpsertMap.get(identId);
@@ -2897,6 +3259,19 @@ export default function ImportBatchPage() {
       });
 
       if (lotErr) throw new Error(`Erro ao salvar lotações Prefeitura de Natal: ${lotErr?.message}`);
+
+      const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const marginChangedIds = new Set<string>();
+      const natalMarginKeys = ['margem_emprestimo_consignado', 'margem_cartao_consignado', 'margem_cartao_beneficio'];
+      for (const lot of lotacaoRows) {
+        const cid = identIdToClientId.get(lot.identificacao_id as string);
+        if (!cid || newClientIds.has(cid)) continue;
+        if (hasMarginValuesChanged(existingLotacoesMap.get(lot.identificacao_id as string), lot, natalMarginKeys)) {
+          marginChangedIds.add(cid);
+        }
+      }
+      await markMarginUpdatesBatch('prefeitura_natal_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
     }
   };
 
@@ -2967,16 +3342,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('prefeitura_porto_velho_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('prefeitura_porto_velho_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('prefeitura_porto_velho_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes Prefeitura Porto Velho: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('prefeitura_porto_velho_identificacoes', 'cliente_id', clientIds);
@@ -3017,11 +3397,13 @@ export default function ImportBatchPage() {
     const existingLotacoesMap = new Map(existingLotacoesRaw.map(l => [l.identificacao_id as string, l]));
 
     const lotacoesToUpsertMap = new Map<string, Record<string, unknown>>();
+    const identIdToClientId = new Map<string, string>();
 
     normalizedRows.forEach(row => {
       const clientId = cpfToClientId.get(row.cpf);
       const identId = keyToIdentId.get(`${clientId}_${row.matricula}`);
-      if (!identId) return;
+      if (!identId || !clientId) return;
+      identIdToClientId.set(identId, clientId);
 
       const existingLot = existingLotacoesMap.get(identId);
       const currentInMap = lotacoesToUpsertMap.get(identId);
@@ -3055,6 +3437,19 @@ export default function ImportBatchPage() {
       });
 
       if (lotErr) throw new Error(`Erro ao salvar lotações Prefeitura Porto Velho: ${lotErr?.message}`);
+
+      const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+      const marginChangedIds = new Set<string>();
+      const pvMarginKeys = ['margem_emprestimo', 'margem_cartao_consignado'];
+      for (const lot of lotacaoRows) {
+        const cid = identIdToClientId.get(lot.identificacao_id as string);
+        if (!cid || newClientIds.has(cid)) continue;
+        if (hasMarginValuesChanged(existingLotacoesMap.get(lot.identificacao_id as string), lot, pvMarginKeys)) {
+          marginChangedIds.add(cid);
+        }
+      }
+      await markMarginUpdatesBatch('prefeitura_porto_velho_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
     }
   };
 
@@ -3125,16 +3520,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_ba_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('governo_ba_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('governo_ba_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes BA: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_ba_matriculas', 'cliente_id', clientIds);
@@ -3176,6 +3576,19 @@ export default function ImportBatchPage() {
     });
 
     if (identErr) throw new Error(`Erro ao salvar matrículas BA: ${identErr?.message}`);
+
+    const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const marginChangedIds = new Set<string>();
+    const baMarginKeys = ['margem_emprestimo_total', 'margem_emprestimo_disponivel'];
+    for (const [key, identRow] of identMap.entries()) {
+      const cid = identRow.cliente_id as string;
+      if (!cid || newClientIds.has(cid)) continue;
+      if (hasMarginValuesChanged(existingIdentsMap.get(key), identRow, baMarginKeys)) {
+        marginChangedIds.add(cid);
+      }
+    }
+    await markMarginUpdatesBatch('governo_ba_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
   };
 
   const processGovernoAmChunk = async (chunk: Record<string, unknown>[], currentBatchId: string) => {
@@ -3250,16 +3663,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_am_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('governo_am_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('governo_am_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes AM: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_am_matriculas', 'cliente_id', clientIds);
@@ -3307,6 +3725,19 @@ export default function ImportBatchPage() {
     });
 
     if (identErr) throw new Error(`Erro ao salvar matrículas AM: ${identErr?.message}`);
+
+    const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const marginChangedIds = new Set<string>();
+    const amMarginKeys = ['margem_consignavel', 'margem_cartao', 'margem_cartao_beneficio', 'margem_cartao_beneficio_saque'];
+    for (const [key, identRow] of identMap.entries()) {
+      const cid = identRow.cliente_id as string;
+      if (!cid || newClientIds.has(cid)) continue;
+      if (hasMarginValuesChanged(existingIdentsMap.get(key), identRow, amMarginKeys)) {
+        marginChangedIds.add(cid);
+      }
+    }
+    await markMarginUpdatesBatch('governo_am_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
   };
 
   const processGovernoCeChunk = async (chunk: Record<string, unknown>[], currentBatchId: string) => {
@@ -3375,16 +3806,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_ce_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('governo_ce_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('governo_ce_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes CE: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_ce_matriculas', 'cliente_id', clientIds);
@@ -3421,6 +3857,19 @@ export default function ImportBatchPage() {
     });
 
     if (identErr) throw new Error(`Erro ao salvar vínculos CE: ${identErr?.message}`);
+
+    const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const marginChangedIds = new Set<string>();
+    const ceMarginKeys = ['salario'];
+    for (const [key, identRow] of identMap.entries()) {
+      const cid = identRow.cliente_id as string;
+      if (!cid || newClientIds.has(cid)) continue;
+      if (hasMarginValuesChanged(existingIdentsMap.get(key), identRow, ceMarginKeys)) {
+        marginChangedIds.add(cid);
+      }
+    }
+    await markMarginUpdatesBatch('governo_ce_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
   };
 
   const processGovernoRoChunk = async (chunk: Record<string, unknown>[], currentBatchId: string) => {
@@ -3494,16 +3943,21 @@ export default function ImportBatchPage() {
       });
     });
 
-    const clientRows = Array.from(clientMap.values());
-    const { data: clientsData, error: clientErr } = await withRetry(async () => {
-      return await supabase.from('governo_ro_clientes')
-        .upsert(clientRows, { onConflict: 'cpf' })
-        .select('id, cpf');
+    const loteNowIso = new Date().toISOString();
+    const newClientCpfs = new Set<string>();
+    const phoneChangedCpfs = new Set<string>();
+    const clientRows = Array.from(clientMap.values()).map((row) => {
+      const cpf = row.cpf as string;
+      const track = applyClientLoteTracking('governo_ro_clientes', row, existingClientsMap.get(cpf), loteNowIso);
+      if (track === 'NOVO_CLIENTE') newClientCpfs.add(cpf);
+      if (track === 'TELEFONE') phoneChangedCpfs.add(cpf);
+      return row;
     });
+    const { data: clientsData, error: clientErr } = await upsertClientsWithTracking('governo_ro_clientes', clientRows, 'cpf', 'id, cpf');
 
     if (clientErr || !clientsData) throw new Error(`Erro ao garantir clientes RO: ${clientErr?.message}`);
 
-    const cpfToClientId = new Map<string, string>(clientsData.map((c: {id: string, cpf: string}) => [c.cpf, c.id]));
+    const cpfToClientId = new Map<string, string>((clientsData as {id: string, cpf: string}[]).map((c) => [c.cpf, c.id]));
 
     const clientIds = Array.from(cpfToClientId.values());
     const existingIdentsRaw = await fetchInBatches<Record<string, unknown>>('governo_ro_matriculas', 'cliente_id', clientIds);
@@ -3550,6 +4004,19 @@ export default function ImportBatchPage() {
     });
 
     if (identErr) throw new Error(`Erro ao salvar matrículas RO: ${identErr?.message}`);
+
+    const newClientIds = new Set(Array.from(newClientCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const phoneChangedIds = new Set(Array.from(phoneChangedCpfs).map(c => cpfToClientId.get(c)!).filter(Boolean));
+    const marginChangedIds = new Set<string>();
+    const roMarginKeys = ['margem_emprestimo', 'margem_cartao', 'margem_cartao_beneficio'];
+    for (const [key, identRow] of identMap.entries()) {
+      const cid = identRow.cliente_id as string;
+      if (!cid || newClientIds.has(cid)) continue;
+      if (hasMarginValuesChanged(existingIdentsMap.get(key), identRow, roMarginKeys)) {
+        marginChangedIds.add(cid);
+      }
+    }
+    await markMarginUpdatesBatch('governo_ro_clientes', 'id', marginChangedIds, phoneChangedIds, newClientIds, loteNowIso);
   };
 
   const handleStartImport = async () => {

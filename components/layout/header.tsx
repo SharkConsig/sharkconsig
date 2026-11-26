@@ -338,7 +338,7 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
 
   return (
     <header className={`h-16 lg:h-20 border-b border-slate-200 bg-white px-4 lg:px-8 flex items-center justify-between sticky top-0 header-shadow transition-all duration-300 ${isApoioModalOpen || isHistoryModalOpen ? 'z-[210]' : 'z-[100]'}`}>
-      <div className="flex items-center gap-4 flex-1 min-w-0">
+      <div className="relative z-10 flex items-center gap-4 flex-1 min-w-0">
         <button 
           onClick={toggleSidebar}
           disabled={isCampanhaAtendimento || isHeaderBlocked}
@@ -356,7 +356,7 @@ export function Header({ title, children, hideQuickLinks = false }: HeaderProps)
           </h2>
         ) : null}
       </div>
-      <div className={`flex items-center gap-2 sm:gap-3 shrink-0 ml-4 sm:ml-6 lg:ml-8 ${isHeaderBlocked ? "pointer-events-none opacity-40 select-none" : ""}`}>
+      <div className={`relative z-10 flex items-center gap-2 sm:gap-3 shrink-0 ml-4 sm:ml-6 lg:ml-8 ${isHeaderBlocked ? "pointer-events-none opacity-40 select-none" : ""}`}>
         {isAdminUser && !isKanban && (
           <button
             id="header-historico-apoio-btn"

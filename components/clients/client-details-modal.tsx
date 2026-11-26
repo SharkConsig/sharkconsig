@@ -157,6 +157,8 @@ interface ClientData {
   telefone_1: string | null;
   telefone_2: string | null;
   telefone_3: string | null;
+  ultima_atualizacao_lote_em?: string | null;
+  ultima_atualizacao_lote_tipo?: string | null;
   [key: string]: unknown;
 }
 
@@ -2198,6 +2200,39 @@ export function ClientDetailsModal({
                         {showSensitiveData ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
                       </button>
                     </div>
+
+                    {(client.ultima_atualizacao_lote_em || client.ultima_atualizacao_lote_tipo) && (() => {
+                      const tipo = client.ultima_atualizacao_lote_tipo;
+                      const info = tipo === 'NOVO_CLIENTE'
+                        ? { label: 'Cliente novo (nova margem)', className: 'bg-emerald-50 border-emerald-200 text-emerald-800' }
+                        : tipo === 'MARGEM_TELEFONE'
+                        ? { label: 'Margem e Telefone atualizados', className: 'bg-blue-50 border-blue-200 text-blue-800' }
+                        : tipo === 'MARGEM'
+                        ? { label: 'Margem atualizada', className: 'bg-indigo-50 border-indigo-200 text-indigo-800' }
+                        : tipo === 'TELEFONE'
+                        ? { label: 'Telefone atualizado', className: 'bg-amber-50 border-amber-200 text-amber-800' }
+                        : null;
+                      const parsedDate = client.ultima_atualizacao_lote_em ? new Date(client.ultima_atualizacao_lote_em) : null;
+                      const formattedDate = parsedDate && !isNaN(parsedDate.getTime())
+                        ? parsedDate.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                        : null;
+                      if (!info && !formattedDate) return null;
+                      return (
+                        <div className={cn("flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-lg border text-xs font-medium !-mt-5", info?.className || "bg-slate-50 border-slate-200 text-slate-700")}>
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-3.5 h-3.5 shrink-0" />
+                            <span>
+                              Última atualização em lote{formattedDate ? `: ${formattedDate}` : ''}
+                            </span>
+                          </div>
+                          {info && (
+                            <span className="font-bold uppercase tracking-wide text-[11px]">
+                              {info.label}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-10 gap-x-12">
                       <div className="space-y-1.5">

@@ -622,10 +622,22 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </nav>
 
         {!effectiveCollapsed && (
-          <div className="p-4 mt-auto">
-            <div className="bg-slate-50 rounded-xl p-4">
-              <p className="text-[11px] font-bold text-slate-400 mb-1 uppercase">Versão</p>
-              <p className="text-xs font-bold text-slate-700">v2.4.0-pro</p>
+          <div className="px-4 pb-4 pt-1 mt-auto shrink-0">
+            <div className="relative flex flex-col items-center">
+              <img
+                src="/images/christmas-sidebar-reindeer.jpg"
+                alt="Mascote natalino SharkConsig"
+                referrerPolicy="no-referrer"
+                className="w-28 h-28 object-contain mix-blend-multiply -mb-3 relative z-10 pointer-events-none select-none"
+              />
+              <div className="w-full bg-gradient-to-b from-emerald-50/75 to-slate-50 border border-emerald-100/80 rounded-xl px-4 py-3 text-center">
+                <p className="text-[10px] font-extrabold text-emerald-700 tracking-wider uppercase">
+                  Boas Festas
+                </p>
+                <p className="text-[11px] font-bold text-slate-600 mt-0.5">
+                  SharkConsig • v2.4.0-pro
+                </p>
+              </div>
             </div>
           </div>
         )}

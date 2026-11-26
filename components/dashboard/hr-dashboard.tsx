@@ -655,13 +655,25 @@ export function HRDashboard({
         </motion.div>
 
         {/* GREETINGS HERO (Located on the right side of the photo) */}
-        <div className="md:col-span-9 flex flex-col justify-center space-y-2 md:pl-[6px]">
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight uppercase text-[#1C2643]">
-            Olá, {firstName}
-          </h1>
-          <p className="text-[#1C2643] text-[11px] sm:text-[13px] font-medium leading-relaxed">
-            Seja bem-vindo ao painel central de Recursos Humanos. Aqui você pode gerenciar todas as rotinas internas, acompanhar contratações e acompanhar termos comportamentais.
-          </p>
+        <div className="md:col-span-9 relative overflow-hidden rounded-[24px] border border-sky-100/90 bg-white shadow-sm flex flex-col justify-center md:justify-start p-6 sm:p-8 md:pt-10 min-h-[164px] lg:min-h-[200px]">
+          <img
+            src="/images/christmas-hero-banner.jpg"
+            alt="Cenário natalino SharkConsig"
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 w-full h-full object-cover object-right-bottom pointer-events-none select-none"
+          />
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-gradient-to-r from-[#F8FAFC]/95 via-[#F8FAFC]/88 via-36% to-transparent to-54% pointer-events-none"
+          />
+          <div className="relative z-10 max-w-[310px] lg:max-w-[370px] space-y-2.5">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight uppercase text-[#1C2643]">
+              Olá, {firstName}
+            </h1>
+            <p className="text-slate-700 text-[12px] sm:text-[13px] font-medium leading-relaxed">
+              Seja bem-vindo ao painel central de Recursos Humanos. Aqui você pode gerenciar todas as rotinas internas, acompanhar contratações e acompanhar termos comportamentais.
+            </p>
+          </div>
         </div>
       </div>
 

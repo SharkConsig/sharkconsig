@@ -3186,35 +3186,48 @@ export function AdminDashboard({
     <div className="space-y-8">
       {/* 1. Linha da saudação e o prazo para bater a meta */}
       {!onlyPropostasComerciais && !onlyFinanceiro && (
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
-          <motion.div 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-          >
-            <h1 className="text-4xl font-black text-[#1C2643] tracking-tighter">
-              {headerContent.greeting}, {perfil?.nome?.split(' ')[0] || 'Admin'}!
-            </h1>
-            <p className="text-[12px] font-bold text-[#718198] uppercase tracking-[0.25em] mt-2 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-              {headerContent.phrase}
-            </p>
-          </motion.div>
+        <div className="relative overflow-hidden rounded-3xl border border-sky-100/90 bg-white shadow-sm mb-12 min-h-[164px] lg:min-h-[212px] flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 lg:p-8">
+          <img
+            src="/images/christmas-hero-banner.jpg"
+            alt="Cenário natalino SharkConsig"
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 w-full h-full object-cover object-[center_63%] pointer-events-none select-none"
+          />
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-gradient-to-r from-[#F8FAFC]/95 via-[#F8FAFC]/75 via-28% to-transparent to-44% pointer-events-none"
+          />
+
+          <div className="relative z-10 flex items-center gap-4 sm:gap-6">
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+            >
+              <h1 className="text-3xl sm:text-4xl font-black text-[#1C2643] tracking-tighter">
+                {headerContent.greeting}, {perfil?.nome?.split(' ')[0] || 'Admin'}!
+              </h1>
+              <p className="text-[12px] font-bold text-[#475569] uppercase tracking-[0.25em] mt-2 flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-500 fill-amber-500 shrink-0" />
+                {headerContent.phrase}
+              </p>
+            </motion.div>
+          </div>
           
           <motion.div 
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-5 self-start md:self-center relative group"
+            className="relative z-10 flex items-center gap-4 self-start md:self-center bg-white/90 backdrop-blur-md border border-white/95 rounded-2xl px-5 py-3.5 shadow-sm group"
           >
-            <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-amber-100">
-               <Clock className="w-7 h-7 text-amber-500" />
+            <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0 shadow-xs border border-amber-100">
+               <Clock className="w-6 h-6 text-amber-500" />
             </div>
-            <div className="relative z-10">
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Prazo Para Bater a Meta</p>
+            <div>
+               <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Prazo Para Bater a Meta</p>
                <div className="flex items-baseline gap-2">
                   <span className="text-2xl font-black text-[#1C2643]">{remainingBusinessDays.toString().padStart(2, '0')}</span>
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Dias Restantes</span>
+                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-widest">Dias Restantes</span>
                </div>
-               <p className="text-[11px] font-medium text-slate-500 mt-1 max-w-[200px] leading-tight">
+               <p className="text-[11px] font-medium text-slate-600 mt-1 max-w-[200px] leading-tight">
                   <span className="text-amber-600 font-bold italic">Sua corrida rumo à meta.</span> Faltam apenas {remainingBusinessDays} dias úteis.
                </p>
             </div>
