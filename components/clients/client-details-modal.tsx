@@ -2327,7 +2327,7 @@ export function ClientDetailsModal({
                               >
                                 <span>Selecione</span>
                               </button>
-                              {["DISPARO", "TRÁFEGO", "INDICAÇÃO", "CLIENTE DA CASA", "3C - DISCADOR", "LISTA MANUAL"].map((origemOption) => (
+                              {["DISPARO", "TRÁFEGO", "INDICAÇÃO", "CLIENTE DA CASA", "3C - DISCADOR", "LISTA MANUAL", "IA - 3C"].map((origemOption) => (
                                 <button
                                   key={origemOption}
                                   type="button"

@@ -1873,6 +1873,7 @@ export function NewProposalForm({
                 <option value="CLIENTE DA CASA">CLIENTE DA CASA</option>
                 <option value="3C - DISCADOR">3C - DISCADOR</option>
                 <option value="LISTA MANUAL">LISTA MANUAL</option>
+                <option value="IA - 3C">IA - 3C</option>
               </select>
             </div>
             <div className="space-y-2">
