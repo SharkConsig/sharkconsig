@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState } from "react"
+import { createContext, useContext, useEffect, useRef, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { User } from "@supabase/supabase-js"
 import { Lock } from "lucide-react"
@@ -30,6 +30,7 @@ interface AuthContextType {
   user: User | null
   perfil: Perfil | null
   isLoading: boolean
+  isPerfilHydrated: boolean
   isAdmin: boolean
   isDeveloper: boolean
   isSupervisor: boolean
@@ -89,101 +90,135 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [perfil, setPerfil] = useState<Perfil | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isPerfilHydrated, setIsPerfilHydrated] = useState(false)
+  const loadedPerfilUserIdRef = useRef<string | null>(null)
+  const refreshInFlightRef = useRef<Promise<void> | null>(null)
 
   // Block overlay state
   const [isBlocked, setIsBlocked] = useState(false)
   const [allowedHoursText, setAllowedHoursText] = useState("")
   const [spTimeStr, setSpTimeStr] = useState("")
 
-  const refreshPerfil = async () => {
-    try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser()
-      if (currentUser) {
-        try {
-          const res = await fetch(`/api/usuarios?id=${currentUser.id}`)
-          if (res.ok) {
-            const freshUser = await res.json()
-            setPerfil({
-              id: freshUser.id,
-              email: freshUser.email || "",
-              nome: freshUser.nome || "Usuário",
-              username: freshUser.username,
-              role: freshUser.funcao || "Corretor",
+  const refreshPerfil = async (explicitUser?: User | null) => {
+    if (refreshInFlightRef.current && !explicitUser) {
+      return refreshInFlightRef.current
+    }
+
+    const runRefresh = async () => {
+      try {
+        const currentUser = explicitUser ?? user ?? (await supabase.auth.getUser()).data.user
+        if (currentUser) {
+          try {
+            const res = await fetch(`/api/usuarios?id=${currentUser.id}`, { cache: "no-store" })
+            if (res.ok) {
+              const freshUser = await res.json()
+              loadedPerfilUserIdRef.current = freshUser.id || currentUser.id
+              setPerfil({
+                id: freshUser.id,
+                email: freshUser.email || "",
+                nome: freshUser.nome || "Usuário",
+                username: freshUser.username,
+                role: freshUser.funcao || "Corretor",
+                status: "Ativo",
+                permissoes: {},
+                avatar_url: freshUser.avatar_url,
+                foto_campanha_url: freshUser.foto_campanha_url,
+                foto_proposta_url: freshUser.foto_proposta_url,
+                supervisor_id: freshUser.supervisor_id,
+                supervisor_nome: freshUser.supervisor_nome,
+                regime_contratacao: freshUser.regime_contratacao || "",
+                padrinho_id: freshUser.padrinho_id || "",
+                padrinho_nome: freshUser.padrinho_nome || "",
+                rh_mensagem_destaque: freshUser.rh_mensagem_destaque || ""
+              })
+              setIsPerfilHydrated(true)
+              return
+            }
+          } catch (apiErr) {
+            console.warn("Erro ao carregar dados do usuário da API:", apiErr)
+          }
+
+          const metadata = currentUser.user_metadata || {}
+          loadedPerfilUserIdRef.current = currentUser.id
+          setPerfil((prev) => {
+            if (prev && prev.id === currentUser.id) return prev
+            return {
+              id: currentUser.id,
+              email: currentUser.email || "",
+              nome: metadata.nome_completo || currentUser.email || "Usuário",
+              username: metadata.username,
+              role: metadata.funcao || "Corretor",
               status: "Ativo",
               permissoes: {},
-              avatar_url: freshUser.avatar_url,
-              foto_campanha_url: freshUser.foto_campanha_url,
-              foto_proposta_url: freshUser.foto_proposta_url,
-              supervisor_id: freshUser.supervisor_id,
-              supervisor_nome: freshUser.supervisor_nome,
-              regime_contratacao: freshUser.regime_contratacao || "",
-              padrinho_id: freshUser.padrinho_id || "",
-              padrinho_nome: freshUser.padrinho_nome || "",
-              rh_mensagem_destaque: freshUser.rh_mensagem_destaque || ""
-            })
-            return
-          }
-        } catch (apiErr) {
-          console.warn("Erro ao carregar dados do usuário da API:", apiErr)
+              avatar_url: metadata.avatar_url,
+              foto_campanha_url: metadata.foto_campanha_url,
+              foto_proposta_url: metadata.foto_proposta_url,
+              supervisor_id: metadata.supervisor_id,
+              supervisor_nome: metadata.supervisor_nome,
+              regime_contratacao: metadata.regime_contratacao || "",
+              padrinho_id: metadata.padrinho_id || "",
+              padrinho_nome: metadata.padrinho_nome || "",
+              rh_mensagem_destaque: metadata.rh_mensagem_destaque || ""
+            }
+          })
+          setIsPerfilHydrated(true)
         }
-
-        const metadata = currentUser.user_metadata
-        setPerfil({
-          id: currentUser.id,
-          email: currentUser.email || "",
-          nome: metadata.nome_completo || currentUser.email || "Usuário",
-          username: metadata.username,
-          role: metadata.funcao || "Corretor",
-          status: "Ativo",
-          permissoes: {},
-          avatar_url: metadata.avatar_url,
-          foto_campanha_url: metadata.foto_campanha_url,
-          foto_proposta_url: metadata.foto_proposta_url,
-          supervisor_id: metadata.supervisor_id,
-          supervisor_nome: metadata.supervisor_nome,
-          regime_contratacao: metadata.regime_contratacao || "",
-          padrinho_id: metadata.padrinho_id || "",
-          padrinho_nome: metadata.padrinho_nome || "",
-          rh_mensagem_destaque: metadata.rh_mensagem_destaque || ""
-        })
+      } catch (e) {
+        console.error("refreshPerfil error:", e)
+        setIsPerfilHydrated(true)
       }
-    } catch (e) {
-      console.error("refreshPerfil error:", e)
     }
+
+    const promise = runRefresh().finally(() => {
+      if (refreshInFlightRef.current === promise) {
+        refreshInFlightRef.current = null
+      }
+    })
+    refreshInFlightRef.current = promise
+    return promise
   }
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       try {
         const currentUser = session?.user ?? null
         setUser(currentUser)
         
         if (currentUser) {
-          const metadata = currentUser.user_metadata
-          setPerfil({
-            id: currentUser.id,
-            email: currentUser.email || "",
-            nome: metadata.nome_completo || currentUser.email || "Usuário",
-            username: metadata.username,
-            role: metadata.funcao || "Corretor",
-            status: "Ativo",
-            permissoes: {},
-            avatar_url: metadata.avatar_url,
-            foto_campanha_url: metadata.foto_campanha_url,
-            foto_proposta_url: metadata.foto_proposta_url,
-            supervisor_id: metadata.supervisor_id,
-            supervisor_nome: metadata.supervisor_nome,
-            regime_contratacao: metadata.regime_contratacao || "",
-            padrinho_id: metadata.padrinho_id || "",
-            padrinho_nome: metadata.padrinho_nome || ""
-          })
+          const metadata = currentUser.user_metadata || {}
+          const alreadyLoadedSameUser = loadedPerfilUserIdRef.current === currentUser.id
+
+          if (!alreadyLoadedSameUser) {
+            setIsPerfilHydrated(false)
+            setPerfil((prev) => {
+              if (prev && prev.id === currentUser.id) return prev
+              return {
+                id: currentUser.id,
+                email: currentUser.email || "",
+                nome: metadata.nome_completo || currentUser.email || "Usuário",
+                username: metadata.username,
+                role: metadata.funcao || "Corretor",
+                status: "Ativo",
+                permissoes: {},
+                supervisor_id: metadata.supervisor_id,
+                supervisor_nome: metadata.supervisor_nome,
+                regime_contratacao: metadata.regime_contratacao || "",
+                padrinho_id: metadata.padrinho_id || "",
+                padrinho_nome: metadata.padrinho_nome || ""
+              }
+            })
+            refreshPerfil(currentUser)
+          } else if (event === 'USER_UPDATED') {
+            refreshPerfil(currentUser)
+          }
+
           // Se o token em cache local for maior que 8KB (ex: metadados antigos com imagem base64), renova o JWT imediatamente
           if (session?.access_token && session.access_token.length > 8000) {
             supabase.auth.refreshSession().catch(console.error)
           }
-          // Busca dados atualizados do servidor para evitar cache local obsoleto do metadata do auth
-          refreshPerfil()
         } else {
+          loadedPerfilUserIdRef.current = null
+          setIsPerfilHydrated(false)
           setPerfil(null)
         }
       } catch (err) {
@@ -321,6 +356,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user, 
       perfil, 
       isLoading, 
+      isPerfilHydrated,
       isAdmin, 
       isDeveloper,
       isSupervisor,

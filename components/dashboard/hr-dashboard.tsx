@@ -277,7 +277,7 @@ export function HRDashboard({
   kanbanStatsByUser = {},
   onRequestUserKanbanStats,
 }: HRDashboardProps) {
-  const { perfil } = useAuth()
+  const { perfil, isPerfilHydrated } = useAuth()
   const isOnlyAdmin = perfil?.role?.toLowerCase() === 'administrador' || perfil?.role?.toLowerCase() === 'desenvolvedor'
   const [rankingModalParams, setRankingModalParams] = useState<RankingContractModalParams | null>(null)
   const [colaboradoresCount, setColaboradoresCount] = useState(0)
@@ -655,7 +655,9 @@ export function HRDashboard({
           transition={{ delay: 0.28 }}
           className="md:col-span-3 relative overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-lg shadow-[#1C2643]/5 h-[315px] md:h-[336px] lg:h-[406px] xl:h-[448px] w-full max-w-[343px] shrink-0"
         >
-          {perfil?.foto_campanha_url || perfil?.avatar_url ? (
+          {!isPerfilHydrated ? (
+            <div className="absolute inset-0 bg-slate-100 animate-pulse" />
+          ) : perfil?.foto_campanha_url || perfil?.avatar_url ? (
             <Image 
               src={perfil?.foto_campanha_url || perfil?.avatar_url || ""} 
               alt={perfil.nome || "Colaborador"} 
