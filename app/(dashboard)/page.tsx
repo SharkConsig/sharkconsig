@@ -3585,6 +3585,35 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {(!isUserAdmin && !isAdmin && !isDeveloper && !isSupervisor) && (
+          <div
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none select-none absolute inset-x-0 top-0 overflow-hidden z-0 bg-gradient-to-b from-[#EAF4FA]/70 via-[#F2F8FC]/55 to-[#F8FAFC]",
+              isPJ
+                ? "h-[285px] lg:h-[322px]"
+                : isEstagio
+                  ? "h-[238px] lg:h-[264px]"
+                  : "h-[250px] lg:h-[268px]"
+            )}
+          >
+            <img
+              src={isEstagio ? "/images/christmas-hero-banner.jpg" : "/images/christmas-hero-banner-meta.jpg"}
+              alt=""
+              referrerPolicy="no-referrer"
+              className={cn(
+                "absolute max-w-none w-auto opacity-35 sm:opacity-75 md:opacity-100",
+                isEstagio
+                  ? "right-0 md:right-auto md:left-[62%] md:-translate-x-1/2 h-[132%] -top-[16%] [mask-image:linear-gradient(to_right,transparent_0%,black_20%,black_86%,transparent_100%)]"
+                  : isPJ
+                    ? "right-0 md:right-auto md:left-[56%] md:-translate-x-1/2 h-[130%] -top-[11%] [mask-image:linear-gradient(to_right,transparent_0%,black_20%,black_86%,transparent_100%)]"
+                    : "right-0 md:right-auto md:left-[51%] md:-translate-x-1/2 h-[130%] -top-[11%] [mask-image:linear-gradient(to_right,transparent_0%,black_20%,black_84%,transparent_100%)]"
+              )}
+            />
+            <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#F8FAFC] via-[#F8FAFC]/75 to-transparent" />
+          </div>
+        )}
+
         <div className={cn(
           "relative z-10 p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
           isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
@@ -3617,27 +3646,12 @@ export default function DashboardPage() {
               className={cn(
                 "relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6",
                 !isSupervisor
-                  ? "overflow-hidden rounded-3xl border border-sky-100/90 bg-white shadow-sm mb-12 min-h-[164px] lg:min-h-[212px] p-6 lg:p-8"
+                  ? isPJ
+                    ? "mb-2 min-h-[150px] lg:min-h-[184px] py-4 lg:py-6"
+                    : "mb-6 min-h-[164px] lg:min-h-[192px] py-4 lg:py-6"
                   : "mb-6 min-h-[140px] lg:min-h-[176px] py-4 lg:py-6"
               )}
             >
-              {!isSupervisor && (
-                <>
-                  <img
-                    src={(!isEstagio && !isPJ) ? "/images/christmas-hero-banner-meta.jpg" : "/images/christmas-hero-banner.jpg"}
-                    alt="Cenário natalino SharkConsig"
-                    referrerPolicy="no-referrer"
-                    className={cn(
-                      "absolute inset-0 w-full h-full object-cover pointer-events-none select-none",
-                      (!isEstagio && !isPJ) ? "object-[center_56%]" : "object-[center_63%]"
-                    )}
-                  />
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-0 bg-gradient-to-r from-[#F8FAFC]/95 via-[#F8FAFC]/75 via-28% to-transparent to-44% pointer-events-none"
-                  />
-                </>
-              )}
 
               <div className="relative z-10 flex items-center gap-4 sm:gap-6">
                 <motion.div 

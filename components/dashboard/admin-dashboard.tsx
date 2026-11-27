@@ -6128,20 +6128,10 @@ export function AdminDashboard({
           className="space-y-6"
         >
           {/* Header Row with Period Filter at the top-right (Sticky) */}
-          <div className={cn(
-            "sticky top-16 lg:top-20 z-30 flex items-center justify-end transition-all",
-            onlyFinanceiro
-              ? "bg-[#F8FAFC]/95 backdrop-blur-md py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm"
-              : "bg-transparent pointer-events-none py-2"
-          )}>
+          <div className="sticky top-16 lg:top-20 z-30 flex items-center justify-end transition-all bg-transparent pointer-events-none py-2">
             {/* Filter controls */}
-            <div className={cn("flex flex-col items-end gap-2 w-full sm:w-auto", !onlyFinanceiro && "pointer-events-auto")}>
-              <div className={cn(
-                "flex flex-wrap p-1 rounded-xl border gap-1",
-                onlyFinanceiro
-                  ? "bg-slate-100/80 border-slate-200"
-                  : "bg-white/90 backdrop-blur-md border-white/95 shadow-sm"
-              )}>
+            <div className="flex flex-col items-end gap-2 w-full sm:w-auto pointer-events-auto">
+              <div className="flex flex-wrap p-1 rounded-xl border gap-1 bg-white/90 backdrop-blur-md border-white/95 shadow-sm">
                 {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
                   <button
                     key={period}
