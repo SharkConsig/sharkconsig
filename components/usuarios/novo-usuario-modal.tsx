@@ -46,6 +46,8 @@ interface NovoUsuarioModalProps {
   usuario?: UsuarioData
 }
 
+const CAMPAIGN_TARGET_REGIMES = ["CLT", "ESTÁGIO", "PJ"]
+
 const CAMPAIGN_TARGET_ROLES = [
   "Corretor",
   "Estágio",
@@ -89,8 +91,10 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
   const [originalCampanhaSrc, setOriginalCampanhaSrc] = useState<string | null>(null)
   const [cropCampanha, setCropCampanha] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 })
   const [applyCampaignToAll, setApplyCampaignToAll] = useState(false)
-  const [campaignTargetMode, setCampaignTargetMode] = useState<"todos" | "funcoes">("todos")
+  const [campaignTargetMode, setCampaignTargetMode] = useState<"todos" | "interno" | "filtro">("todos")
+  const [campaignTargetRegimes, setCampaignTargetRegimes] = useState<string[]>([])
   const [campaignTargetFuncoes, setCampaignTargetFuncoes] = useState<string[]>([])
+  const [includeDevPj, setIncludeDevPj] = useState(true)
   const campanhaContainerRef = useRef<HTMLDivElement | null>(null)
 
   // Proposal Photo State
@@ -275,7 +279,9 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       setCropCampanha({ x: 0.5, y: 0.5 })
       setApplyCampaignToAll(false)
       setCampaignTargetMode("todos")
+      setCampaignTargetRegimes([])
       setCampaignTargetFuncoes([])
+      setIncludeDevPj(true)
 
       setPreviewPropostaUrl(usuario.foto_proposta_url || null)
       setOriginalPropostaSrc(usuario.foto_proposta_url || null)
@@ -303,7 +309,9 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       setCropCampanha({ x: 0.5, y: 0.5 })
       setApplyCampaignToAll(false)
       setCampaignTargetMode("todos")
+      setCampaignTargetRegimes([])
       setCampaignTargetFuncoes([])
+      setIncludeDevPj(true)
 
       setPreviewPropostaUrl(null)
       setSelectedPropostaFile(null)
@@ -404,7 +412,10 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     setOriginalCampanhaSrc(null)
     setCropCampanha({ x: 0.5, y: 0.5 })
     setApplyCampaignToAll(false)
+    setCampaignTargetMode("todos")
+    setCampaignTargetRegimes([])
     setCampaignTargetFuncoes([])
+    setIncludeDevPj(true)
   }
 
   const handlePropostaFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -536,8 +547,13 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       return
     }
 
-    if (applyCampaignToAll && campaignTargetMode === "funcoes" && campaignTargetFuncoes.length === 0) {
-      toast.error("Selecione pelo menos uma função para replicar a Foto Campanha")
+    if (
+      applyCampaignToAll &&
+      campaignTargetMode === "filtro" &&
+      campaignTargetRegimes.length === 0 &&
+      campaignTargetFuncoes.length === 0
+    ) {
+      toast.error("Selecione pelo menos um regime ou função para replicar a Foto Campanha")
       return
     }
 
@@ -595,9 +611,22 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
 
       const shouldReplicateCampaign = Boolean(applyCampaignToAll && finalFotoCampanhaUrl)
       const replicateFuncoes =
-        shouldReplicateCampaign && campaignTargetMode === "funcoes"
+        shouldReplicateCampaign && campaignTargetMode === "filtro"
           ? campaignTargetFuncoes
           : []
+      const replicateRegimes =
+        shouldReplicateCampaign && campaignTargetMode === "interno"
+          ? ["CLT", "ESTÁGIO"]
+          : shouldReplicateCampaign && campaignTargetMode === "filtro"
+            ? campaignTargetRegimes
+            : []
+      const replicateIncludeDevPj =
+        shouldReplicateCampaign &&
+        (campaignTargetMode === "interno" ||
+          (campaignTargetMode === "filtro" &&
+            campaignTargetRegimes.length > 0 &&
+            !campaignTargetRegimes.includes("PJ") &&
+            includeDevPj))
 
       const payload = isEdit 
         ? { 
@@ -611,6 +640,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
             supervisor_nome: finalSupervisorNome,
             aplicar_campanha_todos: shouldReplicateCampaign,
             campanha_funcoes_alvo: replicateFuncoes,
+            campanha_regimes_alvo: replicateRegimes,
+            campanha_incluir_dev_pj: replicateIncludeDevPj,
           }
         : { 
             ...formData, 
@@ -621,6 +652,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
             supervisor_nome: finalSupervisorNome,
             aplicar_campanha_todos: shouldReplicateCampaign,
             campanha_funcoes_alvo: replicateFuncoes,
+            campanha_regimes_alvo: replicateRegimes,
+            campanha_incluir_dev_pj: replicateIncludeDevPj,
           }
 
       const response = await fetch(endpoint, {
@@ -1019,30 +1052,42 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
 
                       {applyCampaignToAll && (
                         <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 space-y-2">
-                          <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200/80">
+                          <div className="grid grid-cols-3 gap-0.5 bg-white p-0.5 rounded-lg border border-slate-200/80">
                             <button
                               type="button"
                               onClick={() => setCampaignTargetMode("todos")}
                               className={cn(
-                                "flex-1 py-1 px-1.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider transition-all cursor-pointer",
+                                "py-1 px-1 rounded-md text-[8.5px] font-extrabold uppercase tracking-wide transition-all cursor-pointer",
                                 campaignTargetMode === "todos"
                                   ? "bg-[#1C2643] text-white shadow-xs"
                                   : "text-slate-500 hover:text-slate-800"
                               )}
                             >
-                              Todos ativos
+                              Todos
                             </button>
                             <button
                               type="button"
-                              onClick={() => setCampaignTargetMode("funcoes")}
+                              onClick={() => setCampaignTargetMode("interno")}
                               className={cn(
-                                "flex-1 py-1 px-1.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider transition-all cursor-pointer",
-                                campaignTargetMode === "funcoes"
+                                "py-1 px-1 rounded-md text-[8.5px] font-extrabold uppercase tracking-wide transition-all cursor-pointer",
+                                campaignTargetMode === "interno"
                                   ? "bg-[#1C2643] text-white shadow-xs"
                                   : "text-slate-500 hover:text-slate-800"
                               )}
                             >
-                              Por função
+                              Interno
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCampaignTargetMode("filtro")}
+                              className={cn(
+                                "py-1 px-1 rounded-md text-[8.5px] font-extrabold uppercase tracking-wide transition-all cursor-pointer",
+                                campaignTargetMode === "filtro"
+                                  ? "bg-[#1C2643] text-white shadow-xs"
+                                  : "text-slate-500 hover:text-slate-800"
+                              )}
+                            >
+                              Filtrar
                             </button>
                           </div>
 
@@ -1051,37 +1096,97 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                               <Users className="w-3 h-3 text-slate-400 shrink-0" />
                               Replicará para todos os colaboradores ativos.
                             </p>
+                          ) : campaignTargetMode === "interno" ? (
+                            <p className="text-[9.5px] font-semibold text-slate-600 leading-snug px-0.5">
+                              Aplica para <span className="font-bold text-[#1C2643]">CLT</span>, <span className="font-bold text-[#1C2643]">Estágio</span> e <span className="font-bold text-[#1C2643]">Desenvolvedor (mesmo PJ)</span>. Exclui Corretor/outros PJ.
+                            </p>
                           ) : (
-                            <div className="space-y-1.5">
-                              <div className="max-h-32 overflow-y-auto pr-1 space-y-1 custom-scrollbar">
-                                {CAMPAIGN_TARGET_ROLES.map((roleLabel) => {
-                                  const checked = campaignTargetFuncoes.includes(roleLabel)
-                                  return (
-                                    <label
-                                      key={roleLabel}
-                                      className="flex items-center gap-2 cursor-pointer select-none px-1.5 py-1 rounded-md hover:bg-white transition-colors"
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={() => {
-                                          setCampaignTargetFuncoes((prev) =>
-                                            prev.includes(roleLabel)
-                                              ? prev.filter((r) => r !== roleLabel)
-                                              : [...prev, roleLabel]
-                                          )
-                                        }}
-                                        className="h-3 w-3 rounded border-slate-300 text-[#1C2643] focus:ring-[#1C2643] cursor-pointer shrink-0"
-                                      />
-                                      <span className="text-[10px] font-bold text-slate-700 truncate">
-                                        {roleLabel}
-                                      </span>
-                                    </label>
-                                  )
-                                })}
+                            <div className="space-y-2">
+                              <div className="space-y-1">
+                                <span className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-wider px-0.5 block">
+                                  Regime de Contratação
+                                </span>
+                                <div className="grid grid-cols-3 gap-1">
+                                  {CAMPAIGN_TARGET_REGIMES.map((regimeLabel) => {
+                                    const checked = campaignTargetRegimes.includes(regimeLabel)
+                                    return (
+                                      <label
+                                        key={regimeLabel}
+                                        className={cn(
+                                          "flex items-center justify-center gap-1 cursor-pointer select-none px-1 py-1 rounded-md border text-[9px] font-bold transition-colors",
+                                          checked
+                                            ? "bg-[#1C2643]/10 border-[#1C2643]/40 text-[#1C2643]"
+                                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                                        )}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => {
+                                            setCampaignTargetRegimes((prev) =>
+                                              prev.includes(regimeLabel)
+                                                ? prev.filter((r) => r !== regimeLabel)
+                                                : [...prev, regimeLabel]
+                                            )
+                                          }}
+                                          className="h-2.5 w-2.5 rounded border-slate-300 text-[#1C2643] focus:ring-[#1C2643] cursor-pointer shrink-0"
+                                        />
+                                        <span className="truncate">{regimeLabel}</span>
+                                      </label>
+                                    )
+                                  })}
+                                </div>
                               </div>
+
+                              {campaignTargetRegimes.length > 0 && !campaignTargetRegimes.includes("PJ") && (
+                                <label className="flex items-start gap-1.5 cursor-pointer select-none px-1.5 py-1 rounded-md bg-white border border-slate-200/80 hover:bg-slate-50 transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={includeDevPj}
+                                    onChange={(e) => setIncludeDevPj(e.target.checked)}
+                                    className="mt-0.5 h-3 w-3 rounded border-slate-300 text-[#1C2643] focus:ring-[#1C2643] cursor-pointer shrink-0"
+                                  />
+                                  <span className="text-[9px] font-bold text-slate-600 leading-tight">
+                                    Incluir Desenvolvedor (PJ)
+                                  </span>
+                                </label>
+                              )}
+
+                              <div className="space-y-1">
+                                <span className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-wider px-0.5 block">
+                                  Função {campaignTargetRegimes.length > 0 ? "(opcional)" : ""}
+                                </span>
+                                <div className="max-h-28 overflow-y-auto pr-1 space-y-1 custom-scrollbar">
+                                  {CAMPAIGN_TARGET_ROLES.map((roleLabel) => {
+                                    const checked = campaignTargetFuncoes.includes(roleLabel)
+                                    return (
+                                      <label
+                                        key={roleLabel}
+                                        className="flex items-center gap-2 cursor-pointer select-none px-1.5 py-1 rounded-md hover:bg-white transition-colors"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => {
+                                            setCampaignTargetFuncoes((prev) =>
+                                              prev.includes(roleLabel)
+                                                ? prev.filter((r) => r !== roleLabel)
+                                                : [...prev, roleLabel]
+                                            )
+                                          }}
+                                          className="h-3 w-3 rounded border-slate-300 text-[#1C2643] focus:ring-[#1C2643] cursor-pointer shrink-0"
+                                        />
+                                        <span className="text-[10px] font-bold text-slate-700 truncate">
+                                          {roleLabel}
+                                        </span>
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+
                               <div className="text-[9px] font-bold text-slate-500 text-right px-0.5">
-                                {campaignTargetFuncoes.length} função(ões) selecionada(s)
+                                {campaignTargetRegimes.length} regime(s) · {campaignTargetFuncoes.length} função(ões)
                               </div>
                             </div>
                           )}

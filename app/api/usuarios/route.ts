@@ -257,7 +257,7 @@ export async function PUT(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
     const body = await request.json()
-    const { id, email, password, nome_completo, username, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome, status, padrinho_id, padrinho_nome, aplicar_campanha_todos, campanha_funcoes_alvo } = body
+    const { id, email, password, nome_completo, username, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome, status, padrinho_id, padrinho_nome, aplicar_campanha_todos, campanha_funcoes_alvo, campanha_regimes_alvo, campanha_incluir_dev_pj } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID do usuário é obrigatório' }, { status: 400 })
@@ -342,6 +342,8 @@ export async function PUT(request: Request) {
         metadata.foto_campanha_url,
         {
           funcoesAlvo: Array.isArray(campanha_funcoes_alvo) ? campanha_funcoes_alvo : undefined,
+          regimesAlvo: Array.isArray(campanha_regimes_alvo) ? campanha_regimes_alvo : undefined,
+          incluirDesenvolvedorPj: campanha_incluir_dev_pj === true,
           excludeUserId: id,
         }
       )

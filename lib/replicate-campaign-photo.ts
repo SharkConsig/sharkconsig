@@ -1,14 +1,27 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 
-const normalizeRoleName = (val: string) =>
+const normalizeText = (val: string) =>
   String(val || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase()
 
+const matchRegime = (userRegimeNorm: string, allowedRegimes: Set<string>) => {
+  if (!userRegimeNorm) return false
+  for (const target of allowedRegimes) {
+    if (target === "clt" && userRegimeNorm.includes("clt")) return true
+    if (target === "estagio" && userRegimeNorm.includes("estagio")) return true
+    if (target === "pj" && userRegimeNorm.includes("pj")) return true
+    if (userRegimeNorm === target) return true
+  }
+  return false
+}
+
 export interface ReplicateCampaignOptions {
   funcoesAlvo?: string[]
+  regimesAlvo?: string[]
+  incluirDesenvolvedorPj?: boolean
   excludeUserId?: string
 }
 
@@ -21,15 +34,19 @@ export async function replicateCampaignPhotoToUsers(
     return 0
   }
 
-  const { funcoesAlvo, excludeUserId } = options
+  const { funcoesAlvo, regimesAlvo, incluirDesenvolvedorPj = false, excludeUserId } = options
   const allowedRolesSet =
     Array.isArray(funcoesAlvo) && funcoesAlvo.length > 0
-      ? new Set(funcoesAlvo.map(normalizeRoleName).filter(Boolean))
+      ? new Set(funcoesAlvo.map(normalizeText).filter(Boolean))
+      : null
+  const allowedRegimesSet =
+    Array.isArray(regimesAlvo) && regimesAlvo.length > 0
+      ? new Set(regimesAlvo.map(normalizeText).filter(Boolean))
       : null
 
   const { data: perfisRows, error: fetchError } = await supabaseAdmin
     .from("perfis")
-    .select("id, funcao, role, status")
+    .select("id, funcao, role, regime_contratacao, status")
 
   if (fetchError || !perfisRows) {
     console.warn("[replicateCampaignPhoto] Erro ao listar perfis:", fetchError?.message)
@@ -41,11 +58,17 @@ export async function replicateCampaignPhotoToUsers(
       if (!p?.id) return false
       if (excludeUserId && p.id === excludeUserId) return false
       if ((p.status || "ATIVO").toUpperCase() === "INATIVO") return false
-      if (allowedRolesSet) {
-        const userRole = normalizeRoleName(p.funcao || p.role || "")
-        return allowedRolesSet.has(userRole)
-      }
-      return true
+
+      const userRole = normalizeText(p.funcao || p.role || "")
+      const userRegime = normalizeText(p.regime_contratacao || "")
+      const isDevPjException =
+        incluirDesenvolvedorPj && userRole === "desenvolvedor" && userRegime.includes("pj")
+
+      const roleOk = !allowedRolesSet || allowedRolesSet.has(userRole) || isDevPjException
+      const regimeOk =
+        !allowedRegimesSet || matchRegime(userRegime, allowedRegimesSet) || isDevPjException
+
+      return roleOk && regimeOk
     })
     .map((p: any) => String(p.id))
 

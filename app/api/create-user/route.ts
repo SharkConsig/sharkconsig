@@ -5,7 +5,7 @@ import { replicateCampaignPhotoToUsers } from "@/lib/replicate-campaign-photo";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { nome_completo, username, senha, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome, aplicar_campanha_todos, campanha_funcoes_alvo } = body;
+    const { nome_completo, username, senha, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome, aplicar_campanha_todos, campanha_funcoes_alvo, campanha_regimes_alvo, campanha_incluir_dev_pj } = body;
 
     if (!nome_completo || !username || !senha || !funcao || !regime_contratacao) {
       return NextResponse.json(
@@ -68,6 +68,8 @@ export async function POST(request: Request) {
         safeFotoCampanhaUrl,
         {
           funcoesAlvo: Array.isArray(campanha_funcoes_alvo) ? campanha_funcoes_alvo : undefined,
+          regimesAlvo: Array.isArray(campanha_regimes_alvo) ? campanha_regimes_alvo : undefined,
+          incluirDesenvolvedorPj: campanha_incluir_dev_pj === true,
           excludeUserId: data?.user?.id,
         }
       );
