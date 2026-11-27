@@ -3598,10 +3598,13 @@ export default function DashboardPage() {
             {/* Header Section */}
             <div className="relative overflow-hidden rounded-3xl border border-sky-100/90 bg-white shadow-sm mb-12 min-h-[164px] lg:min-h-[212px] flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 lg:p-8">
               <img
-                src="/images/christmas-hero-banner.jpg"
+                src={(!isEstagio && !isPJ) ? "/images/christmas-hero-banner-meta.jpg" : "/images/christmas-hero-banner.jpg"}
                 alt="Cenário natalino SharkConsig"
                 referrerPolicy="no-referrer"
-                className="absolute inset-0 w-full h-full object-cover object-[center_63%] pointer-events-none select-none"
+                className={cn(
+                  "absolute inset-0 w-full h-full object-cover pointer-events-none select-none",
+                  (!isEstagio && !isPJ) ? "object-[center_56%]" : "object-[center_63%]"
+                )}
               />
               <div
                 aria-hidden="true"
