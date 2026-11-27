@@ -18,7 +18,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select"
-import { Lock, Camera, Pencil, Loader2, Eye, EyeOff, X, Move } from "lucide-react"
+import { Lock, Camera, Pencil, Loader2, Eye, EyeOff, X, Move, Users } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import Image from "next/image"
 import { useState, useEffect, useRef } from "react"
@@ -45,6 +45,18 @@ interface NovoUsuarioModalProps {
   onClose: () => void
   usuario?: UsuarioData
 }
+
+const CAMPAIGN_TARGET_ROLES = [
+  "Corretor",
+  "Estágio",
+  "Processo Seletivo",
+  "Supervisor",
+  "Operacional",
+  "Monitoramento",
+  "Recursos Humanos",
+  "Administrador",
+  "Desenvolvedor",
+]
 
 export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalProps) {
   const { isCollapsed } = useSidebar()
@@ -76,6 +88,9 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
   const [previewCampanhaUrl, setPreviewCampanhaUrl] = useState<string | null>(null)
   const [originalCampanhaSrc, setOriginalCampanhaSrc] = useState<string | null>(null)
   const [cropCampanha, setCropCampanha] = useState<{ x: number; y: number }>({ x: 0.5, y: 0.5 })
+  const [applyCampaignToAll, setApplyCampaignToAll] = useState(false)
+  const [campaignTargetMode, setCampaignTargetMode] = useState<"todos" | "funcoes">("todos")
+  const [campaignTargetFuncoes, setCampaignTargetFuncoes] = useState<string[]>([])
   const campanhaContainerRef = useRef<HTMLDivElement | null>(null)
 
   // Proposal Photo State
@@ -258,6 +273,9 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       setPreviewCampanhaUrl(usuario.foto_campanha_url || null)
       setOriginalCampanhaSrc(usuario.foto_campanha_url || null)
       setCropCampanha({ x: 0.5, y: 0.5 })
+      setApplyCampaignToAll(false)
+      setCampaignTargetMode("todos")
+      setCampaignTargetFuncoes([])
 
       setPreviewPropostaUrl(usuario.foto_proposta_url || null)
       setOriginalPropostaSrc(usuario.foto_proposta_url || null)
@@ -283,6 +301,9 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       setSelectedCampanhaFile(null)
       setOriginalCampanhaSrc(null)
       setCropCampanha({ x: 0.5, y: 0.5 })
+      setApplyCampaignToAll(false)
+      setCampaignTargetMode("todos")
+      setCampaignTargetFuncoes([])
 
       setPreviewPropostaUrl(null)
       setSelectedPropostaFile(null)
@@ -382,6 +403,8 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
     setPreviewCampanhaUrl(null)
     setOriginalCampanhaSrc(null)
     setCropCampanha({ x: 0.5, y: 0.5 })
+    setApplyCampaignToAll(false)
+    setCampaignTargetFuncoes([])
   }
 
   const handlePropostaFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -513,6 +536,11 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       return
     }
 
+    if (applyCampaignToAll && campaignTargetMode === "funcoes" && campaignTargetFuncoes.length === 0) {
+      toast.error("Selecione pelo menos uma função para replicar a Foto Campanha")
+      return
+    }
+
     setIsLoading(true)
     let finalAvatarUrl = selectedFile ? formData.avatar_url : (previewUrl ? formData.avatar_url : "")
     let finalFotoCampanhaUrl = selectedCampanhaFile ? formData.foto_campanha_url : (previewCampanhaUrl ? formData.foto_campanha_url : "")
@@ -565,6 +593,12 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       const finalSupervisorId = isNenhum ? null : (selectedSup ? selectedSup.id : formData.supervisor_id)
       const finalSupervisorNome = isNenhum ? "Nenhum" : (selectedSup ? selectedSup.nome : "Nenhum")
 
+      const shouldReplicateCampaign = Boolean(applyCampaignToAll && finalFotoCampanhaUrl)
+      const replicateFuncoes =
+        shouldReplicateCampaign && campaignTargetMode === "funcoes"
+          ? campaignTargetFuncoes
+          : []
+
       const payload = isEdit 
         ? { 
             ...formData, 
@@ -574,7 +608,9 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
             foto_proposta_url: finalFotoPropostaUrl,
             password: formData.senha || undefined,
             supervisor_id: finalSupervisorId,
-            supervisor_nome: finalSupervisorNome
+            supervisor_nome: finalSupervisorNome,
+            aplicar_campanha_todos: shouldReplicateCampaign,
+            campanha_funcoes_alvo: replicateFuncoes,
           }
         : { 
             ...formData, 
@@ -582,7 +618,9 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
             foto_campanha_url: finalFotoCampanhaUrl, 
             foto_proposta_url: finalFotoPropostaUrl, 
             supervisor_id: finalSupervisorId,
-            supervisor_nome: finalSupervisorNome 
+            supervisor_nome: finalSupervisorNome,
+            aplicar_campanha_todos: shouldReplicateCampaign,
+            campanha_funcoes_alvo: replicateFuncoes,
           }
 
       const response = await fetch(endpoint, {
@@ -597,9 +635,16 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
         throw new Error(result.error || `Erro ao ${isEdit ? 'atualizar' : 'criar'} usuário`)
       }
 
-      toast.success(isEdit ? "Usuário atualizado com sucesso!" : "Usuário criado com sucesso!")
+      const replicatedCount = Number(result.campaignReplicatedCount) || 0
+      if (replicatedCount > 0) {
+        toast.success(
+          `${isEdit ? "Usuário atualizado" : "Usuário criado"} e Foto Campanha aplicada para mais ${replicatedCount} usuário(s) ativo(s)!`
+        )
+      } else {
+        toast.success(isEdit ? "Usuário atualizado com sucesso!" : "Usuário criado com sucesso!")
+      }
       
-      if (isEdit && usuario && currentUser && usuario.id === currentUser.id) {
+      if (currentUser && ((isEdit && usuario && usuario.id === currentUser.id) || replicatedCount > 0)) {
         try {
           await refreshPerfil()
         } catch (refreshErr) {
@@ -624,6 +669,9 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
       setPreviewUrl(null)
       setSelectedCampanhaFile(null)
       setPreviewCampanhaUrl(null)
+      setApplyCampaignToAll(false)
+      setCampaignTargetMode("todos")
+      setCampaignTargetFuncoes([])
       setSelectedPropostaFile(null)
       setPreviewPropostaUrl(null)
       onClose()
@@ -658,7 +706,7 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_200px] gap-10">
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_228px] gap-8">
               <div className="space-y-6">
                 {/* Nome Completo */}
                 <div className="space-y-1.5">
@@ -954,6 +1002,93 @@ export function NovoUsuarioModal({ isOpen, onClose, usuario }: NovoUsuarioModalP
                   >
                     Selecionar Foto
                   </Button>
+
+                  {previewCampanhaUrl && (
+                    <div className="w-full mt-2.5 space-y-2">
+                      <label className="flex items-start gap-2 cursor-pointer select-none p-2 rounded-lg border border-slate-200/80 bg-slate-50/70 hover:bg-slate-100/70 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={applyCampaignToAll}
+                          onChange={(e) => setApplyCampaignToAll(e.target.checked)}
+                          className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 text-[#1C2643] focus:ring-[#1C2643] cursor-pointer shrink-0"
+                        />
+                        <span className="text-[10px] font-bold text-slate-700 leading-tight">
+                          Aplicar foto para outros usuários ativos
+                        </span>
+                      </label>
+
+                      {applyCampaignToAll && (
+                        <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/80 space-y-2">
+                          <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200/80">
+                            <button
+                              type="button"
+                              onClick={() => setCampaignTargetMode("todos")}
+                              className={cn(
+                                "flex-1 py-1 px-1.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider transition-all cursor-pointer",
+                                campaignTargetMode === "todos"
+                                  ? "bg-[#1C2643] text-white shadow-xs"
+                                  : "text-slate-500 hover:text-slate-800"
+                              )}
+                            >
+                              Todos ativos
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCampaignTargetMode("funcoes")}
+                              className={cn(
+                                "flex-1 py-1 px-1.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider transition-all cursor-pointer",
+                                campaignTargetMode === "funcoes"
+                                  ? "bg-[#1C2643] text-white shadow-xs"
+                                  : "text-slate-500 hover:text-slate-800"
+                              )}
+                            >
+                              Por função
+                            </button>
+                          </div>
+
+                          {campaignTargetMode === "todos" ? (
+                            <p className="text-[9.5px] font-semibold text-slate-500 leading-snug flex items-center gap-1.5 px-0.5">
+                              <Users className="w-3 h-3 text-slate-400 shrink-0" />
+                              Replicará para todos os colaboradores ativos.
+                            </p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <div className="max-h-32 overflow-y-auto pr-1 space-y-1 custom-scrollbar">
+                                {CAMPAIGN_TARGET_ROLES.map((roleLabel) => {
+                                  const checked = campaignTargetFuncoes.includes(roleLabel)
+                                  return (
+                                    <label
+                                      key={roleLabel}
+                                      className="flex items-center gap-2 cursor-pointer select-none px-1.5 py-1 rounded-md hover:bg-white transition-colors"
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => {
+                                          setCampaignTargetFuncoes((prev) =>
+                                            prev.includes(roleLabel)
+                                              ? prev.filter((r) => r !== roleLabel)
+                                              : [...prev, roleLabel]
+                                          )
+                                        }}
+                                        className="h-3 w-3 rounded border-slate-300 text-[#1C2643] focus:ring-[#1C2643] cursor-pointer shrink-0"
+                                      />
+                                      <span className="text-[10px] font-bold text-slate-700 truncate">
+                                        {roleLabel}
+                                      </span>
+                                    </label>
+                                  )
+                                })}
+                              </div>
+                              <div className="text-[9px] font-bold text-slate-500 text-right px-0.5">
+                                {campaignTargetFuncoes.length} função(ões) selecionada(s)
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Proposal Photo Section (FOTO PROPOSTA SEM FUNDO) */}

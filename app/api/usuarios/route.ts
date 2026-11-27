@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase'
 import { NextResponse } from 'next/server'
+import { replicateCampaignPhotoToUsers } from '@/lib/replicate-campaign-photo'
 
 export const dynamic = 'force-dynamic'
 
@@ -256,7 +257,7 @@ export async function PUT(request: Request) {
   try {
     const supabaseAdmin = createAdminClient();
     const body = await request.json()
-    const { id, email, password, nome_completo, username, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome, status, padrinho_id, padrinho_nome } = body
+    const { id, email, password, nome_completo, username, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome, status, padrinho_id, padrinho_nome, aplicar_campanha_todos, campanha_funcoes_alvo } = body
 
     if (!id) {
       return NextResponse.json({ error: 'ID do usuário é obrigatório' }, { status: 400 })
@@ -334,7 +335,19 @@ export async function PUT(request: Request) {
       }
     } catch (_) {}
 
-    return NextResponse.json({ success: true })
+    let campaignReplicatedCount = 0
+    if (aplicar_campanha_todos === true && typeof metadata.foto_campanha_url === 'string' && metadata.foto_campanha_url.trim() !== '') {
+      campaignReplicatedCount = await replicateCampaignPhotoToUsers(
+        supabaseAdmin,
+        metadata.foto_campanha_url,
+        {
+          funcoesAlvo: Array.isArray(campanha_funcoes_alvo) ? campanha_funcoes_alvo : undefined,
+          excludeUserId: id,
+        }
+      )
+    }
+
+    return NextResponse.json({ success: true, campaignReplicatedCount })
   } catch (error: unknown) {
     console.error('Erro ao atualizar usuário:', error)
     let message = error instanceof Error ? error.message : 'Erro interno';

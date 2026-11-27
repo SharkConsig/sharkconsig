@@ -1,10 +1,11 @@
 import { createAdminClient } from "@/lib/supabase";
 import { NextResponse } from "next/server";
+import { replicateCampaignPhotoToUsers } from "@/lib/replicate-campaign-photo";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { nome_completo, username, senha, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome } = body;
+    const { nome_completo, username, senha, funcao, regime_contratacao, avatar_url, foto_campanha_url, foto_proposta_url, supervisor_id, supervisor_nome, aplicar_campanha_todos, campanha_funcoes_alvo } = body;
 
     if (!nome_completo || !username || !senha || !funcao || !regime_contratacao) {
       return NextResponse.json(
@@ -60,7 +61,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: friendlyMessage }, { status: 400 });
     }
 
-    return NextResponse.json({ user: data.user }, { status: 201 });
+    let campaignReplicatedCount = 0;
+    if (aplicar_campanha_todos === true && safeFotoCampanhaUrl) {
+      campaignReplicatedCount = await replicateCampaignPhotoToUsers(
+        supabaseAdmin,
+        safeFotoCampanhaUrl,
+        {
+          funcoesAlvo: Array.isArray(campanha_funcoes_alvo) ? campanha_funcoes_alvo : undefined,
+          excludeUserId: data?.user?.id,
+        }
+      );
+    }
+
+    return NextResponse.json({ user: data.user, campaignReplicatedCount }, { status: 201 });
   } catch (error: unknown) {
     console.error("Erro na API create-user:", error);
     const message = error instanceof Error ? error.message : "Erro interno do servidor";
