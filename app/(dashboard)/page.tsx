@@ -3589,28 +3589,25 @@ export default function DashboardPage() {
           <div
             aria-hidden="true"
             className={cn(
-              "pointer-events-none select-none absolute inset-x-0 top-0 overflow-hidden z-0 bg-gradient-to-b from-[#EAF4FA]/70 via-[#F2F8FC]/55 to-[#F8FAFC]",
+              "pointer-events-none select-none absolute inset-x-0 top-0 overflow-hidden z-0 bg-[#F8FAFC]",
               isPJ
-                ? "h-[285px] lg:h-[322px]"
-                : isEstagio
-                  ? "h-[238px] lg:h-[264px]"
-                  : "h-[250px] lg:h-[268px]"
+                ? "h-[300px] lg:h-[338px]"
+                : "h-[270px] lg:h-[296px]"
             )}
           >
             <img
-              src={isEstagio ? "/images/christmas-hero-banner.jpg" : "/images/christmas-hero-banner-meta.jpg"}
+              src="/images/christmas-hero-banner-meta.jpg"
               alt=""
               referrerPolicy="no-referrer"
               className={cn(
-                "absolute max-w-none w-auto opacity-35 sm:opacity-75 md:opacity-100",
-                isEstagio
-                  ? "right-0 md:right-auto md:left-[62%] md:-translate-x-1/2 h-[132%] -top-[16%] [mask-image:linear-gradient(to_right,transparent_0%,black_20%,black_86%,transparent_100%)]"
-                  : isPJ
-                    ? "right-0 md:right-auto md:left-[56%] md:-translate-x-1/2 h-[130%] -top-[11%] [mask-image:linear-gradient(to_right,transparent_0%,black_20%,black_86%,transparent_100%)]"
-                    : "right-0 md:right-auto md:left-[51%] md:-translate-x-1/2 h-[130%] -top-[11%] [mask-image:linear-gradient(to_right,transparent_0%,black_20%,black_84%,transparent_100%)]"
+                "absolute right-0 top-0 h-full object-cover opacity-35 sm:opacity-75 md:opacity-100 [mask-image:linear-gradient(to_right,transparent_0%,black_28%,black_100%)]",
+                isPJ
+                  ? "w-full md:w-[88%] object-[center_46%]"
+                  : "w-full md:w-[80%] object-[center_45%]"
               )}
             />
-            <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#F8FAFC] via-[#F8FAFC]/75 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#F8FAFC]/95 via-[#F8FAFC]/68 via-32% to-transparent to-52%" />
+            <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#F8FAFC] via-[#F8FAFC]/80 to-transparent" />
           </div>
         )}
 
@@ -3647,8 +3644,8 @@ export default function DashboardPage() {
                 "relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6",
                 !isSupervisor
                   ? isPJ
-                    ? "mb-2 min-h-[150px] lg:min-h-[184px] py-4 lg:py-6"
-                    : "mb-6 min-h-[164px] lg:min-h-[192px] py-4 lg:py-6"
+                    ? "mb-2 min-h-[168px] lg:min-h-[200px] py-4 lg:py-6"
+                    : "mb-6 min-h-[176px] lg:min-h-[214px] py-4 lg:py-6"
                   : "mb-6 min-h-[140px] lg:min-h-[176px] py-4 lg:py-6"
               )}
             >
