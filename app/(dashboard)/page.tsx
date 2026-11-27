@@ -3568,10 +3568,27 @@ export default function DashboardPage() {
     <div className="flex-1 flex flex-col bg-[#F8FAFC]">
       <Header title="DASHBOARD" />
       
-      <div className={cn(
-        "p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
-        isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
-      )}>
+      <div className="relative flex-1 flex flex-col">
+        {((isUserAdmin || isAdmin || isDeveloper) || isSupervisor) && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none select-none absolute inset-x-0 top-0 h-[430px] lg:h-[470px] overflow-hidden z-0"
+          >
+            <img
+              src="/images/christmas-hero-banner-meta.jpg"
+              alt=""
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover object-[center_52%]"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#F8FAFC]/95 via-[#F8FAFC]/68 via-32% to-transparent to-52%" />
+            <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#F8FAFC] via-[#F8FAFC]/80 to-transparent" />
+          </div>
+        )}
+
+        <div className={cn(
+          "relative z-10 p-4 lg:p-8 space-y-8 mx-auto w-full pb-20 transition-all duration-300",
+          isCollapsed ? "max-w-full lg:px-12" : "max-w-[1600px]"
+        )}>
         {(isUserAdmin || isAdmin || isDeveloper) && adminStats && (
           <AdminDashboard 
             perfil={perfil} 
@@ -3596,20 +3613,31 @@ export default function DashboardPage() {
         {(!isUserAdmin && !isAdmin && !isDeveloper) && (
           <>
             {/* Header Section */}
-            <div className="relative overflow-hidden rounded-3xl border border-sky-100/90 bg-white shadow-sm mb-12 min-h-[164px] lg:min-h-[212px] flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 lg:p-8">
-              <img
-                src={(!isEstagio && !isPJ) ? "/images/christmas-hero-banner-meta.jpg" : "/images/christmas-hero-banner.jpg"}
-                alt="Cenário natalino SharkConsig"
-                referrerPolicy="no-referrer"
-                className={cn(
-                  "absolute inset-0 w-full h-full object-cover pointer-events-none select-none",
-                  (!isEstagio && !isPJ) ? "object-[center_56%]" : "object-[center_63%]"
-                )}
-              />
-              <div
-                aria-hidden="true"
-                className="absolute inset-0 bg-gradient-to-r from-[#F8FAFC]/95 via-[#F8FAFC]/75 via-28% to-transparent to-44% pointer-events-none"
-              />
+            <div
+              className={cn(
+                "relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6",
+                !isSupervisor
+                  ? "overflow-hidden rounded-3xl border border-sky-100/90 bg-white shadow-sm mb-12 min-h-[164px] lg:min-h-[212px] p-6 lg:p-8"
+                  : "mb-6 min-h-[140px] lg:min-h-[176px] py-4 lg:py-6"
+              )}
+            >
+              {!isSupervisor && (
+                <>
+                  <img
+                    src={(!isEstagio && !isPJ) ? "/images/christmas-hero-banner-meta.jpg" : "/images/christmas-hero-banner.jpg"}
+                    alt="Cenário natalino SharkConsig"
+                    referrerPolicy="no-referrer"
+                    className={cn(
+                      "absolute inset-0 w-full h-full object-cover pointer-events-none select-none",
+                      (!isEstagio && !isPJ) ? "object-[center_56%]" : "object-[center_63%]"
+                    )}
+                  />
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 bg-gradient-to-r from-[#F8FAFC]/95 via-[#F8FAFC]/75 via-28% to-transparent to-44% pointer-events-none"
+                  />
+                </>
+              )}
 
               <div className="relative z-10 flex items-center gap-4 sm:gap-6">
                 <motion.div 
@@ -3630,7 +3658,7 @@ export default function DashboardPage() {
                 <motion.div 
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="relative z-10 flex items-center gap-4 self-start md:self-center bg-white/90 backdrop-blur-md border border-white/95 rounded-2xl px-5 py-3.5 shadow-sm group"
+                  className="relative z-10 flex items-center gap-4 self-start md:self-center bg-white/92 backdrop-blur-md border border-white rounded-2xl px-5 py-3.5 shadow-md group"
                 >
                   <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0 shadow-xs border border-amber-100">
                      <Clock className="w-6 h-6 text-amber-500" />
@@ -3667,7 +3695,7 @@ export default function DashboardPage() {
             ) : (
               <>
                 {isSupervisor && (
-              <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 gap-1.5 self-start mb-8 w-fit">
+              <div className="relative z-10 flex bg-white/85 backdrop-blur-md p-1.5 rounded-2xl border border-white/90 shadow-sm gap-1.5 self-start mb-8 w-fit">
                 <button
                   onClick={() => setActiveTab('propostas')}
                   className={cn(
@@ -4000,9 +4028,9 @@ export default function DashboardPage() {
                   className={cn("transition-opacity duration-500", isLoading ? "opacity-50 pointer-events-none" : "opacity-100")}
                 >
                   {isSupervisor && (
-                    <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all mb-6">
-                      <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
-                        <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+                    <div className="sticky top-16 lg:top-20 z-30 bg-transparent pointer-events-none flex items-center justify-end py-2 transition-all mb-4">
+                      <div className="flex flex-col items-end gap-2 w-full sm:w-auto pointer-events-auto">
+                        <div className="flex flex-wrap bg-white/90 backdrop-blur-md p-1 rounded-xl border border-white/95 shadow-sm gap-1">
                           {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
                             <button
                               key={period}
@@ -5672,9 +5700,9 @@ export default function DashboardPage() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-6"
             >
-              <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all mb-6">
-                <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
-                  <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+              <div className="sticky top-16 lg:top-20 z-30 bg-transparent pointer-events-none flex items-center justify-end py-2 transition-all mb-4">
+                <div className="flex flex-col items-end gap-2 w-full sm:w-auto pointer-events-auto">
+                  <div className="flex flex-wrap bg-white/90 backdrop-blur-md p-1 rounded-xl border border-white/95 shadow-sm gap-1">
                     {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
                       <button
                         key={period}
@@ -6482,6 +6510,7 @@ export default function DashboardPage() {
             )}
           </>
         )}
+      </div>
     </div>
 
     <AnimatePresence>

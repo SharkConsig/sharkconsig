@@ -3202,18 +3202,7 @@ export function AdminDashboard({
     <div className="space-y-8">
       {/* 1. Linha da saudação e o prazo para bater a meta */}
       {!onlyPropostasComerciais && !onlyFinanceiro && (
-        <div className="relative overflow-hidden rounded-3xl border border-sky-100/90 bg-white shadow-sm mb-12 min-h-[164px] lg:min-h-[212px] flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 lg:p-8">
-          <img
-            src="/images/christmas-hero-banner-meta.jpg"
-            alt="Cenário natalino SharkConsig"
-            referrerPolicy="no-referrer"
-            className="absolute inset-0 w-full h-full object-cover object-[center_56%] pointer-events-none select-none"
-          />
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 bg-gradient-to-r from-[#F8FAFC]/95 via-[#F8FAFC]/75 via-28% to-transparent to-44% pointer-events-none"
-          />
-
+        <div className="relative z-10 mb-6 min-h-[140px] lg:min-h-[176px] flex flex-col md:flex-row md:items-center justify-between gap-6 py-4 lg:py-6">
           <div className="relative z-10 flex items-center gap-4 sm:gap-6">
             <motion.div 
               initial={{ opacity: 0, x: -20 }}
@@ -3232,7 +3221,7 @@ export function AdminDashboard({
           <motion.div 
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="relative z-10 flex items-center gap-4 self-start md:self-center bg-white/90 backdrop-blur-md border border-white/95 rounded-2xl px-5 py-3.5 shadow-sm group"
+            className="relative z-10 flex items-center gap-4 self-start md:self-center bg-white/92 backdrop-blur-md border border-white rounded-2xl px-5 py-3.5 shadow-md group"
           >
             <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center shrink-0 shadow-xs border border-amber-100">
                <Clock className="w-6 h-6 text-amber-500" />
@@ -3253,8 +3242,8 @@ export function AdminDashboard({
 
       {/* TABS SELECTION */}
       {!onlyPropostasComerciais && !onlyFinanceiro && (
-        <div className="flex flex-col gap-4 mb-8">
-          <div className="flex items-center gap-2 p-1 bg-slate-100/80 w-fit rounded-2xl border border-slate-200/50">
+        <div className="relative z-10 flex flex-col gap-4 mb-6">
+          <div className="flex items-center gap-2 p-1 bg-white/85 backdrop-blur-md w-fit rounded-2xl border border-white/90 shadow-sm">
             <button
               onClick={() => setActiveTab('propostas')}
               className={cn(
@@ -3315,9 +3304,9 @@ export function AdminDashboard({
           className="space-y-6 w-full"
         >
           {/* Sticky Period Selector with same styling as finance tab */}
-          <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all">
-            <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
-              <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+          <div className="sticky top-16 lg:top-20 z-30 bg-transparent pointer-events-none flex items-center justify-end py-2 transition-all">
+            <div className="flex flex-col items-end gap-2 w-full sm:w-auto pointer-events-auto">
+              <div className="flex flex-wrap bg-white/90 backdrop-blur-md p-1 rounded-xl border border-white/95 shadow-sm gap-1">
                 {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
                   <button
                     key={period}
@@ -4405,9 +4394,9 @@ export function AdminDashboard({
           className="space-y-6"
         >
           {/* Sticky Period Selector with same styling as finance tab */}
-          <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all">
-            <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
-              <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+          <div className="sticky top-16 lg:top-20 z-30 bg-transparent pointer-events-none flex items-center justify-end py-2 transition-all">
+            <div className="flex flex-col items-end gap-2 w-full sm:w-auto pointer-events-auto">
+              <div className="flex flex-wrap bg-white/90 backdrop-blur-md p-1 rounded-xl border border-white/95 shadow-sm gap-1">
                 {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
                   <button
                     key={period}
@@ -5223,9 +5212,9 @@ export function AdminDashboard({
             className="space-y-6"
           >
             {/* Sticky Period Selector with same styling as finance tab */}
-            <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all">
-              <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
-                <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+            <div className="sticky top-16 lg:top-20 z-30 bg-transparent pointer-events-none flex items-center justify-end py-2 transition-all">
+              <div className="flex flex-col items-end gap-2 w-full sm:w-auto pointer-events-auto">
+                <div className="flex flex-wrap bg-white/90 backdrop-blur-md p-1 rounded-xl border border-white/95 shadow-sm gap-1">
                   {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
                     <button
                       key={period}
@@ -6139,10 +6128,20 @@ export function AdminDashboard({
           className="space-y-6"
         >
           {/* Header Row with Period Filter at the top-right (Sticky) */}
-          <div className="sticky top-16 lg:top-20 z-30 bg-[#F8FAFC]/95 backdrop-blur-md flex items-center justify-end py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm transition-all">
+          <div className={cn(
+            "sticky top-16 lg:top-20 z-30 flex items-center justify-end transition-all",
+            onlyFinanceiro
+              ? "bg-[#F8FAFC]/95 backdrop-blur-md py-3 border-b border-slate-200/80 -mx-4 px-4 lg:-mx-8 lg:px-8 shadow-sm"
+              : "bg-transparent pointer-events-none py-2"
+          )}>
             {/* Filter controls */}
-            <div className="flex flex-col items-end gap-2 w-full sm:w-auto">
-              <div className="flex flex-wrap bg-slate-100/80 p-1 rounded-xl border border-slate-200 gap-1">
+            <div className={cn("flex flex-col items-end gap-2 w-full sm:w-auto", !onlyFinanceiro && "pointer-events-auto")}>
+              <div className={cn(
+                "flex flex-wrap p-1 rounded-xl border gap-1",
+                onlyFinanceiro
+                  ? "bg-slate-100/80 border-slate-200"
+                  : "bg-white/90 backdrop-blur-md border-white/95 shadow-sm"
+              )}>
                 {(['dia', 'semana', 'mes', 'trimestre', 'ano', 'personalizado'] as const).map((period) => (
                   <button
                     key={period}
